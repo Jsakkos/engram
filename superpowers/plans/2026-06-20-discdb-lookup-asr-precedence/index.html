@@ -1,0 +1,2236 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-06-20-discdb-lookup-asr-precedence/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>DiscDB Lookup Enablement + ASR-Preferred Episode Precedence Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#discdb-lookup-enablement-asr-preferred-episode-precedence-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DiscDB Lookup Enablement + ASR-Preferred Episode Precedence Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-1-split-backend-feature-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Split backend feature flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-2-backend-guard-on-contribution-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Backend guard on contribution endpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-3-invert-asr-discdb-episode-precedence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Invert ASR &lt;-&gt; DiscDB episode precedence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-4-update-existing-backend-flag-reference-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Update existing backend flag-reference tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-5-remove-the-now-dead-try_discdb_assignment-injection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Remove the now-dead try_discdb_assignment injection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-6-split-frontend-feature-flags-and-re-gate-sites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Split frontend feature flags and re-gate sites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-7-split-the-configwizard-discdb-group-and-fix-stale-copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Split the ConfigWizard DiscDB group and fix stale copy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-8-refresh-the-discdb-match-source-badge-to-the-icon-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Refresh the DiscDB match-source badge to the icon system
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#final-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="discdb-lookup-enablement-asr-preferred-episode-precedence-implementation-plan">DiscDB Lookup Enablement + ASR-Preferred Episode Precedence Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Enable TheDiscDB lookup (disc identification + track matching) while keeping contribution gated off, and make Engram ASR the preferred episode signal so DiscDB's disc-order episode mappings only apply as a low-confidence fallback.</p>
+<p><strong>Architecture:</strong> Split the single backend (<code>DISCDB_ENABLED</code>) and frontend (<code>FEATURES.DISCDB</code>) master switches into separate lookup and contribution flags. Invert the ASR/DiscDB episode precedence: remove the two pre-dispatch DiscDB short-circuits so ASR always runs, and move DiscDB episode assignment into <code>_match_single_file_inner</code> as a fallback gated on ASR confidence (&lt; 0.5). Harden the contribution submit endpoints with a backend gate. Refresh the stale DiscDB match-source badge.</p>
+<p><strong>Tech Stack:</strong> Python/FastAPI/SQLModel backend (pytest), React/TypeScript/Vite frontend (vitest).</p>
+<p><strong>Spec:</strong> <code>docs/superpowers/specs/2026-06-20-discdb-lookup-asr-precedence.md</code></p>
+<hr />
+<h2 id="file-structure">File Structure</h2>
+<p>Backend:
+- <code>backend/app/core/features.py</code> — split master flag into lookup + contributions.
+- <code>backend/app/services/identification_coordinator.py</code> — re-gate lookup; remove DiscDB short-circuit; drop dead injection.
+- <code>backend/app/services/cleanup_service.py</code> — re-gate auto-export under contributions flag.
+- <code>backend/app/services/matching_coordinator.py</code> — add <code>DISCDB_FALLBACK_ASR_FLOOR</code>; add DiscDB fallback in <code>_match_single_file_inner</code>.
+- <code>backend/app/services/job_manager.py</code> — remove DiscDB short-circuit in <code>_dispatch_match_for_title</code>; drop dead wiring.
+- <code>backend/app/api/routes.py</code> — backend contribution guard on submit/export endpoints.
+- Tests: <code>backend/tests/unit/test_match_source.py</code>, <code>test_identification_coordinator.py</code>, <code>test_disc_name_identification.py</code>.</p>
+<p>Frontend:
+- <code>frontend/src/config/constants.ts</code> — split <code>FEATURES.DISCDB</code>.
+- <code>frontend/src/config/routes.ts</code>, <code>frontend/src/app/navigation.ts</code>, <code>frontend/src/app/App.tsx</code>, <code>frontend/src/components/ReviewQueue/Inspector.tsx</code>, <code>frontend/src/components/HistoryPage.tsx</code>, <code>frontend/src/components/ConfigWizard.tsx</code> — re-gate per concern.
+- <code>frontend/src/app/components/synapse/tokens.ts</code> — add <code>blue</code> token.
+- <code>frontend/src/app/components/TrackGrid.tsx</code> — DiscDB icon-chip badge.
+- Tests: <code>frontend/src/app/components/TrackGrid.test.tsx</code>, <code>frontend/src/app/__tests__/App.routing.test.tsx</code>.</p>
+<hr />
+<h2 id="task-1-split-backend-feature-flags">Task 1: Split backend feature flags</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/features.py</code>
+- Modify: <code>backend/app/services/identification_coordinator.py:1516-1519</code>
+- Modify: <code>backend/app/services/cleanup_service.py:36-39</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Replace the master flag with two flags</strong></li>
+</ul>
+<p>In <code>backend/app/core/features.py</code>, replace the whole body after the docstring:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># TheDiscDB lookup — disc identification + track matching. Read-only GraphQL</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># queries; safe to ship.</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">DISCDB_LOOKUP_ENABLED</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># TheDiscDB contributions — local export + submit/upload to thediscdb.com.</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1"># Keep False until the contribution API contract and UX are validated.</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">DISCDB_CONTRIBUTIONS_ENABLED</span> <span class="o">=</span> <span class="kc">False</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 2: Re-gate the lookup consumer</strong></li>
+</ul>
+<p>In <code>backend/app/services/identification_coordinator.py</code> around line 1516-1519, change:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DISCDB_ENABLED</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>        <span class="n">discdb_signal</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>        <span class="k">if</span> <span class="n">DISCDB_ENABLED</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">discdb_enabled</span><span class="p">:</span>
+</code></pre></div>
+to:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DISCDB_LOOKUP_ENABLED</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>        <span class="n">discdb_signal</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        <span class="k">if</span> <span class="n">DISCDB_LOOKUP_ENABLED</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">discdb_enabled</span><span class="p">:</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 3: Re-gate the auto-export consumer</strong></li>
+</ul>
+<p>In <code>backend/app/services/cleanup_service.py</code> around line 36-39, change:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DISCDB_ENABLED</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="k">if</span> <span class="n">DISCDB_ENABLED</span> <span class="ow">and</span> <span class="n">state</span> <span class="o">==</span> <span class="n">JobState</span><span class="o">.</span><span class="n">COMPLETED</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">discdb_contributions_enabled</span><span class="p">:</span>
+</code></pre></div>
+to:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DISCDB_CONTRIBUTIONS_ENABLED</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>        <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>            <span class="n">DISCDB_CONTRIBUTIONS_ENABLED</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>            <span class="ow">and</span> <span class="n">state</span> <span class="o">==</span> <span class="n">JobState</span><span class="o">.</span><span class="n">COMPLETED</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>            <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">discdb_contributions_enabled</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="p">):</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 4: Verify nothing references the old name</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; grep -rn "DISCDB_ENABLED" app/</code>
+Expected: no matches in <code>app/</code> (only <code>DISCDB_LOOKUP_ENABLED</code> / <code>DISCDB_CONTRIBUTIONS_ENABLED</code>). Tests are updated in Task 4.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/features.py<span class="w"> </span>backend/app/services/identification_coordinator.py<span class="w"> </span>backend/app/services/cleanup_service.py
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(discdb): split master flag into lookup + contributions&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-2-backend-guard-on-contribution-endpoints">Task 2: Backend guard on contribution endpoints</h2>
+<p>The submit/export endpoints are gated only by <code>require_localhost</code>, not by any feature flag. Add a contribution gate so enabling lookup never exposes upload.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/api/routes.py</code> (endpoints at ~3149 <code>export_contribution</code>, ~3728 <code>submit_contribution</code>, ~3834 batch submit)</p>
+<ul>
+<li>[ ] <strong>Step 1: Add a guard helper near the top of the contribution endpoints</strong></li>
+</ul>
+<p>In <code>backend/app/api/routes.py</code>, immediately before the <code>export_contribution</code> definition (around line 3149), add:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_require_discdb_contributions</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Reject contribution endpoints unless the contribution feature is enabled.</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="sd">    Lookup may be on while contribution stays gated; without this guard the</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="sd">    submit/export endpoints would remain reachable directly.</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">DISCDB_CONTRIBUTIONS_ENABLED</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">DISCDB_CONTRIBUTIONS_ENABLED</span><span class="p">:</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">&quot;TheDiscDB contributions are disabled&quot;</span><span class="p">)</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 2: Call the guard first in each contribution endpoint</strong></li>
+</ul>
+<p>As the first statement in the body of <code>export_contribution</code>, <code>submit_contribution</code>, and the batch-submit endpoint (the three functions importing from <code>app.core.discdb_submitter</code>), add:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>    <span class="n">_require_discdb_contributions</span><span class="p">()</span>
+</code></pre></div>
+Place it before the existing <code>from app.core.discdb_submitter import ...</code> line in each.</p>
+<ul>
+<li>[ ] <strong>Step 3: Verify the three call sites</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; grep -n "_require_discdb_contributions()" app/api/routes.py</code>
+Expected: 3 matches (one per contribution endpoint).</p>
+<ul>
+<li>[ ] <strong>Step 4: Smoke-check import</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run python -c "import app.api.routes"</code>
+Expected: no error.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/api/routes.py
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(discdb): gate contribution submit/export endpoints behind contributions flag&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-3-invert-asr-discdb-episode-precedence">Task 3: Invert ASR &lt;-&gt; DiscDB episode precedence</h2>
+<p>ASR always runs. DiscDB episode mappings become a post-ASR fallback when ASR confidence is below 0.5.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/matching_coordinator.py</code> (add constant near other module constants; fallback inside <code>_match_single_file_inner</code> at the <code>if result.needs_review or advisory:</code> branch, ~line 1194)
+- Modify: <code>backend/app/services/identification_coordinator.py:1056-1070</code> (remove short-circuit)
+- Modify: <code>backend/app/services/job_manager.py:2865-2893</code> (remove short-circuit)
+- Test: <code>backend/tests/unit/test_match_source.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_match_source.py</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_high_confidence_asr_wins_over_discdb_mapping</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;ASR is the preferred signal: a confident ASR match wins even when a</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="sd">    DiscDB mapping disagrees (DiscDB numbers by disc order, not aired order).&quot;&quot;&quot;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.discdb_classifier</span><span class="w"> </span><span class="kn">import</span> <span class="n">DiscDbTitleMapping</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="n">mc_mod</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">import_module</span><span class="p">(</span><span class="s2">&quot;app.services.matching_coordinator&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="n">job</span><span class="p">,</span> <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_job_and_title</span><span class="p">()</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="n">mock_result</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">episode_code</span> <span class="o">=</span> <span class="s2">&quot;S01E03&quot;</span>  <span class="c1"># ASR says E03</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">confidence</span> <span class="o">=</span> <span class="mf">0.85</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">needs_review</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">match_details</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">0.85</span><span class="p">}</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    <span class="n">mock_curator</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="n">mock_curator</span><span class="o">.</span><span class="n">match_single_file</span> <span class="o">=</span> <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">mock_result</span><span class="p">)</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">mc_mod</span><span class="p">,</span> <span class="s2">&quot;episode_curator&quot;</span><span class="p">,</span> <span class="n">mock_curator</span><span class="p">)</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>    <span class="n">mapping</span> <span class="o">=</span> <span class="n">DiscDbTitleMapping</span><span class="p">(</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>        <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">title_type</span><span class="o">=</span><span class="s2">&quot;Episode&quot;</span><span class="p">,</span> <span class="n">episode_title</span><span class="o">=</span><span class="s2">&quot;Pilot&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>        <span class="n">season</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">episode</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2400</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="mi">1024</span><span class="o">**</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>    <span class="p">)</span>  <span class="c1"># DiscDB says E01</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>    <span class="n">coordinator</span> <span class="o">=</span> <span class="n">_make_coordinator</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">discdb_mappings</span><span class="o">=</span><span class="p">{</span><span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="p">[</span><span class="n">mapping</span><span class="p">]})</span>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>    <span class="k">await</span> <span class="n">coordinator</span><span class="o">.</span><span class="n">_match_single_file_inner</span><span class="p">(</span>
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>        <span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/tmp/staging/test/title_t00.mkv&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a>    <span class="p">)</span>
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a>
+<a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_unit_session_factory</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a>        <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DiscTitle</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+<a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>        <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">TitleState</span><span class="o">.</span><span class="n">MATCHED</span>
+<a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a>        <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">matched_episode</span> <span class="o">==</span> <span class="s2">&quot;S01E03&quot;</span>  <span class="c1"># ASR won</span>
+<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a>        <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">match_source</span> <span class="o">==</span> <span class="s2">&quot;engram&quot;</span>
+<a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a>
+<a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a>
+<a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_very_low_asr_falls_back_to_discdb_autoorganize</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;When ASR confidence is very low (&lt; 0.5) and a DiscDB mapping exists, the</span>
+<a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a><span class="sd">    DiscDB episode is assigned and auto-organized instead of going to review.&quot;&quot;&quot;</span>
+<a id="__codelineno-9-40" name="__codelineno-9-40" href="#__codelineno-9-40"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.discdb_classifier</span><span class="w"> </span><span class="kn">import</span> <span class="n">DiscDbTitleMapping</span>
+<a id="__codelineno-9-41" name="__codelineno-9-41" href="#__codelineno-9-41"></a>
+<a id="__codelineno-9-42" name="__codelineno-9-42" href="#__codelineno-9-42"></a>    <span class="n">mc_mod</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">import_module</span><span class="p">(</span><span class="s2">&quot;app.services.matching_coordinator&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-43" name="__codelineno-9-43" href="#__codelineno-9-43"></a>    <span class="n">job</span><span class="p">,</span> <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_job_and_title</span><span class="p">()</span>
+<a id="__codelineno-9-44" name="__codelineno-9-44" href="#__codelineno-9-44"></a>
+<a id="__codelineno-9-45" name="__codelineno-9-45" href="#__codelineno-9-45"></a>    <span class="n">mock_result</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-9-46" name="__codelineno-9-46" href="#__codelineno-9-46"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">episode_code</span> <span class="o">=</span> <span class="s2">&quot;S01E07&quot;</span>  <span class="c1"># weak ASR guess</span>
+<a id="__codelineno-9-47" name="__codelineno-9-47" href="#__codelineno-9-47"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">confidence</span> <span class="o">=</span> <span class="mf">0.41</span>
+<a id="__codelineno-9-48" name="__codelineno-9-48" href="#__codelineno-9-48"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">needs_review</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-9-49" name="__codelineno-9-49" href="#__codelineno-9-49"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">match_details</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">0.41</span><span class="p">}</span>
+<a id="__codelineno-9-50" name="__codelineno-9-50" href="#__codelineno-9-50"></a>    <span class="n">mock_curator</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-9-51" name="__codelineno-9-51" href="#__codelineno-9-51"></a>    <span class="n">mock_curator</span><span class="o">.</span><span class="n">match_single_file</span> <span class="o">=</span> <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">mock_result</span><span class="p">)</span>
+<a id="__codelineno-9-52" name="__codelineno-9-52" href="#__codelineno-9-52"></a>    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">mc_mod</span><span class="p">,</span> <span class="s2">&quot;episode_curator&quot;</span><span class="p">,</span> <span class="n">mock_curator</span><span class="p">)</span>
+<a id="__codelineno-9-53" name="__codelineno-9-53" href="#__codelineno-9-53"></a>
+<a id="__codelineno-9-54" name="__codelineno-9-54" href="#__codelineno-9-54"></a>    <span class="n">mapping</span> <span class="o">=</span> <span class="n">DiscDbTitleMapping</span><span class="p">(</span>
+<a id="__codelineno-9-55" name="__codelineno-9-55" href="#__codelineno-9-55"></a>        <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">title_type</span><span class="o">=</span><span class="s2">&quot;Episode&quot;</span><span class="p">,</span> <span class="n">episode_title</span><span class="o">=</span><span class="s2">&quot;Pilot&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-56" name="__codelineno-9-56" href="#__codelineno-9-56"></a>        <span class="n">season</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">episode</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2400</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="mi">1024</span><span class="o">**</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-9-57" name="__codelineno-9-57" href="#__codelineno-9-57"></a>    <span class="p">)</span>
+<a id="__codelineno-9-58" name="__codelineno-9-58" href="#__codelineno-9-58"></a>    <span class="n">coordinator</span> <span class="o">=</span> <span class="n">_make_coordinator</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">discdb_mappings</span><span class="o">=</span><span class="p">{</span><span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="p">[</span><span class="n">mapping</span><span class="p">]})</span>
+<a id="__codelineno-9-59" name="__codelineno-9-59" href="#__codelineno-9-59"></a>
+<a id="__codelineno-9-60" name="__codelineno-9-60" href="#__codelineno-9-60"></a>    <span class="k">await</span> <span class="n">coordinator</span><span class="o">.</span><span class="n">_match_single_file_inner</span><span class="p">(</span>
+<a id="__codelineno-9-61" name="__codelineno-9-61" href="#__codelineno-9-61"></a>        <span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/tmp/staging/test/title_t00.mkv&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-62" name="__codelineno-9-62" href="#__codelineno-9-62"></a>    <span class="p">)</span>
+<a id="__codelineno-9-63" name="__codelineno-9-63" href="#__codelineno-9-63"></a>
+<a id="__codelineno-9-64" name="__codelineno-9-64" href="#__codelineno-9-64"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_unit_session_factory</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-9-65" name="__codelineno-9-65" href="#__codelineno-9-65"></a>        <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DiscTitle</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+<a id="__codelineno-9-66" name="__codelineno-9-66" href="#__codelineno-9-66"></a>        <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">TitleState</span><span class="o">.</span><span class="n">MATCHED</span>  <span class="c1"># auto-organized, not review</span>
+<a id="__codelineno-9-67" name="__codelineno-9-67" href="#__codelineno-9-67"></a>        <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">matched_episode</span> <span class="o">==</span> <span class="s2">&quot;S01E01&quot;</span>  <span class="c1"># DiscDB mapping</span>
+<a id="__codelineno-9-68" name="__codelineno-9-68" href="#__codelineno-9-68"></a>        <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">match_source</span> <span class="o">==</span> <span class="s2">&quot;discdb&quot;</span>
+<a id="__codelineno-9-69" name="__codelineno-9-69" href="#__codelineno-9-69"></a>
+<a id="__codelineno-9-70" name="__codelineno-9-70" href="#__codelineno-9-70"></a>
+<a id="__codelineno-9-71" name="__codelineno-9-71" href="#__codelineno-9-71"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-9-72" name="__codelineno-9-72" href="#__codelineno-9-72"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_mid_confidence_asr_goes_to_review_not_discdb</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-9-73" name="__codelineno-9-73" href="#__codelineno-9-73"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Mid-confidence ASR (0.5 &lt;= conf &lt; 0.7) routes to review as the ASR guess;</span>
+<a id="__codelineno-9-74" name="__codelineno-9-74" href="#__codelineno-9-74"></a><span class="sd">    DiscDB is NOT used because ASR is preferred above the 0.5 floor.&quot;&quot;&quot;</span>
+<a id="__codelineno-9-75" name="__codelineno-9-75" href="#__codelineno-9-75"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.discdb_classifier</span><span class="w"> </span><span class="kn">import</span> <span class="n">DiscDbTitleMapping</span>
+<a id="__codelineno-9-76" name="__codelineno-9-76" href="#__codelineno-9-76"></a>
+<a id="__codelineno-9-77" name="__codelineno-9-77" href="#__codelineno-9-77"></a>    <span class="n">mc_mod</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">import_module</span><span class="p">(</span><span class="s2">&quot;app.services.matching_coordinator&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-78" name="__codelineno-9-78" href="#__codelineno-9-78"></a>    <span class="n">job</span><span class="p">,</span> <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_job_and_title</span><span class="p">()</span>
+<a id="__codelineno-9-79" name="__codelineno-9-79" href="#__codelineno-9-79"></a>
+<a id="__codelineno-9-80" name="__codelineno-9-80" href="#__codelineno-9-80"></a>    <span class="n">mock_result</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-9-81" name="__codelineno-9-81" href="#__codelineno-9-81"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">episode_code</span> <span class="o">=</span> <span class="s2">&quot;S01E07&quot;</span>
+<a id="__codelineno-9-82" name="__codelineno-9-82" href="#__codelineno-9-82"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">confidence</span> <span class="o">=</span> <span class="mf">0.60</span>
+<a id="__codelineno-9-83" name="__codelineno-9-83" href="#__codelineno-9-83"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">needs_review</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-9-84" name="__codelineno-9-84" href="#__codelineno-9-84"></a>    <span class="n">mock_result</span><span class="o">.</span><span class="n">match_details</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="mf">0.60</span><span class="p">}</span>
+<a id="__codelineno-9-85" name="__codelineno-9-85" href="#__codelineno-9-85"></a>    <span class="n">mock_curator</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-9-86" name="__codelineno-9-86" href="#__codelineno-9-86"></a>    <span class="n">mock_curator</span><span class="o">.</span><span class="n">match_single_file</span> <span class="o">=</span> <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">mock_result</span><span class="p">)</span>
+<a id="__codelineno-9-87" name="__codelineno-9-87" href="#__codelineno-9-87"></a>    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">mc_mod</span><span class="p">,</span> <span class="s2">&quot;episode_curator&quot;</span><span class="p">,</span> <span class="n">mock_curator</span><span class="p">)</span>
+<a id="__codelineno-9-88" name="__codelineno-9-88" href="#__codelineno-9-88"></a>
+<a id="__codelineno-9-89" name="__codelineno-9-89" href="#__codelineno-9-89"></a>    <span class="n">mapping</span> <span class="o">=</span> <span class="n">DiscDbTitleMapping</span><span class="p">(</span>
+<a id="__codelineno-9-90" name="__codelineno-9-90" href="#__codelineno-9-90"></a>        <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">title_type</span><span class="o">=</span><span class="s2">&quot;Episode&quot;</span><span class="p">,</span> <span class="n">episode_title</span><span class="o">=</span><span class="s2">&quot;Pilot&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-91" name="__codelineno-9-91" href="#__codelineno-9-91"></a>        <span class="n">season</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">episode</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2400</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="mi">1024</span><span class="o">**</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-9-92" name="__codelineno-9-92" href="#__codelineno-9-92"></a>    <span class="p">)</span>
+<a id="__codelineno-9-93" name="__codelineno-9-93" href="#__codelineno-9-93"></a>    <span class="n">coordinator</span> <span class="o">=</span> <span class="n">_make_coordinator</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">discdb_mappings</span><span class="o">=</span><span class="p">{</span><span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="p">[</span><span class="n">mapping</span><span class="p">]})</span>
+<a id="__codelineno-9-94" name="__codelineno-9-94" href="#__codelineno-9-94"></a>
+<a id="__codelineno-9-95" name="__codelineno-9-95" href="#__codelineno-9-95"></a>    <span class="k">await</span> <span class="n">coordinator</span><span class="o">.</span><span class="n">_match_single_file_inner</span><span class="p">(</span>
+<a id="__codelineno-9-96" name="__codelineno-9-96" href="#__codelineno-9-96"></a>        <span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/tmp/staging/test/title_t00.mkv&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-97" name="__codelineno-9-97" href="#__codelineno-9-97"></a>    <span class="p">)</span>
+<a id="__codelineno-9-98" name="__codelineno-9-98" href="#__codelineno-9-98"></a>
+<a id="__codelineno-9-99" name="__codelineno-9-99" href="#__codelineno-9-99"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_unit_session_factory</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-9-100" name="__codelineno-9-100" href="#__codelineno-9-100"></a>        <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DiscTitle</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+<a id="__codelineno-9-101" name="__codelineno-9-101" href="#__codelineno-9-101"></a>        <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">TitleState</span><span class="o">.</span><span class="n">REVIEW</span>  <span class="c1"># ASR guess held for review</span>
+<a id="__codelineno-9-102" name="__codelineno-9-102" href="#__codelineno-9-102"></a>        <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">match_source</span> <span class="ow">is</span> <span class="kc">None</span>  <span class="c1"># DiscDB not applied</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 2: Run the new tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_match_source.py -v -k "discdb_mapping or discdb_autoorganize or review_not_discdb"</code>
+Expected: <code>test_very_low_asr_falls_back_to_discdb_autoorganize</code> and <code>test_mid_confidence_asr_goes_to_review_not_discdb</code> FAIL (current code never applies DiscDB inside <code>_match_single_file_inner</code>, so the very-low case goes to REVIEW and the mid case has no DiscDB anyway). <code>test_high_confidence_asr_wins_over_discdb_mapping</code> may already PASS.</p>
+<ul>
+<li>[ ] <strong>Step 3: Add the fallback floor constant</strong></li>
+</ul>
+<p>In <code>backend/app/services/matching_coordinator.py</code>, alongside the other module-level constants (e.g. near <code>_SEASON_FROM_EP_CODE_RE</code>), add:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># ASR-preferred episode precedence: ASR always runs and is authoritative at or</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="c1"># above this confidence. Only below it do we defer to a DiscDB episode mapping —</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># DiscDB numbers episodes by physical disc order, not aired order, so it is a</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># last-resort fallback, never a competitor to a usable ASR match.</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">DISCDB_FALLBACK_ASR_FLOOR</span> <span class="o">=</span> <span class="mf">0.5</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 4: Add the fallback in <code>_match_single_file_inner</code></strong></li>
+</ul>
+<p>In <code>backend/app/services/matching_coordinator.py</code>, the branch currently reads:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>                <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span> <span class="ow">or</span> <span class="n">advisory</span><span class="p">:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>                    <span class="c1"># A low-confidence result always goes to REVIEW — even when the</span>
+</code></pre></div>
+Insert the fallback as the first thing inside that branch, before the existing comment/<code>title.state = TitleState.REVIEW</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>                <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span> <span class="ow">or</span> <span class="n">advisory</span><span class="p">:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>                    <span class="c1"># ASR-preferred precedence: a very low-confidence ASR result</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>                    <span class="c1"># (not a deliberate manual re-match) defers to a DiscDB episode</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>                    <span class="c1"># mapping when one exists, instead of going to review. DiscDB</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>                    <span class="c1"># numbers by disc order (not aired order), so it is trusted only</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>                    <span class="c1"># when ASR could not produce a usable match.</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>                    <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>                        <span class="ow">not</span> <span class="n">advisory</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>                        <span class="ow">and</span> <span class="n">result</span><span class="o">.</span><span class="n">confidence</span> <span class="o">&lt;</span> <span class="n">DISCDB_FALLBACK_ASR_FLOOR</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>                        <span class="ow">and</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">try_discdb_assignment</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>                    <span class="p">):</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>                        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>                            <span class="sa">f</span><span class="s2">&quot;[MATCH] Title </span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2"> (Job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">): ASR confidence &quot;</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>                            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">confidence</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> &lt; </span><span class="si">{</span><span class="n">DISCDB_FALLBACK_ASR_FLOOR</span><span class="si">}</span><span class="s2">; &quot;</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>                            <span class="sa">f</span><span class="s2">&quot;assigned episode from DiscDB mapping (disc-order fallback).&quot;</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>                        <span class="p">)</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>                        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_job_completion</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">job_id</span><span class="p">)</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>                        <span class="k">return</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>                    <span class="c1"># A low-confidence result always goes to REVIEW — even when the</span>
+</code></pre></div>
+(The rest of the existing branch is unchanged.)</p>
+<ul>
+<li>[ ] <strong>Step 5: Run the new tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_match_source.py -v</code>
+Expected: all tests PASS (the three new ones plus the existing five).</p>
+<ul>
+<li>[ ] <strong>Step 6: Remove the short-circuit in identification_coordinator</strong></li>
+</ul>
+<p>In <code>backend/app/services/identification_coordinator.py</code> around line 1056-1070, replace:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>                        <span class="k">for</span> <span class="n">dt</span> <span class="ow">in</span> <span class="n">db_titles</span><span class="p">:</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>                            <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">output_filename</span><span class="p">:</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>                                <span class="n">file_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">output_filename</span><span class="p">)</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>                                <span class="n">discdb_applied</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_try_discdb_assignment</span><span class="p">(</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>                                    <span class="n">job_id</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">session</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>                                <span class="p">)</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>                                <span class="k">if</span> <span class="ow">not</span> <span class="n">discdb_applied</span><span class="p">:</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>                                    <span class="n">task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>                                        <span class="bp">self</span><span class="o">.</span><span class="n">_match_single_file</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">dt</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">file_path</span><span class="p">)</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>                                    <span class="p">)</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>                                    <span class="n">task</span><span class="o">.</span><span class="n">add_done_callback</span><span class="p">(</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>                                        <span class="k">lambda</span> <span class="n">t</span><span class="p">,</span> <span class="n">jid</span><span class="o">=</span><span class="n">job_id</span><span class="p">,</span> <span class="n">tid</span><span class="o">=</span><span class="n">dt</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_on_match_task_done</span><span class="p">(</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>                                            <span class="n">t</span><span class="p">,</span> <span class="n">jid</span><span class="p">,</span> <span class="n">tid</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>                                        <span class="p">)</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>                                    <span class="p">)</span>
+</code></pre></div>
+with:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>                        <span class="k">for</span> <span class="n">dt</span> <span class="ow">in</span> <span class="n">db_titles</span><span class="p">:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>                            <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">output_filename</span><span class="p">:</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>                                <span class="n">file_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">output_filename</span><span class="p">)</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>                                <span class="c1"># ASR-preferred precedence: always run audio matching.</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>                                <span class="c1"># A DiscDB episode mapping (disc order, not aired order)</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>                                <span class="c1"># is applied only as a low-confidence fallback inside</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>                                <span class="c1"># _match_single_file_inner.</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>                                <span class="n">task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>                                    <span class="bp">self</span><span class="o">.</span><span class="n">_match_single_file</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">dt</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">file_path</span><span class="p">)</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>                                <span class="p">)</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>                                <span class="n">task</span><span class="o">.</span><span class="n">add_done_callback</span><span class="p">(</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>                                    <span class="k">lambda</span> <span class="n">t</span><span class="p">,</span> <span class="n">jid</span><span class="o">=</span><span class="n">job_id</span><span class="p">,</span> <span class="n">tid</span><span class="o">=</span><span class="n">dt</span><span class="o">.</span><span class="n">id</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_on_match_task_done</span><span class="p">(</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>                                        <span class="n">t</span><span class="p">,</span> <span class="n">jid</span><span class="p">,</span> <span class="n">tid</span>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>                                    <span class="p">)</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>                                <span class="p">)</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 7: Remove the short-circuit in job_manager</strong></li>
+</ul>
+<p>In <code>backend/app/services/job_manager.py</code> around line 2865-2893, replace:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>        <span class="n">applied</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>            <span class="k">async</span> <span class="k">with</span> <span class="n">async_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>                <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DiscTitle</span><span class="p">,</span> <span class="n">title_id</span><span class="p">)</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>                <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>                        <span class="sa">f</span><span class="s2">&quot;Job </span><span class="si">{</span><span class="n">sanitize_log_value</span><span class="p">(</span><span class="n">job_id</span><span class="p">)</span><span class="si">}</span><span class="s2">: title &quot;</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sanitize_log_value</span><span class="p">(</span><span class="n">title_id</span><span class="p">)</span><span class="si">}</span><span class="s2"> vanished before match dispatch&quot;</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>                    <span class="p">)</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">_inflight_match_dispatch</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">title_id</span><span class="p">)</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>                    <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>                <span class="n">applied</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_matching</span><span class="o">.</span><span class="n">try_discdb_assignment</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>                <span class="k">if</span> <span class="n">applied</span><span class="p">:</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>                    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_finalization</span><span class="o">.</span><span class="n">check_job_completion</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">job_id</span><span class="p">)</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_inflight_match_dispatch</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">title_id</span><span class="p">)</span>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a>            <span class="k">raise</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a>        <span class="k">if</span> <span class="n">applied</span><span class="p">:</span>
+<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a>            <span class="c1"># DiscDB path resolved the title — no match task needed; release</span>
+<a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a>            <span class="c1"># the sentinel so a future re-dispatch (e.g. after a re-rip) works.</span>
+<a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_inflight_match_dispatch</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">title_id</span><span class="p">)</span>
+<a id="__codelineno-15-22" name="__codelineno-15-22" href="#__codelineno-15-22"></a>            <span class="k">return</span> <span class="kc">True</span>
+<a id="__codelineno-15-23" name="__codelineno-15-23" href="#__codelineno-15-23"></a>
+<a id="__codelineno-15-24" name="__codelineno-15-24" href="#__codelineno-15-24"></a>        <span class="c1"># match_single_file self-tags the job log context.</span>
+<a id="__codelineno-15-25" name="__codelineno-15-25" href="#__codelineno-15-25"></a>        <span class="n">task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_matching</span><span class="o">.</span><span class="n">match_single_file</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span><span class="p">,</span> <span class="n">file_path</span><span class="p">))</span>
+</code></pre></div>
+with:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>            <span class="k">async</span> <span class="k">with</span> <span class="n">async_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>                <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DiscTitle</span><span class="p">,</span> <span class="n">title_id</span><span class="p">)</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>                <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>                        <span class="sa">f</span><span class="s2">&quot;Job </span><span class="si">{</span><span class="n">sanitize_log_value</span><span class="p">(</span><span class="n">job_id</span><span class="p">)</span><span class="si">}</span><span class="s2">: title &quot;</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sanitize_log_value</span><span class="p">(</span><span class="n">title_id</span><span class="p">)</span><span class="si">}</span><span class="s2"> vanished before match dispatch&quot;</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>                    <span class="p">)</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">_inflight_match_dispatch</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">title_id</span><span class="p">)</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>                    <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_inflight_match_dispatch</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">title_id</span><span class="p">)</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>            <span class="k">raise</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>        <span class="c1"># ASR-preferred precedence: always run audio matching. A DiscDB episode</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>        <span class="c1"># mapping (disc order, not aired order) is applied only as a low-confidence</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>        <span class="c1"># fallback inside _match_single_file_inner.</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>        <span class="c1"># match_single_file self-tags the job log context.</span>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a>        <span class="n">task</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_matching</span><span class="o">.</span><span class="n">match_single_file</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span><span class="p">,</span> <span class="n">file_path</span><span class="p">))</span>
+</code></pre></div>
+(The <code>task.add_done_callback(...)</code> and <code>return True</code> lines that follow are unchanged.)</p>
+<ul>
+<li>[ ] <strong>Step 8: Run the broader matching + job-manager suites</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_match_source.py tests/unit/test_matching_coordinator.py tests/unit/test_job_manager.py tests/unit/test_identification_coordinator.py -v</code>
+Expected: PASS (Task 4 fixes any flag-rename failures in test_identification_coordinator.py; if that file fails only on <code>DISCDB_ENABLED</code>, proceed to Task 4 then re-run).</p>
+<ul>
+<li>[ ] <strong>Step 9: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/services/matching_coordinator.py<span class="w"> </span>backend/app/services/identification_coordinator.py<span class="w"> </span>backend/app/services/job_manager.py<span class="w"> </span>backend/tests/unit/test_match_source.py
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(matching): prefer ASR over DiscDB episode order; DiscDB fallback below 0.5&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-4-update-existing-backend-flag-reference-tests">Task 4: Update existing backend flag-reference tests</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/tests/unit/test_identification_coordinator.py:127,163</code>
+- Modify: <code>backend/tests/unit/test_disc_name_identification.py:341,416,505,585,676,768,936</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Update test_identification_coordinator.py</strong></li>
+</ul>
+<p>Replace both occurrences:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="s2">&quot;app.core.features.DISCDB_ENABLED&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+with:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="s2">&quot;app.core.features.DISCDB_LOOKUP_ENABLED&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 2: Update test_disc_name_identification.py</strong></li>
+</ul>
+<p>Replace all seven occurrences:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>        <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.features.DISCDB_ENABLED&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">),</span>
+</code></pre></div>
+with:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>        <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.features.DISCDB_LOOKUP_ENABLED&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">),</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 3: Verify no stale references remain</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; grep -rn "DISCDB_ENABLED" tests/</code>
+Expected: no matches.</p>
+<ul>
+<li>[ ] <strong>Step 4: Run both test files</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_identification_coordinator.py tests/unit/test_disc_name_identification.py -v</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/tests/unit/test_identification_coordinator.py<span class="w"> </span>backend/tests/unit/test_disc_name_identification.py
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(discdb): update flag references to DISCDB_LOOKUP_ENABLED&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-5-remove-the-now-dead-try_discdb_assignment-injection">Task 5: Remove the now-dead try_discdb_assignment injection</h2>
+<p>After Task 3, <code>IdentificationCoordinator._try_discdb_assignment</code> is never called. Remove the dead wiring (the public <code>MatchingCoordinator.try_discdb_assignment</code> stays — it is now called by the fallback).</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/identification_coordinator.py:211,225,239</code>
+- Modify: <code>backend/app/services/job_manager.py:181</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Remove the attribute init</strong></li>
+</ul>
+<p>In <code>backend/app/services/identification_coordinator.py</code>, delete line 211:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_try_discdb_assignment</span><span class="p">:</span> <span class="nb">callable</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 2: Remove the kwarg from set_callbacks</strong></li>
+</ul>
+<p>In the same file, in <code>set_callbacks</code>, delete the parameter line 225:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>        <span class="n">try_discdb_assignment</span><span class="p">,</span>
+</code></pre></div>
+and the assignment line 239:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_try_discdb_assignment</span> <span class="o">=</span> <span class="n">try_discdb_assignment</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 3: Remove the wiring in job_manager</strong></li>
+</ul>
+<p>In <code>backend/app/services/job_manager.py</code>, delete line 181:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>            <span class="n">try_discdb_assignment</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_matching</span><span class="o">.</span><span class="n">try_discdb_assignment</span><span class="p">,</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 4: Verify it is fully gone</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; grep -rn "_try_discdb_assignment\|try_discdb_assignment=" app/</code>
+Expected: no matches (the <code>def try_discdb_assignment</code> and <code>self.try_discdb_assignment</code> self-call in matching_coordinator are different and must remain — confirm with <code>grep -rn "try_discdb_assignment" app/</code> showing only the matching_coordinator definition and the <code>_match_single_file_inner</code> self-call).</p>
+<ul>
+<li>[ ] <strong>Step 5: Run the orchestration suites</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_identification_coordinator.py tests/unit/test_job_manager.py tests/unit/test_matching_coordinator_lifecycle.py -v</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/services/identification_coordinator.py<span class="w"> </span>backend/app/services/job_manager.py
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;refactor(discdb): drop dead try_discdb_assignment injection after precedence change&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-6-split-frontend-feature-flags-and-re-gate-sites">Task 6: Split frontend feature flags and re-gate sites</h2>
+<p><strong>Files:</strong>
+- Modify: <code>frontend/src/config/constants.ts:10-13</code>
+- Modify: <code>frontend/src/config/routes.ts:39</code>
+- Modify: <code>frontend/src/app/navigation.ts:64</code>
+- Modify: <code>frontend/src/app/App.tsx:106,945</code>
+- Modify: <code>frontend/src/components/ReviewQueue/Inspector.tsx:403</code>
+- Modify: <code>frontend/src/components/HistoryPage.tsx:604</code>
+- Modify: <code>frontend/src/app/__tests__/App.routing.test.tsx:66,74</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Split the flags</strong></li>
+</ul>
+<p>In <code>frontend/src/config/constants.ts</code>, replace:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">FEATURES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="w">  </span><span class="cm">/** TheDiscDB integration — contribute page, match-source badges, settings toggle. */</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">  </span><span class="nx">DISCDB</span><span class="o">:</span><span class="w"> </span><span class="kt">false</span><span class="p">,</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="p">}</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span><span class="p">;</span>
+</code></pre></div>
+with:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">FEATURES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="w">  </span><span class="cm">/** TheDiscDB lookups: match-source badges, history metadata, lookup settings toggle. */</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="w">  </span><span class="nx">DISCDB_LOOKUP</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="p">,</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="w">  </span><span class="cm">/** TheDiscDB contributions: contribute page, nav item, stats badge, submit controls. */</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="w">  </span><span class="nx">DISCDB_CONTRIBUTE</span><span class="o">:</span><span class="w"> </span><span class="kt">false</span><span class="p">,</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="p">}</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span><span class="p">;</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 2: Re-gate the contribute route registry</strong></li>
+</ul>
+<p>In <code>frontend/src/config/routes.ts:39</code>, change <code>FEATURES.DISCDB</code> to <code>FEATURES.DISCDB_CONTRIBUTE</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="w">  </span><span class="p">...(</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_CONTRIBUTE</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">[</span><span class="nx">ROUTES</span><span class="p">.</span><span class="nx">CONTRIBUTE</span><span class="p">]</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">[]),</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 3: Re-gate the nav item</strong></li>
+</ul>
+<p>In <code>frontend/src/app/navigation.ts:64</code>, change:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="w">      </span><span class="nx">show</span><span class="o">:</span><span class="w"> </span><span class="kt">FEATURES.DISCDB_CONTRIBUTE</span><span class="p">,</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 4: Re-gate App.tsx (stats fetch + route)</strong></li>
+</ul>
+<p>In <code>frontend/src/app/App.tsx:106</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_CONTRIBUTE</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">data</span><span class="p">.</span><span class="nx">discdb_contributions_enabled</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</code></pre></div>
+In <code>frontend/src/app/App.tsx:945</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="w">      </span><span class="p">{</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_CONTRIBUTE</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">&lt;</span><span class="nt">Route</span><span class="w"> </span><span class="na">path</span><span class="o">=</span><span class="p">{</span><span class="nx">ROUTES</span><span class="p">.</span><span class="nx">CONTRIBUTE</span><span class="p">}</span><span class="w"> </span><span class="na">element</span><span class="o">=</span><span class="p">{&lt;</span><span class="nt">ContributePage</span><span class="w"> </span><span class="p">/&gt;}</span><span class="w"> </span><span class="p">/&gt;}</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 5: Re-gate the lookup-side UI</strong></li>
+</ul>
+<p>In <code>frontend/src/components/ReviewQueue/Inspector.tsx:403</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="w">                        </span><span class="p">{</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_LOOKUP</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">title</span><span class="p">.</span><span class="nx">discdb_match_details</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">title</span><span class="p">.</span><span class="nx">match_details</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span>
+</code></pre></div>
+In <code>frontend/src/components/HistoryPage.tsx:604</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="w">          </span><span class="p">{</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_LOOKUP</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 6: Update the routing test</strong></li>
+</ul>
+<p>In <code>frontend/src/app/__tests__/App.routing.test.tsx:74</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_CONTRIBUTE</span><span class="p">)</span><span class="w"> </span><span class="nx">routeCases</span><span class="p">.</span><span class="nx">push</span><span class="p">([</span><span class="s2">&quot;/contribute&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;contribute&quot;</span><span class="p">]);</span>
+</code></pre></div>
+(The comment on line 66 may keep referring to the gate generically; update "FEATURES.DISCDB" to "FEATURES.DISCDB_CONTRIBUTE" there if present.)</p>
+<ul>
+<li>[ ] <strong>Step 7: Verify no stale flag references</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; grep -rn "FEATURES.DISCDB\b" src/</code>
+Expected: no matches for the bare <code>FEATURES.DISCDB</code> (only <code>DISCDB_LOOKUP</code> / <code>DISCDB_CONTRIBUTE</code>). The ConfigWizard site is handled in Task 7; if it still shows here, that is expected until then.</p>
+<ul>
+<li>[ ] <strong>Step 8: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>git<span class="w"> </span>add<span class="w"> </span>frontend/src/config/constants.ts<span class="w"> </span>frontend/src/config/routes.ts<span class="w"> </span>frontend/src/app/navigation.ts<span class="w"> </span>frontend/src/app/App.tsx<span class="w"> </span>frontend/src/components/ReviewQueue/Inspector.tsx<span class="w"> </span>frontend/src/components/HistoryPage.tsx<span class="w"> </span>frontend/src/app/__tests__/App.routing.test.tsx
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(discdb): split frontend feature flag into lookup vs contribute&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-7-split-the-configwizard-discdb-group-and-fix-stale-copy">Task 7: Split the ConfigWizard DiscDB group and fix stale copy</h2>
+<p>The group holds both the lookup toggle and the contribution toggle. Split them, and correct the lookup hint copy (it claims DiscDB "skips audio fingerprinting and instantly maps episodes", which is no longer true).</p>
+<p><strong>Files:</strong>
+- Modify: <code>frontend/src/components/ConfigWizard.tsx:1219-1299</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Gate the group on either flag, and split the toggles</strong></li>
+</ul>
+<p>In <code>frontend/src/components/ConfigWizard.tsx</code>, change the group opener at line 1220:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="w">                        </span><span class="p">{</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span>
+</code></pre></div>
+to:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="w">                        </span><span class="p">{(</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_LOOKUP</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_CONTRIBUTE</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 2: Wrap the lookup toggle and fix its hint</strong></li>
+</ul>
+<p>Wrap the lookup checkbox <code>div</code> (lines 1226-1240) so it renders only under <code>DISCDB_LOOKUP</code>, and replace the stale hint text:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="w">                                </span><span class="p">{</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_LOOKUP</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a><span class="w">                                </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;form-group checkbox-group&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a><span class="w">                                    </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;checkbox-label&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a><span class="w">                                        </span><span class="p">&lt;</span><span class="nt">input</span>
+<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a><span class="w">                                            </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;checkbox&quot;</span>
+<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a><span class="w">                                            </span><span class="na">checked</span><span class="o">=</span><span class="p">{</span><span class="nx">config</span><span class="p">.</span><span class="nx">discdbEnabled</span><span class="p">}</span>
+<a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a><span class="w">                                            </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">handleInputChange</span><span class="p">(</span><span class="s1">&#39;discdbEnabled&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">checked</span><span class="p">)}</span>
+<a id="__codelineno-40-8" name="__codelineno-40-8" href="#__codelineno-40-8"></a><span class="w">                                        </span><span class="p">/&gt;</span>
+<a id="__codelineno-40-9" name="__codelineno-40-9" href="#__codelineno-40-9"></a><span class="w">                                        </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;checkbox-text&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-40-10" name="__codelineno-40-10" href="#__codelineno-40-10"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">strong</span><span class="p">&gt;</span><span class="nx">Enable</span><span class="w"> </span><span class="nx">TheDiscDB</span><span class="w"> </span><span class="nx">Lookup</span><span class="p">&lt;/</span><span class="nt">strong</span><span class="p">&gt;</span>
+<a id="__codelineno-40-11" name="__codelineno-40-11" href="#__codelineno-40-11"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;checkbox-hint&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-40-12" name="__codelineno-40-12" href="#__codelineno-40-12"></a><span class="w">                                                </span><span class="nx">Query</span><span class="w"> </span><span class="nx">TheDiscDB</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">help</span><span class="w"> </span><span class="nx">identify</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">disc</span><span class="p">.</span><span class="w"> </span><span class="nx">Episode</span><span class="w"> </span><span class="nx">matching</span><span class="w"> </span><span class="nx">still</span><span class="w"> </span><span class="nx">runs</span><span class="w"> </span><span class="nx">locally</span><span class="w"> </span><span class="p">(</span><span class="nx">audio</span><span class="p">);</span><span class="w"> </span><span class="nx">DiscDB</span><span class="w"> </span><span class="nx">episode</span><span class="w"> </span><span class="nx">order</span><span class="w"> </span><span class="nx">is</span><span class="w"> </span><span class="nx">used</span><span class="w"> </span><span class="nx">only</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">fallback</span><span class="w"> </span><span class="nx">when</span><span class="w"> </span><span class="nx">audio</span><span class="w"> </span><span class="nx">matching</span><span class="w"> </span><span class="nx">is</span><span class="w"> </span><span class="nx">uncertain</span><span class="p">.</span><span class="w"> </span><span class="nx">No</span><span class="w"> </span><span class="nx">API</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="nx">required</span><span class="p">.</span>
+<a id="__codelineno-40-13" name="__codelineno-40-13" href="#__codelineno-40-13"></a><span class="w">                                            </span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-40-14" name="__codelineno-40-14" href="#__codelineno-40-14"></a><span class="w">                                        </span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-40-15" name="__codelineno-40-15" href="#__codelineno-40-15"></a><span class="w">                                    </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span>
+<a id="__codelineno-40-16" name="__codelineno-40-16" href="#__codelineno-40-16"></a><span class="w">                                </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-40-17" name="__codelineno-40-17" href="#__codelineno-40-17"></a><span class="w">                                </span><span class="p">)}</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 3: Wrap the contributions toggle + sub-block under DISCDB_CONTRIBUTE</strong></li>
+</ul>
+<p>Wrap the contributions checkbox <code>div</code> (lines 1241-1255) and the following <code>{config.discdbContributionsEnabled &amp;&amp; ( ... )}</code> block (lines 1257-1296) in a single <code>{FEATURES.DISCDB_CONTRIBUTE &amp;&amp; ( ... )}</code> guard:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="w">                                </span><span class="p">{</span><span class="nx">FEATURES</span><span class="p">.</span><span class="nx">DISCDB_CONTRIBUTE</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a><span class="w">                                </span><span class="p">&lt;&gt;</span>
+<a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a><span class="w">                                </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;form-group checkbox-group&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a><span class="w">                                    </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;checkbox-label&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a><span class="w">                                        </span><span class="p">&lt;</span><span class="nt">input</span>
+<a id="__codelineno-41-6" name="__codelineno-41-6" href="#__codelineno-41-6"></a><span class="w">                                            </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;checkbox&quot;</span>
+<a id="__codelineno-41-7" name="__codelineno-41-7" href="#__codelineno-41-7"></a><span class="w">                                            </span><span class="na">checked</span><span class="o">=</span><span class="p">{</span><span class="nx">config</span><span class="p">.</span><span class="nx">discdbContributionsEnabled</span><span class="p">}</span>
+<a id="__codelineno-41-8" name="__codelineno-41-8" href="#__codelineno-41-8"></a><span class="w">                                            </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">handleInputChange</span><span class="p">(</span><span class="s1">&#39;discdbContributionsEnabled&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">checked</span><span class="p">)}</span>
+<a id="__codelineno-41-9" name="__codelineno-41-9" href="#__codelineno-41-9"></a><span class="w">                                        </span><span class="p">/&gt;</span>
+<a id="__codelineno-41-10" name="__codelineno-41-10" href="#__codelineno-41-10"></a><span class="w">                                        </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;checkbox-text&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-41-11" name="__codelineno-41-11" href="#__codelineno-41-11"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">strong</span><span class="p">&gt;</span><span class="nx">Enable</span><span class="w"> </span><span class="nx">TheDiscDB</span><span class="w"> </span><span class="nx">Contributions</span><span class="p">&lt;/</span><span class="nt">strong</span><span class="p">&gt;</span>
+<a id="__codelineno-41-12" name="__codelineno-41-12" href="#__codelineno-41-12"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;checkbox-hint&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-41-13" name="__codelineno-41-13" href="#__codelineno-41-13"></a><span class="w">                                                </span><span class="nx">Share</span><span class="w"> </span><span class="nx">disc</span><span class="w"> </span><span class="nx">metadata</span><span class="w"> </span><span class="p">(</span><span class="nx">track</span><span class="w"> </span><span class="nx">info</span><span class="p">,</span><span class="w"> </span><span class="nx">episode</span><span class="w"> </span><span class="nx">mappings</span><span class="p">)</span><span class="w"> </span><span class="kd">with</span><span class="w"> </span><span class="nx">TheDiscDB</span><span class="w"> </span><span class="nx">after</span><span class="w"> </span><span class="nx">each</span><span class="w"> </span><span class="nx">rip</span><span class="p">.</span><span class="w"> </span><span class="nx">Helps</span><span class="w"> </span><span class="nx">others</span><span class="w"> </span><span class="nx">identify</span><span class="w"> </span><span class="nx">their</span><span class="w"> </span><span class="nx">discs</span><span class="w"> </span><span class="nx">automatically</span><span class="p">.</span><span class="w"> </span><span class="nx">No</span><span class="w"> </span><span class="nx">personal</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="nx">is</span><span class="w"> </span><span class="nx">shared</span><span class="p">.</span>
+<a id="__codelineno-41-14" name="__codelineno-41-14" href="#__codelineno-41-14"></a><span class="w">                                            </span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-41-15" name="__codelineno-41-15" href="#__codelineno-41-15"></a><span class="w">                                        </span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-41-16" name="__codelineno-41-16" href="#__codelineno-41-16"></a><span class="w">                                    </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span>
+<a id="__codelineno-41-17" name="__codelineno-41-17" href="#__codelineno-41-17"></a><span class="w">                                </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-41-18" name="__codelineno-41-18" href="#__codelineno-41-18"></a>
+<a id="__codelineno-41-19" name="__codelineno-41-19" href="#__codelineno-41-19"></a><span class="w">                                </span><span class="p">{</span><span class="nx">config</span><span class="p">.</span><span class="nx">discdbContributionsEnabled</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-41-20" name="__codelineno-41-20" href="#__codelineno-41-20"></a><span class="w">                                    </span><span class="p">&lt;&gt;</span>
+<a id="__codelineno-41-21" name="__codelineno-41-21" href="#__codelineno-41-21"></a><span class="w">                                        </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;form-group&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-41-22" name="__codelineno-41-22" href="#__codelineno-41-22"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">htmlFor</span><span class="o">=</span><span class="s">&quot;discdbContributionTier&quot;</span><span class="p">&gt;</span><span class="nx">Contribution</span><span class="w"> </span><span class="nx">Level</span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span>
+<a id="__codelineno-41-23" name="__codelineno-41-23" href="#__codelineno-41-23"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">EngramSelect</span>
+<a id="__codelineno-41-24" name="__codelineno-41-24" href="#__codelineno-41-24"></a><span class="w">                                                </span><span class="na">id</span><span class="o">=</span><span class="s">&quot;discdbContributionTier&quot;</span>
+<a id="__codelineno-41-25" name="__codelineno-41-25" href="#__codelineno-41-25"></a><span class="w">                                                </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nb">String</span><span class="p">(</span><span class="nx">config</span><span class="p">.</span><span class="nx">discdbContributionTier</span><span class="p">)}</span>
+<a id="__codelineno-41-26" name="__codelineno-41-26" href="#__codelineno-41-26"></a><span class="w">                                                </span><span class="na">onValueChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">v</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">handleInputChange</span><span class="p">(</span><span class="s1">&#39;discdbContributionTier&#39;</span><span class="p">,</span><span class="w"> </span><span class="nb">parseInt</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="mf">10</span><span class="p">))}</span>
+<a id="__codelineno-41-27" name="__codelineno-41-27" href="#__codelineno-41-27"></a><span class="w">                                                </span><span class="na">options</span><span class="o">=</span><span class="p">{[</span>
+<a id="__codelineno-41-28" name="__codelineno-41-28" href="#__codelineno-41-28"></a><span class="w">                                                    </span><span class="p">{</span><span class="w"> </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;2&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Automatic — share auto-collected data&#39;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-41-29" name="__codelineno-41-29" href="#__codelineno-41-29"></a><span class="w">                                                    </span><span class="p">{</span><span class="w"> </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;3&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Full — prompt for UPC and images&#39;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-41-30" name="__codelineno-41-30" href="#__codelineno-41-30"></a><span class="w">                                                </span><span class="p">]}</span>
+<a id="__codelineno-41-31" name="__codelineno-41-31" href="#__codelineno-41-31"></a><span class="w">                                            </span><span class="p">/&gt;</span>
+<a id="__codelineno-41-32" name="__codelineno-41-32" href="#__codelineno-41-32"></a><span class="w">                                        </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-41-33" name="__codelineno-41-33" href="#__codelineno-41-33"></a>
+<a id="__codelineno-41-34" name="__codelineno-41-34" href="#__codelineno-41-34"></a><span class="w">                                        </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;form-group&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-41-35" name="__codelineno-41-35" href="#__codelineno-41-35"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">htmlFor</span><span class="o">=</span><span class="s">&quot;discdbApiKey&quot;</span><span class="p">&gt;</span><span class="nx">TheDiscDB</span><span class="w"> </span><span class="nx">API</span><span class="w"> </span><span class="nx">Key</span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span>
+<a id="__codelineno-41-36" name="__codelineno-41-36" href="#__codelineno-41-36"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">input</span>
+<a id="__codelineno-41-37" name="__codelineno-41-37" href="#__codelineno-41-37"></a><span class="w">                                                </span><span class="na">id</span><span class="o">=</span><span class="s">&quot;discdbApiKey&quot;</span>
+<a id="__codelineno-41-38" name="__codelineno-41-38" href="#__codelineno-41-38"></a><span class="w">                                                </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;password&quot;</span>
+<a id="__codelineno-41-39" name="__codelineno-41-39" href="#__codelineno-41-39"></a><span class="w">                                                </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">config</span><span class="p">.</span><span class="nx">discdbApiKey</span><span class="p">}</span>
+<a id="__codelineno-41-40" name="__codelineno-41-40" href="#__codelineno-41-40"></a><span class="w">                                                </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">handleInputChange</span><span class="p">(</span><span class="s1">&#39;discdbApiKey&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+<a id="__codelineno-41-41" name="__codelineno-41-41" href="#__codelineno-41-41"></a><span class="w">                                                </span><span class="na">placeholder</span><span class="o">=</span><span class="s">&quot;Enter API key for automatic submission&quot;</span>
+<a id="__codelineno-41-42" name="__codelineno-41-42" href="#__codelineno-41-42"></a><span class="w">                                            </span><span class="p">/&gt;</span>
+<a id="__codelineno-41-43" name="__codelineno-41-43" href="#__codelineno-41-43"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">small</span><span class="p">&gt;</span><span class="nx">Required</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">submitting</span><span class="w"> </span><span class="nx">directly</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">TheDiscDB</span><span class="p">.</span><span class="w"> </span><span class="nx">Leave</span><span class="w"> </span><span class="nx">empty</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">local</span><span class="o">-</span><span class="nx">only</span><span class="w"> </span><span class="k">export</span><span class="p">.&lt;/</span><span class="nt">small</span><span class="p">&gt;</span>
+<a id="__codelineno-41-44" name="__codelineno-41-44" href="#__codelineno-41-44"></a><span class="w">                                        </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-41-45" name="__codelineno-41-45" href="#__codelineno-41-45"></a>
+<a id="__codelineno-41-46" name="__codelineno-41-46" href="#__codelineno-41-46"></a><span class="w">                                        </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;form-group&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-41-47" name="__codelineno-41-47" href="#__codelineno-41-47"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">htmlFor</span><span class="o">=</span><span class="s">&quot;discdbExportPath&quot;</span><span class="p">&gt;</span><span class="nx">Export</span><span class="w"> </span><span class="nx">Directory</span><span class="w"> </span><span class="p">(</span><span class="nx">optional</span><span class="p">)&lt;/</span><span class="nt">label</span><span class="p">&gt;</span>
+<a id="__codelineno-41-48" name="__codelineno-41-48" href="#__codelineno-41-48"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">input</span>
+<a id="__codelineno-41-49" name="__codelineno-41-49" href="#__codelineno-41-49"></a><span class="w">                                                </span><span class="na">id</span><span class="o">=</span><span class="s">&quot;discdbExportPath&quot;</span>
+<a id="__codelineno-41-50" name="__codelineno-41-50" href="#__codelineno-41-50"></a><span class="w">                                                </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;text&quot;</span>
+<a id="__codelineno-41-51" name="__codelineno-41-51" href="#__codelineno-41-51"></a><span class="w">                                                </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">config</span><span class="p">.</span><span class="nx">discdbExportPath</span><span class="p">}</span>
+<a id="__codelineno-41-52" name="__codelineno-41-52" href="#__codelineno-41-52"></a><span class="w">                                                </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">handleInputChange</span><span class="p">(</span><span class="s1">&#39;discdbExportPath&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)}</span>
+<a id="__codelineno-41-53" name="__codelineno-41-53" href="#__codelineno-41-53"></a><span class="w">                                                </span><span class="na">placeholder</span><span class="o">=</span><span class="s">&quot;~/.engram/discdb-exports&quot;</span>
+<a id="__codelineno-41-54" name="__codelineno-41-54" href="#__codelineno-41-54"></a><span class="w">                                            </span><span class="p">/&gt;</span>
+<a id="__codelineno-41-55" name="__codelineno-41-55" href="#__codelineno-41-55"></a><span class="w">                                            </span><span class="p">&lt;</span><span class="nt">small</span><span class="p">&gt;</span><span class="nx">Leave</span><span class="w"> </span><span class="nx">empty</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nx">the</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">location</span><span class="p">&lt;/</span><span class="nt">small</span><span class="p">&gt;</span>
+<a id="__codelineno-41-56" name="__codelineno-41-56" href="#__codelineno-41-56"></a><span class="w">                                        </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-41-57" name="__codelineno-41-57" href="#__codelineno-41-57"></a><span class="w">                                    </span><span class="p">&lt;/&gt;</span>
+<a id="__codelineno-41-58" name="__codelineno-41-58" href="#__codelineno-41-58"></a><span class="w">                                </span><span class="p">)}</span>
+<a id="__codelineno-41-59" name="__codelineno-41-59" href="#__codelineno-41-59"></a><span class="w">                                </span><span class="p">&lt;/&gt;</span>
+<a id="__codelineno-41-60" name="__codelineno-41-60" href="#__codelineno-41-60"></a><span class="w">                                </span><span class="p">)}</span>
+</code></pre></div>
+Note: the option labels keep their existing em dashes to avoid altering unrelated copy; do not introduce new ones elsewhere.</p>
+<ul>
+<li>[ ] <strong>Step 4: Verify the bare flag is gone</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; grep -rn "FEATURES.DISCDB\b" src/</code>
+Expected: no matches.</p>
+<ul>
+<li>[ ] <strong>Step 5: Type-check the build</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; npm run build</code>
+Expected: TypeScript + Vite build succeeds (run <code>npm install</code> first if <code>node_modules</code> is absent; do not commit <code>package-lock.json</code> churn — <code>git checkout package-lock.json</code> if it changes).</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>git<span class="w"> </span>add<span class="w"> </span>frontend/src/components/ConfigWizard.tsx
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(discdb): split ConfigWizard lookup/contribution toggles; fix stale lookup copy&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-8-refresh-the-discdb-match-source-badge-to-the-icon-system">Task 8: Refresh the DiscDB match-source badge to the icon system</h2>
+<p><strong>Files:</strong>
+- Modify: <code>frontend/src/app/components/synapse/tokens.ts</code> (add <code>blue</code> token)
+- Modify: <code>frontend/src/app/components/TrackGrid.tsx:46-107</code>
+- Test: <code>frontend/src/app/components/TrackGrid.test.tsx:71-75</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Update the failing test first</strong></li>
+</ul>
+<p>In <code>frontend/src/app/components/TrackGrid.test.tsx</code> around line 71-75, the test currently asserts the text <code>"DISCDB"</code>. Change it to assert the icon chip via its testid:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="w">    </span><span class="nx">expect</span><span class="p">(</span><span class="nx">screen</span><span class="p">.</span><span class="nx">getByTestId</span><span class="p">(</span><span class="s2">&quot;source-badge-discdb&quot;</span><span class="p">)).</span><span class="nx">toBeInTheDocument</span><span class="p">();</span>
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a><span class="w">    </span><span class="nx">expect</span><span class="p">(</span><span class="nx">screen</span><span class="p">.</span><span class="nx">getByText</span><span class="p">(</span><span class="s2">&quot;99%&quot;</span><span class="p">)).</span><span class="nx">toBeInTheDocument</span><span class="p">();</span>
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a><span class="w">    </span><span class="nx">expect</span><span class="p">(</span><span class="nx">screen</span><span class="p">.</span><span class="nx">queryByText</span><span class="p">(</span><span class="s2">&quot;FULL-FILE&quot;</span><span class="p">)).</span><span class="nx">not</span><span class="p">.</span><span class="nx">toBeInTheDocument</span><span class="p">();</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 2: Run the test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; npm run test:unit -- TrackGrid</code>
+Expected: the updated assertion FAILS (the icon chip is not yet rendered for <code>discdb</code>; it is still a text chip — actually <code>getByTestId</code> would currently pass on the text chip, so this test may still pass. If it passes, that is acceptable; the behavioral change is the icon swap in Step 4. Proceed.)</p>
+<ul>
+<li>[ ] <strong>Step 3: Add a <code>blue</code> token</strong></li>
+</ul>
+<p>In <code>frontend/src/app/components/synapse/tokens.ts</code>, in the Functional section (after line 40 <code>purple</code>), add:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a><span class="w">  </span><span class="nx">blue</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;#60a5fa&quot;</span><span class="p">,</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 4: Make the DiscDB source an icon chip</strong></li>
+</ul>
+<p>In <code>frontend/src/app/components/TrackGrid.tsx</code>:</p>
+<p>(a) Import <code>IcoDisc</code> at the top with the other icon imports:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">IcoDisc</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./icons/media&quot;</span><span class="p">;</span>
+</code></pre></div>
+(verify the exact existing icon import path/style in the file and match it).</p>
+<p>(b) Extend the <code>SourceDesc</code> type (lines 46-52) with an optional icon component:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a><span class="kr">type</span><span class="w"> </span><span class="nx">SourceDesc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-46-2" name="__codelineno-46-2" href="#__codelineno-46-2"></a><span class="w">  </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;icon&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">;</span>
+<a id="__codelineno-46-3" name="__codelineno-46-3" href="#__codelineno-46-3"></a><span class="w">  </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="__codelineno-46-4" name="__codelineno-46-4" href="#__codelineno-46-4"></a><span class="w">  </span><span class="nx">tone</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="__codelineno-46-5" name="__codelineno-46-5" href="#__codelineno-46-5"></a><span class="w">  </span><span class="nx">tooltip</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="__codelineno-46-6" name="__codelineno-46-6" href="#__codelineno-46-6"></a><span class="w">  </span><span class="nx">node?</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">;</span>
+<a id="__codelineno-46-7" name="__codelineno-46-7" href="#__codelineno-46-7"></a><span class="w">  </span><span class="nx">Icon?</span><span class="o">:</span><span class="w"> </span><span class="kt">React.ComponentType</span><span class="o">&lt;</span><span class="p">{</span><span class="w"> </span><span class="nx">size?</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span><span class="w"> </span><span class="nx">color?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">}</span><span class="o">&gt;</span><span class="p">;</span>
+<a id="__codelineno-46-8" name="__codelineno-46-8" href="#__codelineno-46-8"></a><span class="p">};</span>
+</code></pre></div>
+(If TypeScript complains that <code>IcoDisc</code>'s <code>IconProps</code> is not assignable, widen to <code>React.ComponentType&lt;any&gt;</code> or import and use the icon module's <code>IconProps</code> type.)</p>
+<p>(c) Change the <code>discdb</code> descriptor (line 60) from a text chip to an icon chip:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a><span class="w">  </span><span class="nx">discdb</span><span class="o">:</span><span class="w">             </span><span class="p">{</span><span class="w"> </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;icon&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;DISCDB&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">tone</span><span class="o">:</span><span class="w"> </span><span class="kt">sv.blue</span><span class="p">,</span><span class="w">    </span><span class="nx">tooltip</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;Matched from TheDiscDB&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Icon</span><span class="o">:</span><span class="w"> </span><span class="kt">IcoDisc</span><span class="w"> </span><span class="p">},</span>
+</code></pre></div></p>
+<p>(d) In <code>SourceChip</code>, the icon branch (line 101) currently hardcodes <code>MarkMono</code>. Render the descriptor's icon when present, else <code>MarkMono</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a><span class="w">          </span><span class="p">{</span><span class="nx">desc</span><span class="p">.</span><span class="nx">Icon</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">desc</span><span class="p">.</span><span class="na">Icon</span><span class="w"> </span><span class="na">size</span><span class="o">=</span><span class="p">{</span><span class="mf">12</span><span class="p">}</span><span class="w"> </span><span class="na">color</span><span class="o">=</span><span class="p">{</span><span class="nx">desc</span><span class="p">.</span><span class="nx">tone</span><span class="p">}</span><span class="w"> </span><span class="p">/&gt;</span>
+<a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a><span class="w">          </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-48-4" name="__codelineno-48-4" href="#__codelineno-48-4"></a><span class="w">            </span><span class="p">&lt;</span><span class="nt">MarkMono</span><span class="w"> </span><span class="na">size</span><span class="o">=</span><span class="p">{</span><span class="mf">12</span><span class="p">}</span><span class="w"> </span><span class="na">color</span><span class="o">=</span><span class="p">{</span><span class="nx">desc</span><span class="p">.</span><span class="nx">tone</span><span class="p">}</span><span class="w"> </span><span class="na">node</span><span class="o">=</span><span class="p">{</span><span class="nx">desc</span><span class="p">.</span><span class="nx">node</span><span class="p">}</span><span class="w"> </span><span class="p">/&gt;</span>
+<a id="__codelineno-48-5" name="__codelineno-48-5" href="#__codelineno-48-5"></a><span class="w">          </span><span class="p">)}</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 5: Run the badge test</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; npm run test:unit -- TrackGrid</code>
+Expected: PASS (the <code>source-badge-discdb</code> testid resolves to the icon chip span; <code>99%</code> still renders).</p>
+<ul>
+<li>[ ] <strong>Step 6: Build</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; npm run build</code>
+Expected: success.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>git<span class="w"> </span>add<span class="w"> </span>frontend/src/app/components/synapse/tokens.ts<span class="w"> </span>frontend/src/app/components/TrackGrid.tsx<span class="w"> </span>frontend/src/app/components/TrackGrid.test.tsx
+<a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(discdb): render match-source badge with IcoDisc icon chip on palette blue&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="final-verification">Final verification</h2>
+<ul>
+<li>[ ] <strong>Backend full suite</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/ -q</code>
+Expected: PASS. (If <code>engram.db</code> is a 0-byte worktree stub, run a one-off <code>uv run python -c "import asyncio; from app.database import init_db; asyncio.run(init_db())"</code> first.)</p>
+<ul>
+<li>[ ] <strong>Backend lint/format</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run ruff check . &amp;&amp; uv run ruff format --check .</code>
+Expected: clean.</p>
+<ul>
+<li>[ ] <strong>Frontend unit + build + lint</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; npm run test:unit &amp;&amp; npm run build &amp;&amp; npm run lint</code>
+Expected: PASS. <code>git checkout package-lock.json</code> if install rewrote it.</p>
+<ul>
+<li>[ ] <strong>Spec coverage self-check</strong></li>
+</ul>
+<p>Confirm each spec section maps to a task: flag split (Tasks 1, 6, 7), contribution gating hardening (Task 2), ASR precedence (Task 3), dead-wiring cleanup (Task 5), badge refresh (Task 8), test updates (Tasks 3, 4, 6, 8).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

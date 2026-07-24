@@ -1,0 +1,2011 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-07-19-native-title-index-mismatch/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Fix Native Title-Number Mismatch (Issue #517) Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#fix-native-title-number-mismatch-issue-517-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Fix Native Title-Number Mismatch (Issue #517) Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#root-cause-context-for-the-engineer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root cause (context for the engineer)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="File Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-add-output_index-column-to-disctitle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Add output_index column to DiscTitle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-persist-output_index-at-scan-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Persist output_index at scan time
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-prefer-output_index-when-resolving-a-ripped-file-to-its-title" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Prefer output_index when resolving a ripped file to its title
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-prefer-output_index-in-the-staging-file-glob-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Prefer output_index in the staging-file glob fallback
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-full-suite-verification-and-changelog-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Full-suite verification and changelog entry
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#follow-up-not-in-this-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-up (not in this plan)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#addendum-2026-07-19-tasks-6-9-found-by-final-holistic-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Addendum (2026-07-19): Tasks 6-9, found by final holistic review
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Addendum (2026-07-19): Tasks 6-9, found by final holistic review">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-6-extract-shared-helper-fix-job_managerpys-three-remaining-sites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Extract shared helper + fix job_manager.py's three remaining sites
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-fix-finalization_coordinatorpy_resolve_source_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Fix finalization_coordinator.py::_resolve_source_file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-8-fix-job_managerpy_backfill_unmatched_titles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Fix job_manager.py::_backfill_unmatched_titles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-9-docstring-fix-full-re-verification-changelog-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 9: Docstring fix + full re-verification + changelog check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-step-re-run-the-whole-diff-holistic-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final step: re-run the whole-diff holistic review
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="fix-native-title-number-mismatch-issue-517-implementation-plan">Fix Native Title-Number Mismatch (Issue #517) Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Fix discs where MakeMKV's own <code>_tNN</code> filename numbering doesn't start at 0 (e.g. the disc has no "t00", numbering starts at "t01") — today this causes the first scanned title to never resolve to a ripped file (hangs, fails "couldn't find the file") and the last scanned title's content to be silently orphaned in staging and deleted on cleanup.</p>
+<p><strong>Architecture:</strong> Persist the disc-native <code>_tNN</code> number MakeMKV <em>suggests</em> for each title (already parsed at scan time into <code>TitleInfo.disc_title</code>, just never saved) onto a new <code>DiscTitle.output_index</code> column. Change the two places that currently <em>guess</em> the native number equals <code>DiscTitle.title_index</code> (<code>resolve_title_from_filename</code> and <code>find_staging_file</code>'s glob fallback) to use the recorded <code>output_index</code> first, falling back to the old <code>title_index</code>-based behavior for rows that predate this fix (so existing/legacy jobs are unaffected).</p>
+<p><strong>Tech Stack:</strong> Python 3.11, SQLModel/SQLAlchemy, Alembic (<code>batch_alter_table</code> for SQLite), pytest (async, <code>pytest.mark.unit</code>).</p>
+<hr />
+<h2 id="root-cause-context-for-the-engineer">Root cause (context for the engineer)</h2>
+<p>Confirmed from issue #517's log snippet: MakeMKV's scan reports title at <strong>scan-order index 0</strong> with suggested output filename <code>C1title_t01.mkv</code> — i.e. MakeMKV's own <code>_tNN</code> numbering starts at 1, not 0, on this disc set (there is no "t00" title at all).</p>
+<p>Two places in the ripping pipeline wrongly assume "the number in the ripped filename's <code>_tNN</code> suffix IS <code>DiscTitle.title_index</code>":</p>
+<ul>
+<li><code>app/services/ripping_helpers.py::resolve_title_from_filename</code> (matches a just-finished ripped file back to its <code>DiscTitle</code> row by parsing <code>_tNN</code> out of the filename and looking up <code>title_index == parsed_number</code>)</li>
+<li><code>app/services/ripping_helpers.py::find_staging_file</code> (glob fallback <code>*_t{title.title_index:02d}.mkv</code>)</li>
+</ul>
+<p>Both live in <code>app/core/extractor.py::title_index_from_filename</code>, which parses the number — that parser is fine, it's <em>what gets compared against it</em> that's wrong.</p>
+<p>On an offset disc, every ripped file's parsed number is one higher than the true <code>title_index</code>: title 0's file is named <code>_t01.mkv</code> and gets mis-attributed to the DB row for <code>title_index == 1</code>; title 1's file (<code>_t02.mkv</code>) gets mis-attributed to <code>title_index == 2</code>; and so on. The DB row for <code>title_index == 0</code> never receives a matching file (nothing produces <code>_t00.mkv</code>) — it hangs, then fails. The very last title's file parses to a number one past the end of the title set, is treated as a "foreign file" (a deliberate protection added for single-track re-rip, see <code>test_resolve_foreign_filename_index_not_in_subset_returns_none</code>), is never claimed by any row, and gets deleted by staging cleanup.</p>
+<p>Fix: stop assuming; record what MakeMKV actually told us at scan time (<code>TINFO</code> attribute 27, already captured into <code>TitleInfo.disc_title</code>, e.g. <code>"C1title_t01.mkv"</code>) and match against <em>that</em>.</p>
+<p><strong>Out of scope (follow-up, not this plan):</strong> <code>app/core/extractor.py::_files_to_ignore</code> has the same class of assumption, but it only fires when <code>rip_titles</code> is called with a real subset of titles — reached by two callers: the manual single-track re-rip path (<code>job_manager.rerip_titles</code>), and the automatic one-pass-stalled fallback that individually re-rips titles a failed 'all' pass left missing (<code>job_manager.py</code>'s <code>TestOnePassRipFallback</code>-covered logic). It has no DB access to look up <code>output_index</code>, so fixing it requires threading a title_index→output_index map through <code>rip_titles</code>/<code>_rip_titles_unlocked</code>. The risk is bounded in practice — a stale sibling file typically earns <code>TitleCompletionDetector</code>'s deletion-protection within <code>STABLE_CHECKS_REQUIRED</code> polls (~9s), well inside the default stall timeout, so the exposure is redundant reprocessing rather than data loss. Left as a follow-up so this plan stays focused on the reported bug.</p>
+<hr />
+<h2 id="file-structure">File Structure</h2>
+<ul>
+<li>Modify: <code>backend/app/models/disc_job.py</code> — add <code>DiscTitle.output_index</code> column</li>
+<li>Create: <code>backend/migrations/versions/&lt;hash&gt;_add_disc_titles_output_index.py</code> — Alembic migration for the new column</li>
+<li>Modify: <code>backend/app/services/identification_coordinator.py</code> — persist <code>output_index</code> when creating <code>DiscTitle</code> rows from scan results</li>
+<li>Modify: <code>backend/app/services/ripping_helpers.py</code> — <code>resolve_title_from_filename</code> and <code>find_staging_file</code> prefer <code>output_index</code></li>
+<li>Test: <code>backend/tests/unit/test_extractor.py</code> — pins the scan-time <code>output_index</code> expression</li>
+<li>Test: <code>backend/tests/unit/test_ripping_helpers.py</code> — resolution/glob preference over <code>output_index</code>, plus the exact issue-517 regression scenario</li>
+</ul>
+<hr />
+<h3 id="task-1-add-output_index-column-to-disctitle">Task 1: Add <code>output_index</code> column to <code>DiscTitle</code></h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/models/disc_job.py:169</code> (add field near <code>title_index</code>)
+- Create: <code>backend/migrations/versions/f1a2b3c4d5e6_add_disc_titles_output_index.py</code>
+- Test: <code>backend/tests/unit/test_ripping_helpers.py</code> (new test class, see Step 1)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write a failing test asserting the model has the field with the right default</strong></li>
+</ul>
+<p>Add to <code>backend/tests/unit/test_ripping_helpers.py</code> (near the top, after existing imports — no new imports needed, <code>DiscTitle</code> is already imported):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_disc_title_output_index_defaults_to_none</span><span class="p">():</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;New column: the disc-native _tNN number captured at scan time.</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="sd">    Must default to None so legacy rows (created before this migration, or by</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="sd">    call sites that never populate it) fall back to title_index-based matching.</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">t</span> <span class="o">=</span> <span class="n">DiscTitle</span><span class="p">(</span><span class="n">job_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">title_index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">assert</span> <span class="n">t</span><span class="o">.</span><span class="n">output_index</span> <span class="ow">is</span> <span class="kc">None</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run (from <code>backend/</code>): <code>uv run pytest tests/unit/test_ripping_helpers.py::test_disc_title_output_index_defaults_to_none -v</code>
+Expected: FAIL with <code>AttributeError: 'DiscTitle' object has no attribute 'output_index'</code> (or a Pydantic "unexpected keyword" style error — either confirms the field doesn't exist yet).</p>
+<ul>
+<li>[ ] <strong>Step 3: Add the field to the model</strong></li>
+</ul>
+<p>In <code>backend/app/models/disc_job.py</code>, in the <code>DiscTitle</code> class, right after the existing <code>title_index</code> line (currently line 169):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>    <span class="n">title_index</span><span class="p">:</span> <span class="nb">int</span>  <span class="c1"># MakeMKV title index (scan-order position, 0-based)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">output_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># Disc-native &quot;_tNN&quot; number MakeMKV embeds in this</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="c1"># title&#39;s suggested output filename (TINFO attr 27), captured at scan time. Usually</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="c1"># equal to title_index, but not guaranteed — some discs number titles starting at 1</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="c1"># or with gaps (issue #517). None on rows created before this field existed, or</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="c1"># where MakeMKV supplied no suggested filename; those fall back to title_index.</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_ripping_helpers.py::test_disc_title_output_index_defaults_to_none -v</code>
+Expected: PASS</p>
+<ul>
+<li>[ ] <strong>Step 5: Add the Alembic migration</strong></li>
+</ul>
+<p>Find the current head revision first:</p>
+<p>Run (from <code>backend/</code>): <code>uv run alembic heads</code>
+Expected output: <code>33568e53d94d (head)</code> (use whatever the actual current head is if this has changed)</p>
+<p>Create <code>backend/migrations/versions/f1a2b3c4d5e6_add_disc_titles_output_index.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="sd">&quot;&quot;&quot;add disc_titles.output_index</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="sd">Records the disc-native &quot;_tNN&quot; number MakeMKV embeds in a title&#39;s suggested</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="sd">output filename (TINFO attr 27), captured at scan time. Some discs number</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="sd">titles starting at 1 (no &quot;t00&quot;) or with gaps, so this can differ from</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="sd">title_index (the 0-based scan-order position) — see issue #517. Mirrors the</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="sd">database.py reconciler path used by frozen builds (which skip Alembic) — the</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="sd">two must stay in agreement.</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="sd">Revision ID: f1a2b3c4d5e6</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="sd">Revises: 33568e53d94d</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="sd">Create Date: 2026-07-19 00:00:00.000000</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="kn">import</span><span class="w"> </span><span class="nn">sqlalchemy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sa</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="kn">from</span><span class="w"> </span><span class="nn">alembic</span><span class="w"> </span><span class="kn">import</span> <span class="n">op</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="c1"># revision identifiers, used by Alembic.</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="n">revision</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;f1a2b3c4d5e6&quot;</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="n">down_revision</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s2">&quot;33568e53d94d&quot;</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="n">branch_labels</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="n">depends_on</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="k">def</span><span class="w"> </span><span class="nf">upgrade</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>    <span class="k">with</span> <span class="n">op</span><span class="o">.</span><span class="n">batch_alter_table</span><span class="p">(</span><span class="s2">&quot;disc_titles&quot;</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="k">as</span> <span class="n">batch_op</span><span class="p">:</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>        <span class="n">batch_op</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="n">sa</span><span class="o">.</span><span class="n">Column</span><span class="p">(</span><span class="s2">&quot;output_index&quot;</span><span class="p">,</span> <span class="n">sa</span><span class="o">.</span><span class="n">Integer</span><span class="p">(),</span> <span class="n">nullable</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="k">def</span><span class="w"> </span><span class="nf">downgrade</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    <span class="k">with</span> <span class="n">op</span><span class="o">.</span><span class="n">batch_alter_table</span><span class="p">(</span><span class="s2">&quot;disc_titles&quot;</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="k">as</span> <span class="n">batch_op</span><span class="p">:</span>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>        <span class="n">batch_op</span><span class="o">.</span><span class="n">drop_column</span><span class="p">(</span><span class="s2">&quot;output_index&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>Confirm the actual head from Step 5's <code>alembic heads</code> output before writing <code>down_revision</code> — if it differs from <code>33568e53d94d</code>, use the real value.</p>
+<ul>
+<li>[ ] <strong>Step 6: Verify migration applies cleanly</strong></li>
+</ul>
+<p>Run (from <code>backend/</code>): <code>uv run alembic upgrade head</code>
+Expected: No errors; final line mentions running the new revision <code>f1a2b3c4d5e6</code>.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/models/disc_job.py<span class="w"> </span>backend/migrations/versions/f1a2b3c4d5e6_add_disc_titles_output_index.py<span class="w"> </span>backend/tests/unit/test_ripping_helpers.py
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(db): add disc_titles.output_index for native title numbering (#517)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-2-persist-output_index-at-scan-time">Task 2: Persist <code>output_index</code> at scan time</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/identification_coordinator.py:19</code> (import) and <code>:346-358</code> (the <code>for title in titles:</code> loop that builds <code>DiscTitle</code> rows from scan results, inside <code>identify_disc</code>)
+- Test: <code>backend/tests/unit/test_extractor.py</code> (extend the existing <code>TestParseDiscInfo</code>-adjacent coverage with a test of the exact guarded expression used in the persistence loop)</p>
+<p><code>identify_disc</code> (<code>identification_coordinator.py:243</code>) is a large single-session orchestration method (scan → TMDB/DiscDB/AI classification → persist → broadcast) with no smaller persistence-only helper to call in isolation, and the existing <code>tests/unit/test_identification_coordinator.py</code> deliberately tests <code>_run_classification</code> and pure helpers rather than driving <code>identify_disc</code> end-to-end (see that file's module docstring) — mocking the full method here would mean stubbing TMDB config, the analyst, the broadcaster, the state machine, and disk-writing snapshot code, which is disproportionate to a one-expression change. Instead, pin the exact expression being added with a direct unit test, and rely on Task 3's <code>resolve_title_from_filename</code> tests (which seed <code>DiscTitle.output_index</code> directly, exactly as this loop will populate it) for behavioral coverage of the actual bug.</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Add to <code>backend/tests/unit/test_extractor.py</code>, in the <code>TestParseDiscInfo</code> class (after <code>test_cinfo_other_than_attr_2_is_ignored</code>, using the class's existing <code>SAMPLE</code> fixture which already contains <code>TINFO:0,27,0,"Inception_t00.mkv"</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_scan_time_output_index_expression</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Pins the exact expression identification_coordinator.py uses when</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="sd">        building a DiscTitle from a scanned TitleInfo — output_index is the</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="sd">        native _tNN number parsed from the suggested filename (disc_title),</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="sd">        or None when MakeMKV supplied no suggested filename (issue #517: this</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="sd">        is what lets resolve_title_from_filename match ripped files correctly</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="sd">        even when that native number doesn&#39;t equal the scan-order index).</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>        <span class="n">titles</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_extractor</span><span class="p">()</span><span class="o">.</span><span class="n">_parse_disc_info</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SAMPLE</span><span class="p">)</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        <span class="n">t0</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="o">.</span><span class="n">index</span><span class="p">:</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">titles</span><span class="p">}[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        <span class="n">output_index</span> <span class="o">=</span> <span class="n">title_index_from_filename</span><span class="p">(</span><span class="n">t0</span><span class="o">.</span><span class="n">disc_title</span><span class="p">)</span> <span class="k">if</span> <span class="n">t0</span><span class="o">.</span><span class="n">disc_title</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="k">assert</span> <span class="n">output_index</span> <span class="o">==</span> <span class="mi">0</span>  <span class="c1"># this sample&#39;s disc_title is &quot;Inception_t00.mkv&quot;</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>        <span class="n">t1</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="o">.</span><span class="n">index</span><span class="p">:</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">titles</span><span class="p">}[</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># has no TINFO:1,27 line -&gt; disc_title == &quot;&quot;</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>        <span class="n">output_index_t1</span> <span class="o">=</span> <span class="n">title_index_from_filename</span><span class="p">(</span><span class="n">t1</span><span class="o">.</span><span class="n">disc_title</span><span class="p">)</span> <span class="k">if</span> <span class="n">t1</span><span class="o">.</span><span class="n">disc_title</span> <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>        <span class="k">assert</span> <span class="n">output_index_t1</span> <span class="ow">is</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Add <code>title_index_from_filename</code> to the existing <code>from app.core.extractor import (...)</code> import block at the top of <code>test_extractor.py</code> if it isn't already imported there (check first — line 28 already imports it per a prior grep, so this may be a no-op).</p>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run (from <code>backend/</code>): <code>uv run pytest tests/unit/test_extractor.py::TestParseDiscInfo::test_scan_time_output_index_expression -v</code>
+Expected: PASS already for this specific assertion shape (it's testing a plain expression, not code inside <code>identification_coordinator.py</code> yet) — this step is a sanity check that <code>_parse_disc_info</code> really does leave <code>t1.disc_title == ""</code> (no attr 27 line for title 1 in <code>SAMPLE</code>) and that <code>title_index_from_filename("Inception_t00.mkv") == 0</code>. If it fails, the assumption about <code>SAMPLE</code>'s shape is wrong — re-read <code>TestParseDiscInfo.SAMPLE</code> and adjust the assertions to match reality before proceeding.</p>
+<ul>
+<li>[ ] <strong>Step 3: Populate <code>output_index</code> in the scan-persistence loop</strong></li>
+</ul>
+<p>In <code>backend/app/services/identification_coordinator.py</code>, add the import (line 19 currently reads <code>from app.core.extractor import MakeMKVExtractor, ScanTimeoutError</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.extractor</span><span class="w"> </span><span class="kn">import</span> <span class="n">MakeMKVExtractor</span><span class="p">,</span> <span class="n">ScanTimeoutError</span><span class="p">,</span> <span class="n">title_index_from_filename</span>
+</code></pre></div>
+<p>Then change the title-persistence loop (currently lines 346-358):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>                <span class="c1"># Save title information</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>                <span class="k">for</span> <span class="n">title</span> <span class="ow">in</span> <span class="n">titles</span><span class="p">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>                    <span class="n">disc_title</span> <span class="o">=</span> <span class="n">DiscTitle</span><span class="p">(</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>                        <span class="n">job_id</span><span class="o">=</span><span class="n">job_id</span><span class="p">,</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>                        <span class="n">title_index</span><span class="o">=</span><span class="n">title</span><span class="o">.</span><span class="n">index</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>                        <span class="n">output_index</span><span class="o">=</span><span class="n">title_index_from_filename</span><span class="p">(</span><span class="n">title</span><span class="o">.</span><span class="n">disc_title</span><span class="p">)</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>                        <span class="k">if</span> <span class="n">title</span><span class="o">.</span><span class="n">disc_title</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>                        <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>                        <span class="n">duration_seconds</span><span class="o">=</span><span class="n">title</span><span class="o">.</span><span class="n">duration_seconds</span><span class="p">,</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>                        <span class="n">file_size_bytes</span><span class="o">=</span><span class="n">title</span><span class="o">.</span><span class="n">size_bytes</span><span class="p">,</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>                        <span class="n">chapter_count</span><span class="o">=</span><span class="n">title</span><span class="o">.</span><span class="n">chapter_count</span><span class="p">,</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>                        <span class="n">video_resolution</span><span class="o">=</span><span class="n">title</span><span class="o">.</span><span class="n">video_resolution</span><span class="p">,</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>                        <span class="n">source_filename</span><span class="o">=</span><span class="n">title</span><span class="o">.</span><span class="n">source_filename</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>                        <span class="n">segment_count</span><span class="o">=</span><span class="n">title</span><span class="o">.</span><span class="n">segment_count</span><span class="p">,</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>                        <span class="n">segment_map</span><span class="o">=</span><span class="n">title</span><span class="o">.</span><span class="n">segment_map</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>                    <span class="p">)</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>                    <span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">disc_title</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the full extractor and identification-coordinator unit suites to confirm no regressions</strong></li>
+</ul>
+<p>Run (from <code>backend/</code>): <code>uv run pytest tests/unit/test_extractor.py tests/unit/test_identification_coordinator.py -v</code>
+Expected: All PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/services/identification_coordinator.py<span class="w"> </span>backend/tests/unit/test_extractor.py
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: persist MakeMKV native title numbering at scan time (#517)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-3-prefer-output_index-when-resolving-a-ripped-file-to-its-title">Task 3: Prefer <code>output_index</code> when resolving a ripped file to its title</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/ripping_helpers.py:65-124</code> (<code>resolve_title_from_filename</code>)
+- Test: <code>backend/tests/unit/test_ripping_helpers.py</code> (extend the existing <code>_seed</code> helper and add new tests)</p>
+<ul>
+<li>[ ] <strong>Step 1: Extend the <code>_seed</code> test helper to accept per-title <code>output_index</code></strong></li>
+</ul>
+<p>In <code>backend/tests/unit/test_ripping_helpers.py</code>, replace the existing <code>_seed</code> helper (lines 55-82):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_seed</span><span class="p">(</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="n">indices</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">output_indices</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">DiscTitle</span><span class="p">]]:</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Persist a job with titles at the given title_index values (detached).</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="sd">    ``output_indices``, when given, must be the same length as ``indices`` and</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="sd">    sets each title&#39;s ``output_index`` (the disc-native &quot;_tNN&quot; number). Defaults</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="sd">    to all-None (legacy rows with no recorded native number).</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="k">if</span> <span class="n">output_indices</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>        <span class="n">output_indices</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_unit_session_factory</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>        <span class="n">job</span> <span class="o">=</span> <span class="n">DiscJob</span><span class="p">(</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>            <span class="n">drive_id</span><span class="o">=</span><span class="s2">&quot;F:&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>            <span class="n">volume_label</span><span class="o">=</span><span class="s2">&quot;SHOW_S3D4&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>            <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>            <span class="n">state</span><span class="o">=</span><span class="n">JobState</span><span class="o">.</span><span class="n">RIPPING</span><span class="p">,</span>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>            <span class="n">staging_path</span><span class="o">=</span><span class="s2">&quot;/tmp/staging&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>        <span class="p">)</span>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>        <span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a>        <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>        <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">refresh</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>        <span class="n">titles</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">out_idx</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">indices</span><span class="p">,</span> <span class="n">output_indices</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a>            <span class="n">t</span> <span class="o">=</span> <span class="n">DiscTitle</span><span class="p">(</span>
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>                <span class="n">job_id</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a>                <span class="n">title_index</span><span class="o">=</span><span class="n">idx</span><span class="p">,</span>
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a>                <span class="n">output_index</span><span class="o">=</span><span class="n">out_idx</span><span class="p">,</span>
+<a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>                <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2700</span><span class="p">,</span>
+<a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a>                <span class="n">state</span><span class="o">=</span><span class="n">TitleState</span><span class="o">.</span><span class="n">RIPPING</span><span class="p">,</span>
+<a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a>            <span class="p">)</span>
+<a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a>            <span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a>            <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a>            <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">refresh</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+<a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a>            <span class="n">titles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">titles</span><span class="p">:</span>
+<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a>            <span class="n">session</span><span class="o">.</span><span class="n">expunge</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>        <span class="k">return</span> <span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">titles</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Write the failing regression test for issue #517's exact scenario</strong></li>
+</ul>
+<p>Add to <code>backend/tests/unit/test_ripping_helpers.py</code>, after the existing <code>resolve_title_from_filename</code> tests:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_resolve_by_output_index_when_native_numbering_offset</span><span class="p">():</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Issue #517: disc has no &quot;t00&quot; — MakeMKV&#39;s native numbering starts at 1.</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="sd">    Scan-order title_index=0 has output_index=1 (from its suggested filename</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="sd">    &quot;..._t01.mkv&quot;). The ripped file for that title is literally named</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="sd">    &quot;..._t01.mkv&quot;. It must resolve to title_index=0, not to whatever row (if</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="sd">    any) happens to have title_index==1.</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="n">job_id</span><span class="p">,</span> <span class="n">titles</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">output_indices</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_unit_session_factory</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>        <span class="n">t</span> <span class="o">=</span> <span class="k">await</span> <span class="n">resolve_title_from_filename</span><span class="p">(</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>            <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;C1title_t01.mkv&quot;</span><span class="p">),</span> <span class="n">titles</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">job_id</span><span class="p">,</span> <span class="n">session</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>        <span class="p">)</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>    <span class="k">assert</span> <span class="n">t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="k">assert</span> <span class="n">t</span><span class="o">.</span><span class="n">title_index</span> <span class="o">==</span> <span class="mi">0</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_resolve_falls_back_to_title_index_when_output_index_unset</span><span class="p">():</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Legacy rows (output_index=None) keep the old title_index-based matching.&quot;&quot;&quot;</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>    <span class="n">job_id</span><span class="p">,</span> <span class="n">titles</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>  <span class="c1"># output_index defaults to None</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">_unit_session_factory</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>        <span class="n">t</span> <span class="o">=</span> <span class="k">await</span> <span class="n">resolve_title_from_filename</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;E1_t03.mkv&quot;</span><span class="p">),</span> <span class="n">titles</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="n">job_id</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>    <span class="k">assert</span> <span class="n">t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>    <span class="k">assert</span> <span class="n">t</span><span class="o">.</span><span class="n">title_index</span> <span class="o">==</span> <span class="mi">3</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Run the new test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_ripping_helpers.py::test_resolve_by_output_index_when_native_numbering_offset -v</code>
+Expected: FAIL — with today's code, filename <code>C1title_t01.mkv</code> parses to <code>1</code>, matching the row with <code>title_index == 1</code> (the wrong title), so <code>t.title_index == 0</code> fails.</p>
+<ul>
+<li>[ ] <strong>Step 4: Run the existing suite to confirm nothing else fails yet</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_ripping_helpers.py -v</code>
+Expected: the new "offset" test fails; all other existing tests (including <code>test_resolve_foreign_filename_index_not_in_subset_returns_none</code> and the new fallback test) still pass unchanged.</p>
+<ul>
+<li>[ ] <strong>Step 5: Fix <code>resolve_title_from_filename</code></strong></li>
+</ul>
+<p>In <code>backend/app/services/ripping_helpers.py</code>, replace the matching block (currently lines 83-109):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>    <span class="c1"># Try to extract the MakeMKV title index from the filename (e.g.</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="c1"># B1_t00.mkv -&gt; 0). MakeMKV&#39;s _tNN suffix is its own disc-native title</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="c1"># number, which is NOT guaranteed to equal DiscTitle.title_index (the</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="c1"># 0-based scan-order position) — some discs number titles starting at 1</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="c1"># or with gaps (issue #517). Prefer the native number recorded at scan</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="c1"># time (DiscTitle.output_index); fall back to title_index for rows that</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="c1"># predate that field (output_index is None) so legacy behavior is unchanged.</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">title_index</span> <span class="o">=</span> <span class="n">title_index_from_filename</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="k">if</span> <span class="n">title_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>        <span class="k">for</span> <span class="n">st</span> <span class="ow">in</span> <span class="n">sorted_titles</span><span class="p">:</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>            <span class="n">expected</span> <span class="o">=</span> <span class="n">st</span><span class="o">.</span><span class="n">output_index</span> <span class="k">if</span> <span class="n">st</span><span class="o">.</span><span class="n">output_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">st</span><span class="o">.</span><span class="n">title_index</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>            <span class="k">if</span> <span class="n">expected</span> <span class="o">==</span> <span class="n">title_index</span><span class="p">:</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>                <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DiscTitle</span><span class="p">,</span> <span class="n">st</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>                <span class="k">break</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>        <span class="k">if</span> <span class="n">title</span><span class="p">:</span>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>                <span class="sa">f</span><span class="s2">&quot;Mapped </span><span class="si">{</span><span class="n">safe_name</span><span class="si">}</span><span class="s2"> to native title number </span><span class="si">{</span><span class="n">title_index</span><span class="si">}</span><span class="s2"> &quot;</span>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>                <span class="sa">f</span><span class="s2">&quot;(Title DB id=</span><span class="si">{</span><span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s2">, title_index=</span><span class="si">{</span><span class="n">title</span><span class="o">.</span><span class="n">title_index</span><span class="si">}</span><span class="s2">, Job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>            <span class="p">)</span>
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>            <span class="c1"># The filename names a real title number that isn&#39;t among the titles</span>
+<a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>            <span class="c1"># this rip produced — it&#39;s a foreign file (e.g. another title&#39;s</span>
+<a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a>            <span class="c1"># already-finished output sitting in the staging dir during a</span>
+<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>            <span class="c1"># single-title re-rip). Do NOT positionally fall back: that would</span>
+<a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a>            <span class="c1"># mis-attribute it onto the wrong (subset) title and stamp it with</span>
+<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a>            <span class="c1"># the wrong filename. Treat it as unresolved.</span>
+<a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+<a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a>                <span class="sa">f</span><span class="s2">&quot;Ripped file </span><span class="si">{</span><span class="n">safe_name</span><span class="si">}</span><span class="s2"> has native title number </span><span class="si">{</span><span class="n">title_index</span><span class="si">}</span><span class="s2"> not in this &quot;</span>
+<a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a>                <span class="sa">f</span><span class="s2">&quot;rip&#39;s title set — ignoring as foreign (Job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>            <span class="p">)</span>
+<a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a>            <span class="k">return</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Leave the rest of the function (the sequential <code>rip_index</code> fallback for unparseable filenames, and the final <code>if not title:</code> warning) unchanged.</p>
+<ul>
+<li>[ ] <strong>Step 6: Run tests to verify all pass</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_ripping_helpers.py -v</code>
+Expected: All PASS, including <code>test_resolve_by_output_index_when_native_numbering_offset</code>, <code>test_resolve_falls_back_to_title_index_when_output_index_unset</code>, and the pre-existing <code>test_resolve_foreign_filename_index_not_in_subset_returns_none</code> / <code>test_resolve_by_filename_index</code> / <code>test_resolve_unparseable_filename_falls_back_positionally</code>.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/services/ripping_helpers.py<span class="w"> </span>backend/tests/unit/test_ripping_helpers.py
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: resolve ripped files by native title number, not scan index (#517)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-4-prefer-output_index-in-the-staging-file-glob-fallback">Task 4: Prefer <code>output_index</code> in the staging-file glob fallback</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/ripping_helpers.py:127-157</code> (<code>find_staging_file</code>)
+- Test: <code>backend/tests/unit/test_ripping_helpers.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Add to <code>backend/tests/unit/test_ripping_helpers.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_find_staging_file_glob_prefers_output_index</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">):</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Same offset scenario as Task 3, but for the glob-fallback path (used</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="sd">    when output_filename is missing/stale, e.g. re-matching after a restart).</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="n">f</span> <span class="o">=</span> <span class="n">tmp_path</span> <span class="o">/</span> <span class="s2">&quot;C1title_t01.mkv&quot;</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="n">f</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;x&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    <span class="n">job</span> <span class="o">=</span> <span class="n">SimpleNamespace</span><span class="p">(</span><span class="n">staging_path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">))</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="n">title</span> <span class="o">=</span> <span class="n">SimpleNamespace</span><span class="p">(</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>        <span class="n">output_filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title_index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">output_index</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">organized_to</span><span class="o">=</span><span class="kc">None</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>    <span class="p">)</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    <span class="k">assert</span> <span class="n">find_staging_file</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span> <span class="o">==</span> <span class="n">f</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_find_staging_file_glob_falls_back_to_title_index_when_output_index_unset</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">):</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>    <span class="n">f</span> <span class="o">=</span> <span class="n">tmp_path</span> <span class="o">/</span> <span class="s2">&quot;Show_t07.mkv&quot;</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>    <span class="n">f</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;x&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>    <span class="n">job</span> <span class="o">=</span> <span class="n">SimpleNamespace</span><span class="p">(</span><span class="n">staging_path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">))</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>    <span class="n">title</span> <span class="o">=</span> <span class="n">SimpleNamespace</span><span class="p">(</span>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>        <span class="n">output_filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title_index</span><span class="o">=</span><span class="mi">7</span><span class="p">,</span> <span class="n">output_index</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">organized_to</span><span class="o">=</span><span class="kc">None</span>
+<a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a>    <span class="p">)</span>
+<a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a>    <span class="k">assert</span> <span class="n">find_staging_file</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span> <span class="o">==</span> <span class="n">f</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run tests to verify the first one fails</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_ripping_helpers.py::test_find_staging_file_glob_prefers_output_index -v</code>
+Expected: FAIL — today's glob is <code>*_t00.mkv</code> (from <code>title_index=0</code>), which doesn't match <code>C1title_t01.mkv</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Fix the glob to prefer <code>output_index</code></strong></li>
+</ul>
+<p>In <code>backend/app/services/ripping_helpers.py</code>, in <code>find_staging_file</code>, replace:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>    <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">staging_path</span><span class="p">:</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>        <span class="n">matches</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">staging_path</span><span class="p">)</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;*_t</span><span class="si">{</span><span class="n">title</span><span class="o">.</span><span class="n">title_index</span><span class="si">:</span><span class="s2">02d</span><span class="si">}</span><span class="s2">.mkv&quot;</span><span class="p">))</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>        <span class="k">if</span> <span class="n">matches</span><span class="p">:</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>            <span class="k">return</span> <span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>    <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">staging_path</span><span class="p">:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>        <span class="n">output_index</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="s2">&quot;output_index&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>        <span class="n">glob_index</span> <span class="o">=</span> <span class="n">output_index</span> <span class="k">if</span> <span class="n">output_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">title</span><span class="o">.</span><span class="n">title_index</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>        <span class="n">matches</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">staging_path</span><span class="p">)</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;*_t</span><span class="si">{</span><span class="n">glob_index</span><span class="si">:</span><span class="s2">02d</span><span class="si">}</span><span class="s2">.mkv&quot;</span><span class="p">))</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>        <span class="k">if</span> <span class="n">matches</span><span class="p">:</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>            <span class="k">return</span> <span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</code></pre></div>
+<p>(<code>getattr</code> with a default keeps this safe against the <code>SimpleNamespace</code>-based tests in this file that predate the <code>output_index</code> attribute, and against any other lightweight stand-ins elsewhere in the codebase that model a title without every real column.)</p>
+<ul>
+<li>[ ] <strong>Step 4: Run tests to verify both pass</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_ripping_helpers.py -v</code>
+Expected: All PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/services/ripping_helpers.py<span class="w"> </span>backend/tests/unit/test_ripping_helpers.py
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: staging-file glob fallback also prefers native title number (#517)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-5-full-suite-verification-and-changelog-entry">Task 5: Full-suite verification and changelog entry</h3>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code> (repo root)</p>
+<ul>
+<li>[ ] <strong>Step 1: Run the full backend test suite</strong></li>
+</ul>
+<p>Run (from <code>backend/</code>): <code>uv run pytest</code>
+Expected: All tests PASS (no regressions in <code>tests/unit/</code>, <code>tests/integration/</code>, <code>tests/pipeline/</code>).</p>
+<ul>
+<li>[ ] <strong>Step 2: Run ruff</strong></li>
+</ul>
+<p>Run (from <code>backend/</code>): <code>uv run ruff check .</code>
+Expected: No new violations. If any appear in touched files, fix them.</p>
+<ul>
+<li>[ ] <strong>Step 3: Confirm the migration round-trips</strong></li>
+</ul>
+<p>Run (from <code>backend/</code>): <code>uv run alembic downgrade -1 &amp;&amp; uv run alembic upgrade head</code>
+Expected: Both commands succeed with no errors — confirms <code>downgrade()</code> in the new migration is correct.</p>
+<ul>
+<li>[ ] <strong>Step 4: Add a changelog entry</strong></li>
+</ul>
+<p>In the repo-root <code>CHANGELOG.md</code>, add to the <code>[Unreleased]</code> section's <code>### Fixed</code> subsection (create it if absent):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="gu">### Fixed</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="k">-</span><span class="w"> </span>Fixed titles being lost or mis-organized on discs where MakeMKV&#39;s native title numbering doesn&#39;t start at &quot;t00&quot; (e.g. some Blu-ray sets start at &quot;t01&quot;) — the first title would hang and fail after ripping, and the last title&#39;s rip would be silently deleted from staging (#517).
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>git<span class="w"> </span>add<span class="w"> </span>CHANGELOG.md
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: add changelog entry for native title numbering fix (#517)&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="follow-up-not-in-this-plan">Follow-up (not in this plan)</h2>
+<p>File a separate, smaller issue for <code>app/core/extractor.py::_files_to_ignore</code> (used only by the single-track re-rip path in <code>_rip_titles_unlocked</code>): it has the same "filename number == title_index" assumption but no DB access to consult <code>output_index</code>. Fixing it requires the caller (<code>job_manager.py::rerip_titles</code> / wherever <code>rip_titles(title_indices=...)</code> is invoked for a subset) to pass in a translated set of expected native numbers (built from the DB rows' <code>output_index</code>/<code>title_index</code>) instead of raw <code>title_index</code> values. Only matters when re-ripping a single track on a disc with this exact native-numbering quirk — narrow enough to defer.</p>
+<hr />
+<h2 id="addendum-2026-07-19-tasks-6-9-found-by-final-holistic-review">Addendum (2026-07-19): Tasks 6-9, found by final holistic review</h2>
+<p>The final full-diff code review (after Task 5) found that Tasks 3-4 fixed only 2 of ~6 places in the codebase that assume a ripped filename's <code>_tNN</code> number equals <code>DiscTitle.title_index</code>. Verified independently by reading the code (not just trusting the review):</p>
+<ul>
+<li><strong><code>job_manager.py::_find_title_file</code></strong> (line 1131), reached via <strong><code>reconcile_stuck_titles</code></strong> (called unconditionally after every rip, at lines 907, 2567, 2588, 2624) — this function's own docstring says it exists to guarantee "no selected title is stranded in RIPPING once the MakeMKV subprocess has exited (<strong>the orphaned-last-title bug</strong>)". This is likely the <em>actual</em> mechanism behind issue #517's reported symptom (the last title never resolving) more than the happy-path callback fixed in Task 3 — MakeMKV's completion detector structurally can't prove the <em>last</em> file is done via the "another file started growing" signal, so this reconciliation pass is how the final title normally gets resolved. It still globs raw <code>title_index</code> — unfixed.</li>
+<li><strong><code>finalization_coordinator.py::_resolve_source_file</code></strong> (line 1069) — organize-time fallback glob, also raw <code>title_index</code>. Its <code>to_organize</code> capture (line 1030) doesn't even carry <code>output_index</code> yet.</li>
+<li><strong><code>job_manager.py::_has_complete_output</code></strong> (line 1112) and <strong><code>_filesystem_progress_monitor</code></strong> (line 2312, glob at 2325) — same pattern, lower severity (redundant re-rip / progress-UI staleness rather than data loss).</li>
+<li><strong><code>job_manager.py::_backfill_unmatched_titles</code></strong> (line 3202) — reimplements filename parsing inline instead of reusing <code>title_index_from_filename</code>; its own dedup check (<code>assigned_indices</code>) still keys off raw <code>title_index</code>, causing redundant reprocessing (not data loss, since the reprocess call goes through the now-fixed <code>resolve_title_from_filename</code>).</li>
+<li><strong><code>extractor.py::title_index_from_filename</code></strong> docstring (line 67) is now stale — it asserts the parsed number "is... the same number stored as <code>DiscTitle.title_index</code>", which Tasks 3-4 disproved.</li>
+</ul>
+<p>Given ~6 near-duplicate sites now confirmed, consolidate into one shared helper rather than patching each site with its own inline ternary.</p>
+<h3 id="task-6-extract-shared-helper-fix-job_managerpys-three-remaining-sites">Task 6: Extract shared helper + fix <code>job_manager.py</code>'s three remaining sites</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/ripping_helpers.py</code> — add <code>expected_native_index(title) -&gt; int</code> helper; refactor <code>resolve_title_from_filename</code> and <code>find_staging_file</code> to use it (pure refactor — behavior must not change, existing tests must stay green as-is)
+- Modify: <code>backend/app/services/job_manager.py</code> — fix <code>_find_title_file</code> (line ~1131), <code>_has_complete_output</code> (line ~1112, change signature from <code>title_index: int</code> to take the title object), <code>_filesystem_progress_monitor</code>'s glob (line ~2325)
+- Test: <code>backend/tests/unit/test_ripping_helpers.py</code> (test the new helper directly), <code>backend/tests/unit/test_job_manager.py</code> or equivalent (test <code>_find_title_file</code> / <code>_has_complete_output</code> prefer <code>output_index</code>)</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">expected_native_index</span><span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The disc-native &quot;_tNN&quot; number expected in this title&#39;s ripped filename.</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="sd">    Prefers ``output_index`` (MakeMKV&#39;s actual native number, captured at scan</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="sd">    time); falls back to ``title_index`` for rows/stand-ins without it. Takes</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="sd">    a duck-typed object (not strictly ``DiscTitle``) via ``getattr`` so test</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="sd">    doubles (``SimpleNamespace``) that don&#39;t define ``output_index`` still work.</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>    <span class="n">output_index</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="s2">&quot;output_index&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>    <span class="k">return</span> <span class="n">output_index</span> <span class="k">if</span> <span class="n">output_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">title</span><span class="o">.</span><span class="n">title_index</span>
+</code></pre></div>
+<p><code>_has_complete_output</code>'s only call site (job_manager.py:2482) already has a real <code>DiscTitle</code> in scope (<code>t</code>, from <code>sorted_titles</code> — no need to use the freshly-fetched <code>db_t</code>, since <code>output_index</code> doesn't change after scan) — change the call from <code>self._has_complete_output(output_dir, t.title_index)</code> to <code>self._has_complete_output(output_dir, t)</code> and update the method's glob to use <code>expected_native_index(title)</code>.</p>
+<h3 id="task-7-fix-finalization_coordinatorpy_resolve_source_file">Task 7: Fix <code>finalization_coordinator.py::_resolve_source_file</code></h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/finalization_coordinator.py</code> — add <code>"output_index": t.output_index</code> to the <code>to_organize</code> dict comprehension (line ~1030-1041, the only one in this file — verified via grep, mirroring the pattern already established for <code>title_index</code>/<code>output_filename</code>), update <code>_resolve_source_file</code> (line ~1069) and its one call site (line ~1085) to accept and prefer it
+- Test: appropriate existing finalization/organize test file (check <code>backend/tests/unit/</code> for existing <code>_resolve_source_file</code> or organize-path coverage first and extend it, following that file's established mocking conventions)</p>
+<h3 id="task-8-fix-job_managerpy_backfill_unmatched_titles">Task 8: Fix <code>job_manager.py::_backfill_unmatched_titles</code></h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/job_manager.py</code> (line ~3202) — replace the inline <code>re.search</code> filename parsing with the existing <code>title_index_from_filename</code> (already imported/used elsewhere in this file's import block — verify), and build <code>assigned_native = {expected_native_index(t) for t in titles if t.output_filename is not None}</code> instead of <code>assigned_indices = {t.title_index for t in titles if t.output_filename is not None}</code>
+- Test: extend existing backfill coverage if present (check <code>test_job_manager.py</code>), else add a focused unit test</p>
+<h3 id="task-9-docstring-fix-full-re-verification-changelog-check">Task 9: Docstring fix + full re-verification + changelog check</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/extractor.py:67-76</code> — update <code>title_index_from_filename</code>'s docstring; it currently claims the parsed number "is... the same number stored as <code>DiscTitle.title_index</code>" and that this makes <code>resolve_title_from_filename</code> unable to disagree with the completion detector's ignore-list — both now false. Rewrite to describe it as parsing MakeMKV's disc-native title number, which callers should prefer resolving against <code>DiscTitle.output_index</code> (falling back to <code>title_index</code>), and note <code>_files_to_ignore</code> is a known, documented exception (see the Follow-up section above).
+- Run: full backend suite (<code>uv run pytest</code>), ruff, migration round-trip — same as Task 5.
+- Re-check: does the CHANGELOG.md entry from Task 5 still accurately describe the fix now that Tasks 6-8 close the "last title" gap? If Task 5's entry already reads correctly as a user-facing description (it should, since it describes the symptom not the mechanism), no changelog edit is needed — confirm rather than assume.</p>
+<h3 id="final-step-re-run-the-whole-diff-holistic-review">Final step: re-run the whole-diff holistic review</h3>
+<p>After Tasks 6-9 land, dispatch one more final-review pass (same as after Task 5) covering the full <code>5ba4ea1a..HEAD</code> diff, specifically re-checking finding #1-#6 from the prior holistic review are now resolved, and looking for any <em>further</em> duplicate sites that might still remain (e.g. anywhere else in the codebase matching <code>_t{.*title_index.*:02d}</code> or similar glob patterns).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

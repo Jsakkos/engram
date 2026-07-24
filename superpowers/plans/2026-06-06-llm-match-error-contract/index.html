@@ -1,0 +1,2323 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-06-06-llm-match-error-contract/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>LLM-match Endpoint Error Contract Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#llm-match-endpoint-error-contract-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              LLM-match Endpoint Error Contract Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-1-aiprovidererror-complete_jsonraise_on_error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: AIProviderError + complete_json(raise_on_error=...)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-2-thread-raise_on_error-through-match_episode_via_llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Thread raise_on_error through match_episode_via_llm
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-3-endpoint-contract-llmmatchoutcome-status-mapping-refactored-helper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Endpoint contract — LLMMatchOutcome, status mapping, refactored helper
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-4-full-reason-taxonomy-coverage-real-helper-mocked-deps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Full reason-taxonomy coverage (real helper, mocked deps)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-5-update-the-frontend-contract-comment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Update the frontend contract comment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-6-changelog-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Changelog entry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-7-final-verification-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Final verification + PR
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-Review
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="llm-match-endpoint-error-contract-implementation-plan">LLM-match Endpoint Error Contract Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Replace the LLM-match endpoint's coarse <code>200 {suggestion, reason}</code>-on-everything contract with a differentiated <code>reason</code> taxonomy and honest HTTP status codes (200 for ran-but-no-result, 503 for retryable operational failures incl. LLM-provider errors, 500 for unexpected crashes).</p>
+<p><strong>Architecture:</strong> <code>_run_llm_match_for_title</code> returns a small <code>LLMMatchOutcome(suggestion, reason)</code> instead of bare <code>None</code>, so the endpoint can map each distinct precondition to a status. LLM-provider failures (today swallowed to <code>None</code> deep in <code>complete_json</code>) are surfaced via an <strong>opt-in</strong> <code>raise_on_error</code> flag threaded through <code>complete_json</code> + <code>match_episode_via_llm</code> and a new <code>AIProviderError(EngramError)</code>; existing callers (disc-ID, curator) keep <code>raise_on_error=False</code> and are unchanged.</p>
+<p><strong>Tech Stack:</strong> Python 3.11, FastAPI, SQLModel/async SQLite, pytest (<code>uv run pytest</code>), ruff. Frontend: TypeScript (comment-only change).</p>
+<p><strong>Spec:</strong> <code>docs/superpowers/specs/2026-06-06-llm-match-error-contract-design.md</code></p>
+<p><strong>Reason → status (the contract being built):</strong></p>
+<table>
+<thead>
+<tr>
+<th><code>reason</code></th>
+<th>HTTP</th>
+<th><code>suggestion</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>null</code> (success) / <code>cached</code></td>
+<td>200</td>
+<td>object</td>
+</tr>
+<tr>
+<td><code>ai_disabled</code>, <code>not_configured</code>, <code>no_show</code>, <code>no_season</code>, <code>show_not_found</code>, <code>no_match</code></td>
+<td>200</td>
+<td><code>null</code></td>
+</tr>
+<tr>
+<td><code>matcher_unavailable</code>, <code>transcription_failed</code>, <code>llm_error</code></td>
+<td>503</td>
+<td><code>null</code></td>
+</tr>
+<tr>
+<td><code>internal_error</code></td>
+<td>500</td>
+<td><code>null</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="file-structure">File Structure</h2>
+<ul>
+<li><code>backend/app/core/errors.py</code> — <strong>modify</strong>: add <code>AIProviderError(EngramError)</code>.</li>
+<li><code>backend/app/core/ai_client.py</code> — <strong>modify</strong>: add <code>raise_on_error: bool = False</code> to <code>complete_json</code>; raise <code>AIProviderError</code> on HTTP failure / re-raise on unexpected when the flag is set.</li>
+<li><code>backend/app/matcher/llm_episode_matcher.py</code> — <strong>modify</strong>: add <code>raise_on_error: bool = False</code> to <code>match_episode_via_llm</code>; thread it into <code>complete_json</code>; update docstring.</li>
+<li><code>backend/app/api/routes.py</code> — <strong>modify</strong>: add imports (<code>dataclass</code>, <code>JSONResponse</code>, <code>AIProviderError</code>); add <code>LLMMatchOutcome</code> + <code>_LLM_MATCH_RETRYABLE_REASONS</code>; refactor <code>_run_llm_match_for_title</code> (return outcomes, split guards, catch <code>AIProviderError</code>) and <code>llm_match_title</code> (status mapping).</li>
+<li><code>backend/tests/unit/test_ai_client.py</code> — <strong>modify</strong>: add <code>raise_on_error</code> unit tests.</li>
+<li><code>backend/tests/unit/test_llm_episode_matcher.py</code> — <strong>modify</strong>: add flag-threading unit tests.</li>
+<li><code>backend/tests/integration/test_workflow.py</code> — <strong>modify</strong>: update one existing mocked test to the new return type; add real-helper reason-taxonomy tests.</li>
+<li><code>frontend/src/api/client.ts</code> — <strong>modify</strong>: update <code>LLMMatchResult</code> / <code>runLLMMatch</code> doc-comment only.</li>
+<li><code>CHANGELOG.md</code> — <strong>modify</strong>: <code>### Changed</code> bullet under <code>## [Unreleased]</code>.</li>
+</ul>
+<hr />
+<h2 id="task-1-aiprovidererror-complete_jsonraise_on_error">Task 1: <code>AIProviderError</code> + <code>complete_json(raise_on_error=...)</code></h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/errors.py</code> (after the <code>DatabaseError</code> class, ~line 72)
+- Modify: <code>backend/app/core/ai_client.py</code> (signature ~line 54-62; except blocks ~line 101-108; imports near top)
+- Test: <code>backend/tests/unit/test_ai_client.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_ai_client.py</code> (the module already defines <code>_mock_httpx(response_json, status=200)</code> and imports <code>patch</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestCompleteJsonRaiseOnError</span><span class="p">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_http_error_raises_aiprovidererror_when_flag_set</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.ai_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">complete_json</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.errors</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIProviderError</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="n">mock</span> <span class="o">=</span> <span class="n">_mock_httpx</span><span class="p">({},</span> <span class="n">status</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.ai_client.httpx.AsyncClient&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="n">mock</span><span class="p">):</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>            <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">AIProviderError</span><span class="p">):</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>                <span class="k">await</span> <span class="n">complete_json</span><span class="p">(</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>                    <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>                    <span class="n">schema</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>                    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;anthropic&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>                    <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;k&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>                    <span class="n">raise_on_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>                <span class="p">)</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_http_error_returns_none_by_default</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.ai_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">complete_json</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>        <span class="n">mock</span> <span class="o">=</span> <span class="n">_mock_httpx</span><span class="p">({},</span> <span class="n">status</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.ai_client.httpx.AsyncClient&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="n">mock</span><span class="p">):</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">complete_json</span><span class="p">(</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>                <span class="n">prompt</span><span class="o">=</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;anthropic&quot;</span><span class="p">,</span> <span class="n">api_key</span><span class="o">=</span><span class="s2">&quot;k&quot;</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>            <span class="p">)</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="k">assert</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_ai_client.py -k raise_on_error -q</code>
+Expected: FAIL — <code>ImportError: cannot import name 'AIProviderError'</code> (and/or <code>TypeError: complete_json() got an unexpected keyword argument 'raise_on_error'</code>).</p>
+<ul>
+<li>[ ] <strong>Step 3a: Add the exception class</strong></li>
+</ul>
+<p>In <code>backend/app/core/errors.py</code>, after the <code>DatabaseError</code> class (~line 72), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">AIProviderError</span><span class="p">(</span><span class="n">EngramError</span><span class="p">):</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;LLM provider call failed.</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="sd">    Raised when an AI provider request fails at the transport/HTTP layer</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="sd">    (rate-limit exhausted, auth, out-of-credits, provider 5xx, network). Lets</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="sd">    callers distinguish a provider failure from &quot;the model ran and was not</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="sd">    confident&quot; (which stays a plain ``None``/no-match result).</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="k">pass</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3b: Thread <code>raise_on_error</code> through <code>complete_json</code></strong></li>
+</ul>
+<p>In <code>backend/app/core/ai_client.py</code>, add the import near the other <code>app.core</code> imports at the top of the file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.errors</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIProviderError</span>
+</code></pre></div>
+<p>Add the parameter to the signature (after <code>max_tokens: int = 1024,</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">complete_json</span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">schema</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">provider</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">api_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">max_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="n">raise_on_error</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+</code></pre></div>
+<p>Replace the final try/except (currently ~line 101-108):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">_with_429_retry</span><span class="p">(</span><span class="n">factory</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="k">except</span> <span class="n">httpx</span><span class="o">.</span><span class="n">HTTPError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;AI provider </span><span class="si">%s</span><span class="s2"> HTTP error: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">provider</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;AI provider </span><span class="si">%s</span><span class="s2"> unexpected error: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">provider</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="k">return</span> <span class="kc">None</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>        <span class="k">return</span> <span class="k">await</span> <span class="n">_with_429_retry</span><span class="p">(</span><span class="n">factory</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="k">except</span> <span class="n">httpx</span><span class="o">.</span><span class="n">HTTPError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;AI provider </span><span class="si">%s</span><span class="s2"> HTTP error: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">provider</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        <span class="k">if</span> <span class="n">raise_on_error</span><span class="p">:</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>            <span class="k">raise</span> <span class="n">AIProviderError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">provider</span><span class="si">}</span><span class="s2"> request failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;AI provider </span><span class="si">%s</span><span class="s2"> unexpected error: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">provider</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        <span class="k">if</span> <span class="n">raise_on_error</span><span class="p">:</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>            <span class="k">raise</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>        <span class="k">return</span> <span class="kc">None</span>
+</code></pre></div>
+<blockquote>
+<p>Note: the early <code>return None</code> paths (empty <code>api_key</code>, unknown <code>provider</code>) and the
+"valid response but empty/unparseable body" paths are intentionally left untouched —
+those are not transport failures. Re-raising the generic <code>Exception</code> (rather than
+wrapping it) keeps genuine code bugs classified as <code>internal_error</code>/500 downstream,
+not <code>llm_error</code>.</p>
+</blockquote>
+<ul>
+<li>[ ] <strong>Step 4: Run the tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_ai_client.py -q</code>
+Expected: PASS (the new tests plus all pre-existing <code>test_ai_client.py</code> tests stay green — the default behavior is unchanged).</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/errors.py<span class="w"> </span>backend/app/core/ai_client.py<span class="w"> </span>backend/tests/unit/test_ai_client.py
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(ai): opt-in raise_on_error surfaces provider failures as AIProviderError&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-2-thread-raise_on_error-through-match_episode_via_llm">Task 2: Thread <code>raise_on_error</code> through <code>match_episode_via_llm</code></h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/llm_episode_matcher.py</code> (signature ~line 80-89; <code>complete_json</code> call ~line 123-129; docstring ~line 90)
+- Test: <code>backend/tests/unit/test_llm_episode_matcher.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_llm_episode_matcher.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestMatchEpisodeViaLlmRaiseOnError</span><span class="p">:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_raise_on_error_propagates_aiprovidererror</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">patch</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.errors</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIProviderError</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.llm_episode_matcher</span><span class="w"> </span><span class="kn">import</span> <span class="n">match_episode_via_llm</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>        <span class="n">transcript</span> <span class="o">=</span> <span class="s2">&quot;the detective examined the case file carefully &quot;</span> <span class="o">*</span> <span class="mi">20</span>  <span class="c1"># &gt;500 chars</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>        <span class="k">with</span> <span class="p">(</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>            <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>                <span class="s2">&quot;app.matcher.llm_episode_matcher.fetch_season_episodes&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>                <span class="n">return_value</span><span class="o">=</span><span class="p">[{</span><span class="s2">&quot;episode_number&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Pilot&quot;</span><span class="p">,</span> <span class="s2">&quot;overview&quot;</span><span class="p">:</span> <span class="s2">&quot;x&quot;</span><span class="p">}],</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>            <span class="p">),</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>            <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>                <span class="s2">&quot;app.matcher.llm_episode_matcher.complete_json&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>                <span class="n">AsyncMock</span><span class="p">(</span><span class="n">side_effect</span><span class="o">=</span><span class="n">AIProviderError</span><span class="p">(</span><span class="s2">&quot;boom&quot;</span><span class="p">)),</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">mock_cj</span><span class="p">,</span>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>        <span class="p">):</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>            <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">AIProviderError</span><span class="p">):</span>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>                <span class="k">await</span> <span class="n">match_episode_via_llm</span><span class="p">(</span>
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>                    <span class="n">transcript</span><span class="o">=</span><span class="n">transcript</span><span class="p">,</span>
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>                    <span class="n">show_name</span><span class="o">=</span><span class="s2">&quot;X&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>                    <span class="n">season</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>                    <span class="n">tmdb_show_id</span><span class="o">=</span><span class="s2">&quot;123&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>                    <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>                    <span class="n">ai_api_key</span><span class="o">=</span><span class="s2">&quot;k&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>                    <span class="n">tmdb_api_key</span><span class="o">=</span><span class="s2">&quot;t&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a>                    <span class="n">raise_on_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a>                <span class="p">)</span>
+<a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a>        <span class="k">assert</span> <span class="n">mock_cj</span><span class="o">.</span><span class="n">await_args</span><span class="o">.</span><span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;raise_on_error&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a>
+<a id="__codelineno-7-33" name="__codelineno-7-33" href="#__codelineno-7-33"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-7-34" name="__codelineno-7-34" href="#__codelineno-7-34"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_default_threads_false_and_returns_none</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-7-35" name="__codelineno-7-35" href="#__codelineno-7-35"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">patch</span>
+<a id="__codelineno-7-36" name="__codelineno-7-36" href="#__codelineno-7-36"></a>
+<a id="__codelineno-7-37" name="__codelineno-7-37" href="#__codelineno-7-37"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.llm_episode_matcher</span><span class="w"> </span><span class="kn">import</span> <span class="n">match_episode_via_llm</span>
+<a id="__codelineno-7-38" name="__codelineno-7-38" href="#__codelineno-7-38"></a>
+<a id="__codelineno-7-39" name="__codelineno-7-39" href="#__codelineno-7-39"></a>        <span class="n">transcript</span> <span class="o">=</span> <span class="s2">&quot;the detective examined the case file carefully &quot;</span> <span class="o">*</span> <span class="mi">20</span>
+<a id="__codelineno-7-40" name="__codelineno-7-40" href="#__codelineno-7-40"></a>        <span class="k">with</span> <span class="p">(</span>
+<a id="__codelineno-7-41" name="__codelineno-7-41" href="#__codelineno-7-41"></a>            <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-7-42" name="__codelineno-7-42" href="#__codelineno-7-42"></a>                <span class="s2">&quot;app.matcher.llm_episode_matcher.fetch_season_episodes&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-43" name="__codelineno-7-43" href="#__codelineno-7-43"></a>                <span class="n">return_value</span><span class="o">=</span><span class="p">[{</span><span class="s2">&quot;episode_number&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;Pilot&quot;</span><span class="p">,</span> <span class="s2">&quot;overview&quot;</span><span class="p">:</span> <span class="s2">&quot;x&quot;</span><span class="p">}],</span>
+<a id="__codelineno-7-44" name="__codelineno-7-44" href="#__codelineno-7-44"></a>            <span class="p">),</span>
+<a id="__codelineno-7-45" name="__codelineno-7-45" href="#__codelineno-7-45"></a>            <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-7-46" name="__codelineno-7-46" href="#__codelineno-7-46"></a>                <span class="s2">&quot;app.matcher.llm_episode_matcher.complete_json&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-47" name="__codelineno-7-47" href="#__codelineno-7-47"></a>                <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+<a id="__codelineno-7-48" name="__codelineno-7-48" href="#__codelineno-7-48"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">mock_cj</span><span class="p">,</span>
+<a id="__codelineno-7-49" name="__codelineno-7-49" href="#__codelineno-7-49"></a>        <span class="p">):</span>
+<a id="__codelineno-7-50" name="__codelineno-7-50" href="#__codelineno-7-50"></a>            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">match_episode_via_llm</span><span class="p">(</span>
+<a id="__codelineno-7-51" name="__codelineno-7-51" href="#__codelineno-7-51"></a>                <span class="n">transcript</span><span class="o">=</span><span class="n">transcript</span><span class="p">,</span>
+<a id="__codelineno-7-52" name="__codelineno-7-52" href="#__codelineno-7-52"></a>                <span class="n">show_name</span><span class="o">=</span><span class="s2">&quot;X&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-53" name="__codelineno-7-53" href="#__codelineno-7-53"></a>                <span class="n">season</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-7-54" name="__codelineno-7-54" href="#__codelineno-7-54"></a>                <span class="n">tmdb_show_id</span><span class="o">=</span><span class="s2">&quot;123&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-55" name="__codelineno-7-55" href="#__codelineno-7-55"></a>                <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-56" name="__codelineno-7-56" href="#__codelineno-7-56"></a>                <span class="n">ai_api_key</span><span class="o">=</span><span class="s2">&quot;k&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-57" name="__codelineno-7-57" href="#__codelineno-7-57"></a>                <span class="n">tmdb_api_key</span><span class="o">=</span><span class="s2">&quot;t&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-58" name="__codelineno-7-58" href="#__codelineno-7-58"></a>            <span class="p">)</span>
+<a id="__codelineno-7-59" name="__codelineno-7-59" href="#__codelineno-7-59"></a>        <span class="k">assert</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-7-60" name="__codelineno-7-60" href="#__codelineno-7-60"></a>        <span class="k">assert</span> <span class="n">mock_cj</span><span class="o">.</span><span class="n">await_args</span><span class="o">.</span><span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;raise_on_error&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">False</span>
+</code></pre></div>
+<blockquote>
+<p>If <code>test_llm_episode_matcher.py</code> does not already <code>import pytest</code>, add it at the top.</p>
+</blockquote>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_llm_episode_matcher.py -k RaiseOnError -q</code>
+Expected: FAIL — <code>TypeError: match_episode_via_llm() got an unexpected keyword argument 'raise_on_error'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Add the parameter and thread it</strong></li>
+</ul>
+<p>In <code>backend/app/matcher/llm_episode_matcher.py</code>, update the signature (add the last param):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">match_episode_via_llm</span><span class="p">(</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">transcript</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">show_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">season</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">tmdb_show_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">ai_provider</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="n">ai_api_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">tmdb_api_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="n">raise_on_error</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LLMEpisodeMatch</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+</code></pre></div>
+<p>Update the docstring first line block to:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Run LLM episode matching. Returns None on no-confident-match or empty response.</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="sd">    When ``raise_on_error`` is True, a provider/transport failure raises</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="sd">    ``AIProviderError`` (instead of being swallowed to None by ``complete_json``)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="sd">    so callers can distinguish a provider outage from &quot;no confident match&quot;.</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="sd">    &quot;&quot;&quot;</span>
+</code></pre></div>
+<p>Update the <code>complete_json</code> call (~line 123) to pass the flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>    <span class="n">raw</span> <span class="o">=</span> <span class="k">await</span> <span class="n">complete_json</span><span class="p">(</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>        <span class="n">prompt</span><span class="o">=</span><span class="n">prompt</span><span class="p">,</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>        <span class="n">schema</span><span class="o">=</span><span class="n">RESPONSE_SCHEMA</span><span class="p">,</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>        <span class="n">provider</span><span class="o">=</span><span class="n">ai_provider</span><span class="p">,</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>        <span class="n">api_key</span><span class="o">=</span><span class="n">ai_api_key</span><span class="p">,</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>        <span class="n">max_tokens</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>        <span class="n">raise_on_error</span><span class="o">=</span><span class="n">raise_on_error</span><span class="p">,</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_llm_episode_matcher.py -q</code>
+Expected: PASS (new tests + existing matcher tests stay green; the curator path uses the <code>False</code> default and is unaffected).</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/matcher/llm_episode_matcher.py<span class="w"> </span>backend/tests/unit/test_llm_episode_matcher.py
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(matcher): thread raise_on_error through match_episode_via_llm&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-3-endpoint-contract-llmmatchoutcome-status-mapping-refactored-helper">Task 3: Endpoint contract — <code>LLMMatchOutcome</code>, status mapping, refactored helper</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/api/routes.py</code> (imports lines 12-34; <code>_run_llm_match_for_title</code> ~line 3353; <code>llm_match_title</code> ~line 3405)
+- Test: <code>backend/tests/integration/test_workflow.py</code> (<code>TestLLMMatchEndpoint</code>, ~line 856)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test + a shared seed helper, and update the existing mocked test</strong></li>
+</ul>
+<p>In <code>backend/tests/integration/test_workflow.py</code>, add a module-level helper (place it just above <code>class TestLLMMatchEndpoint:</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">types</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_seed_review_title</span><span class="p">(</span><span class="n">detected_title</span><span class="o">=</span><span class="s2">&quot;The Expanse&quot;</span><span class="p">,</span> <span class="n">detected_season</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a REVIEW_NEEDED TV job + one REVIEW title; return (job_id, title_id).&quot;&quot;&quot;</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.database</span><span class="w"> </span><span class="kn">import</span> <span class="n">async_session</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.models.disc_job</span><span class="w"> </span><span class="kn">import</span> <span class="n">ContentType</span><span class="p">,</span> <span class="n">DiscJob</span><span class="p">,</span> <span class="n">DiscTitle</span><span class="p">,</span> <span class="n">JobState</span><span class="p">,</span> <span class="n">TitleState</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    <span class="k">async</span> <span class="k">with</span> <span class="n">async_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">s</span><span class="p">:</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>        <span class="n">job</span> <span class="o">=</span> <span class="n">DiscJob</span><span class="p">(</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>            <span class="n">drive_id</span><span class="o">=</span><span class="s2">&quot;TEST:&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>            <span class="n">volume_label</span><span class="o">=</span><span class="s2">&quot;X_S1D1&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>            <span class="n">state</span><span class="o">=</span><span class="n">JobState</span><span class="o">.</span><span class="n">REVIEW_NEEDED</span><span class="p">,</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>            <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>            <span class="n">detected_title</span><span class="o">=</span><span class="n">detected_title</span><span class="p">,</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>            <span class="n">detected_season</span><span class="o">=</span><span class="n">detected_season</span><span class="p">,</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>        <span class="p">)</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>        <span class="n">s</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>        <span class="k">await</span> <span class="n">s</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>        <span class="k">await</span> <span class="n">s</span><span class="o">.</span><span class="n">refresh</span><span class="p">(</span><span class="n">job</span><span class="p">)</span>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>        <span class="n">title</span> <span class="o">=</span> <span class="n">DiscTitle</span><span class="p">(</span>
+<a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a>            <span class="n">job_id</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+<a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a>            <span class="n">title_index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a>            <span class="n">state</span><span class="o">=</span><span class="n">TitleState</span><span class="o">.</span><span class="n">REVIEW</span><span class="p">,</span>
+<a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a>            <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">1200</span><span class="p">,</span>
+<a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a>            <span class="n">file_path</span><span class="o">=</span><span class="s2">&quot;/tmp/x.mkv&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a>        <span class="p">)</span>
+<a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a>        <span class="n">s</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+<a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a>        <span class="k">await</span> <span class="n">s</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<a id="__codelineno-12-30" name="__codelineno-12-30" href="#__codelineno-12-30"></a>        <span class="k">await</span> <span class="n">s</span><span class="o">.</span><span class="n">refresh</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+<a id="__codelineno-12-31" name="__codelineno-12-31" href="#__codelineno-12-31"></a>        <span class="k">return</span> <span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">id</span>
+<a id="__codelineno-12-32" name="__codelineno-12-32" href="#__codelineno-12-32"></a>
+<a id="__codelineno-12-33" name="__codelineno-12-33" href="#__codelineno-12-33"></a>
+<a id="__codelineno-12-34" name="__codelineno-12-34" href="#__codelineno-12-34"></a><span class="k">def</span><span class="w"> </span><span class="nf">_fake_config</span><span class="p">(</span><span class="o">**</span><span class="n">overrides</span><span class="p">):</span>
+<a id="__codelineno-12-35" name="__codelineno-12-35" href="#__codelineno-12-35"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A stand-in AppConfig for the LLM-match helper.&quot;&quot;&quot;</span>
+<a id="__codelineno-12-36" name="__codelineno-12-36" href="#__codelineno-12-36"></a>    <span class="n">base</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+<a id="__codelineno-12-37" name="__codelineno-12-37" href="#__codelineno-12-37"></a>        <span class="n">ai_episode_matching_enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-12-38" name="__codelineno-12-38" href="#__codelineno-12-38"></a>        <span class="n">ai_api_key</span><span class="o">=</span><span class="s2">&quot;key&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-39" name="__codelineno-12-39" href="#__codelineno-12-39"></a>        <span class="n">ai_provider</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-40" name="__codelineno-12-40" href="#__codelineno-12-40"></a>        <span class="n">tmdb_api_key</span><span class="o">=</span><span class="s2">&quot;tmdb&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-41" name="__codelineno-12-41" href="#__codelineno-12-41"></a>    <span class="p">)</span>
+<a id="__codelineno-12-42" name="__codelineno-12-42" href="#__codelineno-12-42"></a>    <span class="n">base</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">overrides</span><span class="p">)</span>
+<a id="__codelineno-12-43" name="__codelineno-12-43" href="#__codelineno-12-43"></a>    <span class="k">return</span> <span class="n">types</span><span class="o">.</span><span class="n">SimpleNamespace</span><span class="p">(</span><span class="o">**</span><span class="n">base</span><span class="p">)</span>
+</code></pre></div>
+<p>Update the existing <code>test_returns_suggestion_and_persists</code> so its <code>fake_run</code> returns the new type (replace the existing <code>fake_run</code> body, ~line 887-894):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>        <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fake_run</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">app.api.routes</span><span class="w"> </span><span class="kn">import</span> <span class="n">LLMMatchOutcome</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>            <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">ok</span><span class="p">(</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>                <span class="p">{</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>                    <span class="s2">&quot;episode&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>                    <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="mf">0.88</span><span class="p">,</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>                    <span class="s2">&quot;reasoning&quot;</span><span class="p">:</span> <span class="s2">&quot;r&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>                    <span class="s2">&quot;runner_up&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>                    <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;gemini-2.5-flash-lite&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>                <span class="p">}</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>            <span class="p">)</span>
+</code></pre></div>
+<p>Add a first new failing test to <code>TestLLMMatchEndpoint</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_ai_disabled_returns_200_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">(</span><span class="n">ai_episode_matching_enabled</span><span class="o">=</span><span class="kc">False</span><span class="p">)),</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>        <span class="p">)</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()</span> <span class="o">==</span> <span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="s2">&quot;ai_disabled&quot;</span><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run to verify failure</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/integration/test_workflow.py -k llm -q</code>
+Expected: FAIL — <code>test_returns_suggestion_and_persists</code> errors on <code>ImportError: cannot import name 'LLMMatchOutcome'</code>, and <code>test_ai_disabled_returns_200_reason</code> fails because the endpoint currently returns <code>reason="no_suggestion"</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3a: Add imports to <code>routes.py</code></strong></li>
+</ul>
+<p>Add <code>from dataclasses import dataclass</code> after <code>from collections import Counter</code> (line 12).
+Change line 20 to <code>from fastapi.responses import JSONResponse, StreamingResponse</code>.
+Add <code>from app.core.errors import AIProviderError</code> in the <code>app.core</code> import block (after line 28).</p>
+<ul>
+<li>[ ] <strong>Step 3b: Add <code>LLMMatchOutcome</code> + retryable set</strong></li>
+</ul>
+<p>Immediately above <code>async def _run_llm_match_for_title</code> (~line 3353) insert:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">LLMMatchOutcome</span><span class="p">:</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Result of an LLM-match attempt. ``reason is None`` means success.&quot;&quot;&quot;</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">suggestion</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">reason</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">ok</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">suggestion</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;LLMMatchOutcome&quot;</span><span class="p">:</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">suggestion</span><span class="o">=</span><span class="n">suggestion</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">failed</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">reason</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;LLMMatchOutcome&quot;</span><span class="p">:</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">suggestion</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">reason</span><span class="o">=</span><span class="n">reason</span><span class="p">)</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="c1"># Operational failures the caller may retry (HTTP 503). Every other reason is a</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a><span class="c1"># deterministic config/data outcome returned as 200 with a differentiated reason.</span>
+<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a><span class="n">_LLM_MATCH_RETRYABLE_REASONS</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span>
+<a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a>    <span class="p">{</span><span class="s2">&quot;matcher_unavailable&quot;</span><span class="p">,</span> <span class="s2">&quot;transcription_failed&quot;</span><span class="p">,</span> <span class="s2">&quot;llm_error&quot;</span><span class="p">}</span>
+<a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3c: Refactor <code>_run_llm_match_for_title</code></strong></li>
+</ul>
+<p>Replace the entire body of <code>_run_llm_match_for_title</code> with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_run_llm_match_for_title</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">title</span><span class="p">:</span> <span class="s2">&quot;DiscTitle&quot;</span><span class="p">,</span> <span class="n">job</span><span class="p">:</span> <span class="s2">&quot;DiscJob&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LLMMatchOutcome</span><span class="p">:</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Invoke the LLM episode matcher for a single title.</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="sd">    Returns an :class:`LLMMatchOutcome` whose ``reason`` distinguishes each</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="sd">    failure mode (``ai_disabled``, ``not_configured``, ``no_show``, ``no_season``,</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="sd">    ``matcher_unavailable``, ``show_not_found``, ``transcription_failed``,</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="sd">    ``llm_error``, ``no_match``) or is ``None`` on success.</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.curator</span><span class="w"> </span><span class="kn">import</span> <span class="n">curator</span> <span class="k">as</span> <span class="n">episode_curator</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.llm_episode_matcher</span><span class="w"> </span><span class="kn">import</span> <span class="n">match_episode_via_llm</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.tmdb_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">fetch_show_id</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.services.config_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_config</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>    <span class="n">config</span> <span class="o">=</span> <span class="k">await</span> <span class="n">get_config</span><span class="p">()</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="s2">&quot;ai_episode_matching_enabled&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;ai_disabled&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">ai_api_key</span><span class="p">:</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;not_configured&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">job</span><span class="o">.</span><span class="n">detected_title</span><span class="p">:</span>
+<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;no_show&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-21" name="__codelineno-16-21" href="#__codelineno-16-21"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">job</span><span class="o">.</span><span class="n">detected_season</span><span class="p">:</span>
+<a id="__codelineno-16-22" name="__codelineno-16-22" href="#__codelineno-16-22"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;no_season&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-23" name="__codelineno-16-23" href="#__codelineno-16-23"></a>
+<a id="__codelineno-16-24" name="__codelineno-16-24" href="#__codelineno-16-24"></a>    <span class="c1"># Make sure the matcher is initialized for the show (so transcribe_full works)</span>
+<a id="__codelineno-16-25" name="__codelineno-16-25" href="#__codelineno-16-25"></a>    <span class="n">episode_curator</span><span class="o">.</span><span class="n">_ensure_initialized</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">detected_title</span><span class="p">)</span>
+<a id="__codelineno-16-26" name="__codelineno-16-26" href="#__codelineno-16-26"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">episode_curator</span><span class="o">.</span><span class="n">_matcher</span><span class="p">:</span>
+<a id="__codelineno-16-27" name="__codelineno-16-27" href="#__codelineno-16-27"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;matcher_unavailable&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-28" name="__codelineno-16-28" href="#__codelineno-16-28"></a>
+<a id="__codelineno-16-29" name="__codelineno-16-29" href="#__codelineno-16-29"></a>    <span class="n">tmdb_show_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="n">fetch_show_id</span><span class="p">,</span> <span class="n">job</span><span class="o">.</span><span class="n">detected_title</span><span class="p">)</span>
+<a id="__codelineno-16-30" name="__codelineno-16-30" href="#__codelineno-16-30"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tmdb_show_id</span><span class="p">:</span>
+<a id="__codelineno-16-31" name="__codelineno-16-31" href="#__codelineno-16-31"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;show_not_found&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-32" name="__codelineno-16-32" href="#__codelineno-16-32"></a>
+<a id="__codelineno-16-33" name="__codelineno-16-33" href="#__codelineno-16-33"></a>    <span class="n">transcript</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span>
+<a id="__codelineno-16-34" name="__codelineno-16-34" href="#__codelineno-16-34"></a>        <span class="n">episode_curator</span><span class="o">.</span><span class="n">_matcher</span><span class="o">.</span><span class="n">transcribe_full</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="n">title</span><span class="o">.</span><span class="n">file_path</span><span class="p">)</span>
+<a id="__codelineno-16-35" name="__codelineno-16-35" href="#__codelineno-16-35"></a>    <span class="p">)</span>
+<a id="__codelineno-16-36" name="__codelineno-16-36" href="#__codelineno-16-36"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">transcript</span><span class="p">:</span>
+<a id="__codelineno-16-37" name="__codelineno-16-37" href="#__codelineno-16-37"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;transcription_failed&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-38" name="__codelineno-16-38" href="#__codelineno-16-38"></a>
+<a id="__codelineno-16-39" name="__codelineno-16-39" href="#__codelineno-16-39"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-16-40" name="__codelineno-16-40" href="#__codelineno-16-40"></a>        <span class="n">suggestion</span> <span class="o">=</span> <span class="k">await</span> <span class="n">match_episode_via_llm</span><span class="p">(</span>
+<a id="__codelineno-16-41" name="__codelineno-16-41" href="#__codelineno-16-41"></a>            <span class="n">transcript</span><span class="o">=</span><span class="n">transcript</span><span class="p">,</span>
+<a id="__codelineno-16-42" name="__codelineno-16-42" href="#__codelineno-16-42"></a>            <span class="n">show_name</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">detected_title</span><span class="p">,</span>
+<a id="__codelineno-16-43" name="__codelineno-16-43" href="#__codelineno-16-43"></a>            <span class="n">season</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">detected_season</span><span class="p">,</span>
+<a id="__codelineno-16-44" name="__codelineno-16-44" href="#__codelineno-16-44"></a>            <span class="n">tmdb_show_id</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">tmdb_show_id</span><span class="p">),</span>
+<a id="__codelineno-16-45" name="__codelineno-16-45" href="#__codelineno-16-45"></a>            <span class="n">ai_provider</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ai_provider</span><span class="p">,</span>
+<a id="__codelineno-16-46" name="__codelineno-16-46" href="#__codelineno-16-46"></a>            <span class="n">ai_api_key</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ai_api_key</span><span class="p">,</span>
+<a id="__codelineno-16-47" name="__codelineno-16-47" href="#__codelineno-16-47"></a>            <span class="n">tmdb_api_key</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">tmdb_api_key</span><span class="p">,</span>
+<a id="__codelineno-16-48" name="__codelineno-16-48" href="#__codelineno-16-48"></a>            <span class="n">raise_on_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-16-49" name="__codelineno-16-49" href="#__codelineno-16-49"></a>        <span class="p">)</span>
+<a id="__codelineno-16-50" name="__codelineno-16-50" href="#__codelineno-16-50"></a>    <span class="k">except</span> <span class="n">AIProviderError</span><span class="p">:</span>
+<a id="__codelineno-16-51" name="__codelineno-16-51" href="#__codelineno-16-51"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-16-52" name="__codelineno-16-52" href="#__codelineno-16-52"></a>            <span class="s2">&quot;LLM match: provider error for title </span><span class="si">%s</span><span class="s2"> -&gt; llm_error&quot;</span><span class="p">,</span>
+<a id="__codelineno-16-53" name="__codelineno-16-53" href="#__codelineno-16-53"></a>            <span class="n">sanitize_log_value</span><span class="p">(</span><span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="p">),</span>
+<a id="__codelineno-16-54" name="__codelineno-16-54" href="#__codelineno-16-54"></a>        <span class="p">)</span>
+<a id="__codelineno-16-55" name="__codelineno-16-55" href="#__codelineno-16-55"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;llm_error&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-56" name="__codelineno-16-56" href="#__codelineno-16-56"></a>
+<a id="__codelineno-16-57" name="__codelineno-16-57" href="#__codelineno-16-57"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">suggestion</span><span class="p">:</span>
+<a id="__codelineno-16-58" name="__codelineno-16-58" href="#__codelineno-16-58"></a>        <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">failed</span><span class="p">(</span><span class="s2">&quot;no_match&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-59" name="__codelineno-16-59" href="#__codelineno-16-59"></a>    <span class="k">return</span> <span class="n">LLMMatchOutcome</span><span class="o">.</span><span class="n">ok</span><span class="p">(</span>
+<a id="__codelineno-16-60" name="__codelineno-16-60" href="#__codelineno-16-60"></a>        <span class="p">{</span>
+<a id="__codelineno-16-61" name="__codelineno-16-61" href="#__codelineno-16-61"></a>            <span class="s2">&quot;episode&quot;</span><span class="p">:</span> <span class="n">suggestion</span><span class="o">.</span><span class="n">episode</span><span class="p">,</span>
+<a id="__codelineno-16-62" name="__codelineno-16-62" href="#__codelineno-16-62"></a>            <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="n">suggestion</span><span class="o">.</span><span class="n">confidence</span><span class="p">,</span>
+<a id="__codelineno-16-63" name="__codelineno-16-63" href="#__codelineno-16-63"></a>            <span class="s2">&quot;reasoning&quot;</span><span class="p">:</span> <span class="n">suggestion</span><span class="o">.</span><span class="n">reasoning</span><span class="p">,</span>
+<a id="__codelineno-16-64" name="__codelineno-16-64" href="#__codelineno-16-64"></a>            <span class="s2">&quot;runner_up&quot;</span><span class="p">:</span> <span class="p">(</span>
+<a id="__codelineno-16-65" name="__codelineno-16-65" href="#__codelineno-16-65"></a>                <span class="p">{</span>
+<a id="__codelineno-16-66" name="__codelineno-16-66" href="#__codelineno-16-66"></a>                    <span class="s2">&quot;episode&quot;</span><span class="p">:</span> <span class="n">suggestion</span><span class="o">.</span><span class="n">runner_up</span><span class="o">.</span><span class="n">episode</span><span class="p">,</span>
+<a id="__codelineno-16-67" name="__codelineno-16-67" href="#__codelineno-16-67"></a>                    <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="n">suggestion</span><span class="o">.</span><span class="n">runner_up</span><span class="o">.</span><span class="n">confidence</span><span class="p">,</span>
+<a id="__codelineno-16-68" name="__codelineno-16-68" href="#__codelineno-16-68"></a>                <span class="p">}</span>
+<a id="__codelineno-16-69" name="__codelineno-16-69" href="#__codelineno-16-69"></a>                <span class="k">if</span> <span class="n">suggestion</span><span class="o">.</span><span class="n">runner_up</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-16-70" name="__codelineno-16-70" href="#__codelineno-16-70"></a>                <span class="k">else</span> <span class="kc">None</span>
+<a id="__codelineno-16-71" name="__codelineno-16-71" href="#__codelineno-16-71"></a>            <span class="p">),</span>
+<a id="__codelineno-16-72" name="__codelineno-16-72" href="#__codelineno-16-72"></a>            <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">suggestion</span><span class="o">.</span><span class="n">model</span><span class="p">,</span>
+<a id="__codelineno-16-73" name="__codelineno-16-73" href="#__codelineno-16-73"></a>        <span class="p">}</span>
+<a id="__codelineno-16-74" name="__codelineno-16-74" href="#__codelineno-16-74"></a>    <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3d: Refactor the endpoint</strong></li>
+</ul>
+<p>Replace the <code>try/except</code>-to-<code>return</code> tail of <code>llm_match_title</code> (currently ~line 3428-3443, from <code>try:</code> onward) with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>        <span class="n">outcome</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_run_llm_match_for_title</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">,</span> <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">)</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;LLM match endpoint failed for title </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">sanitize_log_value</span><span class="p">(</span><span class="n">title_id</span><span class="p">))</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>        <span class="k">return</span> <span class="n">JSONResponse</span><span class="p">(</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>            <span class="n">status_code</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="s2">&quot;internal_error&quot;</span><span class="p">}</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>        <span class="p">)</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    <span class="k">if</span> <span class="n">outcome</span><span class="o">.</span><span class="n">reason</span> <span class="ow">in</span> <span class="n">_LLM_MATCH_RETRYABLE_REASONS</span><span class="p">:</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>        <span class="k">return</span> <span class="n">JSONResponse</span><span class="p">(</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>            <span class="n">status_code</span><span class="o">=</span><span class="mi">503</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="n">outcome</span><span class="o">.</span><span class="n">reason</span><span class="p">}</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>        <span class="p">)</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>    <span class="k">if</span> <span class="n">outcome</span><span class="o">.</span><span class="n">suggestion</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="n">outcome</span><span class="o">.</span><span class="n">reason</span><span class="p">}</span>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>    <span class="c1"># Persist into match_details for refresh durability</span>
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>    <span class="n">existing</span><span class="p">[</span><span class="s2">&quot;llm_suggestion&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">outcome</span><span class="o">.</span><span class="n">suggestion</span>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>    <span class="n">title</span><span class="o">.</span><span class="n">match_details</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">existing</span><span class="p">)</span>
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>    <span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>    <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a>
+<a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="n">outcome</span><span class="o">.</span><span class="n">suggestion</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
+</code></pre></div>
+<blockquote>
+<p><code>existing</code> is already computed just above (the cache-hit dedup block) and stays in scope.</p>
+</blockquote>
+<ul>
+<li>[ ] <strong>Step 4: Run to verify pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/integration/test_workflow.py -k llm -q</code>
+Expected: PASS — <code>test_ai_disabled_returns_200_reason</code>, the updated <code>test_returns_suggestion_and_persists</code>, and <code>test_returns_cached_suggestion_without_re_transcribing</code> all green.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/api/routes.py<span class="w"> </span>backend/tests/integration/test_workflow.py
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(api): differentiated reason taxonomy + 503/500 statuses for llm-match&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-4-full-reason-taxonomy-coverage-real-helper-mocked-deps">Task 4: Full reason-taxonomy coverage (real helper, mocked deps)</h2>
+<p><strong>Files:</strong>
+- Test: <code>backend/tests/integration/test_workflow.py</code> (<code>TestLLMMatchEndpoint</code>)</p>
+<ul>
+<li>[ ] <strong>Step 1: Add the remaining branch tests</strong></li>
+</ul>
+<p>Append these methods to <code>TestLLMMatchEndpoint</code>. They patch the helper's <em>inner</em> imports (which re-resolve per call) plus the <code>episode_curator</code> singleton's attributes.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_not_configured_returns_200_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">(</span><span class="n">ai_api_key</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)),</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>        <span class="p">)</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;reason&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;not_configured&quot;</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_no_show_returns_200_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span>
+<a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a>
+<a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">(</span><span class="n">detected_title</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-20" name="__codelineno-19-20" href="#__codelineno-19-20"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-21" name="__codelineno-19-21" href="#__codelineno-19-21"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">()),</span>
+<a id="__codelineno-19-22" name="__codelineno-19-22" href="#__codelineno-19-22"></a>        <span class="p">)</span>
+<a id="__codelineno-19-23" name="__codelineno-19-23" href="#__codelineno-19-23"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-24" name="__codelineno-19-24" href="#__codelineno-19-24"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+<a id="__codelineno-19-25" name="__codelineno-19-25" href="#__codelineno-19-25"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;reason&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;no_show&quot;</span>
+<a id="__codelineno-19-26" name="__codelineno-19-26" href="#__codelineno-19-26"></a>
+<a id="__codelineno-19-27" name="__codelineno-19-27" href="#__codelineno-19-27"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-28" name="__codelineno-19-28" href="#__codelineno-19-28"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_no_season_returns_200_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-29" name="__codelineno-19-29" href="#__codelineno-19-29"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span>
+<a id="__codelineno-19-30" name="__codelineno-19-30" href="#__codelineno-19-30"></a>
+<a id="__codelineno-19-31" name="__codelineno-19-31" href="#__codelineno-19-31"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">(</span><span class="n">detected_season</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-19-32" name="__codelineno-19-32" href="#__codelineno-19-32"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-33" name="__codelineno-19-33" href="#__codelineno-19-33"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-34" name="__codelineno-19-34" href="#__codelineno-19-34"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">()),</span>
+<a id="__codelineno-19-35" name="__codelineno-19-35" href="#__codelineno-19-35"></a>        <span class="p">)</span>
+<a id="__codelineno-19-36" name="__codelineno-19-36" href="#__codelineno-19-36"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-37" name="__codelineno-19-37" href="#__codelineno-19-37"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+<a id="__codelineno-19-38" name="__codelineno-19-38" href="#__codelineno-19-38"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;reason&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;no_season&quot;</span>
+<a id="__codelineno-19-39" name="__codelineno-19-39" href="#__codelineno-19-39"></a>
+<a id="__codelineno-19-40" name="__codelineno-19-40" href="#__codelineno-19-40"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-41" name="__codelineno-19-41" href="#__codelineno-19-41"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_matcher_unavailable_returns_503</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-42" name="__codelineno-19-42" href="#__codelineno-19-42"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span>
+<a id="__codelineno-19-43" name="__codelineno-19-43" href="#__codelineno-19-43"></a>
+<a id="__codelineno-19-44" name="__codelineno-19-44" href="#__codelineno-19-44"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.curator</span><span class="w"> </span><span class="kn">import</span> <span class="n">curator</span> <span class="k">as</span> <span class="n">episode_curator</span>
+<a id="__codelineno-19-45" name="__codelineno-19-45" href="#__codelineno-19-45"></a>
+<a id="__codelineno-19-46" name="__codelineno-19-46" href="#__codelineno-19-46"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-19-47" name="__codelineno-19-47" href="#__codelineno-19-47"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-48" name="__codelineno-19-48" href="#__codelineno-19-48"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-49" name="__codelineno-19-49" href="#__codelineno-19-49"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">()),</span>
+<a id="__codelineno-19-50" name="__codelineno-19-50" href="#__codelineno-19-50"></a>        <span class="p">)</span>
+<a id="__codelineno-19-51" name="__codelineno-19-51" href="#__codelineno-19-51"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_ensure_initialized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-19-52" name="__codelineno-19-52" href="#__codelineno-19-52"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_matcher&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-19-53" name="__codelineno-19-53" href="#__codelineno-19-53"></a>
+<a id="__codelineno-19-54" name="__codelineno-19-54" href="#__codelineno-19-54"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-55" name="__codelineno-19-55" href="#__codelineno-19-55"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">503</span>
+<a id="__codelineno-19-56" name="__codelineno-19-56" href="#__codelineno-19-56"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()</span> <span class="o">==</span> <span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="s2">&quot;matcher_unavailable&quot;</span><span class="p">}</span>
+<a id="__codelineno-19-57" name="__codelineno-19-57" href="#__codelineno-19-57"></a>
+<a id="__codelineno-19-58" name="__codelineno-19-58" href="#__codelineno-19-58"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-59" name="__codelineno-19-59" href="#__codelineno-19-59"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_show_not_found_returns_200_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-60" name="__codelineno-19-60" href="#__codelineno-19-60"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">MagicMock</span>
+<a id="__codelineno-19-61" name="__codelineno-19-61" href="#__codelineno-19-61"></a>
+<a id="__codelineno-19-62" name="__codelineno-19-62" href="#__codelineno-19-62"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.curator</span><span class="w"> </span><span class="kn">import</span> <span class="n">curator</span> <span class="k">as</span> <span class="n">episode_curator</span>
+<a id="__codelineno-19-63" name="__codelineno-19-63" href="#__codelineno-19-63"></a>
+<a id="__codelineno-19-64" name="__codelineno-19-64" href="#__codelineno-19-64"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-19-65" name="__codelineno-19-65" href="#__codelineno-19-65"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-66" name="__codelineno-19-66" href="#__codelineno-19-66"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-67" name="__codelineno-19-67" href="#__codelineno-19-67"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">()),</span>
+<a id="__codelineno-19-68" name="__codelineno-19-68" href="#__codelineno-19-68"></a>        <span class="p">)</span>
+<a id="__codelineno-19-69" name="__codelineno-19-69" href="#__codelineno-19-69"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_ensure_initialized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-19-70" name="__codelineno-19-70" href="#__codelineno-19-70"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_matcher&quot;</span><span class="p">,</span> <span class="n">MagicMock</span><span class="p">())</span>
+<a id="__codelineno-19-71" name="__codelineno-19-71" href="#__codelineno-19-71"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="s2">&quot;app.matcher.tmdb_client.fetch_show_id&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-19-72" name="__codelineno-19-72" href="#__codelineno-19-72"></a>
+<a id="__codelineno-19-73" name="__codelineno-19-73" href="#__codelineno-19-73"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-74" name="__codelineno-19-74" href="#__codelineno-19-74"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+<a id="__codelineno-19-75" name="__codelineno-19-75" href="#__codelineno-19-75"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;reason&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;show_not_found&quot;</span>
+<a id="__codelineno-19-76" name="__codelineno-19-76" href="#__codelineno-19-76"></a>
+<a id="__codelineno-19-77" name="__codelineno-19-77" href="#__codelineno-19-77"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-78" name="__codelineno-19-78" href="#__codelineno-19-78"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_transcription_failed_returns_503</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-79" name="__codelineno-19-79" href="#__codelineno-19-79"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">MagicMock</span>
+<a id="__codelineno-19-80" name="__codelineno-19-80" href="#__codelineno-19-80"></a>
+<a id="__codelineno-19-81" name="__codelineno-19-81" href="#__codelineno-19-81"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.curator</span><span class="w"> </span><span class="kn">import</span> <span class="n">curator</span> <span class="k">as</span> <span class="n">episode_curator</span>
+<a id="__codelineno-19-82" name="__codelineno-19-82" href="#__codelineno-19-82"></a>
+<a id="__codelineno-19-83" name="__codelineno-19-83" href="#__codelineno-19-83"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-19-84" name="__codelineno-19-84" href="#__codelineno-19-84"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-85" name="__codelineno-19-85" href="#__codelineno-19-85"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-86" name="__codelineno-19-86" href="#__codelineno-19-86"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">()),</span>
+<a id="__codelineno-19-87" name="__codelineno-19-87" href="#__codelineno-19-87"></a>        <span class="p">)</span>
+<a id="__codelineno-19-88" name="__codelineno-19-88" href="#__codelineno-19-88"></a>        <span class="n">fake_matcher</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-19-89" name="__codelineno-19-89" href="#__codelineno-19-89"></a>        <span class="n">fake_matcher</span><span class="o">.</span><span class="n">transcribe_full</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-19-90" name="__codelineno-19-90" href="#__codelineno-19-90"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_ensure_initialized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-19-91" name="__codelineno-19-91" href="#__codelineno-19-91"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_matcher&quot;</span><span class="p">,</span> <span class="n">fake_matcher</span><span class="p">)</span>
+<a id="__codelineno-19-92" name="__codelineno-19-92" href="#__codelineno-19-92"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="s2">&quot;app.matcher.tmdb_client.fetch_show_id&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="s2">&quot;123&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-93" name="__codelineno-19-93" href="#__codelineno-19-93"></a>
+<a id="__codelineno-19-94" name="__codelineno-19-94" href="#__codelineno-19-94"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-95" name="__codelineno-19-95" href="#__codelineno-19-95"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">503</span>
+<a id="__codelineno-19-96" name="__codelineno-19-96" href="#__codelineno-19-96"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()</span> <span class="o">==</span> <span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="s2">&quot;transcription_failed&quot;</span><span class="p">}</span>
+<a id="__codelineno-19-97" name="__codelineno-19-97" href="#__codelineno-19-97"></a>
+<a id="__codelineno-19-98" name="__codelineno-19-98" href="#__codelineno-19-98"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-99" name="__codelineno-19-99" href="#__codelineno-19-99"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_no_match_returns_200_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-100" name="__codelineno-19-100" href="#__codelineno-19-100"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">MagicMock</span>
+<a id="__codelineno-19-101" name="__codelineno-19-101" href="#__codelineno-19-101"></a>
+<a id="__codelineno-19-102" name="__codelineno-19-102" href="#__codelineno-19-102"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.curator</span><span class="w"> </span><span class="kn">import</span> <span class="n">curator</span> <span class="k">as</span> <span class="n">episode_curator</span>
+<a id="__codelineno-19-103" name="__codelineno-19-103" href="#__codelineno-19-103"></a>
+<a id="__codelineno-19-104" name="__codelineno-19-104" href="#__codelineno-19-104"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-19-105" name="__codelineno-19-105" href="#__codelineno-19-105"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-106" name="__codelineno-19-106" href="#__codelineno-19-106"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-107" name="__codelineno-19-107" href="#__codelineno-19-107"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">()),</span>
+<a id="__codelineno-19-108" name="__codelineno-19-108" href="#__codelineno-19-108"></a>        <span class="p">)</span>
+<a id="__codelineno-19-109" name="__codelineno-19-109" href="#__codelineno-19-109"></a>        <span class="n">fake_matcher</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-19-110" name="__codelineno-19-110" href="#__codelineno-19-110"></a>        <span class="n">fake_matcher</span><span class="o">.</span><span class="n">transcribe_full</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="s2">&quot;a long transcript &quot;</span> <span class="o">*</span> <span class="mi">50</span>
+<a id="__codelineno-19-111" name="__codelineno-19-111" href="#__codelineno-19-111"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_ensure_initialized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-19-112" name="__codelineno-19-112" href="#__codelineno-19-112"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_matcher&quot;</span><span class="p">,</span> <span class="n">fake_matcher</span><span class="p">)</span>
+<a id="__codelineno-19-113" name="__codelineno-19-113" href="#__codelineno-19-113"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="s2">&quot;app.matcher.tmdb_client.fetch_show_id&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="s2">&quot;123&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-114" name="__codelineno-19-114" href="#__codelineno-19-114"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-115" name="__codelineno-19-115" href="#__codelineno-19-115"></a>            <span class="s2">&quot;app.matcher.llm_episode_matcher.match_episode_via_llm&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-116" name="__codelineno-19-116" href="#__codelineno-19-116"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+<a id="__codelineno-19-117" name="__codelineno-19-117" href="#__codelineno-19-117"></a>        <span class="p">)</span>
+<a id="__codelineno-19-118" name="__codelineno-19-118" href="#__codelineno-19-118"></a>
+<a id="__codelineno-19-119" name="__codelineno-19-119" href="#__codelineno-19-119"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-120" name="__codelineno-19-120" href="#__codelineno-19-120"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+<a id="__codelineno-19-121" name="__codelineno-19-121" href="#__codelineno-19-121"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;reason&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;no_match&quot;</span>
+<a id="__codelineno-19-122" name="__codelineno-19-122" href="#__codelineno-19-122"></a>
+<a id="__codelineno-19-123" name="__codelineno-19-123" href="#__codelineno-19-123"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-124" name="__codelineno-19-124" href="#__codelineno-19-124"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_llm_error_returns_503</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-125" name="__codelineno-19-125" href="#__codelineno-19-125"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">MagicMock</span>
+<a id="__codelineno-19-126" name="__codelineno-19-126" href="#__codelineno-19-126"></a>
+<a id="__codelineno-19-127" name="__codelineno-19-127" href="#__codelineno-19-127"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.curator</span><span class="w"> </span><span class="kn">import</span> <span class="n">curator</span> <span class="k">as</span> <span class="n">episode_curator</span>
+<a id="__codelineno-19-128" name="__codelineno-19-128" href="#__codelineno-19-128"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.errors</span><span class="w"> </span><span class="kn">import</span> <span class="n">AIProviderError</span>
+<a id="__codelineno-19-129" name="__codelineno-19-129" href="#__codelineno-19-129"></a>
+<a id="__codelineno-19-130" name="__codelineno-19-130" href="#__codelineno-19-130"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-19-131" name="__codelineno-19-131" href="#__codelineno-19-131"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-132" name="__codelineno-19-132" href="#__codelineno-19-132"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-133" name="__codelineno-19-133" href="#__codelineno-19-133"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">()),</span>
+<a id="__codelineno-19-134" name="__codelineno-19-134" href="#__codelineno-19-134"></a>        <span class="p">)</span>
+<a id="__codelineno-19-135" name="__codelineno-19-135" href="#__codelineno-19-135"></a>        <span class="n">fake_matcher</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-19-136" name="__codelineno-19-136" href="#__codelineno-19-136"></a>        <span class="n">fake_matcher</span><span class="o">.</span><span class="n">transcribe_full</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="s2">&quot;a long transcript &quot;</span> <span class="o">*</span> <span class="mi">50</span>
+<a id="__codelineno-19-137" name="__codelineno-19-137" href="#__codelineno-19-137"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_ensure_initialized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-19-138" name="__codelineno-19-138" href="#__codelineno-19-138"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_matcher&quot;</span><span class="p">,</span> <span class="n">fake_matcher</span><span class="p">)</span>
+<a id="__codelineno-19-139" name="__codelineno-19-139" href="#__codelineno-19-139"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="s2">&quot;app.matcher.tmdb_client.fetch_show_id&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="s2">&quot;123&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-140" name="__codelineno-19-140" href="#__codelineno-19-140"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-141" name="__codelineno-19-141" href="#__codelineno-19-141"></a>            <span class="s2">&quot;app.matcher.llm_episode_matcher.match_episode_via_llm&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-142" name="__codelineno-19-142" href="#__codelineno-19-142"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">side_effect</span><span class="o">=</span><span class="n">AIProviderError</span><span class="p">(</span><span class="s2">&quot;boom&quot;</span><span class="p">)),</span>
+<a id="__codelineno-19-143" name="__codelineno-19-143" href="#__codelineno-19-143"></a>        <span class="p">)</span>
+<a id="__codelineno-19-144" name="__codelineno-19-144" href="#__codelineno-19-144"></a>
+<a id="__codelineno-19-145" name="__codelineno-19-145" href="#__codelineno-19-145"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-146" name="__codelineno-19-146" href="#__codelineno-19-146"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">503</span>
+<a id="__codelineno-19-147" name="__codelineno-19-147" href="#__codelineno-19-147"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()</span> <span class="o">==</span> <span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="s2">&quot;llm_error&quot;</span><span class="p">}</span>
+<a id="__codelineno-19-148" name="__codelineno-19-148" href="#__codelineno-19-148"></a>
+<a id="__codelineno-19-149" name="__codelineno-19-149" href="#__codelineno-19-149"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-150" name="__codelineno-19-150" href="#__codelineno-19-150"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_internal_error_returns_500</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-151" name="__codelineno-19-151" href="#__codelineno-19-151"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span>
+<a id="__codelineno-19-152" name="__codelineno-19-152" href="#__codelineno-19-152"></a>
+<a id="__codelineno-19-153" name="__codelineno-19-153" href="#__codelineno-19-153"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-19-154" name="__codelineno-19-154" href="#__codelineno-19-154"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-155" name="__codelineno-19-155" href="#__codelineno-19-155"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-156" name="__codelineno-19-156" href="#__codelineno-19-156"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">side_effect</span><span class="o">=</span><span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;boom&quot;</span><span class="p">)),</span>
+<a id="__codelineno-19-157" name="__codelineno-19-157" href="#__codelineno-19-157"></a>        <span class="p">)</span>
+<a id="__codelineno-19-158" name="__codelineno-19-158" href="#__codelineno-19-158"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-159" name="__codelineno-19-159" href="#__codelineno-19-159"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">500</span>
+<a id="__codelineno-19-160" name="__codelineno-19-160" href="#__codelineno-19-160"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()</span> <span class="o">==</span> <span class="p">{</span><span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="s2">&quot;internal_error&quot;</span><span class="p">}</span>
+<a id="__codelineno-19-161" name="__codelineno-19-161" href="#__codelineno-19-161"></a>
+<a id="__codelineno-19-162" name="__codelineno-19-162" href="#__codelineno-19-162"></a>    <span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-19-163" name="__codelineno-19-163" href="#__codelineno-19-163"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_success_via_real_helper_persists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">setup_db</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-19-164" name="__codelineno-19-164" href="#__codelineno-19-164"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<a id="__codelineno-19-165" name="__codelineno-19-165" href="#__codelineno-19-165"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_types</span>
+<a id="__codelineno-19-166" name="__codelineno-19-166" href="#__codelineno-19-166"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">MagicMock</span>
+<a id="__codelineno-19-167" name="__codelineno-19-167" href="#__codelineno-19-167"></a>
+<a id="__codelineno-19-168" name="__codelineno-19-168" href="#__codelineno-19-168"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.curator</span><span class="w"> </span><span class="kn">import</span> <span class="n">curator</span> <span class="k">as</span> <span class="n">episode_curator</span>
+<a id="__codelineno-19-169" name="__codelineno-19-169" href="#__codelineno-19-169"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.database</span><span class="w"> </span><span class="kn">import</span> <span class="n">async_session</span>
+<a id="__codelineno-19-170" name="__codelineno-19-170" href="#__codelineno-19-170"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.models.disc_job</span><span class="w"> </span><span class="kn">import</span> <span class="n">DiscTitle</span>
+<a id="__codelineno-19-171" name="__codelineno-19-171" href="#__codelineno-19-171"></a>
+<a id="__codelineno-19-172" name="__codelineno-19-172" href="#__codelineno-19-172"></a>        <span class="n">job_id</span><span class="p">,</span> <span class="n">title_id</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_review_title</span><span class="p">()</span>
+<a id="__codelineno-19-173" name="__codelineno-19-173" href="#__codelineno-19-173"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-174" name="__codelineno-19-174" href="#__codelineno-19-174"></a>            <span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-175" name="__codelineno-19-175" href="#__codelineno-19-175"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">_fake_config</span><span class="p">()),</span>
+<a id="__codelineno-19-176" name="__codelineno-19-176" href="#__codelineno-19-176"></a>        <span class="p">)</span>
+<a id="__codelineno-19-177" name="__codelineno-19-177" href="#__codelineno-19-177"></a>        <span class="n">fake_matcher</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-19-178" name="__codelineno-19-178" href="#__codelineno-19-178"></a>        <span class="n">fake_matcher</span><span class="o">.</span><span class="n">transcribe_full</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="s2">&quot;a long transcript &quot;</span> <span class="o">*</span> <span class="mi">50</span>
+<a id="__codelineno-19-179" name="__codelineno-19-179" href="#__codelineno-19-179"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_ensure_initialized&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-19-180" name="__codelineno-19-180" href="#__codelineno-19-180"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">episode_curator</span><span class="p">,</span> <span class="s2">&quot;_matcher&quot;</span><span class="p">,</span> <span class="n">fake_matcher</span><span class="p">)</span>
+<a id="__codelineno-19-181" name="__codelineno-19-181" href="#__codelineno-19-181"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="s2">&quot;app.matcher.tmdb_client.fetch_show_id&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">:</span> <span class="s2">&quot;123&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-182" name="__codelineno-19-182" href="#__codelineno-19-182"></a>        <span class="n">fake_match</span> <span class="o">=</span> <span class="n">_types</span><span class="o">.</span><span class="n">SimpleNamespace</span><span class="p">(</span>
+<a id="__codelineno-19-183" name="__codelineno-19-183" href="#__codelineno-19-183"></a>            <span class="n">episode</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">confidence</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">reasoning</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">runner_up</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gemini&quot;</span>
+<a id="__codelineno-19-184" name="__codelineno-19-184" href="#__codelineno-19-184"></a>        <span class="p">)</span>
+<a id="__codelineno-19-185" name="__codelineno-19-185" href="#__codelineno-19-185"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span>
+<a id="__codelineno-19-186" name="__codelineno-19-186" href="#__codelineno-19-186"></a>            <span class="s2">&quot;app.matcher.llm_episode_matcher.match_episode_via_llm&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-187" name="__codelineno-19-187" href="#__codelineno-19-187"></a>            <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">fake_match</span><span class="p">),</span>
+<a id="__codelineno-19-188" name="__codelineno-19-188" href="#__codelineno-19-188"></a>        <span class="p">)</span>
+<a id="__codelineno-19-189" name="__codelineno-19-189" href="#__codelineno-19-189"></a>
+<a id="__codelineno-19-190" name="__codelineno-19-190" href="#__codelineno-19-190"></a>        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;/api/jobs/</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">/titles/</span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">/llm-match&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-191" name="__codelineno-19-191" href="#__codelineno-19-191"></a>        <span class="k">assert</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+<a id="__codelineno-19-192" name="__codelineno-19-192" href="#__codelineno-19-192"></a>        <span class="n">body</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+<a id="__codelineno-19-193" name="__codelineno-19-193" href="#__codelineno-19-193"></a>        <span class="k">assert</span> <span class="n">body</span><span class="p">[</span><span class="s2">&quot;reason&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-19-194" name="__codelineno-19-194" href="#__codelineno-19-194"></a>        <span class="k">assert</span> <span class="n">body</span><span class="p">[</span><span class="s2">&quot;suggestion&quot;</span><span class="p">][</span><span class="s2">&quot;episode&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">4</span>
+<a id="__codelineno-19-195" name="__codelineno-19-195" href="#__codelineno-19-195"></a>
+<a id="__codelineno-19-196" name="__codelineno-19-196" href="#__codelineno-19-196"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">async_session</span><span class="p">()</span> <span class="k">as</span> <span class="n">s</span><span class="p">:</span>
+<a id="__codelineno-19-197" name="__codelineno-19-197" href="#__codelineno-19-197"></a>            <span class="n">refreshed</span> <span class="o">=</span> <span class="k">await</span> <span class="n">s</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DiscTitle</span><span class="p">,</span> <span class="n">title_id</span><span class="p">)</span>
+<a id="__codelineno-19-198" name="__codelineno-19-198" href="#__codelineno-19-198"></a>            <span class="n">details</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">refreshed</span><span class="o">.</span><span class="n">match_details</span> <span class="ow">or</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-199" name="__codelineno-19-199" href="#__codelineno-19-199"></a>            <span class="k">assert</span> <span class="n">details</span><span class="p">[</span><span class="s2">&quot;llm_suggestion&quot;</span><span class="p">][</span><span class="s2">&quot;episode&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">4</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run to verify pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/integration/test_workflow.py -k llm -q</code>
+Expected: PASS — all <code>TestLLMMatchEndpoint</code> tests green. (If a branch fails, fix the corresponding <code>LLMMatchOutcome.failed(...)</code> in <code>_run_llm_match_for_title</code> or the status mapping; do not weaken the assertions.)</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/tests/integration/test_workflow.py
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(api): cover full llm-match reason taxonomy via real helper&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-5-update-the-frontend-contract-comment">Task 5: Update the frontend contract comment</h2>
+<p><strong>Files:</strong>
+- Modify: <code>frontend/src/api/client.ts</code> (the <code>LLMMatchResult</code> interface + <code>runLLMMatch</code> doc-comment, ~lines 68-90)</p>
+<ul>
+<li>[ ] <strong>Step 1: Replace the doc-comment above <code>LLMMatchResult</code></strong></li>
+</ul>
+<p>Replace the single line <code>/** Shape returned by POST /api/jobs/{job_id}/titles/{title_id}/llm-match */</code>
+(line 68) with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="cm">/**</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="cm"> * Shape returned by `POST /api/jobs/{job_id}/titles/{title_id}/llm-match`.</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="cm"> *</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="cm"> * `reason` discriminates the outcome. By HTTP status:</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="cm"> * - **200** — `runLLMMatch` resolves with this shape. `reason` is one of:</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="cm"> *   - `null` — success; `suggestion` is populated and persisted server-side.</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="cm"> *   - `&quot;cached&quot;` — idempotent re-click; cached `suggestion` returned without re-transcribing.</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="cm"> *   - `&quot;ai_disabled&quot;` — AI episode matching is turned off in config.</span>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="cm"> *   - `&quot;not_configured&quot;` — enabled but no AI API key is set.</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="cm"> *   - `&quot;no_show&quot;` — the job has no detected show title.</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="cm"> *   - `&quot;no_season&quot;` — the job has no detected season.</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="cm"> *   - `&quot;show_not_found&quot;` — the show could not be resolved on TMDB.</span>
+<a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a><span class="cm"> *   - `&quot;no_match&quot;` — the model ran but produced no confident episode.</span>
+<a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a><span class="cm"> * - **503** — `runLLMMatch` THROWS `ApiError`; retryable operational failures.</span>
+<a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a><span class="cm"> *   `ApiError.body` carries the same `{ suggestion: null, reason }` JSON, where</span>
+<a id="__codelineno-21-16" name="__codelineno-21-16" href="#__codelineno-21-16"></a><span class="cm"> *   `reason` is `&quot;matcher_unavailable&quot;`, `&quot;transcription_failed&quot;`, or `&quot;llm_error&quot;`</span>
+<a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a><span class="cm"> *   (the LLM provider call itself failed — rate-limit/credits/auth/5xx/network).</span>
+<a id="__codelineno-21-18" name="__codelineno-21-18" href="#__codelineno-21-18"></a><span class="cm"> * - **500** — `runLLMMatch` THROWS `ApiError`; unexpected server error,</span>
+<a id="__codelineno-21-19" name="__codelineno-21-19" href="#__codelineno-21-19"></a><span class="cm"> *   `reason: &quot;internal_error&quot;` (also in `ApiError.body`).</span>
+<a id="__codelineno-21-20" name="__codelineno-21-20" href="#__codelineno-21-20"></a><span class="cm"> */</span>
+</code></pre></div>
+<blockquote>
+<p>Comment only — do <strong>not</strong> narrow the <code>reason: string | null</code> type or add UI logic.
+Rendering these reasons in the Inspector is the sibling frontend follow-up task.</p>
+</blockquote>
+<ul>
+<li>[ ] <strong>Step 2: Verify nothing else changed</strong></li>
+</ul>
+<p>Run: <code>git diff --stat frontend/src/api/client.ts</code>
+Expected: one file changed, only the comment region. (A comment-only edit cannot affect
+TypeScript compilation; no build needed. If <code>frontend/node_modules</code> is present you may
+optionally run <code>cd frontend &amp;&amp; npx tsc --noEmit</code>, but it is not required.)</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git<span class="w"> </span>add<span class="w"> </span>frontend/src/api/client.ts
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(client): document llm-match reason taxonomy + status mapping&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-6-changelog-entry">Task 6: Changelog entry</h2>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code> (under <code>## [Unreleased]</code>, line 5)</p>
+<ul>
+<li>[ ] <strong>Step 1: Add a <code>### Changed</code> block</strong></li>
+</ul>
+<p>Insert directly after line 5 (<code>## [Unreleased]</code>) so the file reads:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="gu">## [Unreleased]</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="gu">### Changed</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="k">-</span><span class="w"> </span>The review Inspector&#39;s &quot;Try LLM match&quot; endpoint now returns a differentiated <span class="sb">`reason`</span> (e.g. <span class="sb">`ai_disabled`</span>, <span class="sb">`not_configured`</span>, <span class="sb">`no_season`</span>, <span class="sb">`show_not_found`</span>, <span class="sb">`transcription_failed`</span>, <span class="sb">`no_match`</span>, <span class="sb">`llm_error`</span>) and uses HTTP 503 for retryable operational failures (matcher/transcription/LLM-provider errors) and 500 for unexpected errors, instead of reporting every failure as a 200. This lets the UI tell &quot;AI matching is off / couldn&#39;t find a match&quot; apart from &quot;the LLM provider failed, retry&quot;. (#347 follow-up)
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="gu">## [0.15.1] - 2026-06-03</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git<span class="w"> </span>add<span class="w"> </span>CHANGELOG.md
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(changelog): note llm-match error-contract change&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-7-final-verification-pr">Task 7: Final verification + PR</h2>
+<ul>
+<li>[ ] <strong>Step 1: Run the full affected test surface</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_ai_client.py tests/unit/test_llm_episode_matcher.py tests/integration/test_workflow.py -k "llm or raise_on_error or RaiseOnError" -q</code>
+Expected: PASS, no failures.</p>
+<ul>
+<li>[ ] <strong>Step 2: Lint + format check the changed backend files</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run ruff check app/api/routes.py app/core/ai_client.py app/core/errors.py app/matcher/llm_episode_matcher.py tests/integration/test_workflow.py tests/unit/test_ai_client.py tests/unit/test_llm_episode_matcher.py</code>
+Then: <code>cd backend &amp;&amp; uv run ruff format --check app/api/routes.py app/core/ai_client.py app/core/errors.py app/matcher/llm_episode_matcher.py</code>
+Expected: "All checks passed!" / no files would be reformatted. (If format check fails, run the same <code>ruff format</code> without <code>--check</code>, then re-commit.)</p>
+<ul>
+<li>[ ] <strong>Step 3: Open the PR</strong></li>
+</ul>
+<p>Push the branch and open a PR to <code>main</code>. Use the <code>superpowers:finishing-a-development-branch</code> skill for the wrap-up. Suggested PR body covers: the new reason taxonomy + status mapping (table), the opt-in <code>raise_on_error</code>/<code>AIProviderError</code> mechanism (and that disc-ID/curator paths are unchanged), the comment-only frontend contract update, and that the Inspector UI is a separate follow-up. Reference it as a follow-up to [#347].</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>claude/quirky-dhawan-299400
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>gh<span class="w"> </span>pr<span class="w"> </span>create<span class="w"> </span>--base<span class="w"> </span>main<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;fix(api): differentiate llm-match endpoint error contract&quot;</span><span class="w"> </span>--body<span class="w"> </span><span class="s2">&quot;&lt;as above&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="self-review">Self-Review</h2>
+<p><strong>Spec coverage:</strong>
+- Reason taxonomy (8 + cached + null + internal_error) → Tasks 3-4 (each reason has a test). ✓
+- Status policy (200 deterministic / 503 retryable incl. <code>llm_error</code> / 500 crash) → Task 3 (<code>_LLM_MATCH_RETRYABLE_REASONS</code>, endpoint mapping) + Task 4 tests. ✓
+- Uniform <code>{suggestion, reason}</code> body on 503/500 via <code>JSONResponse</code> → Task 3d + asserted in Task 4 (<code>== {"suggestion": None, "reason": ...}</code>). ✓
+- Cached idempotency preserved → untouched cache block in Task 3d; existing cached test stays green (Task 3 Step 4). ✓
+- <code>logger.exception(...)</code> preserved → Task 3d keeps it. ✓
+- <code>LLMMatchOutcome</code> helper return type → Task 3b/3c. ✓
+- Opt-in <code>raise_on_error</code> + <code>AIProviderError</code>, existing callers unchanged → Tasks 1-2 (defaults False; unit tests assert default returns None / threads False). ✓
+- Frontend contract comment only → Task 5. ✓
+- Changelog <code>### Changed</code> → Task 6. ✓
+- Verification commands from spec → Task 7. ✓</p>
+<p><strong>Placeholder scan:</strong> No TBD/TODO; every code step shows full code; every run step has an expected result. ✓</p>
+<p><strong>Type consistency:</strong> <code>LLMMatchOutcome.ok()/.failed()</code> used consistently across Task 3b/3c and the updated <code>fake_run</code> (Task 3 Step 1); <code>raise_on_error</code> keyword spelled identically in Tasks 1, 2, 3c and the unit-test assertions; <code>_LLM_MATCH_RETRYABLE_REASONS</code> contents match the 503 rows in the contract table. ✓</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

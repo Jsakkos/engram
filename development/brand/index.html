@@ -1,0 +1,1932 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/development/brand/">
+      
+      
+        <link rel="prev" href="../subtitle-cache/">
+      
+      
+        <link rel="next" href="../fingerprint-privacy/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Brand System - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#brand-system-developer-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Brand System
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-tokens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design tokens
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-hard-rules-from-the-handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The hard rules (from the handoff)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#icons-when-to-use-the-engram-set-vs-lucide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Icons: when to use the Engram set vs. Lucide
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-new-icon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a new icon
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generating-raster-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generating raster assets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#splash-and-pre-react-paint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Splash and pre-React paint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-deliberately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope (deliberately)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accepted-deviations-from-the-original-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accepted deviations from the original plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Accepted deviations from the original plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-lucide-react-is-kept-as-a-dependency-for-utility-primitives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. lucide-react is kept as a dependency for utility primitives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-configwizardcss-survives-in-tokenized-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. ConfigWizard.css survives in tokenized form
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-tokens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design tokens
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-hard-rules-from-the-handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The hard rules (from the handoff)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#icons-when-to-use-the-engram-set-vs-lucide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Icons: when to use the Engram set vs. Lucide
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-new-icon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding a new icon
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generating-raster-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generating raster assets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#splash-and-pre-react-paint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Splash and pre-React paint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-deliberately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope (deliberately)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accepted-deviations-from-the-original-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accepted deviations from the original plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Accepted deviations from the original plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-lucide-react-is-kept-as-a-dependency-for-utility-primitives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. lucide-react is kept as a dependency for utility primitives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-configwizardcss-survives-in-tokenized-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. ConfigWizard.css survives in tokenized form
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="brand-system-developer-reference">Brand System — Developer Reference</h1>
+<p>The canonical visual spec is <a href="../../design_handoff_brand/"><code>docs/design_handoff_brand/README.md</code></a>.
+That document is the authority. This page is the <strong>developer-facing
+implementation guide</strong>: where each primitive lives, how to consume the
+design tokens, and the small rules that keep the brand from drifting.</p>
+<h2 id="quick-map">Quick map</h2>
+<table>
+<thead>
+<tr>
+<th>You want to render…</th>
+<th>Use…</th>
+<th>Lives in…</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The full mark (large hero / dashboard)</td>
+<td><code>&lt;SvMark size={n} /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/SvMark.tsx"><code>SvMark.tsx</code></a></td>
+</tr>
+<tr>
+<td>The monogram (no read-line, ≤32px)</td>
+<td><code>&lt;MarkMono size={n} /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/MarkMono.tsx"><code>MarkMono.tsx</code></a></td>
+</tr>
+<tr>
+<td>An animated mark (splash, reconnect)</td>
+<td><code>&lt;MarkAnimated size={n} /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/MarkAnimated.tsx"><code>MarkAnimated.tsx</code></a></td>
+</tr>
+<tr>
+<td>The wordmark "ENGRAM"</td>
+<td><code>&lt;Wordmark size={n} /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/Wordmark.tsx"><code>Wordmark.tsx</code></a></td>
+</tr>
+<tr>
+<td>One of four lockups (mark + wordmark)</td>
+<td><code>&lt;LockupHorizontal&gt;</code> / <code>&lt;LockupStacked&gt;</code> / <code>&lt;LockupWithDescriptor&gt;</code> / <code>&lt;LockupMarkOnly&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/Lockup.tsx"><code>Lockup.tsx</code></a></td>
+</tr>
+<tr>
+<td>A platform-style app icon</td>
+<td><code>&lt;AppIcon size={128} edition="dark" /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/AppIcon.tsx"><code>AppIcon.tsx</code></a></td>
+</tr>
+<tr>
+<td>Full-viewport splash</td>
+<td><code>&lt;Splash label="INITIALIZING" /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/Splash.tsx"><code>Splash.tsx</code></a></td>
+</tr>
+<tr>
+<td>A bordered panel with corner ticks</td>
+<td><code>&lt;SvPanel&gt;</code> (auto-wraps <code>&lt;SvCorners&gt;</code>)</td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/SvPanel.tsx"><code>SvPanel.tsx</code></a></td>
+</tr>
+<tr>
+<td>A status icon (idle / scan / ripping / …)</td>
+<td><code>&lt;IcoIdle /&gt;</code> … <code>&lt;IcoError /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/status.tsx"><code>icons/status.tsx</code></a></td>
+</tr>
+<tr>
+<td>A media-type icon (disc / movie / TV / …)</td>
+<td><code>&lt;IcoDisc /&gt;</code> … <code>&lt;IcoLibrary /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/media.tsx"><code>icons/media.tsx</code></a></td>
+</tr>
+<tr>
+<td>An action / nav icon (play / settings / …)</td>
+<td><code>&lt;IcoPlay /&gt;</code> … <code>&lt;IcoBytes /&gt;</code></td>
+<td><a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/action.tsx"><code>icons/action.tsx</code></a></td>
+</tr>
+</tbody>
+</table>
+<p>Re-exports are aggregated in
+<a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/index.ts"><code>frontend/src/app/components/synapse/index.ts</code></a>
+and <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/index.ts"><code>frontend/src/app/components/icons/index.ts</code></a> — import from there.</p>
+<h2 id="design-tokens">Design tokens</h2>
+<p>There are <strong>two places</strong> the tokens live, kept in lockstep:</p>
+<ol>
+<li>
+<p><strong>TypeScript</strong> — <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/tokens.ts"><code>frontend/src/app/components/synapse/tokens.ts</code></a>
+   exports <code>sv</code>, a plain object with color/typography constants. Use it
+   for inline <code>style={{ … }}</code>, SVG <code>fill="…"</code>, or wherever a CSS variable
+   doesn't reach (motion props, conditional gradients, etc.).</p>
+</li>
+<li>
+<p><strong>CSS custom properties</strong> — <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/styles/theme.css"><code>frontend/src/styles/theme.css</code></a>
+   <code>@theme inline { … }</code> block defines <code>--color-sv-cyan</code>, <code>--color-sv-magenta</code>,
+   <code>--color-sv-line-mid</code>, and so on. Use these from <code>.css</code> files and
+   external stylesheets like <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/components/ConfigWizard.css"><code>ConfigWizard.css</code></a>.</p>
+</li>
+</ol>
+<p><strong>Never hardcode <code>#5eead4</code> or <code>#ff3d7f</code> in new code</strong> — they always come
+from one of the two surfaces above. If you find yourself wanting a new
+hex, add it to both files in the same commit.</p>
+<h2 id="the-hard-rules-from-the-handoff">The hard rules (from the handoff)</h2>
+<p>These are the rules you'll forget and accidentally break. Memorize them.</p>
+<ul>
+<li><strong>Cyan is brand. Magenta is action.</strong> Magenta only appears on actively
+  ripping things, on the primary CTA in any flow, and on the read-line
+  node of the mark. Don't decorate static chrome with magenta. (When
+  refactoring <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/components/ConfigWizard.css"><code>ConfigWizard.css</code></a>,
+  this is why the form <code>&lt;label&gt;</code> color was moved from magenta to cyan-dim.)</li>
+<li><strong>Mono is for labels, not body.</strong> Don't render running paragraphs in
+  JetBrains Mono. Mono is for telemetry, paths, labels, code, and
+  numeric callouts. Body text uses Chakra Petch (<code>sv.sans</code>/<code>sv.display</code>).</li>
+<li><strong>The wordmark stays uppercase, always.</strong> Title case is reserved for
+  body and headings.</li>
+<li><strong>Resist over-glow.</strong> The atmosphere stack (scanlines, vignette, grain)
+  is applied at the app root via <code>&lt;SvAtmosphere&gt;</code>. Do not re-apply
+  scanlines or heavy bloom on every panel. Reserve it for splash, hero /
+  dashboard background, and major modal backdrops.</li>
+<li><strong>Sharp 90° corners everywhere.</strong> No <code>border-radius</code>. The "squircle"
+  rounding is only for <code>&lt;AppIcon&gt;</code> (Apple HIG <code>size * 0.2237</code>).</li>
+</ul>
+<h2 id="icons-when-to-use-the-engram-set-vs-lucide">Icons: when to use the Engram set vs. Lucide</h2>
+<p>The 30-icon Engram set covers <strong>brand-meaningful</strong> glyphs: state
+indicators, media types, primary navigation, action callouts. The
+existing codebase still uses <a href="https://lucide.dev"><code>lucide-react</code></a> for
+<strong>utility primitives</strong> that don't carry brand meaning — chevrons, the
+plus sign, save, trash, info, X-for-close (not the brand "cancel"
+glyph), and so on.</p>
+<p>Rule of thumb:</p>
+<table>
+<thead>
+<tr>
+<th>Glyph reads as…</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A state, a media type, a primary action, or a nav entry</td>
+<td><code>Ico*</code> from <a href="https://github.com/Jsakkos/engram/tree/main/frontend/src/app/components/icons/"><code>icons/</code></a></td>
+</tr>
+<tr>
+<td>A pure UI affordance (chevron, plus, save, trash, info)</td>
+<td>Lucide</td>
+</tr>
+</tbody>
+</table>
+<p>If you can describe the icon in the brand handoff's vocabulary
+("ripping", "matching", "library", "search"), it's brand-set. If you'd
+describe it as a UI primitive ("collapse this section", "delete row"),
+it's Lucide.</p>
+<h2 id="adding-a-new-icon">Adding a new icon</h2>
+<ol>
+<li>Confirm it's not already in the 30-icon set —
+   <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/index.ts"><code>icons/index.ts</code></a> is the full inventory.</li>
+<li>If it's a true brand glyph, draft it on a 24×24 grid with 1.5px stroke,
+   round caps + joins, no fill (except deliberately "lit" elements).</li>
+<li>Add the path data to the appropriate file (<a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/status.tsx"><code>status.tsx</code></a>
+   / <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/media.tsx"><code>media.tsx</code></a> /
+   <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/action.tsx"><code>action.tsx</code></a>) wrapped in <code>&lt;Ico&gt;</code>.</li>
+<li>Re-export from <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/icons/index.ts"><code>icons/index.ts</code></a>.</li>
+<li>If the new icon is brand-significant enough to ship as an external
+   asset, add it to the canonical handoff
+   <a href="../../design_handoff_brand/brand/icons.jsx"><code>docs/design_handoff_brand/brand/icons.jsx</code></a> so
+   future implementations stay in sync.</li>
+</ol>
+<h2 id="generating-raster-assets">Generating raster assets</h2>
+<p>The pipeline is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>npm<span class="w"> </span>run<span class="w"> </span>brand:export
+</code></pre></div>
+<p>This runs two scripts in sequence:</p>
+<ol>
+<li><a href="https://github.com/Jsakkos/engram/blob/main/frontend/scripts/render-svg-sources.mjs"><code>scripts/render-svg-sources.mjs</code></a>
+   emits canonical SVG sources to <code>frontend/public/brand/sources/</code>:
+   <code>mark.svg</code>, <code>mark-mono.svg</code>, <code>app-icon-dark.svg</code>, <code>app-icon-light.svg</code>.</li>
+<li><a href="https://github.com/Jsakkos/engram/blob/main/frontend/scripts/generate-brand-assets.mjs"><code>scripts/generate-brand-assets.mjs</code></a>
+   rasterizes with <code>sharp</code> and packs <code>.ico</code> and <code>.icns</code> with <code>png2icons</code>.</li>
+</ol>
+<p>Outputs land under <code>frontend/public/brand/</code> in a structured layout:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>brand/
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  sources/        SVG sources (one per artwork)
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  favicons/       16/24/32/48/64 PNG + .svg + multi-resolution .ico
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  app-icons/
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    windows/      engram.ico (16…256)
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    macos/        engram.icns (16…1024) + iconset/ loose PNGs
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    linux/        engram-32.png … engram-256.png
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  manifest.json   index of every emitted artifact + timestamp
+</code></pre></div>
+<p>The pipeline is <strong>cross-platform</strong> — <code>png2icons</code> is pure JS and writes
+both <code>.ico</code> and <code>.icns</code> on Windows/macOS/Linux dev machines. No
+<code>iconutil</code> or ImageMagick required.</p>
+<p>When the mark geometry changes (<code>SvMark.tsx</code>), mirror the change in
+<a href="https://github.com/Jsakkos/engram/blob/main/frontend/scripts/render-svg-sources.mjs"><code>render-svg-sources.mjs</code></a> and
+re-run <code>npm run brand:export</code>. Commit the regenerated assets.</p>
+<p>For PyInstaller-frozen Windows builds: point <code>--icon</code> at
+<code>frontend/public/brand/app-icons/windows/engram.ico</code> in the build spec.</p>
+<h2 id="splash-and-pre-react-paint">Splash and pre-React paint</h2>
+<p>There are two splashes, by design:</p>
+<ul>
+<li><strong>HTML pre-React splash</strong> in <a href="https://github.com/Jsakkos/engram/blob/main/frontend/index.html"><code>frontend/index.html</code></a>.
+  Renders before the bundle parses — uses only inline CSS + an inline
+  SVG of the mark, no external fonts (system fallback until Chakra Petch
+  loads). <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/main.tsx"><code>main.tsx</code></a> removes
+  <code>&lt;html class="pre-splash"&gt;</code> once React mounts; the splash fades over
+  240ms via a CSS transition and stays in the DOM with <code>pointer-events:
+  none</code>.</li>
+<li><strong>React <code>&lt;Splash /&gt;</code></strong> in <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/app/components/synapse/Splash.tsx"><code>Splash.tsx</code></a>.
+  Use this when you need to surface a "connecting" or "reconnecting"
+  state in the running app — the WebSocket-disconnected case is the
+  canonical example.</li>
+</ul>
+<p>Keep them visually consistent (same mark, same wordmark, same
+"INITIALIZING…" / "RECONNECTING…" label).</p>
+<h2 id="out-of-scope-deliberately">Out of scope (deliberately)</h2>
+<p>The handoff documents two artifacts that are <strong>not</strong> implemented because
+no native desktop shell exists yet:</p>
+<ul>
+<li><strong>Dock notification badges</strong> (5 states: idle / active / count / complete / error).
+  Revisit when Engram ships an Electron / Tauri / Wails shell.</li>
+<li><strong>Terminal banner</strong> (ASCII-art "ENGRAM" with phosphor glow). The team
+  decided this isn't needed for the current CLI / about-screen story.</li>
+</ul>
+<p>If either of those becomes useful later, the handoff documents the
+exact look and behavior — start there.</p>
+<h2 id="accepted-deviations-from-the-original-plan">Accepted deviations from the original plan</h2>
+<p>Two items in the rollout plan (<a href="https://github.com/Jsakkos/engram/blob/main/.claude/plans/take-a-look-at-deep-clarke.md"><code>.claude/plans/take-a-look-at-deep-clarke.md</code></a>)
+were scoped down during implementation. Both are deliberate and documented
+here so future maintainers don't re-litigate the choice.</p>
+<h3 id="1-lucide-react-is-kept-as-a-dependency-for-utility-primitives">1. <code>lucide-react</code> is kept as a dependency for utility primitives</h3>
+<p>The plan said <em>"drop <code>lucide-react</code> from package.json once grep comes back
+empty."</em> This was scoped down because the brand handoff's 30-icon set is
+explicitly a <strong>brand icon set</strong> — it covers status, media type, primary
+nav, and primary actions. It does <strong>not</strong> cover utility primitives like
+chevrons (<code>&lt;ChevronLeft&gt;</code>, <code>&lt;ChevronRight&gt;</code>, <code>&lt;ChevronDown&gt;</code> for
+collapsibles and pagination), the plus sign (<code>&lt;Plus&gt;</code> for "Add"
+affordances), <code>&lt;Save&gt;</code>, <code>&lt;Trash2&gt;</code>, <code>&lt;Info&gt;</code>, <code>&lt;Bug&gt;</code>, <code>&lt;Database&gt;</code>,
+<code>&lt;Clock&gt;</code>, <code>&lt;Vote&gt;</code>, <code>&lt;Loader2&gt;</code>, <code>&lt;X&gt;</code>-for-close (distinct from the
+brand's circled-X <code>IcoCancel</code>), etc.</p>
+<p>Adding those to the brand set would have:
+1. <strong>Exceeded the brand spec</strong> — drawing ~8–10 new icons that aren't in
+   the canonical 30. The handoff would then need a v2 update.
+2. <strong>Diluted the brand meaning</strong> — having <code>IcoChevronDown</code> next to
+   <code>IcoRipping</code> blurs the "brand icons signal state and action" rule.</p>
+<p>The current rule (see <a href="#icons-when-to-use-the-engram-set-vs-lucide">§ Icons: when to use the Engram set vs. Lucide</a>)
+is: brand-meaningful glyphs come from <code>Ico*</code>; UI primitives stay on
+Lucide. If the brand spec is ever extended to cover utility primitives,
+revisit and complete the retirement.</p>
+<h3 id="2-configwizardcss-survives-in-tokenized-form">2. <code>ConfigWizard.css</code> survives in tokenized form</h3>
+<p>The plan said <em>"delete <code>ConfigWizard.css</code> entirely"</em> and rewrite
+<a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/components/ConfigWizard.tsx"><code>ConfigWizard.tsx</code></a>
+to consume <code>&lt;SvPanel&gt;</code> / <code>&lt;SvBadge&gt;</code> / <code>&lt;SvLabel&gt;</code> etc.</p>
+<p>The actual refactor stopped one step short of deletion: the <code>.css</code>
+file (~669 lines, now ~600 after cleanup) was retained but rewritten to
+consume CSS custom properties from <a href="https://github.com/Jsakkos/engram/blob/main/frontend/src/styles/theme.css"><code>theme.css</code></a>
+(<code>--color-sv-cyan</code>, <code>--color-sv-line-mid</code>, etc.) instead of hardcoded
+hexes. The visible-from-outside chrome (modal overlay, modal border,
+button styling, form labels, scanlines) was brought into brand
+alignment — duplicate scanline overlays were removed (handoff: <em>"resist
+over-glow"</em>), labels moved from magenta to cyan-dim (handoff: <em>"magenta
+is action"</em>), and the modal frame matches <code>&lt;SvPanel&gt;</code> chrome.</p>
+<p>Fully deleting the <code>.css</code> would have required rewriting nearly all
+983 lines of TSX as inline <code>style</code> props or extracted Sv primitives —
+high-effort, low-marginal-value once the colors and chrome are aligned.
+The remaining <code>.css</code> is purely layout (<code>form-group</code>, <code>wizard-step</code>,
+spacing) and not brand-bearing. Revisit if/when the ConfigWizard gets a
+structural overhaul.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

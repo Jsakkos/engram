@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Review redesign · mockups index</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg0:#05070c;--bg1:#0a0e18;--bg2:#121827;--bg3:#1a2234;
+ --ink:#e6ecf5;--inkDim:#8893a8;--inkFaint:#4a5369;--inkGhost:#2a3147;
+ --cyan:#5eead4;--cyanHi:#9ff8e8;--magenta:#ff3d7f;--yellow:#fde047;--green:#86efac;--red:#ff5555;
+ --line:rgba(94,234,212,.14);--lineMid:rgba(94,234,212,.24);--lineHi:rgba(94,234,212,.42);
+ --mono:"JetBrains Mono",ui-monospace,monospace;--display:"Chakra Petch",sans-serif;
+}
+body{background:var(--bg0);color:var(--ink);font-family:var(--mono);font-size:13px;line-height:1.6;
+ -webkit-font-smoothing:antialiased;min-height:100vh;
+ background-image:radial-gradient(1200px 620px at 0% 0%, rgba(94,234,212,.07), transparent 60%),
+   radial-gradient(1000px 620px at 100% 100%, rgba(255,61,127,.06), transparent 60%)}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
+ background:repeating-linear-gradient(0deg,rgba(255,255,255,.013) 0 1px,transparent 1px 3px)}
+.wrap{max-width:1040px;margin:0 auto;padding:48px 24px 80px;position:relative;z-index:2}
+.kicker{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--magenta)}
+h1{font-family:var(--display);font-weight:700;font-size:34px;letter-spacing:.01em;color:var(--cyanHi);
+ text-shadow:0 0 22px rgba(94,234,212,.28);margin:10px 0 6px}
+.lede{color:var(--inkDim);font-size:13.5px;max-width:760px}
+.panel{position:relative;background:linear-gradient(180deg,var(--bg2),var(--bg1));border:1px solid var(--line);padding:20px 22px;margin-top:28px}
+.panel::before,.panel::after{content:"";position:absolute;width:9px;height:9px;border:1px solid var(--cyan);pointer-events:none;opacity:.7}
+.panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.panel h2{font-family:var(--display);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);margin-bottom:14px}
+.scenario{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:12.5px}
+.scenario .k{color:var(--yellow);white-space:nowrap}
+.scenario .v{color:var(--inkDim)}
+.scenario .v b{color:var(--ink)}
+.shared{list-style:none;display:flex;flex-direction:column;gap:9px;font-size:12.5px;color:var(--inkDim)}
+.shared li{display:flex;gap:10px}
+.shared li::before{content:"▹";color:var(--cyan)}
+.shared b{color:var(--ink)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.card{position:relative;display:block;text-decoration:none;color:inherit;border:1px solid var(--lineMid);
+ background:var(--bg0);padding:18px 18px 16px;transition:.16s}
+.card:hover{border-color:var(--lineHi);box-shadow:0 0 22px rgba(94,234,212,.12);transform:translateY(-2px)}
+.card .letter{font-family:var(--display);font-size:13px;font-weight:700;color:var(--bg0);background:var(--cyan);
+ display:inline-block;padding:2px 9px;letter-spacing:.1em}
+.card h3{font-family:var(--display);font-size:17px;color:var(--ink);margin:12px 0 6px}
+.card p{font-size:12px;color:var(--inkDim);line-height:1.6}
+.card .pc{display:flex;flex-direction:column;gap:4px;margin-top:11px;font-size:11px}
+.card .pro{color:var(--green)}.card .con{color:var(--inkFaint)}
+.card .pro::before{content:"+ ";color:var(--green)}
+.card .con::before{content:"– ";color:var(--inkFaint)}
+.card .go{position:absolute;top:18px;right:18px;color:var(--inkFaint);font-size:16px;transition:.16s}
+.card:hover .go{color:var(--cyan);transform:translateX(3px)}
+.tag{display:inline-block;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--magenta);
+ border:1px solid rgba(255,61,127,.4);padding:4px 9px;margin-top:24px}
+.foot{font-size:11.5px;color:var(--inkFaint);margin-top:24px;line-height:1.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">Engram · Synapse v2</div>
+  <h1>TV review redesign — direction mockups</h1>
+  <p class="lede">Four static directions for the disc-review screen, all built on the same data and the same hard case:
+  making it easy to manually correct a TV disc when the matches are <i>interdependent</i>. Pick one (or a hybrid) and
+  we'll build it. Nothing here is wired — they're visual references.</p>
+
+  <div class="panel">
+    <h2>The seed scenario (identical in all four)</h2>
+    <div class="scenario">
+      <div class="k">Disc</div><div class="v"><b>For All Mankind</b> · Season 3 · 6 ripped titles</div>
+      <div class="k">Confident</div><div class="v">Titles 1,2,5,3 → E01, E02, E03, E06 (90–96%)</div>
+      <div class="k">Conflict</div><div class="v">Title 6 <b>and</b> Title 4 both land on <b>E05</b> — Title 6 is stronger (88% vs 54%)</div>
+      <div class="k">Unmatched</div><div class="v">Title 4 is low-confidence; its top guess (E05) is taken</div>
+      <div class="k">The gap</div><div class="v"><b>E04 — Happy Valley</b> is the only empty slot, and it fits Title 4's runtime</div>
+      <div class="k">The fix</div><div class="v">Move Title 4 off E05 and into E04 — a <b>whole-disc</b> reconciliation, not a single edit</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Shared data &amp; feature layer</h2>
+    <ul class="shared">
+      <li><b>Ranked candidates with evidence</b> — each shows episode code + name, score %, votes (x/10), coverage %, and the top match's score gap ("decisive" vs "uncertain"). Already computed by the matcher.</li>
+      <li><b>Episode names</b> — pulled from a new season-roster endpoint (codes → titles), so you never decide on a bare "S03E05".</li>
+      <li><b>Season roster + conflict/coverage</b> — the season's episodes marked assigned / duplicated / missing across the disc, with the obvious gap suggested for an unmatched title.</li>
+      <li><b>Provenance</b> — engram / discdb / manual source and any DiscDB review flag.</li>
+    </ul>
+  </div>
+
+  <div class="grid">
+    <a class="card" href="review-redesign-inspector.html">
+      <span class="go">→</span>
+      <span class="letter">A</span>
+      <h3>Inspector panel</h3>
+      <p>Compact title list; selecting one opens a focused side panel with ranked candidates, evidence, and the suggestion.</p>
+      <div class="pc"><span class="pro">keeps the list in view while you fix</span><span class="con">one title at a time in the panel</span></div>
+    </a>
+    <a class="card" href="review-redesign-inline.html">
+      <span class="go">→</span>
+      <span class="letter">B</span>
+      <h3>Inline rows</h3>
+      <p>One column; review titles expand in place to show candidates and a disc-aware note. Conflict and its counterpart side by side.</p>
+      <div class="pc"><span class="pro">densest, fast top-to-bottom pass</span><span class="con">can get tall with several open</span></div>
+    </a>
+    <a class="card" href="review-redesign-compare.html">
+      <span class="go">→</span>
+      <span class="letter">C</span>
+      <h3>Full compare</h3>
+      <p>One title at a time; candidates as aligned columns for a head-to-head read of every metric, with a pager through unresolved titles.</p>
+      <div class="pc"><span class="pro">clearest head-to-head decision</span><span class="con">more clicks to see the disc</span></div>
+    </a>
+    <a class="card" href="review-redesign-roster.html">
+      <span class="go">→</span>
+      <span class="letter">D</span>
+      <h3>Roster board</h3>
+      <p>The disc is the season: episodes are slots, titles drop in. Doubled E05 and empty E04 are obvious; fix by moving Title 4.</p>
+      <div class="pc"><span class="pro">built for whole-disc reconciliation</span><span class="con">furthest from today's row UI</span></div>
+    </a>
+  </div>
+
+  <span class="tag">Static mockups — not wired</span>
+  <p class="foot">
+    Files in <code>docs/design_handoff_synapse/explorations/review-redesign-*.html</code>.
+    Open each in a browser, or use the switcher bar at the top of any mockup to flip between them.
+    After you pick a direction, the backend adds a small season-roster endpoint and the frontend rebuilds
+    <code>ReviewQueue</code> around the chosen layout.
+  </p>
+</div>
+</body>
+</html>

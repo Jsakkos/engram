@@ -1,0 +1,2451 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-07-01-jetson-field-validation/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Jetson Field-Validation Follow-Up Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#jetson-field-validation-follow-up-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Jetson Field-Validation Follow-Up Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#background-read-before-starting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background (read before starting)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-1-add-the-glibc-backup-step-to-jetson_gpu_setupsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Add the glibc-backup step to jetson_gpu_setup.sh
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-2-add-the-cuda-runtime-cache-step-update-the-epilogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Add the CUDA runtime cache step + update the epilogue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-3-update-docsdevelopmentjetsonmd-with-the-validated-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Update docs/development/jetson.md with the validated procedure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#confirm-gpu-is-active" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confirm GPU is active
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usb-blu-raydvd-drives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        USB Blu-ray/DVD drives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-4-create-docsdevelopmentjetson-optical-drivemd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Create docs/development/jetson-optical-drive.md
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2-build-the-kernel-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 2 — Build the kernel modules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2 — Build the kernel modules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-build-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install build tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#download-and-unpack-the-bspsources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download and unpack the BSP/sources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prepare-the-source-tree-to-match-the-running-kernel-exactly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prepare the source tree to match the running kernel exactly
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configure-optical-drive-support-without-converting-built-in-features-to-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure optical-drive support without converting built-in features to modules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prepare-the-tree-and-build-each-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prepare the tree and build each module
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verify-vermagic-before-installing-anything" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify vermagic before installing anything
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#install-load-and-enable-at-boot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install, load, and enable at boot
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-the-drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test the drive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-3-back-up-for-reuse-on-the-same-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 3 — Back up for reuse on the same kernel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-5-changelog-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: CHANGELOG entry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-6-final-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Final review
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="jetson-field-validation-follow-up-implementation-plan">Jetson Field-Validation Follow-Up Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Fold two real-hardware-validated fixes into <code>backend/scripts/jetson_gpu_setup.sh</code> (bundled <code>libstdc++</code>/<code>libgcc_s</code> shadowing the Jetson system libs, and the missing <code>~/.engram/cuda/</code> runtime-cache population), update <code>docs/development/jetson.md</code> from "requires validation" to field-validated, and add a new docs page distilling a contributed guide for building the optical-drive kernel modules JetPack doesn't ship (a host-OS prerequisite for USB Blu-ray/DVD drives on Jetson, unrelated to Engram's build).</p>
+<p><strong>Architecture:</strong> No CI or build-system changes — both source PDFs describe on-device, host-specific procedures that cannot be prebuilt on a generic GitHub-hosted ARM runner (no Tegra GPU, and kernel modules are tied to the exact running <code>uname -r</code>). The existing two-stage design (CPU-only CI bundle + on-device <code>jetson_gpu_setup.sh</code>) stays; this plan only closes the gap between what that script does today and what real Jetson hardware actually needed, then documents both procedures accurately.</p>
+<p><strong>Tech Stack:</strong> Bash (<code>jetson_gpu_setup.sh</code>), Markdown/MkDocs (<code>docs/development/</code>), no Python/test changes — <code>backend/tests/unit/test_cuda_runtime.py::test_is_cuda_runtime_present_requires_complete_manifest_and_files</code> already covers the manifest contract this plan relies on (verified: <code>Path.is_file()</code> follows symlinks, so the script's symlink-based cache satisfies it without any app-code change).</p>
+<hr />
+<h2 id="background-read-before-starting">Background (read before starting)</h2>
+<p>Two community-contributed PDFs document a working Jetson Orin NX setup (JetPack 6.2.2 / Jetson Linux R36.5.0 / kernel <code>5.15.185-tegra</code>):</p>
+<ol>
+<li><strong>CUDA GPU setup guide</strong> — validates and extends <code>backend/scripts/jetson_gpu_setup.sh</code>. It found two steps the script doesn't currently perform:</li>
+<li>Move <code>_internal/libstdc++.so.6*</code> and <code>_internal/libgcc_s.so.1</code> (bundled by PyInstaller from the Ubuntu 24.04 CI runner) out of the active path, because JetPack 6.2.2's Ubuntu 22.04 base hits <code>GLIBC_2.36</code>/<code>GLIBC_2.38 not found</code> if Engram loads them instead of the Jetson system <code>libstdc++</code>.</li>
+<li>Populate <code>~/.engram/cuda/&lt;RUNTIME_VERSION&gt;/</code> (the cache <code>backend/app/matcher/cuda_runtime.py</code> checks via <code>is_cuda_runtime_present()</code>) with symlinks to JetPack's system cuDNN/cuBLAS/cudart/nvrtc/nvJitLink libraries plus a <code>manifest.json</code>, since JetPack ships these system-wide and there's nothing to download.</li>
+<li>It also surfaced that <strong>GPU must be explicitly enabled</strong> (<code>POST /api/asr/gpu/enable</code> or Settings → Matching → GPU Acceleration) — this is already true of the app, but neither the script's printed next-steps nor <code>docs/development/jetson.md</code>'s "Confirm GPU is active" section currently says so, so a user could do everything right and still see <code>device: cpu</code>.</li>
+<li><strong>Optical-drive kernel module guide</strong> — a from-source Linux kernel module build (<code>cdrom.ko</code>, <code>sr_mod.ko</code>, <code>sg.ko</code>, <code>udf.ko</code>, <code>isofs.ko</code>, <code>nls_utf8.ko</code>, optional <code>uas.ko</code>/<code>crc-itu-t.ko</code>) so a USB Blu-ray/DVD drive shows up as <code>/dev/sr0</code> on JetPack, which stock JetPack doesn't build as loadable modules. This is <strong>not CI-buildable</strong> — kernel modules are tied via <code>vermagic</code> to the exact <code>uname -r</code> they were built against, so a GitHub runner's kernel (or any kernel other than the user's own) produces unusable modules. It's a pure host-OS/docs concern.</li>
+</ol>
+<p>Relevant existing code (read, don't re-derive):
+- <a href="../../backend/scripts/jetson_gpu_setup.sh"><code>backend/scripts/jetson_gpu_setup.sh</code></a> — the on-device script this plan extends.
+- <a href="../../docs/development/jetson.md"><code>docs/development/jetson.md</code></a> — the doc this plan updates.
+- <a href="../../backend/app/matcher/cuda_runtime.py"><code>backend/app/matcher/cuda_runtime.py:51</code></a> — <code>RUNTIME_VERSION = "cudnn9.19.0.56-cublas12.9.1.4"</code>, the cache directory name the new script step must match exactly.
+- <a href="../../backend/app/matcher/cuda_runtime.py"><code>backend/app/matcher/cuda_runtime.py:162-182</code></a> — <code>is_cuda_runtime_present()</code>: requires <code>&lt;cache_dir&gt;/manifest.json</code> with <code>"complete": true</code> and every name in <code>"files"</code> existing under <code>cache_dir</code> (symlinks satisfy <code>Path.is_file()</code>).
+- <a href="../../backend/app/matcher/cuda_runtime.py"><code>backend/app/matcher/cuda_runtime.py:346-379</code></a> — <code>_preload_linux()</code>: globs <code>*.so*</code> in the cache dir and <code>ctypes.CDLL</code>-preloads each one with retries, so it doesn't matter which exact filenames are symlinked in as long as the manifest lists them.
+- <code>.github/workflows/release.yml:312</code> (<code>build-linux-arm64</code> job) — confirms the CI-built bundle is always cp311 (pins <code>python-version: "3.11"</code>), so the script's existing <code>python3.11</code>-only assumption is correct as-is; out of scope to change.
+- <code>README.md:89</code> and <code>docs/development/gpu.md:16-23</code> — both already link to <code>docs/development/jetson.md</code>; no nav changes needed (the page is intentionally linked-but-not-in-<code>mkdocs.yml</code>-nav, matching the existing pattern).</p>
+<hr />
+<h2 id="task-1-add-the-glibc-backup-step-to-jetson_gpu_setupsh">Task 1: Add the glibc-backup step to <code>jetson_gpu_setup.sh</code></h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/scripts/jetson_gpu_setup.sh</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Insert the new step 8 after the CTranslate2 swap section</strong></li>
+</ul>
+<p>In <code>backend/scripts/jetson_gpu_setup.sh</code>, find this exact block (the end of "step 7", right before the closing <code>cat &lt;&lt;EOF</code> epilogue):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">SO_DIR</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>dirname<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>find<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$UNPACK</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORK</span><span class="s2">/ct2-install&quot;</span><span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;libctranslate2.so*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-n1<span class="k">)</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="o">[</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SO_DIR</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span>err<span class="w"> </span><span class="s2">&quot;could not locate built libctranslate2.so&quot;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>cp<span class="w"> </span>-a<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SO_DIR</span><span class="s2">&quot;</span>/libctranslate2.so*<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">/_internal/&quot;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>cat<span class="w"> </span>&lt;&lt;EOF
+</code></pre></div>
+<p>Replace it with (inserting a new "step 8" section before the epilogue):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">SO_DIR</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>dirname<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>find<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$UNPACK</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORK</span><span class="s2">/ct2-install&quot;</span><span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;libctranslate2.so*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-n1<span class="k">)</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="o">[</span><span class="w"> </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SO_DIR</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span>err<span class="w"> </span><span class="s2">&quot;could not locate built libctranslate2.so&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>cp<span class="w"> </span>-a<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SO_DIR</span><span class="s2">&quot;</span>/libctranslate2.so*<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">/_internal/&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># --- 8. Back up bundled libstdc++/libgcc_s that can shadow Jetson system libs</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># PyInstaller bundles _internal/libstdc++.so.6* and _internal/libgcc_s.so.1 from</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># the Ubuntu 24.04 CI runner. On JetPack 6.2.2 (Ubuntu 22.04 base) these can</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># shadow the Jetson system libstdc++ that the freshly-built CUDA/cuDNN libs</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="c1"># expect, producing &quot;GLIBC_2.36 not found&quot; / &quot;GLIBC_2.38 not found&quot; at import</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># time. Move them aside so the dynamic linker falls through to the system copy.</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>info<span class="w"> </span><span class="s2">&quot;Backing up bundled libstdc++/libgcc_s that can shadow the Jetson system libs...&quot;</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="nv">GLIBC_BACKUP</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">/_internal/incompatible-glibc-backup&quot;</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$GLIBC_BACKUP</span><span class="s2">&quot;</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libstdc++.so.6<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libstdc++.so.6.*<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">         </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libgcc_s.so.1<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">  </span><span class="o">[</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">continue</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">  </span>mv<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$GLIBC_BACKUP</span><span class="s2">/&quot;</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="k">done</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>cat<span class="w"> </span>&lt;&lt;EOF
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Verify the script still parses</strong></li>
+</ul>
+<p>Run: <code>bash -n backend/scripts/jetson_gpu_setup.sh</code>
+Expected: no output, exit code 0 (a bash syntax check — this cannot be exercised end-to-end without real Jetson hardware, so syntax validation plus the manual review in Task 3 is the available verification).</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/scripts/jetson_gpu_setup.sh
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix(jetson): back up bundled libstdc++/libgcc_s to avoid GLIBC mismatch on JetPack 6.2.2&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-2-add-the-cuda-runtime-cache-step-update-the-epilogue">Task 2: Add the CUDA runtime cache step + update the epilogue</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/scripts/jetson_gpu_setup.sh</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add a <code>RUNTIME_VERSION</code> constant near the other version defaults</strong></li>
+</ul>
+<p>Find (in the "3. Resolve target versions" section):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nv">CT2_VERSION</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">CT2_VERSION</span><span class="k">:-</span><span class="si">${</span><span class="nv">BUNDLED_CT2</span><span class="k">:-</span><span class="nv">4</span><span class="p">.6.3</span><span class="si">}}</span><span class="s2">&quot;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nv">CUDA_ARCH</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">CUDA_ARCH</span><span class="k">:-</span><span class="nv">87</span><span class="si">}</span><span class="s2">&quot;</span><span class="w">   </span><span class="c1"># Orin default; override for Xavier (72) etc.</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nv">JOBS</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">JOBS</span><span class="k">:-$(</span>nproc<span class="k">)</span><span class="si">}</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>Replace with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">CT2_VERSION</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">CT2_VERSION</span><span class="k">:-</span><span class="si">${</span><span class="nv">BUNDLED_CT2</span><span class="k">:-</span><span class="nv">4</span><span class="p">.6.3</span><span class="si">}}</span><span class="s2">&quot;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nv">CUDA_ARCH</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">CUDA_ARCH</span><span class="k">:-</span><span class="nv">87</span><span class="si">}</span><span class="s2">&quot;</span><span class="w">   </span><span class="c1"># Orin default; override for Xavier (72) etc.</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nv">JOBS</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">JOBS</span><span class="k">:-$(</span>nproc<span class="k">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Must match RUNTIME_VERSION in backend/app/matcher/cuda_runtime.py — bump both</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># together, or the app will look in the wrong ~/.engram/cuda/ subdirectory and</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># treat the runtime as absent even after this script runs.</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="nv">CUDA_RUNTIME_VERSION</span><span class="o">=</span><span class="s2">&quot;cudnn9.19.0.56-cublas12.9.1.4&quot;</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Insert the new step 9 after the (now-present) step 8</strong></li>
+</ul>
+<p>Find the block added in Task 1 (ending with the <code>for f in ...; do ... done</code> loop) followed by the epilogue:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libstdc++.so.6<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libstdc++.so.6.*<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">         </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libgcc_s.so.1<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="o">[</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">continue</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>mv<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$GLIBC_BACKUP</span><span class="s2">/&quot;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="k">done</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>cat<span class="w"> </span>&lt;&lt;EOF
+</code></pre></div>
+<p>Replace with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libstdc++.so.6<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libstdc++.so.6.*<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">         </span><span class="s2">&quot;</span><span class="nv">$BUNDLE_DIR</span><span class="s2">&quot;</span>/_internal/libgcc_s.so.1<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="o">[</span><span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">continue</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>mv<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$GLIBC_BACKUP</span><span class="s2">/&quot;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="k">done</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># --- 9. Create the Engram CUDA runtime cache from JetPack libraries ---------</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="c1"># backend/app/matcher/cuda_runtime.py normally downloads cuDNN/cuBLAS wheels</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="c1"># into ~/.engram/cuda/&lt;RUNTIME_VERSION&gt;/ and preloads every *.so it finds there</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># before the first WhisperModel load. On Jetson, JetPack already ships matching</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="c1"># cuDNN/cuBLAS system-wide, so symlink them into that same cache layout instead</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="c1"># of downloading — this is also what flips gpu_runtime_installed to true in</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="c1"># GET /api/asr-status.</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="nv">CUDA_CACHE_DIR</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.engram/cuda/</span><span class="nv">$CUDA_RUNTIME_VERSION</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>info<span class="w"> </span><span class="s2">&quot;Creating Engram CUDA runtime cache at </span><span class="nv">$CUDA_CACHE_DIR</span><span class="s2">...&quot;</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>rm<span class="w"> </span>-rf<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CUDA_CACHE_DIR</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CUDA_CACHE_DIR</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="s2">&quot;</span><span class="nv">$PY311</span><span class="s2">&quot;</span><span class="w"> </span>-<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CUDA_CACHE_DIR</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CUDA_HOME</span><span class="s2">&quot;</span><span class="w"> </span><span class="s">&lt;&lt;&#39;PY&#39;</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="s">import glob</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="s">import json</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="s">import os</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="s">import sys</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="s">from pathlib import Path</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="s">cache = Path(sys.argv[1])</span>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="s">cuda_home = sys.argv[2]</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="s">patterns = [</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="s">    f&quot;{cuda_home}/lib64/libcublas*.so*&quot;,</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="s">    f&quot;{cuda_home}/lib64/libcudart*.so*&quot;,</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="s">    f&quot;{cuda_home}/lib64/libnvrtc*.so*&quot;,</span>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a><span class="s">    f&quot;{cuda_home}/lib64/libnvJitLink*.so*&quot;,</span>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a><span class="s">    &quot;/usr/lib/aarch64-linux-gnu/libcudnn*.so*&quot;,</span>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a><span class="s">    &quot;/lib/aarch64-linux-gnu/libcudnn*.so*&quot;,</span>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a><span class="s">]</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a><span class="s">files = []</span>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a><span class="s">for pattern in patterns:</span>
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a><span class="s">    for src in glob.glob(pattern):</span>
+<a id="__codelineno-6-38" name="__codelineno-6-38" href="#__codelineno-6-38"></a><span class="s">        src_path = Path(src)</span>
+<a id="__codelineno-6-39" name="__codelineno-6-39" href="#__codelineno-6-39"></a><span class="s">        if not src_path.exists():</span>
+<a id="__codelineno-6-40" name="__codelineno-6-40" href="#__codelineno-6-40"></a><span class="s">            continue</span>
+<a id="__codelineno-6-41" name="__codelineno-6-41" href="#__codelineno-6-41"></a><span class="s">        dest = cache / src_path.name</span>
+<a id="__codelineno-6-42" name="__codelineno-6-42" href="#__codelineno-6-42"></a><span class="s">        if dest.exists() or dest.is_symlink():</span>
+<a id="__codelineno-6-43" name="__codelineno-6-43" href="#__codelineno-6-43"></a><span class="s">            dest.unlink()</span>
+<a id="__codelineno-6-44" name="__codelineno-6-44" href="#__codelineno-6-44"></a><span class="s">        os.symlink(str(src_path), str(dest))</span>
+<a id="__codelineno-6-45" name="__codelineno-6-45" href="#__codelineno-6-45"></a><span class="s">        files.append(src_path.name)</span>
+<a id="__codelineno-6-46" name="__codelineno-6-46" href="#__codelineno-6-46"></a><span class="s">files = sorted(set(files))</span>
+<a id="__codelineno-6-47" name="__codelineno-6-47" href="#__codelineno-6-47"></a><span class="s">if not files:</span>
+<a id="__codelineno-6-48" name="__codelineno-6-48" href="#__codelineno-6-48"></a><span class="s">    sys.exit(f&quot;No CUDA/cuDNN libraries found under: {&#39;, &#39;.join(patterns)}&quot;)</span>
+<a id="__codelineno-6-49" name="__codelineno-6-49" href="#__codelineno-6-49"></a><span class="s">(cache / &quot;manifest.json&quot;).write_text(</span>
+<a id="__codelineno-6-50" name="__codelineno-6-50" href="#__codelineno-6-50"></a><span class="s">    json.dumps({&quot;version&quot;: cache.name, &quot;files&quot;: files, &quot;complete&quot;: True}, indent=2),</span>
+<a id="__codelineno-6-51" name="__codelineno-6-51" href="#__codelineno-6-51"></a><span class="s">    encoding=&quot;utf-8&quot;,</span>
+<a id="__codelineno-6-52" name="__codelineno-6-52" href="#__codelineno-6-52"></a><span class="s">)</span>
+<a id="__codelineno-6-53" name="__codelineno-6-53" href="#__codelineno-6-53"></a><span class="s">print(f&quot;Created Engram CUDA runtime cache with {len(files)} libraries:&quot;)</span>
+<a id="__codelineno-6-54" name="__codelineno-6-54" href="#__codelineno-6-54"></a><span class="s">for name in files:</span>
+<a id="__codelineno-6-55" name="__codelineno-6-55" href="#__codelineno-6-55"></a><span class="s">    print(&quot;  &quot; + name)</span>
+<a id="__codelineno-6-56" name="__codelineno-6-56" href="#__codelineno-6-56"></a><span class="s">PY</span>
+<a id="__codelineno-6-57" name="__codelineno-6-57" href="#__codelineno-6-57"></a>
+<a id="__codelineno-6-58" name="__codelineno-6-58" href="#__codelineno-6-58"></a>cat<span class="w"> </span>&lt;&lt;EOF
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Update the printed epilogue to mention the new steps and the GPU-enable call</strong></li>
+</ul>
+<p>Find:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>cat<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="s">$(info &quot;Done.&quot;)</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="s">GPU CTranslate2 (v$CT2_VERSION, sm_$CUDA_ARCH) installed into:</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="s">  $BUNDLE_DIR</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="s">Next steps:</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="s">  1. (Re)start Engram:        cd &quot;$BUNDLE_DIR&quot; &amp;&amp; ./engram</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="s">  2. Confirm the device:      curl localhost:8000/api/asr-status   # expect device:&quot;cuda&quot;</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="s">  3. Run a match and watch GPU load with:  sudo tegrastats</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="s">  4. ~/.engram/engram.log should show &quot;Loaded ... on cuda&quot; (no &quot;Falling back to CPU&quot;).</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="s">If ASR still reports CPU, see docs/development/jetson.md (device detection and</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="s">JetPack version notes). To revert, restore $CT2_PKG_DIR.cpu-backup.</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="s">EOF</span>
+</code></pre></div>
+<p>Replace with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>cat<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="s">$(info &quot;Done.&quot;)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="s">GPU CTranslate2 (v$CT2_VERSION, sm_$CUDA_ARCH) installed into:</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="s">  $BUNDLE_DIR</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="s">Bundled libstdc++/libgcc_s that could shadow the Jetson system libs were moved</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="s">to:</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="s">  $GLIBC_BACKUP</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="s">A CUDA runtime cache (symlinked to the JetPack cuDNN/cuBLAS libraries) was</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="s">created at:</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="s">  $CUDA_CACHE_DIR</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="s">Next steps:</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="s">  1. (Re)start Engram:        cd &quot;$BUNDLE_DIR&quot; &amp;&amp; ./engram</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="s">  2. Enable GPU ASR (it is off by default even once detected):</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="s">                               curl -X POST localhost:8000/api/asr/gpu/enable</span>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="s">  3. Restart Engram again so the new device takes effect, then confirm:</span>
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="s">                               curl localhost:8000/api/asr-status   # expect device:&quot;cuda&quot;</span>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="s">  4. Run a match and watch GPU load with:  sudo tegrastats</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="s">  5. ~/.engram/engram.log should show &quot;Loaded ... on cuda&quot; (no &quot;Falling back to CPU&quot;).</span>
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="s">If ASR still reports CPU, see docs/development/jetson.md (device detection and</span>
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="s">JetPack version notes). To revert, restore $CT2_PKG_DIR.cpu-backup.</span>
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="s">EOF</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Verify the script still parses</strong></li>
+</ul>
+<p>Run: <code>bash -n backend/scripts/jetson_gpu_setup.sh</code>
+Expected: no output, exit code 0.</p>
+<ul>
+<li>[ ] <strong>Step 5: Dry-run the embedded Python cache-builder against fixture files</strong></li>
+</ul>
+<p>This exercises the exact logic that will run on a real Jetson, using fake files
+in place of JetPack's system libraries, and confirms the manifest it writes
+satisfies the app's real <code>is_cuda_runtime_present()</code> contract. Run from the
+repo root (adjust paths for your shell; this uses bash):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nv">WORKDIR</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/cuda_home/lib64&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/aarch64/lib&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/cache&quot;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>touch<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/cuda_home/lib64/libcublas.so.12&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">      </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/cuda_home/lib64/libcudart.so.12&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">      </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/aarch64/lib/libcudnn.so.9&quot;</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>python3<span class="w"> </span>-<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/cache&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/cuda_home&quot;</span><span class="w"> </span><span class="s">&lt;&lt;&#39;PY&#39;</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="s">import glob, json, os, sys</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="s">from pathlib import Path</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="s">cache = Path(sys.argv[1]); cuda_home = sys.argv[2]</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="s">patterns = [</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="s">    f&quot;{cuda_home}/lib64/libcublas*.so*&quot;,</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="s">    f&quot;{cuda_home}/lib64/libcudart*.so*&quot;,</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="s">    f&quot;{cuda_home}/lib64/libnvrtc*.so*&quot;,</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="s">    f&quot;{cuda_home}/lib64/libnvJitLink*.so*&quot;,</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="s">    str(Path(sys.argv[1]).parent / &quot;aarch64/lib/libcudnn*.so*&quot;),</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="s">]</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="s">files = []</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="s">for pattern in patterns:</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="s">    for src in glob.glob(pattern):</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="s">        src_path = Path(src)</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="s">        dest = cache / src_path.name</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="s">        if dest.exists() or dest.is_symlink():</span>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="s">            dest.unlink()</span>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="s">        os.symlink(str(src_path), str(dest))</span>
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="s">        files.append(src_path.name)</span>
+<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a><span class="s">files = sorted(set(files))</span>
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a><span class="s">(cache / &quot;manifest.json&quot;).write_text(json.dumps({&quot;version&quot;: cache.name, &quot;files&quot;: files, &quot;complete&quot;: True}, indent=2))</span>
+<a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a><span class="s">print(&quot;files:&quot;, files)</span>
+<a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a><span class="s">PY</span>
+<a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>
+<a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;</span>
+<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a><span class="s2">from pathlib import Path</span>
+<a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a><span class="s2">from app.matcher.cuda_runtime import is_cuda_runtime_present</span>
+<a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a><span class="s2">import sys</span>
+<a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a><span class="s2">cache = Path(sys.argv[1])</span>
+<a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a><span class="s2">assert is_cuda_runtime_present(cache) is True, &#39;manifest not accepted&#39;</span>
+<a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a><span class="s2">print(&#39;is_cuda_runtime_present -&gt;&#39;, is_cuda_runtime_present(cache))</span>
+<a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WORKDIR</span><span class="s2">/cache&quot;</span>
+</code></pre></div>
+<p>Expected: <code>is_cuda_runtime_present -&gt; True</code>, proving the symlink+manifest strategy
+satisfies the real app contract (not a re-implementation of it).</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/scripts/jetson_gpu_setup.sh
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(jetson): populate the CUDA runtime cache from JetPack libs, document GPU-enable step&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-3-update-docsdevelopmentjetsonmd-with-the-validated-procedure">Task 3: Update <code>docs/development/jetson.md</code> with the validated procedure</h2>
+<p><strong>Files:</strong>
+- Modify: <code>docs/development/jetson.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Flip the status admonition from "requires validation" to field-validated</strong></li>
+</ul>
+<p>Find:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">&gt; </span><span class="ge">**Status: requires validation on real Jetson hardware.** This is a best-effort,</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">&gt; </span><span class="ge">well-signposted procedure, not a turnkey guarantee. Build times on a Jetson are</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">&gt; </span><span class="ge">long (tens of minutes).</span>
+</code></pre></div>
+<p>Replace with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">&gt; </span><span class="ge">**Status: validated on real Jetson hardware** (Orin NX, JetPack 6.2.2 / Jetson</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="k">&gt; </span><span class="ge">Linux R36.5.0) by a community member. Build times on a Jetson are still long</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="k">&gt; </span><span class="ge">(tens of minutes), and JetPack/L4T versions other than 6.2.2 are untested.</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Extend the "What it does" list from 4 to 6 items</strong></li>
+</ul>
+<p>Find:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>What it does ([`backend/scripts/jetson_gpu_setup.sh`](../../backend/scripts/jetson_gpu_setup.sh)):
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="k">1.</span> Verifies it&#39;s running on a Jetson (Tegra device nodes / <span class="sb">`/etc/nv_tegra_release`</span>)
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>   and locates the JetPack CUDA toolkit (<span class="sb">`$CUDA_HOME`</span>, default <span class="sb">`/usr/local/cuda`</span>).
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="k">2.</span> Reads the CTranslate2 version baked into the bundle
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>   (<span class="sb">`_internal/ctranslate2/version.py`</span>) so the compiled C++ library matches the
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>   bundled Python bindings.
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="k">3.</span> Builds CTranslate2 with
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>   <span class="sb">`-DWITH_CUDA=ON -DWITH_CUDNN=ON -DWITH_MKL=OFF -DWITH_OPENBLAS=ON`</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>   (MKL is x86-only; OpenBLAS is the aarch64 equivalent) for the target
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>   <span class="sb">`CMAKE_CUDA_ARCHITECTURES`</span>.
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="k">4.</span> Builds the matching Python bindings and swaps <span class="sb">`libctranslate2.so*`</span> +
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>   <span class="sb">`ctranslate2/_ext*.so`</span> into the bundle, backing up the CPU-only build to
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>   <span class="sb">`_internal/ctranslate2.cpu-backup`</span>.
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>JetPack already provides cuDNN and cuBLAS system-wide, so the on-demand wheel
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>download in <span class="sb">`backend/app/matcher/cuda_runtime.py`</span> (used on x86_64) is <span class="gs">**not**</span>
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>needed here — it remains a fallback.
+</code></pre></div>
+<p>Replace with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>What it does ([`backend/scripts/jetson_gpu_setup.sh`](../../backend/scripts/jetson_gpu_setup.sh)):
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="k">1.</span> Verifies it&#39;s running on a Jetson (Tegra device nodes / <span class="sb">`/etc/nv_tegra_release`</span>)
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>   and locates the JetPack CUDA toolkit (<span class="sb">`$CUDA_HOME`</span>, default <span class="sb">`/usr/local/cuda`</span>).
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="k">2.</span> Reads the CTranslate2 version baked into the bundle
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>   (<span class="sb">`_internal/ctranslate2/version.py`</span>) so the compiled C++ library matches the
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>   bundled Python bindings.
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="k">3.</span> Builds CTranslate2 with
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>   <span class="sb">`-DWITH_CUDA=ON -DWITH_CUDNN=ON -DWITH_MKL=OFF -DWITH_OPENBLAS=ON`</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>   (MKL is x86-only; OpenBLAS is the aarch64 equivalent) for the target
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>   <span class="sb">`CMAKE_CUDA_ARCHITECTURES`</span>.
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="k">4.</span> Builds the matching Python bindings and swaps <span class="sb">`libctranslate2.so*`</span> +
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>   <span class="sb">`ctranslate2/_ext*.so`</span> into the bundle, backing up the CPU-only build to
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>   <span class="sb">`_internal/ctranslate2.cpu-backup`</span>.
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="k">5.</span> Moves the PyInstaller-bundled <span class="sb">`libstdc++.so.6*`</span>/<span class="sb">`libgcc_s.so.1`</span> (from the
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>   Ubuntu 24.04 CI runner) to <span class="sb">`_internal/incompatible-glibc-backup/`</span> so Engram
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>   falls through to the Jetson system <span class="sb">`libstdc++`</span> instead of hitting
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>   <span class="sb">`GLIBC_2.36`</span>/<span class="sb">`GLIBC_2.38 not found`</span> on JetPack 6.2.2&#39;s Ubuntu 22.04 base.
+<a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="k">6.</span> Symlinks JetPack&#39;s system cuDNN/cuBLAS/cudart/nvrtc/nvJitLink libraries into
+<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>   <span class="sb">`~/.engram/cuda/&lt;RUNTIME_VERSION&gt;/`</span> with a <span class="sb">`manifest.json`</span>, so
+<a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>   <span class="sb">`backend/app/matcher/cuda_runtime.py`</span>&#39;s <span class="sb">`is_cuda_runtime_present()`</span> check
+<a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a>   (and the <span class="sb">`/api/asr-status`</span> <span class="sb">`gpu_runtime_installed`</span> field) sees the runtime as
+<a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a>   present without downloading anything.
+<a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a>
+<a id="__codelineno-14-25" name="__codelineno-14-25" href="#__codelineno-14-25"></a>JetPack already provides cuDNN and cuBLAS system-wide, so the on-demand wheel
+<a id="__codelineno-14-26" name="__codelineno-14-26" href="#__codelineno-14-26"></a>download in <span class="sb">`backend/app/matcher/cuda_runtime.py`</span> (used on x86_64) is only used
+<a id="__codelineno-14-27" name="__codelineno-14-27" href="#__codelineno-14-27"></a>as the fallback path here — step 6 above populates the same cache directly.
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Add the missing "enable GPU" step before "Confirm GPU is active"</strong></li>
+</ul>
+<p>Find:</p>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="gu">## Confirm GPU is active</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>```bash
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>curl localhost:8000/api/asr-status      # expect device:&quot;cuda&quot;
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>sudo tegrastats                         # watch GPU load while a match runs
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="gh"># ~/.engram/engram.log shows &quot;Loaded ... on cuda&quot; (no &quot;Falling back to CPU&quot;)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Replace with:
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>```markdown
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>## Enable GPU ASR
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>GPU is not used just because it&#39;s detected — it must be explicitly enabled,
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>either in the UI (Settings → Matching → GPU Acceleration → Enable) or via the
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>API, then Engram must be restarted for the new device to take effect:
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>```bash
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>curl -X POST localhost:8000/api/asr/gpu/enable
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a># restart Engram (Ctrl-C then ./engram, or your launcher script)
+</code></pre></div></p>
+<h2 id="confirm-gpu-is-active">Confirm GPU is active</h2>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>curl<span class="w"> </span>localhost:8000/api/asr-status<span class="w">      </span><span class="c1"># expect device:&quot;cuda&quot;</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>sudo<span class="w"> </span>tegrastats<span class="w">                         </span><span class="c1"># watch GPU load while a match runs</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="c1"># ~/.engram/engram.log shows &quot;Loaded ... on cuda&quot; (no &quot;Falling back to CPU&quot;)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>- [ ] **Step 4: Add a GLIBC troubleshooting bullet + convenience launcher section**
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>Find:
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>```markdown
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>### If it still reports CPU
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>`gpu_detected()` in `cuda_runtime.py` is the raw hardware probe. On JetPack 6
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>`nvidia-smi` exists; on some Jetson setups the probe may not see the integrated
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>Tegra GPU. If ASR stays on CPU after the swap, this is the most likely cause —
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>file an issue with `tegrastats`/`nvidia-smi` output so we can extend the probe
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>with a Tegra check (e.g. `/etc/nv_tegra_release`).
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a>To revert to the CPU build, restore `_internal/ctranslate2.cpu-backup` over
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>`_internal/ctranslate2`.
+</code></pre></div></p>
+<p>Replace with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="gu">### If it still reports CPU</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="sb">`gpu_detected()`</span> in <span class="sb">`cuda_runtime.py`</span> is the raw hardware probe. On JetPack 6
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="sb">`nvidia-smi`</span> exists; on some Jetson setups the probe may not see the integrated
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>Tegra GPU. If ASR stays on CPU after the swap, this is the most likely cause —
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>file an issue with <span class="sb">`tegrastats`</span>/<span class="sb">`nvidia-smi`</span> output so we can extend the probe
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>with a Tegra check (e.g. <span class="sb">`/etc/nv_tegra_release`</span>).
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>If Engram fails to start (or ASR silently stays on CPU) with `GLIBC_2.36 not
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>found` or <span class="sb">`GLIBC_2.38 not found`</span> in <span class="sb">`~/.engram/engram.log`</span>, Engram is loading
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>the bundled <span class="sb">`_internal/libstdc++.so.6`</span>/<span class="sb">`libgcc_s.so.1`</span> instead of the Jetson
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>system copy. <span class="sb">`jetson_gpu_setup.sh`</span> moves these aside automatically; if you&#39;re
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>troubleshooting a bundle the script already ran against, re-check they&#39;re
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>still in <span class="sb">`_internal/incompatible-glibc-backup/`</span> and not restored.
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>
+<a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a>To revert to the CPU build, restore <span class="sb">`_internal/ctranslate2.cpu-backup`</span> over
+<a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a><span class="sb">`_internal/ctranslate2`</span>.
+<a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a>
+<a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a><span class="gu">## Optional: a permanent launcher</span>
+<a id="__codelineno-19-20" name="__codelineno-19-20" href="#__codelineno-19-20"></a>
+<a id="__codelineno-19-21" name="__codelineno-19-21" href="#__codelineno-19-21"></a>To avoid re-running the setup script&#39;s printed steps on every launch, wrap them
+<a id="__codelineno-19-22" name="__codelineno-19-22" href="#__codelineno-19-22"></a>in a small script:
+<a id="__codelineno-19-23" name="__codelineno-19-23" href="#__codelineno-19-23"></a>
+<a id="__codelineno-19-24" name="__codelineno-19-24" href="#__codelineno-19-24"></a>```bash
+<a id="__codelineno-19-25" name="__codelineno-19-25" href="#__codelineno-19-25"></a>mkdir -p ~/bin
+<a id="__codelineno-19-26" name="__codelineno-19-26" href="#__codelineno-19-26"></a>cat &gt; ~/bin/start-engram &lt;&lt;&#39;EOF&#39;
+<a id="__codelineno-19-27" name="__codelineno-19-27" href="#__codelineno-19-27"></a><span class="gh">#!/bin/bash</span>
+<a id="__codelineno-19-28" name="__codelineno-19-28" href="#__codelineno-19-28"></a>cd &quot;$HOME/engram&quot; || exit 1
+<a id="__codelineno-19-29" name="__codelineno-19-29" href="#__codelineno-19-29"></a>exec ./engram
+<a id="__codelineno-19-30" name="__codelineno-19-30" href="#__codelineno-19-30"></a>EOF
+<a id="__codelineno-19-31" name="__codelineno-19-31" href="#__codelineno-19-31"></a>chmod +x ~/bin/start-engram
+</code></pre></div>
+<p>Then start Engram with <code>~/bin/start-engram</code>. <code>jetson_gpu_setup.sh</code> doesn't need
+<code>LD_LIBRARY_PATH</code> set manually — the CUDA cache created in step 6 above is
+preloaded in-process by <code>register_cuda_runtime()</code> at startup, and moving the
+bundled <code>libstdc++</code>/<code>libgcc_s</code> aside (step 5) is enough for the dynamic linker
+to resolve the Jetson system copies on its own.</p>
+<h2 id="usb-blu-raydvd-drives">USB Blu-ray/DVD drives</h2>
+<p>If MakeMKV doesn't see a USB optical drive on Jetson (<code>/dev/sr0</code> never appears),
+JetPack doesn't ship the optical-drive kernel modules by default. See
+<a href="./jetson-optical-drive.md">Jetson optical drive kernel modules</a> for a validated
+build procedure — this is a host-OS/kernel concern independent of Engram.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>- [ ] **Step 5: Commit**
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>```bash
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>git add docs/development/jetson.md
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>git commit -m &quot;docs(jetson): mark GPU setup validated on real hardware, document GPU-enable step&quot;
+</code></pre></div></p>
+<hr />
+<h2 id="task-4-create-docsdevelopmentjetson-optical-drivemd">Task 4: Create <code>docs/development/jetson-optical-drive.md</code></h2>
+<p><strong>Files:</strong>
+- Create: <code>docs/development/jetson-optical-drive.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the new doc page</strong></li>
+</ul>
+<p>Create <code>docs/development/jetson-optical-drive.md</code> with this exact content:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="gh"># Jetson: USB Blu-ray/DVD kernel modules</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="k">&gt; </span><span class="ge">**Scope:** this is a **host-OS / Linux kernel** procedure, independent of</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="k">&gt; </span><span class="ge">Engram&#39;s own build. It gets a USB Blu-ray/DVD drive recognized as `/dev/sr0`</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="k">&gt; </span><span class="ge">so MakeMKV (and therefore Engram) can see it at all. It is **not** something</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="k">&gt; </span><span class="ge">that can be automated in Engram&#39;s release CI: kernel modules are tied via</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="k">&gt; </span><span class="ge">`vermagic` to the *exact* `uname -r` they were built against, so modules built</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="k">&gt; </span><span class="ge">on any machine other than the target Jetson — including a GitHub-hosted</span>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="k">&gt; </span><span class="ge">runner — are unusable there. Rebuild on each device instead of copying</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="k">&gt; </span><span class="ge">`.ko` files between Jetsons, even ones on the same JetPack version, unless</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="k">&gt; </span><span class="ge">`uname -r` is identical.</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="k">&gt;</span>
+<a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a><span class="ge">&gt; **Validated on:** JetPack 6.2.2 / Jetson Linux R36.5.0, kernel</span>
+<a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a><span class="k">&gt; </span><span class="ge">`5.15.185-tegra`, by a community member. Different JetPack/kernel versions</span>
+<a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a><span class="k">&gt; </span><span class="ge">will need matching NVIDIA BSP downloads (see below) and may hit different</span>
+<a id="__codelineno-21-16" name="__codelineno-21-16" href="#__codelineno-21-16"></a><span class="k">&gt; </span><span class="ge">`CONFIG_*` defaults.</span>
+<a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a>
+<a id="__codelineno-21-18" name="__codelineno-21-18" href="#__codelineno-21-18"></a><span class="gu">## What this covers</span>
+<a id="__codelineno-21-19" name="__codelineno-21-19" href="#__codelineno-21-19"></a>
+<a id="__codelineno-21-20" name="__codelineno-21-20" href="#__codelineno-21-20"></a><span class="k">-</span><span class="w"> </span>Holding NVIDIA L4T kernel/BSP packages before running <span class="sb">`apt upgrade`</span>, so a
+<a id="__codelineno-21-21" name="__codelineno-21-21" href="#__codelineno-21-21"></a>  routine package update doesn&#39;t silently replace the kernel your custom
+<a id="__codelineno-21-22" name="__codelineno-21-22" href="#__codelineno-21-22"></a>  modules are built for.
+<a id="__codelineno-21-23" name="__codelineno-21-23" href="#__codelineno-21-23"></a><span class="k">-</span><span class="w"> </span>Downloading the matching NVIDIA BSP and kernel source packages.
+<a id="__codelineno-21-24" name="__codelineno-21-24" href="#__codelineno-21-24"></a><span class="k">-</span><span class="w"> </span>Building <span class="sb">`cdrom.ko`</span>, <span class="sb">`sr_mod.ko`</span>, <span class="sb">`sg.ko`</span>, <span class="sb">`udf.ko`</span>, <span class="sb">`isofs.ko`</span>,
+<a id="__codelineno-21-25" name="__codelineno-21-25" href="#__codelineno-21-25"></a>  <span class="sb">`nls_utf8.ko`</span>, and optionally <span class="sb">`uas.ko`</span>/<span class="sb">`crc-itu-t.ko`</span>.
+<a id="__codelineno-21-26" name="__codelineno-21-26" href="#__codelineno-21-26"></a><span class="k">-</span><span class="w"> </span>Installing, loading, and testing the modules against a real drive.
+<a id="__codelineno-21-27" name="__codelineno-21-27" href="#__codelineno-21-27"></a><span class="k">-</span><span class="w"> </span>A portable backup tarball, reusable only on another Jetson with the exact
+<a id="__codelineno-21-28" name="__codelineno-21-28" href="#__codelineno-21-28"></a>  same <span class="sb">`uname -r`</span>.
+<a id="__codelineno-21-29" name="__codelineno-21-29" href="#__codelineno-21-29"></a>
+<a id="__codelineno-21-30" name="__codelineno-21-30" href="#__codelineno-21-30"></a><span class="gu">## Required/optional kernel modules</span>
+<a id="__codelineno-21-31" name="__codelineno-21-31" href="#__codelineno-21-31"></a>
+<a id="__codelineno-21-32" name="__codelineno-21-32" href="#__codelineno-21-32"></a>| Module | Purpose | Notes |
+<a id="__codelineno-21-33" name="__codelineno-21-33" href="#__codelineno-21-33"></a>|---|---|---|
+<a id="__codelineno-21-34" name="__codelineno-21-34" href="#__codelineno-21-34"></a>| <span class="sb">`cdrom.ko`</span> | Generic CD/DVD-ROM class support | Build first if <span class="sb">`CONFIG_CDROM=m`</span>; other modules need its symbols. |
+<a id="__codelineno-21-35" name="__codelineno-21-35" href="#__codelineno-21-35"></a>| <span class="sb">`sr_mod.ko`</span> | SCSI CD/DVD/BD block device support | Creates <span class="sb">`/dev/sr0`</span> for optical media. |
+<a id="__codelineno-21-36" name="__codelineno-21-36" href="#__codelineno-21-36"></a>| <span class="sb">`sg.ko`</span> | SCSI generic access | Useful for <span class="sb">`sg3_utils`</span>, diagnostics, ripping/playback tools. |
+<a id="__codelineno-21-37" name="__codelineno-21-37" href="#__codelineno-21-37"></a>| <span class="sb">`udf.ko`</span> | UDF filesystem | Required for most DVD and Blu-ray data discs. |
+<a id="__codelineno-21-38" name="__codelineno-21-38" href="#__codelineno-21-38"></a>| <span class="sb">`isofs.ko`</span> | ISO9660 filesystem | Required for older CD/DVD data discs. |
+<a id="__codelineno-21-39" name="__codelineno-21-39" href="#__codelineno-21-39"></a>| <span class="sb">`nls_utf8.ko`</span> | UTF-8 filename support | Commonly needed for readable filenames. |
+<a id="__codelineno-21-40" name="__codelineno-21-40" href="#__codelineno-21-40"></a>| <span class="sb">`uas.ko`</span> | USB Attached SCSI | Only if <span class="sb">`CONFIG_USB_UAS=m`</span>. Skip if built in. |
+<a id="__codelineno-21-41" name="__codelineno-21-41" href="#__codelineno-21-41"></a>| <span class="sb">`usb-storage.ko`</span> | USB mass storage | Often built in — don&#39;t force it as a module if <span class="sb">`CONFIG_USB_STORAGE=y`</span>. |
+<a id="__codelineno-21-42" name="__codelineno-21-42" href="#__codelineno-21-42"></a>| <span class="sb">`crc-itu-t.ko`</span> | CRC dependency used by some filesystems | Only exists if <span class="sb">`CONFIG_CRC_ITU_T=m`</span>. Skip if built in. |
+<a id="__codelineno-21-43" name="__codelineno-21-43" href="#__codelineno-21-43"></a>
+<a id="__codelineno-21-44" name="__codelineno-21-44" href="#__codelineno-21-44"></a><span class="gu">## Exact R36.5.0 download links</span>
+<a id="__codelineno-21-45" name="__codelineno-21-45" href="#__codelineno-21-45"></a>
+<a id="__codelineno-21-46" name="__codelineno-21-46" href="#__codelineno-21-46"></a>Use the links matching your exact release — for R36.5.0:
+<a id="__codelineno-21-47" name="__codelineno-21-47" href="#__codelineno-21-47"></a>
+<a id="__codelineno-21-48" name="__codelineno-21-48" href="#__codelineno-21-48"></a><span class="k">-</span><span class="w"> </span>Jetson Linux BSP: <span class="sb">`https://developer.download.nvidia.com/embedded/L4T/r36_Release_v5.0/release/Jetson_Linux_R36.5.0_aarch64.tbz2`</span>
+<a id="__codelineno-21-49" name="__codelineno-21-49" href="#__codelineno-21-49"></a><span class="k">-</span><span class="w"> </span>BSP sources: <span class="sb">`https://developer.download.nvidia.com/embedded/L4T/r36_Release_v5.0/sources/public_sources.tbz2`</span>
+<a id="__codelineno-21-50" name="__codelineno-21-50" href="#__codelineno-21-50"></a><span class="k">-</span><span class="w"> </span>Sample root filesystem: <span class="sb">`https://developer.download.nvidia.com/embedded/L4T/r36_Release_v5.0/release/Tegra_Linux_Sample-Root-Filesystem_R36.5.0_aarch64.tbz2`</span>
+<a id="__codelineno-21-51" name="__codelineno-21-51" href="#__codelineno-21-51"></a><span class="k">-</span><span class="w"> </span>Release SHA hashes: <span class="sb">`https://developer.download.nvidia.com/embedded/L4T/r36_Release_v5.0/release/release_sha_hashes.txt`</span>
+<a id="__codelineno-21-52" name="__codelineno-21-52" href="#__codelineno-21-52"></a>
+<a id="__codelineno-21-53" name="__codelineno-21-53" href="#__codelineno-21-53"></a><span class="gu">## Part 1 — `apt upgrade` without changing the kernel</span>
+<a id="__codelineno-21-54" name="__codelineno-21-54" href="#__codelineno-21-54"></a>
+<a id="__codelineno-21-55" name="__codelineno-21-55" href="#__codelineno-21-55"></a>Run this before any package upgrade on a system whose custom optical-drive
+<a id="__codelineno-21-56" name="__codelineno-21-56" href="#__codelineno-21-56"></a>modules must keep matching the running kernel exactly.
+<a id="__codelineno-21-57" name="__codelineno-21-57" href="#__codelineno-21-57"></a>
+<a id="__codelineno-21-58" name="__codelineno-21-58" href="#__codelineno-21-58"></a>```bash
+<a id="__codelineno-21-59" name="__codelineno-21-59" href="#__codelineno-21-59"></a>mkdir -p $HOME/apt-upgrade-no-kernel-backup
+<a id="__codelineno-21-60" name="__codelineno-21-60" href="#__codelineno-21-60"></a>uname -a | tee $HOME/apt-upgrade-no-kernel-backup/uname-before.txt
+<a id="__codelineno-21-61" name="__codelineno-21-61" href="#__codelineno-21-61"></a>uname -r | tee $HOME/apt-upgrade-no-kernel-backup/kernel-before.txt
+<a id="__codelineno-21-62" name="__codelineno-21-62" href="#__codelineno-21-62"></a>dpkg -l | grep -E &#39;nvidia-l4t|linux-image|linux-headers|linux-modules&#39; \
+<a id="__codelineno-21-63" name="__codelineno-21-63" href="#__codelineno-21-63"></a>  | tee $HOME/apt-upgrade-no-kernel-backup/kernel-packages-before.txt
+<a id="__codelineno-21-64" name="__codelineno-21-64" href="#__codelineno-21-64"></a>apt-mark showhold | tee $HOME/apt-upgrade-no-kernel-backup/holds-before.txt
+</code></pre></div>
+<p>Hold the Jetson kernel/BSP packages:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="k">for</span><span class="w"> </span>pkg<span class="w"> </span><span class="k">in</span><span class="w"> </span>nvidia-l4t-core<span class="w"> </span>nvidia-l4t-kernel<span class="w"> </span>nvidia-l4t-kernel-dtbs<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">           </span>nvidia-l4t-kernel-headers<span class="w"> </span>nvidia-l4t-kernel-oot-modules<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">           </span>nvidia-l4t-kernel-oot-headers<span class="w"> </span>nvidia-l4t-display-kernel<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">           </span>nvidia-l4t-bootloader<span class="w"> </span>nvidia-l4t-initrd<span class="w"> </span>nvidia-l4t-jetson-io<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span>dpkg<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$pkg</span><span class="s2">&quot;</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Holding </span><span class="nv">$pkg</span><span class="s2">&quot;</span><span class="p">;</span><span class="w"> </span>sudo<span class="w"> </span>apt-mark<span class="w"> </span>hold<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$pkg</span><span class="s2">&quot;</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">  </span><span class="k">else</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Not installed, skipping </span><span class="nv">$pkg</span><span class="s2">&quot;</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="w">  </span><span class="k">fi</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="k">done</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>apt-mark<span class="w"> </span>showhold<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>nvidia-l4t
+</code></pre></div>
+<p>Simulate, and only continue if nothing kernel-related would install:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>update
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>sudo<span class="w"> </span>apt<span class="w"> </span>-s<span class="w"> </span>upgrade<span class="w"> </span><span class="p">|</span><span class="w"> </span>tee<span class="w"> </span><span class="nv">$HOME</span>/apt-upgrade-no-kernel-backup/upgrade-simulation.txt
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>grep<span class="w"> </span>-Ei<span class="w"> </span><span class="s1">&#39;Inst nvidia-l4t-kernel|Inst nvidia-l4t-kernel-dtbs|Inst nvidia-l4t-kernel-headers|Inst nvidia-l4t-kernel-oot|Inst nvidia-l4t-display-kernel|Inst nvidia-l4t-bootloader|Inst nvidia-l4t-initrd|Inst linux-image|Inst linux-headers|Inst linux-modules&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">  </span><span class="nv">$HOME</span>/apt-upgrade-no-kernel-backup/upgrade-simulation.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">  </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;No kernel installs found in simulation.&quot;</span>
+</code></pre></div>
+<blockquote>
+<p>Only continue if the last line printed is exactly <code>No kernel installs found
+in simulation.</code></p>
+</blockquote>
+<p>Then run the real upgrade (never <code>full-upgrade</code>/<code>dist-upgrade</code> here — those can
+still pull in a kernel change) and confirm <code>uname -r</code> is unchanged before and
+after:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>upgrade
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Before:&quot;</span><span class="p">;</span><span class="w"> </span>cat<span class="w"> </span><span class="nv">$HOME</span>/apt-upgrade-no-kernel-backup/kernel-before.txt
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;After:&quot;</span><span class="p">;</span><span class="w"> </span>uname<span class="w"> </span>-r
+</code></pre></div>
+<h2 id="part-2-build-the-kernel-modules">Part 2 — Build the kernel modules</h2>
+<p>Build natively on the Jetson (avoids cross-compile toolchain mistakes).</p>
+<h3 id="install-build-tools">Install build tools</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>update
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>build-essential<span class="w"> </span>bc<span class="w"> </span>flex<span class="w"> </span>bison<span class="w"> </span>libssl-dev<span class="w"> </span>libelf-dev<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">  </span>dwarves<span class="w"> </span>zstd<span class="w"> </span>git<span class="w"> </span>wget<span class="w"> </span>tar<span class="w"> </span>xz-utils<span class="w"> </span>kmod
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>nvidia-l4t-kernel-headers
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">KREL</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>uname<span class="w"> </span>-r<span class="k">)</span><span class="s2">&quot;</span>
+</code></pre></div>
+<h3 id="download-and-unpack-the-bspsources">Download and unpack the BSP/sources</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="nv">$HOME</span>/jp622-r3650-build
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/jp622-r3650-build
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>wget<span class="w"> </span>-O<span class="w"> </span>Jetson_Linux_R36.5.0_aarch64.tbz2<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="w">  </span>https://developer.download.nvidia.com/embedded/L4T/r36_Release_v5.0/release/Jetson_Linux_R36.5.0_aarch64.tbz2
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>wget<span class="w"> </span>-O<span class="w"> </span>public_sources.tbz2<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="w">  </span>https://developer.download.nvidia.com/embedded/L4T/r36_Release_v5.0/sources/public_sources.tbz2
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a>tar<span class="w"> </span>xf<span class="w"> </span>Jetson_Linux_R36.5.0_aarch64.tbz2
+<a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a>tar<span class="w"> </span>xf<span class="w"> </span>public_sources.tbz2<span class="w"> </span>-C<span class="w"> </span><span class="nv">$HOME</span>/jp622-r3650-build
+<a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/jp622-r3650-build/Linux_for_Tegra/source
+<a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a>tar<span class="w"> </span>xf<span class="w"> </span>kernel_src.tbz2
+<a id="__codelineno-26-11" name="__codelineno-26-11" href="#__codelineno-26-11"></a>tar<span class="w"> </span>xf<span class="w"> </span>kernel_oot_modules_src.tbz2
+<a id="__codelineno-26-12" name="__codelineno-26-12" href="#__codelineno-26-12"></a>tar<span class="w"> </span>xf<span class="w"> </span>nvidia_kernel_display_driver_source.tbz2
+</code></pre></div>
+<h3 id="prepare-the-source-tree-to-match-the-running-kernel-exactly">Prepare the source tree to match the running kernel exactly</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="nb">cd</span><span class="w"> </span><span class="nv">$HOME</span>/jp622-r3650-build/Linux_for_Tegra/source/kernel/kernel-jammy-src
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">KDIR</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">&quot;</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-r<span class="w"> </span>/proc/config.gz<span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a><span class="w">  </span>zcat<span class="w"> </span>/proc/config.gz<span class="w"> </span>&gt;<span class="w"> </span>.config
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a><span class="k">elif</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;/boot/config-</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="w">  </span>cp<span class="w"> </span><span class="s2">&quot;/boot/config-</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>.config
+<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a><span class="k">else</span>
+<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a><span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;ERROR: could not find the running kernel config&quot;</span><span class="p">;</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a><span class="k">fi</span>
+<a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>
+<a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a><span class="nv">BASE</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>make<span class="w"> </span>-s<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>kernelversion<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a><span class="nv">SUFFIX</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">KREL</span><span class="p">#</span><span class="nv">$BASE</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a>scripts/config<span class="w"> </span>--set-str<span class="w"> </span>CONFIG_LOCALVERSION<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SUFFIX</span><span class="s2">&quot;</span>
+<a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>.scmversion<span class="w">   </span><span class="c1"># prevent a stray &#39;+&#39; from being appended</span>
+<a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>olddefconfig
+<a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a>
+<a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Running kernel: </span><span class="nv">$KREL</span><span class="s2">&quot;</span>
+<a id="__codelineno-27-20" name="__codelineno-27-20" href="#__codelineno-27-20"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Build kernel:   </span><span class="k">$(</span>make<span class="w"> </span>-s<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>kernelrelease<span class="k">)</span><span class="s2">&quot;</span>
+</code></pre></div>
+<blockquote>
+<p>Both lines must read exactly the same kernel string before continuing.</p>
+</blockquote>
+<h3 id="configure-optical-drive-support-without-converting-built-in-features-to-modules">Configure optical-drive support without converting built-in features to modules</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>set_mod_if_not_builtin<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="w">  </span><span class="nb">local</span><span class="w"> </span><span class="nv">sym</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span>grep<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;^</span><span class="si">${</span><span class="nv">sym</span><span class="si">}</span><span class="s2">=y&quot;</span><span class="w"> </span>.config<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">sym</span><span class="si">}</span><span class="s2"> is already built in; leaving it built in.&quot;</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="w">  </span><span class="k">else</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="w">    </span>scripts/config<span class="w"> </span>--module<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$sym</span><span class="s2">&quot;</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="w">  </span><span class="k">fi</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="o">}</span>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>set_yes_if_not_module_or_builtin<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a><span class="w">  </span><span class="nb">local</span><span class="w"> </span><span class="nv">sym</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span>
+<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span>grep<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;^</span><span class="si">${</span><span class="nv">sym</span><span class="si">}</span><span class="s2">=y&quot;</span><span class="w"> </span>.config<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">sym</span><span class="si">}</span><span class="s2"> is already built in.&quot;</span>
+<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="w">  </span><span class="k">elif</span><span class="w"> </span>grep<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;^</span><span class="si">${</span><span class="nv">sym</span><span class="si">}</span><span class="s2">=m&quot;</span><span class="w"> </span>.config<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a><span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">sym</span><span class="si">}</span><span class="s2"> is already a module.&quot;</span>
+<a id="__codelineno-28-15" name="__codelineno-28-15" href="#__codelineno-28-15"></a><span class="w">  </span><span class="k">else</span>
+<a id="__codelineno-28-16" name="__codelineno-28-16" href="#__codelineno-28-16"></a><span class="w">    </span>scripts/config<span class="w"> </span>--enable<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$sym</span><span class="s2">&quot;</span>
+<a id="__codelineno-28-17" name="__codelineno-28-17" href="#__codelineno-28-17"></a><span class="w">  </span><span class="k">fi</span>
+<a id="__codelineno-28-18" name="__codelineno-28-18" href="#__codelineno-28-18"></a><span class="o">}</span>
+<a id="__codelineno-28-19" name="__codelineno-28-19" href="#__codelineno-28-19"></a>
+<a id="__codelineno-28-20" name="__codelineno-28-20" href="#__codelineno-28-20"></a>set_mod_if_not_builtin<span class="w"> </span>CONFIG_CDROM
+<a id="__codelineno-28-21" name="__codelineno-28-21" href="#__codelineno-28-21"></a>set_mod_if_not_builtin<span class="w"> </span>CONFIG_BLK_DEV_SR
+<a id="__codelineno-28-22" name="__codelineno-28-22" href="#__codelineno-28-22"></a>set_mod_if_not_builtin<span class="w"> </span>CONFIG_CHR_DEV_SG
+<a id="__codelineno-28-23" name="__codelineno-28-23" href="#__codelineno-28-23"></a>set_mod_if_not_builtin<span class="w"> </span>CONFIG_UDF_FS
+<a id="__codelineno-28-24" name="__codelineno-28-24" href="#__codelineno-28-24"></a>set_mod_if_not_builtin<span class="w"> </span>CONFIG_ISO9660_FS
+<a id="__codelineno-28-25" name="__codelineno-28-25" href="#__codelineno-28-25"></a>scripts/config<span class="w"> </span>--enable<span class="w"> </span>CONFIG_JOLIET
+<a id="__codelineno-28-26" name="__codelineno-28-26" href="#__codelineno-28-26"></a>scripts/config<span class="w"> </span>--enable<span class="w"> </span>CONFIG_ZISOFS
+<a id="__codelineno-28-27" name="__codelineno-28-27" href="#__codelineno-28-27"></a>set_mod_if_not_builtin<span class="w"> </span>CONFIG_NLS_UTF8
+<a id="__codelineno-28-28" name="__codelineno-28-28" href="#__codelineno-28-28"></a>set_mod_if_not_builtin<span class="w"> </span>CONFIG_CRC_ITU_T
+<a id="__codelineno-28-29" name="__codelineno-28-29" href="#__codelineno-28-29"></a>set_yes_if_not_module_or_builtin<span class="w"> </span>CONFIG_USB_STORAGE
+<a id="__codelineno-28-30" name="__codelineno-28-30" href="#__codelineno-28-30"></a>set_mod_if_not_builtin<span class="w"> </span>CONFIG_USB_UAS
+<a id="__codelineno-28-31" name="__codelineno-28-31" href="#__codelineno-28-31"></a>
+<a id="__codelineno-28-32" name="__codelineno-28-32" href="#__codelineno-28-32"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>olddefconfig
+</code></pre></div>
+<h3 id="prepare-the-tree-and-build-each-module">Prepare the tree and build each module</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>prepare
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>modules_prepare
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="nv">SYM</span><span class="o">=</span><span class="s2">&quot;&quot;</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/build/Module.symvers&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="w">  </span><span class="nv">SYM</span><span class="o">=</span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/build/Module.symvers&quot;</span>
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a><span class="k">else</span>
+<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a><span class="w">  </span><span class="nv">SYM</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>find<span class="w"> </span>/usr/src<span class="w"> </span>-path<span class="w"> </span><span class="s2">&quot;*</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">*&quot;</span><span class="w"> </span>-name<span class="w"> </span>Module.symvers<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-n1<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a><span class="k">fi</span>
+<a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SYM</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SYM</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SYM</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KDIR</span><span class="s2">/Module.symvers&quot;</span>
+<a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a>
+<a id="__codelineno-29-12" name="__codelineno-29-12" href="#__codelineno-29-12"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>-j<span class="s2">&quot;</span><span class="k">$(</span>nproc<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span>drivers/cdrom<span class="w"> </span>modules
+<a id="__codelineno-29-13" name="__codelineno-29-13" href="#__codelineno-29-13"></a><span class="nv">EXTRA_SYMS</span><span class="o">=</span><span class="s2">&quot;&quot;</span>
+<a id="__codelineno-29-14" name="__codelineno-29-14" href="#__codelineno-29-14"></a><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KDIR</span><span class="s2">/drivers/cdrom/Module.symvers&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">EXTRA_SYMS</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$KDIR</span><span class="s2">/drivers/cdrom/Module.symvers&quot;</span>
+<a id="__codelineno-29-15" name="__codelineno-29-15" href="#__codelineno-29-15"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>-j<span class="s2">&quot;</span><span class="k">$(</span>nproc<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span>drivers/scsi<span class="w"> </span><span class="nv">KBUILD_EXTRA_SYMBOLS</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$EXTRA_SYMS</span><span class="s2">&quot;</span><span class="w"> </span>modules
+<a id="__codelineno-29-16" name="__codelineno-29-16" href="#__codelineno-29-16"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>-j<span class="s2">&quot;</span><span class="k">$(</span>nproc<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span>fs/udf<span class="w"> </span><span class="nv">KBUILD_EXTRA_SYMBOLS</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$EXTRA_SYMS</span><span class="s2">&quot;</span><span class="w"> </span>modules
+<a id="__codelineno-29-17" name="__codelineno-29-17" href="#__codelineno-29-17"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>-j<span class="s2">&quot;</span><span class="k">$(</span>nproc<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span>fs/isofs<span class="w"> </span><span class="nv">KBUILD_EXTRA_SYMBOLS</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$EXTRA_SYMS</span><span class="s2">&quot;</span><span class="w"> </span>modules
+<a id="__codelineno-29-18" name="__codelineno-29-18" href="#__codelineno-29-18"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>-j<span class="s2">&quot;</span><span class="k">$(</span>nproc<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span>fs/nls<span class="w"> </span>modules
+<a id="__codelineno-29-19" name="__codelineno-29-19" href="#__codelineno-29-19"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>-j<span class="s2">&quot;</span><span class="k">$(</span>nproc<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span>drivers/usb/storage<span class="w"> </span>modules
+<a id="__codelineno-29-20" name="__codelineno-29-20" href="#__codelineno-29-20"></a>make<span class="w"> </span><span class="nv">ARCH</span><span class="o">=</span>arm64<span class="w"> </span>-j<span class="s2">&quot;</span><span class="k">$(</span>nproc<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">M</span><span class="o">=</span>lib<span class="w"> </span>modules
+</code></pre></div>
+<p><code>cdrom.ko</code> won't exist if <code>CONFIG_CDROM=y</code> (built in) — that's fine. Same for
+any module whose <code>CONFIG_*</code> ended up <code>=y</code> instead of <code>=m</code>.</p>
+<h3 id="verify-vermagic-before-installing-anything">Verify vermagic before installing anything</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="k">for</span><span class="w"> </span>ko<span class="w"> </span><span class="k">in</span><span class="w"> </span>drivers/cdrom/cdrom.ko<span class="w"> </span>drivers/scsi/sr_mod.ko<span class="w"> </span>drivers/scsi/sg.ko<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="w">          </span>fs/udf/udf.ko<span class="w"> </span>fs/isofs/isofs.ko<span class="w"> </span>fs/nls/nls_utf8.ko<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">          </span>drivers/usb/storage/uas.ko<span class="w"> </span>drivers/usb/storage/usb-storage.ko<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">          </span>lib/crc-itu-t.ko<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="w">  </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ko</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">{</span><span class="w"> </span>echo<span class="p">;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ko</span><span class="s2">&quot;</span><span class="p">;</span><span class="w"> </span>modinfo<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ko</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>vermagic<span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="k">done</span>
+</code></pre></div>
+<blockquote>
+<p>Every module that exists must report a vermagic starting with your <code>uname -r</code>
+(e.g. <code>5.15.185-tegra</code>). If it doesn't, <code>CONFIG_LOCALVERSION</code>/<code>.scmversion</code>
+weren't set correctly — redo the "prepare the source tree" step above.</p>
+</blockquote>
+<h3 id="install-load-and-enable-at-boot">Install, load, and enable at boot</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>install_ko_if_exists<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="w">  </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>install<span class="w"> </span>-D<span class="w"> </span>-m<span class="w"> </span><span class="m">0644</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$2</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Skipping missing/built-in: </span><span class="nv">$1</span><span class="s2">&quot;</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="o">}</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>install_ko_if_exists<span class="w"> </span>drivers/cdrom/cdrom.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/cdrom/cdrom.ko&quot;</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>install_ko_if_exists<span class="w"> </span>drivers/scsi/sr_mod.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/scsi/sr_mod.ko&quot;</span>
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>install_ko_if_exists<span class="w"> </span>drivers/scsi/sg.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/scsi/sg.ko&quot;</span>
+<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>install_ko_if_exists<span class="w"> </span>fs/udf/udf.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/fs/udf/udf.ko&quot;</span>
+<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a>install_ko_if_exists<span class="w"> </span>fs/isofs/isofs.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/fs/isofs/isofs.ko&quot;</span>
+<a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a>install_ko_if_exists<span class="w"> </span>fs/nls/nls_utf8.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/fs/nls/nls_utf8.ko&quot;</span>
+<a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a>install_ko_if_exists<span class="w"> </span>drivers/usb/storage/uas.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/usb/storage/uas.ko&quot;</span>
+<a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a>install_ko_if_exists<span class="w"> </span>drivers/usb/storage/usb-storage.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/usb/storage/usb-storage.ko&quot;</span>
+<a id="__codelineno-31-12" name="__codelineno-31-12" href="#__codelineno-31-12"></a>install_ko_if_exists<span class="w"> </span>lib/crc-itu-t.ko<span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/lib/crc-itu-t.ko&quot;</span>
+<a id="__codelineno-31-13" name="__codelineno-31-13" href="#__codelineno-31-13"></a>sudo<span class="w"> </span>depmod<span class="w"> </span>-a<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KREL</span><span class="s2">&quot;</span>
+<a id="__codelineno-31-14" name="__codelineno-31-14" href="#__codelineno-31-14"></a>
+<a id="__codelineno-31-15" name="__codelineno-31-15" href="#__codelineno-31-15"></a>sudo<span class="w"> </span>modprobe<span class="w"> </span>cdrom<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+<a id="__codelineno-31-16" name="__codelineno-31-16" href="#__codelineno-31-16"></a>sudo<span class="w"> </span>modprobe<span class="w"> </span>sr_mod
+<a id="__codelineno-31-17" name="__codelineno-31-17" href="#__codelineno-31-17"></a>sudo<span class="w"> </span>modprobe<span class="w"> </span>sg
+<a id="__codelineno-31-18" name="__codelineno-31-18" href="#__codelineno-31-18"></a>sudo<span class="w"> </span>modprobe<span class="w"> </span>udf
+<a id="__codelineno-31-19" name="__codelineno-31-19" href="#__codelineno-31-19"></a>sudo<span class="w"> </span>modprobe<span class="w"> </span>isofs
+<a id="__codelineno-31-20" name="__codelineno-31-20" href="#__codelineno-31-20"></a>sudo<span class="w"> </span>modprobe<span class="w"> </span>nls_utf8<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+<a id="__codelineno-31-21" name="__codelineno-31-21" href="#__codelineno-31-21"></a>sudo<span class="w"> </span>modprobe<span class="w"> </span>uas<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+<a id="__codelineno-31-22" name="__codelineno-31-22" href="#__codelineno-31-22"></a>lsmod<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s1">&#39;cdrom|sr_mod|sg|udf|isofs|nls_utf8|uas|crc_itu_t&#39;</span>
+<a id="__codelineno-31-23" name="__codelineno-31-23" href="#__codelineno-31-23"></a>
+<a id="__codelineno-31-24" name="__codelineno-31-24" href="#__codelineno-31-24"></a>sudo<span class="w"> </span>tee<span class="w"> </span>/etc/modules-load.d/optical-drive.conf<span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-31-25" name="__codelineno-31-25" href="#__codelineno-31-25"></a><span class="s">cdrom</span>
+<a id="__codelineno-31-26" name="__codelineno-31-26" href="#__codelineno-31-26"></a><span class="s">sr_mod</span>
+<a id="__codelineno-31-27" name="__codelineno-31-27" href="#__codelineno-31-27"></a><span class="s">sg</span>
+<a id="__codelineno-31-28" name="__codelineno-31-28" href="#__codelineno-31-28"></a><span class="s">udf</span>
+<a id="__codelineno-31-29" name="__codelineno-31-29" href="#__codelineno-31-29"></a><span class="s">isofs</span>
+<a id="__codelineno-31-30" name="__codelineno-31-30" href="#__codelineno-31-30"></a><span class="s">nls_utf8</span>
+<a id="__codelineno-31-31" name="__codelineno-31-31" href="#__codelineno-31-31"></a><span class="s">uas</span>
+<a id="__codelineno-31-32" name="__codelineno-31-32" href="#__codelineno-31-32"></a><span class="s">EOF</span>
+<a id="__codelineno-31-33" name="__codelineno-31-33" href="#__codelineno-31-33"></a><span class="c1"># Remove uas from the autoload list if it isn&#39;t available as a module:</span>
+<a id="__codelineno-31-34" name="__codelineno-31-34" href="#__codelineno-31-34"></a>modinfo<span class="w"> </span>uas<span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span>sudo<span class="w"> </span>sed<span class="w"> </span>-i<span class="w"> </span><span class="s1">&#39;/^uas$/d&#39;</span><span class="w"> </span>/etc/modules-load.d/optical-drive.conf
+</code></pre></div>
+<h2 id="test-the-drive">Test the drive</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>lsscsi<span class="w"> </span>sg3-utils<span class="w"> </span>udftools
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="c1"># Plug in the Blu-ray/DVD drive, then:</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>lsusb<span class="p">;</span><span class="w"> </span>lsscsi<span class="p">;</span><span class="w"> </span>lsblk<span class="w"> </span>-f
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a>ls<span class="w"> </span>-l<span class="w"> </span>/dev/sr*<span class="w"> </span>/dev/cdrom<span class="w"> </span>/dev/dvd<span class="w"> </span>/dev/sg*<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>dmesg<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-100
+</code></pre></div>
+<p>You want to see <code>/dev/sr0</code>. Mount test:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>sudo<span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/mnt/bluray<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>mount<span class="w"> </span>-t<span class="w"> </span>udf<span class="w"> </span>-o<span class="w"> </span>ro<span class="w"> </span>/dev/sr0<span class="w"> </span>/mnt/bluray<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>ls<span class="w"> </span>-la<span class="w"> </span>/mnt/bluray
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>sudo<span class="w"> </span>umount<span class="w"> </span>/mnt/bluray
+</code></pre></div>
+<h2 id="part-3-back-up-for-reuse-on-the-same-kernel">Part 3 — Back up for reuse on the same kernel</h2>
+<p>Only restore this tarball onto another Jetson with the <strong>exact same <code>uname -r</code></strong>
+— for a different kernel, rebuild instead.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="nv">KREL</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>uname<span class="w"> </span>-r<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="nv">STAMP</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>date<span class="w"> </span>+%Y%m%d-%H%M%S<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a><span class="nv">BACKUP</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/optical-kmods-</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">-</span><span class="si">${</span><span class="nv">STAMP</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BACKUP</span><span class="s2">/modules&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BACKUP</span><span class="s2">/config-files&quot;</span>
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="k">for</span><span class="w"> </span>f<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/cdrom/cdrom.ko&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a><span class="w">         </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/scsi/sr_mod.ko&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a><span class="w">         </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/scsi/sg.ko&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-8" name="__codelineno-34-8" href="#__codelineno-34-8"></a><span class="w">         </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/fs/udf/udf.ko&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-9" name="__codelineno-34-9" href="#__codelineno-34-9"></a><span class="w">         </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/fs/isofs/isofs.ko&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-10" name="__codelineno-34-10" href="#__codelineno-34-10"></a><span class="w">         </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/fs/nls/nls_utf8.ko&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-11" name="__codelineno-34-11" href="#__codelineno-34-11"></a><span class="w">         </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/usb/storage/uas.ko&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-12" name="__codelineno-34-12" href="#__codelineno-34-12"></a><span class="w">         </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/drivers/usb/storage/usb-storage.ko&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-13" name="__codelineno-34-13" href="#__codelineno-34-13"></a><span class="w">         </span><span class="s2">&quot;/lib/modules/</span><span class="si">${</span><span class="nv">KREL</span><span class="si">}</span><span class="s2">/kernel/lib/crc-itu-t.ko&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-34-14" name="__codelineno-34-14" href="#__codelineno-34-14"></a><span class="w">  </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>cp<span class="w"> </span>--parents<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$f</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BACKUP</span><span class="s2">/modules/&quot;</span>
+<a id="__codelineno-34-15" name="__codelineno-34-15" href="#__codelineno-34-15"></a><span class="k">done</span>
+<a id="__codelineno-34-16" name="__codelineno-34-16" href="#__codelineno-34-16"></a><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span>/etc/modules-load.d/optical-drive.conf<span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-34-17" name="__codelineno-34-17" href="#__codelineno-34-17"></a><span class="w">  </span>sudo<span class="w"> </span>cp<span class="w"> </span>--parents<span class="w"> </span>/etc/modules-load.d/optical-drive.conf<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BACKUP</span><span class="s2">/config-files/&quot;</span>
+<a id="__codelineno-34-18" name="__codelineno-34-18" href="#__codelineno-34-18"></a>tar<span class="w"> </span>-czf<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">BACKUP</span><span class="si">}</span><span class="s2">.tar.gz&quot;</span><span class="w"> </span>-C<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>dirname<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BACKUP</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>basename<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BACKUP</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+</code></pre></div>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>grep: .config: no such file or directory</code></td>
+<td><code>.config</code> was never copied into the kernel source tree.</td>
+<td>Redo the config-copy step from inside <code>kernel-jammy-src</code>.</td>
+</tr>
+<tr>
+<td><code>invalid module format</code></td>
+<td>Module vermagic doesn't match <code>uname -r</code>.</td>
+<td>Fix <code>CONFIG_LOCALVERSION</code>/<code>.scmversion</code>, rebuild, recheck <code>modinfo vermagic</code>.</td>
+</tr>
+<tr>
+<td><code>unknown symbol</code> such as <code>register_cdrom</code></td>
+<td><code>sr_mod</code>/<code>udf</code>/<code>isofs</code> didn't know about <code>cdrom</code>'s <code>Module.symvers</code>.</td>
+<td>Build <code>cdrom</code> first and pass <code>KBUILD_EXTRA_SYMBOLS</code> to dependent builds.</td>
+</tr>
+<tr>
+<td><code>exported twice</code> for <code>usb_storage</code> symbols</td>
+<td>USB storage is already built into <code>vmlinux</code>.</td>
+<td>Leave <code>CONFIG_USB_STORAGE=y</code>; don't force <code>usb-storage.ko</code>.</td>
+</tr>
+<tr>
+<td><code>unknown filesystem type udf</code></td>
+<td><code>udf.ko</code> missing, not installed, or not loaded.</td>
+<td>Install <code>udf.ko</code>, run <code>depmod</code>, <code>sudo modprobe udf</code>.</td>
+</tr>
+<tr>
+<td><code>/dev/sr0</code> never appears</td>
+<td><code>sr_mod</code>/USB/SCSI path not loaded or drive not detected.</td>
+<td>Check <code>lsusb</code>, <code>lsscsi</code>, <code>dmesg</code>; <code>modprobe sr_mod sg uas</code> as applicable.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="./jetson.md">Jetson CUDA GPU setup</a> — the on-device step for GPU-accelerated
+  ASR, a separate concern from this page.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>- [ ] **Step 2: Confirm the docs build cleanly**
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>Run (from the repo root):
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>```bash
+<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>uv run --with mkdocs-material --with &quot;mkdocstrings[python]&quot; mkdocs build
+</code></pre></div></li>
+</ul>
+<p>Expected: build succeeds (per project convention, expect the existing ~18
+unrelated warnings but no new errors/broken-link warnings referencing
+<code>jetson-optical-drive.md</code> or <code>jetson.md</code>).</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>git<span class="w"> </span>add<span class="w"> </span>docs/development/jetson-optical-drive.md
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(jetson): add validated USB Blu-ray/DVD kernel module build guide&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-5-changelog-entry">Task 5: CHANGELOG entry</h2>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add an <code>[Unreleased]</code> → <code>### Fixed</code> bullet</strong></li>
+</ul>
+<p>Find:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="gu">### Fixed</span>
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Subtitle cache directory no longer fails to create with a permission-denied warning on startup.**</span>
+</code></pre></div>
+<p>Replace with (new bullet inserted above the existing one):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="gu">### Fixed</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Jetson GPU setup script now works on real hardware, not just in theory.**</span> A community member&#39;s field validation on a Jetson Orin NX (JetPack 6.2.2 / R36.5.0) found <span class="sb">`jetson_gpu_setup.sh`</span> was missing two steps: it didn&#39;t move the PyInstaller-bundled <span class="sb">`libstdc++.so.6`</span>/<span class="sb">`libgcc_s.so.1`</span> aside (causing <span class="sb">`GLIBC_2.36`</span>/<span class="sb">`GLIBC_2.38 not found`</span> on JetPack&#39;s older Ubuntu 22.04 base) and didn&#39;t populate the <span class="sb">`~/.engram/cuda/`</span> runtime cache from JetPack&#39;s system cuDNN/cuBLAS (so <span class="sb">`/api/asr-status`</span> never reported <span class="sb">`gpu_runtime_installed: true`</span>). Both are now automated by the script; <span class="sb">`docs/development/jetson.md`</span> is updated to &quot;validated,&quot; and a new <span class="sb">`docs/development/jetson-optical-drive.md`</span> documents building the Blu-ray/DVD kernel modules JetPack doesn&#39;t ship for USB optical drives.
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Subtitle cache directory no longer fails to create with a permission-denied warning on startup.**</span>
+</code></pre></div>
+<p>(Keep the rest of that bullet's existing text unchanged — only insert the new
+bullet above it.)</p>
+<ul>
+<li>[ ] <strong>Step 2: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>git<span class="w"> </span>add<span class="w"> </span>CHANGELOG.md
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: changelog entry for Jetson field-validation fixes&quot;</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: After opening the PR, append the PR number</strong></li>
+</ul>
+<p>Once <code>gh pr create</code> returns a PR number, edit the new CHANGELOG bullet to end
+with <code>(#NNN)</code> (matching every other entry in the file) and amend or add a
+follow-up commit — don't leave it unnumbered in the final PR.</p>
+<hr />
+<h2 id="task-6-final-review">Task 6: Final review</h2>
+<ul>
+<li>[ ] <strong>Step 1: Re-read the full diff</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>git<span class="w"> </span>diff<span class="w"> </span>main<span class="w"> </span>--stat
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>git<span class="w"> </span>diff<span class="w"> </span>main
+</code></pre></div>
+<p>Confirm: <code>jetson_gpu_setup.sh</code> still reads top-to-bottom sensibly (step
+numbers 1–9 in order, no leftover duplicate <code>cat &lt;&lt;EOF</code>), both docs pages
+cross-link correctly, and the CHANGELOG bullet reads as prose (not a diff
+artifact).</p>
+<ul>
+<li>[ ] <strong>Step 2: Re-run the syntax and dry-run checks from Tasks 1–2 one more time against the final file</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>bash<span class="w"> </span>-n<span class="w"> </span>backend/scripts/jetson_gpu_setup.sh
+</code></pre></div>
+<p>Expected: exit code 0.</p>
+<ul>
+<li>[ ] <strong>Step 3: Hand off per <code>superpowers:finishing-a-development-branch</code></strong></li>
+</ul>
+<p>This plan doesn't include opening the PR itself — follow the user's normal
+branch/PR workflow (feature branch, PR referencing no issue number since this
+originates from a contributed guide rather than a filed issue) once all tasks
+above are checked off.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

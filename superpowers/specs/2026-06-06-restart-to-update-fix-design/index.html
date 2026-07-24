@@ -1,0 +1,1859 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-06-06-restart-to-update-fix-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Restart-to-update fix + restart UX — design - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#restart-to-update-fix-restart-ux-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Restart-to-update fix + restart UX — design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals-out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals / out of scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-platform-applicability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-platform applicability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-fix-the-hang-console-bounded-wait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Fix the hang — console + bounded wait
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Fix the hang — console + bounded wait">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1a-_spawn_detached_helper-give-the-helper-a-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1a. _spawn_detached_helper — give the helper a console
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1b-_render_update_bat-bound-the-wait-and-harden-the-pid-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1b. _render_update_bat — bound the wait and harden the PID check
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-always-relaunch-notify-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Always-relaunch + notify contract
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Always-relaunch + notify contract">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2a-bat-writes-a-result-marker-success-and-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2a. Bat writes a result marker (success and failure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2b-startup-reads-the-marker-into-status-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2b. Startup reads the marker into status fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2c-surface-both-fields-in-both-rest-and-ws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2c. Surface both fields in BOTH REST and WS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2d-frontend-failure-banner-success-toast" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2d. Frontend: failure banner + success toast
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-stop-the-duplicate-browser-tab-all-platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Stop the duplicate browser tab (all platforms)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Stop the duplicate browser tab (all platforms)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3a-pass-updated-through-the-relaunch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3a. Pass --updated through the relaunch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3b-runpy-suppresses-the-tab-when-relaunched" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3b. run.py suppresses the tab when relaunched
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3c-safeguard-never-strand-the-user-without-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3c. Safeguard: never strand the user without UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-data-flow-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Data flow (Windows)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-testing-closes-the-blind-spot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Testing (closes the blind spot)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#files-touched" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files touched
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#risks-open-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Risks / open notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="restart-to-update-fix-restart-ux-design">Restart-to-update fix + restart UX — design</h1>
+<p><strong>Date:</strong> 2026-06-06
+<strong>Status:</strong> Approved (design); ready for implementation plan.
+<strong>Root-cause investigation:</strong> <code>docs/superpowers/reviews/2026-06-06-restart-to-update-tasklist-hang.md</code></p>
+<h2 id="problem">Problem</h2>
+<p>Windows "Restart to update" has never completed on a real install. The update downloads,
+verifies, and stages correctly (reaches <code>READY</code>); the failure is entirely in the restart helper.</p>
+<p>The helper <code>.bat</code> is spawned <code>DETACHED_PROCESS</code> (no console). Its first action is a <code>:wait</code>
+loop that polls for the old process to exit with <code>tasklist /FI "PID eq N" | find /I "N"</code>.
+<strong>A <code>cmd</code> pipe deadlocks in a console-less process</strong>, so that first <code>tasklist | find</code> hangs
+forever. The helper never robocopies, swaps, or relaunches — the app simply disappears and the
+user re-downloads manually. Reproduced deterministically 2026-06-06 (a <code>CREATE_NO_WINDOW</code> spawn
+of the same bat works; <code>DETACHED_PROCESS</code> hangs, and console-less <code>tasklist</code> emits no output at
+all even without a pipe).</p>
+<p>Three prior fixes (#285 Job Object, #322 atomic swap, #338 cwd handle) each addressed a step the
+helper never reaches, so the bug persisted. #338 was "verified" in an isolated swap harness that
+ran the swap steps <strong>with a console</strong>, so it never reproduced the console-less hang.</p>
+<p>Secondary issue: every frozen startup calls <code>webbrowser.open(...)</code> unconditionally
+(<code>backend/run.py</code>), so each restart spawns a <em>duplicate</em> browser tab (on all platforms — POSIX
+<code>os.execv</code> re-runs <code>run.py</code> too).</p>
+<h2 id="goals">Goals</h2>
+<ol>
+<li>Windows "Restart to update" completes the swap and relaunches the new build.</li>
+<li>The app <strong>always</strong> comes back — on failure it rolls back to the working old build and tells
+   the user (non-blocking) that the update couldn't apply.</li>
+<li>No duplicate browser tab on restart; the existing tab is reused.</li>
+<li>The swap is tested <strong>in the real detached/no-window spawn context</strong>, closing the blind spot
+   that let three fixes ship without touching the real failure.</li>
+</ol>
+<h2 id="non-goals-out-of-scope">Non-goals / out of scope</h2>
+<ul>
+<li>Rewriting the helper in PowerShell (direction 2). Noted as a future maintainability option;
+  not this change.</li>
+<li>Any change to download/verify/staging (works correctly today).</li>
+<li>POSIX swap mechanics (POSIX overwrites the running binary + <code>os.execv</code> in place — no helper,
+  no <code>tasklist</code>, no console; nothing to fix there).</li>
+<li>Code signing / SmartScreen.</li>
+</ul>
+<h2 id="cross-platform-applicability">Cross-platform applicability</h2>
+<table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Windows</th>
+<th>macOS / Linux</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Console + bounded wait (§1)</td>
+<td>yes — the fix</td>
+<td>N/A — no helper process exists</td>
+</tr>
+<tr>
+<td>Always-relaunch + notify (§2)</td>
+<td>yes (marker + rollback)</td>
+<td>already adequate — failure raises, app keeps running</td>
+</tr>
+<tr>
+<td>Browser-tab suppression (§3)</td>
+<td>yes</td>
+<td><strong>yes</strong> — <code>os.execv</code> re-runs <code>run.py</code> and re-opens a tab</td>
+</tr>
+<tr>
+<td>Tests (§5)</td>
+<td>yes</td>
+<td>suppression test applies; swap tests are Windows-only</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="1-fix-the-hang-console-bounded-wait">1. Fix the hang — console + bounded wait</h2>
+<p>File: <code>backend/app/core/updater.py</code>.</p>
+<h3 id="1a-_spawn_detached_helper-give-the-helper-a-console">1a. <code>_spawn_detached_helper</code> — give the helper a console</h3>
+<p>Replace <code>DETACHED_PROCESS</code> with <code>CREATE_NO_WINDOW</code> in the creation flags. Keep
+<code>CREATE_BREAKAWAY_FROM_JOB</code> (with the existing OSError fallback to non-breakaway) and the
+neutral <code>cwd=tempfile.gettempdir()</code>.</p>
+<ul>
+<li><code>DETACHED_PROCESS</code> and <code>CREATE_NO_WINDOW</code> are mutually exclusive; this is a swap, not an add.</li>
+<li>Rationale: <code>CREATE_NO_WINDOW</code> runs the helper in a <strong>hidden</strong> console (no flash), which makes
+  <code>tasklist</code>, the <code>|</code> pipe, and every other console-dependent command in the bat behave
+  normally. This de-risks the whole bat, not just the wait line.</li>
+<li><code>CREATE_NEW_PROCESS_GROUP</code> may be kept (harmless) or dropped; not load-bearing here.</li>
+</ul>
+<h3 id="1b-_render_update_bat-bound-the-wait-and-harden-the-pid-check">1b. <code>_render_update_bat</code> — bound the wait and harden the PID check</h3>
+<ul>
+<li><strong>Bounded loop:</strong> add an iteration counter (<code>set /a COUNT+=1</code>) with a <strong>~10s cap</strong> (≈10
+  iterations at ~1s each). Normal exit is 1–2s, so the cap never fires in practice but guarantees
+  the loop terminates fast. The cap is a backstop, not expected latency — the legitimate restart
+  is dominated by robocopy, not the wait. If <code>os._exit(0)</code> hasn't dropped the process in 10s,
+  that <em>is</em> a failure, so on cap jump to the failure path (§2: rollback + relaunch old + marker),
+  never an infinite spin.</li>
+<li><strong>Harden the liveness check:</strong> filter on both PID and image name, using the bat's existing
+  <code>exe</code> parameter (the launcher basename, e.g. <code>engram.exe</code>), so a reused PID held by an
+  unrelated process can't keep the loop alive:
+  <code>tasklist /FI "PID eq &lt;pid&gt;" /FI "IMAGENAME eq &lt;exe&gt;"</code>. (The bounded cap is the ultimate
+  backstop.)</li>
+<li>The loop logic otherwise stays the same; with §1a the existing <code>tasklist | find</code> idiom works.</li>
+</ul>
+<hr />
+<h2 id="2-always-relaunch-notify-contract">2. Always-relaunch + notify contract</h2>
+<p>Chosen failure contract: <strong>relaunch the old version + notify.</strong> The app never disappears; if the
+update can't apply, it rolls back to the working old build, relaunches it, and surfaces a
+non-blocking notice. The pending update auto-retries on the next check.</p>
+<h3 id="2a-bat-writes-a-result-marker-success-and-failure">2a. Bat writes a result marker (success and failure)</h3>
+<p>The bat writes a single <code>~/.engram/update_result.txt</code> before relaunching, on every terminal path.
+<strong>Plain <code>key=value</code> lines</strong> (not JSON — emitting JSON quotes/colons/<code>&gt;</code> from cmd is fragile);
+parsed leniently in Python:</p>
+<ul>
+<li><strong>Failure</strong> labels (<code>:fail</code>, <code>:fail_no_swap</code>, <code>:restore_old</code>, new wait-timeout path):
+  <code>result=failed</code> / <code>version=&lt;target&gt;</code> / <code>step=&lt;label&gt;</code></li>
+<li><strong>Success</strong> path: <code>result=success</code> / <code>version=&lt;target&gt;</code></li>
+</ul>
+<p>Written with <code>echo key=value&gt;"%RESULT%"</code> (first line) + <code>&gt;&gt;</code> appends (file redirection works
+console-less; with §1a it is fully reliable). Startup reads it once and branches on <code>result</code> (§2b).</p>
+<h3 id="2b-startup-reads-the-marker-into-status-fields">2b. Startup reads the marker into status fields</h3>
+<p>In <code>UpdateChecker</code>:
+- New instance fields (init in <code>__init__</code>): <code>self.last_update_error: str | None = None</code> and
+  <code>self.last_update_success_version: str | None = None</code>.
+- <code>start()</code> reads <code>~/.engram/update_result.txt</code> if present, <strong>deletes it</strong> (so it's consumed
+  once), then branches:
+  - <code>"failed"</code> → <code>last_update_error</code> = human message ("Update to {version} couldn't be applied
+    automatically (step: {step}). It'll retry on the next check, or download manually.").
+  - <code>"success"</code> → <code>last_update_success_version</code> = <code>version</code> (used for a "you're now on vX" toast).
+- The normal <code>_check()</code> still runs and may re-stage <code>READY</code>. Both fields are <strong>separate from
+  <code>state</code></strong> so a subsequent <code>READY</code> doesn't clobber the failure notice or the success toast.</p>
+<h3 id="2c-surface-both-fields-in-both-rest-and-ws">2c. Surface both fields in BOTH REST and WS</h3>
+<blockquote>
+<p>⚠️ Known footgun (see <code>project_update_status_ws_rest_drift.md</code>): update fields must be added to
+<strong>both</strong> <code>get_status</code> (REST) and <code>broadcast_update_status</code> (WS), and the UI reads update state
+only from WS. Missing either side silently drops the field.</p>
+</blockquote>
+<ul>
+<li><code>UpdateChecker.get_status()</code> — add <code>"last_update_error"</code> and <code>"last_update_success_version"</code>.</li>
+<li><code>EventBroadcaster.broadcast_update_status(...)</code> — add <code>last_update_error</code> and
+  <code>last_update_success_version</code> params, included in <code>data</code> (same conditional pattern as <code>error</code>).</li>
+<li>The <code>_broadcast()</code> helper in <code>updater.py</code> passes both.</li>
+<li><code>frontend/src/types/index.ts</code> — add <code>last_update_error?: string | null</code> and
+  <code>last_update_success_version?: string | null</code> to <code>UpdateStatus</code>.</li>
+</ul>
+<h3 id="2d-frontend-failure-banner-success-toast">2d. Frontend: failure banner + success toast</h3>
+<ul>
+<li><strong>Failure variant</strong> in <code>frontend/src/app/components/UpdateBanner.tsx</code>: currently renders only
+  when <code>state === "ready"</code>. Extend it to also render a magenta (<code>sv.magenta</code>) variant when
+  <code>updateStatus.last_update_error</code> is set — message + dismiss (X) + "Download manually" link to
+  <code>release_url</code>. Independent of the <code>ready</code> banner (both can show: "last attempt failed" +
+  "new build ready to retry"). Update <code>UpdateBanner.test.tsx</code>.</li>
+<li><strong>Success toast:</strong> when <code>updateStatus.last_update_success_version</code> arrives, fire
+  <code>toast.success("You're now on engram v{version}")</code> (sonner). Fired as a side-effect in the
+  update-status consumer (<code>App.tsx</code>, which already holds <code>updateStatus</code> from <code>useJobManagement</code>),
+  <strong>deduped by version via <code>localStorage</code></strong> (key e.g. <code>engram:lastSuccessToastVersion</code>).</li>
+<li>localStorage, <strong>not</strong> a ref: a successful update changes <code>current_version</code>, which makes
+    <code>useJobManagement.syncUpdateStatus()</code> call <code>window.location.reload()</code> (the bundle-version
+    guard). That reload wipes any in-memory ref. A server-side field + localStorage dedupe is the
+    only combination that survives the reload yet fires exactly once. (This is also why the
+    backend marker is required — not merely convenient.)</li>
+<li><strong>Replace the existing dead toast effect.</strong> <code>App.tsx</code> (~L147–156) has a
+    <code>pendingUpdateVersionRef</code> + <code>state === "up_to_date"</code> toast that never fires in practice (the
+    reload wipes the ref first). Remove that effect and the now-unused <code>pendingUpdateVersionRef</code>
+    plumbing (its two <code>onRestart</code> assignments) and replace it with the localStorage-deduped,
+    <code>last_update_success_version</code>-driven toast.</li>
+</ul>
+<hr />
+<h2 id="3-stop-the-duplicate-browser-tab-all-platforms">3. Stop the duplicate browser tab (all platforms)</h2>
+<h3 id="3a-pass-updated-through-the-relaunch">3a. Pass <code>--updated</code> through the relaunch</h3>
+<ul>
+<li>Windows (<code>_render_update_bat</code>): both relaunch lines become
+  <code>start "" /D "%INSTALL%" "%EXE%" --updated</code> (success and rollback).</li>
+<li>POSIX (<code>_restart_linux_macos</code>): <code>os.execv(sys.executable, sys.argv + ["--updated"])</code> (append
+  once; idempotent since <code>run.py</code> only checks presence).</li>
+</ul>
+<h3 id="3b-runpy-suppresses-the-tab-when-relaunched">3b. <code>run.py</code> suppresses the tab when relaunched</h3>
+<ul>
+<li>In <code>main()</code>, detect <code>--updated</code> in <code>sys.argv</code>. When present, skip the
+  <code>threading.Timer(1.5, webbrowser.open, ...)</code> call. (<code>--updated</code> is otherwise inert; ensure it
+  doesn't interfere with <code>multiprocessing.freeze_support()</code> — it won't, freeze_support intercepts
+  before <code>main()</code>.)</li>
+</ul>
+<h3 id="3c-safeguard-never-strand-the-user-without-ui">3c. Safeguard: never strand the user without UI</h3>
+<p>When <code>--updated</code> is set, <code>run.py</code> schedules a <code>threading.Timer(5.0, ...)</code> that opens a tab <strong>only
+if no WebSocket client has connected</strong> by then — i.e. <code>len(manager.active_connections) == 0</code>,
+reading the singleton <code>from app.api.websocket import manager</code>. Covers the two cases where the
+existing tab can't reconnect: the user closed it, or <code>_find_free_port</code> picked a different port
+than the old instance used. (Confirmed cleanly importable; not awkward.)</p>
+<p>Rationale recorded: a backend cannot close a tab it opened via <code>webbrowser.open</code>, and browsers
+block <code>window.close()</code> on non-script-opened tabs — so "close the old tab" is unreliable.
+Suppress-new + reconnect reaches one-tab through a supported path; the 5s safeguard covers the
+only case it breaks.</p>
+<hr />
+<h2 id="4-data-flow-windows">4. Data flow (Windows)</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>User clicks Restart now → POST /api/updates/restart
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  → apply_update() re-verifies staged build → _restart_windows()
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    → render bat (bounded 10s wait, PID+IMAGENAME filter, --updated relaunch, result marker)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    → _spawn_detached_helper(CREATE_NO_WINDOW | BREAKAWAY)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    → os._exit(0)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  helper: wait for &lt;exe&gt;(PID) to exit (bounded ~10s)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    → robocopy staged → .new ; verify sentinels ; move install→.old ; move .new→install
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    → on SUCCESS: write update_result.txt{success,version}; start NEW exe --updated; del .old; del self
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    → on ANY failure (incl. wait-timeout): write update_result.txt{failed,step}; restore old;
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>      start OLD exe --updated
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>relaunched engram (old or new), no new tab:
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  UpdateChecker.start() reads + deletes update_result.txt →
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>      failed  → last_update_error set
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>      success → last_update_success_version set
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>  → existing tab reconnects (or 5s safeguard opens one if none) →
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>      magenta failure banner  OR  green &quot;you&#39;re now on vX&quot; toast
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>  → _check() runs; if update still pending → re-stage READY → cyan &quot;ready&quot; banner (retry)
+</code></pre></div>
+<h2 id="5-testing-closes-the-blind-spot">5. Testing (closes the blind spot)</h2>
+<ul>
+<li><strong>End-to-end Windows swap in the real spawn context</strong> (the key test): spawn the actual helper
+  via <code>_spawn_detached_helper</code>, pass a throwaway parent PID that exits, against a dummy install
+  dir with a dummy <code>engram.exe</code> + sentinel tree. Assert: swap completes, new tree in place,
+  relaunch invoked, <strong>success marker written</strong>. Inject a failure (e.g. unwritable target) and
+  assert: rollback + <strong>failure marker written</strong>. Windows-only
+  (<code>@pytest.mark.skipif(sys.platform != "win32")</code>). This is the automated form of the manual
+  2026-06-06 reproduction.</li>
+<li><strong><code>_render_update_bat</code> unit assertions:</strong> bounded loop counter (~10 cap) present; PID +
+  <code>IMAGENAME eq &lt;exe&gt;</code> filter; <code>--updated</code> on both relaunch lines; a marker write on each failure
+  label <strong>and</strong> the success path.</li>
+<li><strong><code>_spawn_detached_helper</code> flags:</strong> asserts <code>CREATE_NO_WINDOW</code> is set and <code>DETACHED_PROCESS</code> is
+  not (via the same getattr-based flag resolution so it runs on non-Windows CI).</li>
+<li><strong><code>run.py</code> suppression + safeguard:</strong> with <code>--updated</code> + <code>is_frozen</code> mocked True,
+  <code>webbrowser.open</code> is not scheduled immediately; without <code>--updated</code>, it is. Safeguard: with
+  <code>--updated</code> and <code>manager.active_connections</code> empty after the timer, a tab is opened; non-empty,
+  it is not.</li>
+<li><strong>Marker → fields:</strong> <code>start()</code> reading a <code>failed</code> marker sets <code>last_update_error</code>; a <code>success</code>
+  marker sets <code>last_update_success_version</code>; the marker file is deleted after read.</li>
+<li><strong>Field plumbing:</strong> <code>last_update_error</code> and <code>last_update_success_version</code> present in REST
+  <code>get_status()</code> and in the WS <code>update_status</code> payload built by <code>broadcast_update_status</code>.</li>
+<li><strong>Frontend:</strong> success toast fires once per version (deduped) when
+  <code>last_update_success_version</code> is present; failure banner renders when <code>last_update_error</code> is set.</li>
+<li>Existing updater unit tests continue to pass.</li>
+</ul>
+<h2 id="files-touched">Files touched</h2>
+<ul>
+<li><code>backend/app/core/updater.py</code> — <code>_spawn_detached_helper</code>, <code>_render_update_bat</code>,
+  <code>_restart_linux_macos</code>, <code>__init__</code>, <code>start</code>, <code>get_status</code>, <code>_broadcast</code>.</li>
+<li><code>backend/app/services/event_broadcaster.py</code> — <code>broadcast_update_status</code> signature + payload.</li>
+<li><code>backend/run.py</code> — <code>--updated</code> suppression + no-client safeguard (imports <code>manager</code>).</li>
+<li><code>frontend/src/types/index.ts</code> — <code>UpdateStatus.last_update_error</code> + <code>last_update_success_version</code>.</li>
+<li><code>frontend/src/app/components/UpdateBanner.tsx</code> (+ test) — failure variant.</li>
+<li>Frontend update-status consumer (hook/effect handling the <code>update_status</code> WS message +
+  <code>/api/updates/status</code> fetch) — success toast, deduped by version.</li>
+<li><code>backend/tests/unit/test_updater.py</code> (+ a Windows-gated swap test).</li>
+</ul>
+<h2 id="risks-open-notes">Risks / open notes</h2>
+<ul>
+<li><code>CREATE_NO_WINDOW</code> + breakaway must still outlive the parent — verified in principle; the
+  end-to-end test confirms it on CI.</li>
+<li>Chicken-and-egg: the fix only runs once the user is on a build containing it. Benign here — the
+  user manually installs each latest release, so the first release with the fix is hand-installed
+  and auto-update works from there forward.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

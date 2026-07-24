@@ -1,0 +1,2317 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-07-19-fast-fail-zero-output-rip/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Fast-Fail Zero-Output Rip Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#fast-fail-zero-output-rip-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Fast-Fail Zero-Output Rip Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context-an-implementer-needs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context an implementer needs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="File Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-region-mismatch-detection-helper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Region-mismatch detection helper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-circuit-breaker-decision-helper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Circuit-breaker decision helper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-carry-the-specific-failure-reason-on-ripresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Carry the specific failure reason on RipResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-wire-both-helpers-into-the-command-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Wire both helpers into the command loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-skip-the-per-title-fallback-when-the-pass-stalled-with-no-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Skip the per-title fallback when the pass stalled with no output
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-6-full-backend-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Full backend verification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Changelog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-8-open-the-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Open the PR
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-review-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-Review Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="fast-fail-zero-output-rip-implementation-plan">Fast-Fail Zero-Output Rip Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Stop a disc MakeMKV cannot read at all from occupying engram for ~26 minutes, and replace the misleading "dirty or damaged" message with MakeMKV's specific region-mismatch diagnosis.</p>
+<p><strong>Architecture:</strong> Three independent changes. Two pure helper functions in <code>extractor.py</code> (region-mismatch detection, circuit-breaker decision) are unit-tested in isolation, then wired into the existing <code>run_rip_with_streaming</code> command loop. A third change in <code>job_manager.py</code> skips the per-title fallback when the all-pass both stalled and produced nothing. Pure helpers first matches this codebase's established pattern (<code>_is_stalled</code>, <code>_extract_created_mkv</code>, <code>title_index_from_filename</code> are all module-level and separately tested).</p>
+<p><strong>Tech Stack:</strong> Python 3.11, pytest (<code>uv run pytest</code>), ruff (line length 100, double quotes), SQLModel/async SQLAlchemy.</p>
+<p><strong>Spec:</strong> <code>docs/superpowers/specs/2026-07-19-fast-fail-zero-output-rip-design.md</code></p>
+<hr />
+<h2 id="context-an-implementer-needs">Context an implementer needs</h2>
+<ul>
+<li><strong>All commands run from <code>backend/</code>.</strong> This project uses <code>uv</code>, never bare <code>python</code>/<code>pytest</code>/<code>pip</code>. Always <code>uv run pytest</code>, <code>uv run ruff check .</code>.</li>
+<li><strong>Never delete <code>backend/engram.db</code>.</strong> It holds real API keys.</li>
+<li><strong>Do not write em dashes or en dashes</strong> in code comments, docstrings, commit messages, or user-facing strings. Use colons, commas, semicolons, or parentheses. (Existing strings in the file use them; leave those alone, just do not add new ones.)</li>
+<li><strong>The <code>rip_stalled</code> error code is reused deliberately.</strong> Do not invent a <code>region_mismatch</code> error code. New REVIEW error codes must be registered in <code>_NON_REMATCHABLE_REVIEW_ERRORS</code> (<code>app/services/finalization_coordinator.py:222</code>) or auto-escalation overwrites <code>match_details</code> and the diagnosis is lost before the user sees it.</li>
+<li><strong>Some pipeline/unit tests need an initialized DB.</strong> If tests fail with <code>no such table</code>, run <code>uv run python -c "import asyncio; from app.database import init_db; asyncio.run(init_db())"</code> once in this worktree.</li>
+</ul>
+<h2 id="file-structure">File Structure</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Change</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend/app/core/extractor.py</code></td>
+<td>Modify</td>
+<td>Adds two pure helpers (<code>_is_region_mismatch</code>, <code>_should_abandon_zero_output_rip</code>), a <code>STALL_POLL_INTERVAL</code> constant, a <code>REGION_MISMATCH_FAILURE_REASON</code> constant, a <code>failure_reason</code> field on <code>RipResult</code>, and wires all of it into <code>run_rip_with_streaming</code>.</td>
+</tr>
+<tr>
+<td><code>backend/app/services/job_manager.py</code></td>
+<td>Modify</td>
+<td>Gates the per-title fallback (<code>:2485-2508</code>) on stall-plus-zero-output; uses <code>RipResult.failure_reason</code> when routing stalled titles to review (<code>:2531-2533</code>).</td>
+</tr>
+<tr>
+<td><code>backend/tests/unit/test_extractor_zero_output.py</code></td>
+<td>Create</td>
+<td>All new extractor tests: both pure helpers plus one wiring test through a stubbed <code>subprocess.Popen</code>.</td>
+</tr>
+<tr>
+<td><code>backend/tests/unit/test_job_manager.py</code></td>
+<td>Modify</td>
+<td>Adds fallback-skip tests to the existing <code>TestOnePassRipFallback</code> class, reusing its <code>_seed_two_selected</code> / <code>rip_env</code> harness.</td>
+</tr>
+<tr>
+<td><code>CHANGELOG.md</code></td>
+<td>Modify</td>
+<td>User-facing entry under <code>[Unreleased]</code>.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="task-1-region-mismatch-detection-helper">Task 1: Region-mismatch detection helper</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/extractor.py</code> (constants block near line 29)
+- Test: <code>backend/tests/unit/test_extractor_zero_output.py</code> (create)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Create <code>backend/tests/unit/test_extractor_zero_output.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="sd">&quot;&quot;&quot;Tests for fast-failing a rip that produces no output (issue #506).</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="sd">Covers the two pure helpers added to the extractor and their wiring into the</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="sd">MakeMKV command loop:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="sd">* ``_is_region_mismatch`` recognises MakeMKV&#39;s MSG:3032 region warning, so a</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="sd">  region-locked disc gets an actionable message instead of &quot;dirty or damaged&quot;.</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="sd">* ``_should_abandon_zero_output_rip`` stops re-opening a disc that has already</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="sd">  proven unreadable, instead of burning one full stall timeout per title.</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.extractor</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="n">REGION_MISMATCH_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">STALL_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">_is_region_mismatch</span><span class="p">,</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="p">)</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestRegionMismatchDetection</span><span class="p">:</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;MSG:3032 is MakeMKV&#39;s region-mismatch warning.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_detects_robot_mode_region_message</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>        <span class="n">line</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>            <span class="s1">&#39;MSG:3032,0,2,&quot;Region setting of drive ASUS:BW-16D1HT does not match &#39;</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>            <span class="s1">&#39;the region of currently inserted disc, trying to work around...&quot;&#39;</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>        <span class="p">)</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="k">assert</span> <span class="n">_is_region_mismatch</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_progress_line_is_not_a_region_mismatch</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>        <span class="k">assert</span> <span class="n">_is_region_mismatch</span><span class="p">(</span><span class="s2">&quot;PRGV:14417,11915,65536&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_other_msg_codes_are_not_region_mismatch</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>        <span class="n">line</span> <span class="o">=</span> <span class="s2">&quot;MSG:5011,0,0,</span><span class="se">\&quot;</span><span class="s2">File &#39;/output/title00.mkv&#39; created successfully.</span><span class="se">\&quot;</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="k">assert</span> <span class="n">_is_region_mismatch</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_unrelated_code_containing_3032_is_not_matched</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>        <span class="c1"># A different message code that merely contains the digits must not match.</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>        <span class="k">assert</span> <span class="n">_is_region_mismatch</span><span class="p">(</span><span class="s1">&#39;MSG:13032,0,2,&quot;Something else&quot;&#39;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_region_reason_differs_from_generic_stall_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>        <span class="c1"># The whole point of the change: the user must not be told the disc is</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>        <span class="c1"># dirty when the real problem is the drive&#39;s region setting.</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>        <span class="k">assert</span> <span class="n">REGION_MISMATCH_FAILURE_REASON</span> <span class="o">!=</span> <span class="n">STALL_FAILURE_REASON</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>        <span class="k">assert</span> <span class="s2">&quot;region&quot;</span> <span class="ow">in</span> <span class="n">REGION_MISMATCH_FAILURE_REASON</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor_zero_output.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: FAIL at import with <code>ImportError: cannot import name 'REGION_MISMATCH_FAILURE_REASON'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Write minimal implementation</strong></li>
+</ul>
+<p>In <code>backend/app/core/extractor.py</code>, immediately after the existing <code>STALL_FAILURE_REASON</code> definition (line 29), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># MakeMKV emits MSG:3032 when the drive&#39;s region setting does not match the</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># inserted disc. It retries internally (&quot;trying to work around...&quot;) and can hang</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># there indefinitely, so the rip reads as a generic stall. Detecting the code</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># lets us name the real cause instead of blaming the disc.</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">REGION_MISMATCH_FAILURE_REASON</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">&quot;Ripping stalled: the drive&#39;s region setting does not match this disc&#39;s &quot;</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="s2">&quot;region, so MakeMKV could not open the disc. Set the drive&#39;s region to match &quot;</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="s2">&quot;the disc, or use a region-free drive.&quot;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">)</span>
+</code></pre></div>
+<p>Then, next to the other pure line helpers (after <code>_extract_created_mkv</code>, around line 64), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_is_region_mismatch</span><span class="p">(</span><span class="n">line</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Whether *line* is MakeMKV&#39;s MSG:3032 region-mismatch warning.</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="sd">    Robot mode emits ``MSG:3032,0,2,&quot;Region setting of drive ...&quot;``. The trailing</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="sd">    comma in the prefix keeps this from matching unrelated codes that merely</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="sd">    contain the digits (e.g. ``MSG:13032``).</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="k">return</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;MSG:3032,&quot;</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor_zero_output.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 5 passed.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/extractor.py<span class="w"> </span>backend/tests/unit/test_extractor_zero_output.py
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(extractor): detect MakeMKV MSG:3032 region-mismatch warning (#506)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-2-circuit-breaker-decision-helper">Task 2: Circuit-breaker decision helper</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/extractor.py</code> (constants block, and next to <code>_is_stalled</code>)
+- Test: <code>backend/tests/unit/test_extractor_zero_output.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_extractor_zero_output.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestZeroOutputAbandonDecision</span><span class="p">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;When every attempt stalls and nothing is written, stop re-opening the disc.</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="sd">    Abandoning is not lossy: each skipped title still routes to REVIEW as</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="sd">    re-rippable, and the user has a manual re-rip path. So the threshold can be</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="sd">    aggressive.</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_does_not_abandon_below_the_stall_threshold</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>        <span class="c1"># One stall is not yet evidence the whole disc is unreadable.</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>        <span class="k">assert</span> <span class="n">_should_abandon_zero_output_rip</span><span class="p">(</span><span class="n">stall_count</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">completed_outputs</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_abandons_at_threshold_with_no_output</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>        <span class="k">assert</span> <span class="n">_should_abandon_zero_output_rip</span><span class="p">(</span><span class="n">stall_count</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">completed_outputs</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_abandons_above_threshold_with_no_output</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>        <span class="k">assert</span> <span class="n">_should_abandon_zero_output_rip</span><span class="p">(</span><span class="n">stall_count</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">completed_outputs</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_never_abandons_once_any_output_exists</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>        <span class="c1"># A disc that produced a file is partially readable. Stalls on later</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>        <span class="c1"># titles are the &quot;one bad title&quot; case the per-title loop exists to</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>        <span class="c1"># survive, so keep going.</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>        <span class="k">assert</span> <span class="n">_should_abandon_zero_output_rip</span><span class="p">(</span><span class="n">stall_count</span><span class="o">=</span><span class="mi">9</span><span class="p">,</span> <span class="n">completed_outputs</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_no_stalls_never_abandons</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>        <span class="k">assert</span> <span class="n">_should_abandon_zero_output_rip</span><span class="p">(</span><span class="n">stall_count</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">completed_outputs</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+</code></pre></div>
+<p>Add <code>_should_abandon_zero_output_rip</code> to the import block at the top of the file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.extractor</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">REGION_MISMATCH_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">STALL_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">_is_region_mismatch</span><span class="p">,</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">_should_abandon_zero_output_rip</span><span class="p">,</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor_zero_output.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: FAIL at import with <code>ImportError: cannot import name '_should_abandon_zero_output_rip'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Write minimal implementation</strong></li>
+</ul>
+<p>In <code>backend/app/core/extractor.py</code>, add to the constants block (after <code>STABLE_CHECKS_REQUIRED</code>, line 34):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Consecutive stalled commands, with nothing written by any of them, after which</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># a rip gives up instead of re-opening the disc once per remaining title. A disc</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># that has failed this many times in a row at disc-open is not going to succeed</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># on the next title, and each retry costs a full ripping_stall_timeout.</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="c1"># Abandoning is safe because every skipped title still routes to REVIEW as</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># re-rippable (see route_rip_failure_to_review).</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">ZERO_OUTPUT_STALL_LIMIT</span> <span class="o">=</span> <span class="mi">2</span>
+</code></pre></div>
+<p>Add the helper next to <code>_is_stalled</code> (after line 54):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_should_abandon_zero_output_rip</span><span class="p">(</span><span class="n">stall_count</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">completed_outputs</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Whether to stop issuing rip commands because the disc is unreadable.</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="sd">    True only when this invocation has stalled ``ZERO_OUTPUT_STALL_LIMIT`` times</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="sd">    **and** produced no completed output at all. Requiring zero output is what</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="sd">    keeps the &quot;one bad title, rest of the disc fine&quot; case working: as soon as a</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="sd">    single file lands, the rip is partially succeeding and every remaining title</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="sd">    is still worth attempting.</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="k">if</span> <span class="n">completed_outputs</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    <span class="k">return</span> <span class="n">stall_count</span> <span class="o">&gt;=</span> <span class="n">ZERO_OUTPUT_STALL_LIMIT</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor_zero_output.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 10 passed.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/extractor.py<span class="w"> </span>backend/tests/unit/test_extractor_zero_output.py
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(extractor): add zero-output rip abandon decision helper (#506)</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-3-carry-the-specific-failure-reason-on-ripresult">Task 3: Carry the specific failure reason on RipResult</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/extractor.py:171-178</code> (the <code>RipResult</code> dataclass)
+- Test: <code>backend/tests/unit/test_extractor_zero_output.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_extractor_zero_output.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestRipResultFailureReason</span><span class="p">:</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;RipResult carries the specific stall reason so the live per-title update</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="sd">    and the History entry cannot disagree about why a rip failed.&quot;&quot;&quot;</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_failure_reason_defaults_to_none</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">RipResult</span><span class="p">(</span><span class="n">success</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">output_files</span><span class="o">=</span><span class="p">[])</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">failure_reason</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_failure_reason_round_trips</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">RipResult</span><span class="p">(</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>            <span class="n">success</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>            <span class="n">output_files</span><span class="o">=</span><span class="p">[],</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>            <span class="n">stalled_titles</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>            <span class="n">failure_reason</span><span class="o">=</span><span class="n">REGION_MISMATCH_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>        <span class="p">)</span>
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">failure_reason</span> <span class="o">==</span> <span class="n">REGION_MISMATCH_FAILURE_REASON</span>
+</code></pre></div>
+<p>Add <code>RipResult</code> to the import block at the top of the file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.extractor</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="n">REGION_MISMATCH_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="n">STALL_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="n">RipResult</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="n">_is_region_mismatch</span><span class="p">,</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="n">_should_abandon_zero_output_rip</span><span class="p">,</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor_zero_output.py::TestRipResultFailureReason<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: FAIL with <code>TypeError: RipResult.__init__() got an unexpected keyword argument 'failure_reason'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Write minimal implementation</strong></li>
+</ul>
+<p>Replace the <code>RipResult</code> dataclass at <code>backend/app/core/extractor.py:171-178</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nd">@dataclass</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">RipResult</span><span class="p">:</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Result of a ripping operation.&quot;&quot;&quot;</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>    <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>    <span class="n">output_files</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    <span class="n">error_message</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="n">stalled_titles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># Command indices that were skipped due to stall</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="c1"># Specific reason for a stall, when one is known (e.g. a region mismatch).</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    <span class="c1"># None means the generic STALL_FAILURE_REASON applies. Callers routing</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>    <span class="c1"># stalled titles to review read this so the live update and History agree.</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>    <span class="n">failure_reason</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor_zero_output.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 12 passed.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/extractor.py<span class="w"> </span>backend/tests/unit/test_extractor_zero_output.py
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(extractor): carry a specific failure_reason on RipResult (#506)</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-4-wire-both-helpers-into-the-command-loop">Task 4: Wire both helpers into the command loop</h3>
+<p>This is the only task that touches the live subprocess loop. Read <code>run_rip_with_streaming</code> (<code>backend/app/core/extractor.py:672-919</code>) in full before editing.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/extractor.py</code> (constants block; <code>run_rip_with_streaming</code>)
+- Test: <code>backend/tests/unit/test_extractor_zero_output.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Add the patchable poll-interval constant</strong></li>
+</ul>
+<p>The stall watchdog currently hardcodes a 5 second poll interval as a default argument, which makes the loop untestable without a 5+ second sleep. Add to the constants block in <code>backend/app/core/extractor.py</code> (after <code>ZERO_OUTPUT_STALL_LIMIT</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Seconds between stall-watchdog polls. A module constant so tests can shorten it;</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="c1"># production behaviour is unchanged at 5 s.</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="n">STALL_POLL_INTERVAL</span> <span class="o">=</span> <span class="mf">5.0</span>
+</code></pre></div>
+<p>Then change the watchdog thread construction (currently <code>backend/app/core/extractor.py:803-808</code>) to pass it explicitly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>                        <span class="n">watchdog_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>                            <span class="n">target</span><span class="o">=</span><span class="n">_stall_watchdog</span><span class="p">,</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>                            <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">stall_timeout</span><span class="p">,</span> <span class="n">STALL_POLL_INTERVAL</span><span class="p">),</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>                            <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>                        <span class="p">)</span>
+</code></pre></div>
+<p>Leave the <code>poll_interval=5.0</code> default in the <code>_stall_watchdog</code> signature alone; the explicit argument now always wins.</p>
+<ul>
+<li>[ ] <strong>Step 2: Write the failing wiring test</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_extractor_zero_output.py</code>. Add these imports at the top of the file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">patch</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.extractor</span><span class="w"> </span><span class="kn">import</span> <span class="n">MakeMKVExtractor</span>
+</code></pre></div>
+<p>Then append:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">_FakeStdout</span><span class="p">:</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;MakeMKV stdout that emits a few lines then hangs until terminated.</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="sd">    The reader loop consumes this with ``iter(process.stdout.readline, &quot;&quot;)``, so</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="sd">    ``readline`` must return &quot;&quot; to signal EOF. Blocking until the stall watchdog</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="sd">    kills the process is exactly the behaviour of a MakeMKV stuck at disc-open.</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">killed</span><span class="p">:</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">):</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_lines</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_killed</span> <span class="o">=</span> <span class="n">killed</span>
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">readline</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lines</span><span class="p">:</span>
+<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lines</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+<a id="__codelineno-22-16" name="__codelineno-22-16" href="#__codelineno-22-16"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_killed</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-22-17" name="__codelineno-22-17" href="#__codelineno-22-17"></a>        <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-22-18" name="__codelineno-22-18" href="#__codelineno-22-18"></a>
+<a id="__codelineno-22-19" name="__codelineno-22-19" href="#__codelineno-22-19"></a>
+<a id="__codelineno-22-20" name="__codelineno-22-20" href="#__codelineno-22-20"></a><span class="k">class</span><span class="w"> </span><span class="nc">_FakeProc</span><span class="p">:</span>
+<a id="__codelineno-22-21" name="__codelineno-22-21" href="#__codelineno-22-21"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A makemkvcon that never writes a file and must be killed to stop.&quot;&quot;&quot;</span>
+<a id="__codelineno-22-22" name="__codelineno-22-22" href="#__codelineno-22-22"></a>
+<a id="__codelineno-22-23" name="__codelineno-22-23" href="#__codelineno-22-23"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
+<a id="__codelineno-22-24" name="__codelineno-22-24" href="#__codelineno-22-24"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_killed</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+<a id="__codelineno-22-25" name="__codelineno-22-25" href="#__codelineno-22-25"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">returncode</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-22-26" name="__codelineno-22-26" href="#__codelineno-22-26"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="n">_FakeStdout</span><span class="p">(</span><span class="n">lines</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_killed</span><span class="p">)</span>
+<a id="__codelineno-22-27" name="__codelineno-22-27" href="#__codelineno-22-27"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-22-28" name="__codelineno-22-28" href="#__codelineno-22-28"></a>
+<a id="__codelineno-22-29" name="__codelineno-22-29" href="#__codelineno-22-29"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">poll</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-22-30" name="__codelineno-22-30" href="#__codelineno-22-30"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">returncode</span>
+<a id="__codelineno-22-31" name="__codelineno-22-31" href="#__codelineno-22-31"></a>
+<a id="__codelineno-22-32" name="__codelineno-22-32" href="#__codelineno-22-32"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">terminate</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-22-33" name="__codelineno-22-33" href="#__codelineno-22-33"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">returncode</span> <span class="o">=</span> <span class="mi">1</span>
+<a id="__codelineno-22-34" name="__codelineno-22-34" href="#__codelineno-22-34"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_killed</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+<a id="__codelineno-22-35" name="__codelineno-22-35" href="#__codelineno-22-35"></a>
+<a id="__codelineno-22-36" name="__codelineno-22-36" href="#__codelineno-22-36"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">wait</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-22-37" name="__codelineno-22-37" href="#__codelineno-22-37"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_killed</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-22-38" name="__codelineno-22-38" href="#__codelineno-22-38"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">returncode</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-22-39" name="__codelineno-22-39" href="#__codelineno-22-39"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">returncode</span> <span class="o">=</span> <span class="mi">1</span>
+<a id="__codelineno-22-40" name="__codelineno-22-40" href="#__codelineno-22-40"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">returncode</span>
+<a id="__codelineno-22-41" name="__codelineno-22-41" href="#__codelineno-22-41"></a>
+<a id="__codelineno-22-42" name="__codelineno-22-42" href="#__codelineno-22-42"></a>
+<a id="__codelineno-22-43" name="__codelineno-22-43" href="#__codelineno-22-43"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-22-44" name="__codelineno-22-44" href="#__codelineno-22-44"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestZeroOutputAbandonWiring</span><span class="p">:</span>
+<a id="__codelineno-22-45" name="__codelineno-22-45" href="#__codelineno-22-45"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;End-to-end through the real command loop with makemkvcon stubbed.&quot;&quot;&quot;</span>
+<a id="__codelineno-22-46" name="__codelineno-22-46" href="#__codelineno-22-46"></a>
+<a id="__codelineno-22-47" name="__codelineno-22-47" href="#__codelineno-22-47"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_abandons_remaining_titles_and_reports_them_stalled</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">):</span>
+<a id="__codelineno-22-48" name="__codelineno-22-48" href="#__codelineno-22-48"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Four titles, every one stalling with no output: the loop must stop</span>
+<a id="__codelineno-22-49" name="__codelineno-22-49" href="#__codelineno-22-49"></a><span class="sd">        after ZERO_OUTPUT_STALL_LIMIT and still report all four as stalled.&quot;&quot;&quot;</span>
+<a id="__codelineno-22-50" name="__codelineno-22-50" href="#__codelineno-22-50"></a>        <span class="n">spawned</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-22-51" name="__codelineno-22-51" href="#__codelineno-22-51"></a>
+<a id="__codelineno-22-52" name="__codelineno-22-52" href="#__codelineno-22-52"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_fake_popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-22-53" name="__codelineno-22-53" href="#__codelineno-22-53"></a>            <span class="n">proc</span> <span class="o">=</span> <span class="n">_FakeProc</span><span class="p">([</span><span class="s2">&quot;PRGV:14417,11915,65536&quot;</span><span class="p">])</span>
+<a id="__codelineno-22-54" name="__codelineno-22-54" href="#__codelineno-22-54"></a>            <span class="n">spawned</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">proc</span><span class="p">)</span>
+<a id="__codelineno-22-55" name="__codelineno-22-55" href="#__codelineno-22-55"></a>            <span class="k">return</span> <span class="n">proc</span>
+<a id="__codelineno-22-56" name="__codelineno-22-56" href="#__codelineno-22-56"></a>
+<a id="__codelineno-22-57" name="__codelineno-22-57" href="#__codelineno-22-57"></a>        <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-22-58" name="__codelineno-22-58" href="#__codelineno-22-58"></a>        <span class="n">ex</span> <span class="o">=</span> <span class="n">MakeMKVExtractor</span><span class="p">(</span><span class="n">makemkv_path</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/usr/bin/makemkvcon&quot;</span><span class="p">))</span>
+<a id="__codelineno-22-59" name="__codelineno-22-59" href="#__codelineno-22-59"></a>
+<a id="__codelineno-22-60" name="__codelineno-22-60" href="#__codelineno-22-60"></a>        <span class="k">with</span> <span class="p">(</span>
+<a id="__codelineno-22-61" name="__codelineno-22-61" href="#__codelineno-22-61"></a>            <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.extractor.subprocess.Popen&quot;</span><span class="p">,</span> <span class="n">side_effect</span><span class="o">=</span><span class="n">_fake_popen</span><span class="p">),</span>
+<a id="__codelineno-22-62" name="__codelineno-22-62" href="#__codelineno-22-62"></a>            <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.extractor.STALL_POLL_INTERVAL&quot;</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">),</span>
+<a id="__codelineno-22-63" name="__codelineno-22-63" href="#__codelineno-22-63"></a>        <span class="p">):</span>
+<a id="__codelineno-22-64" name="__codelineno-22-64" href="#__codelineno-22-64"></a>            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ex</span><span class="o">.</span><span class="n">rip_titles</span><span class="p">(</span>
+<a id="__codelineno-22-65" name="__codelineno-22-65" href="#__codelineno-22-65"></a>                <span class="s2">&quot;/dev/sr0&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-66" name="__codelineno-22-66" href="#__codelineno-22-66"></a>                <span class="n">tmp_path</span><span class="p">,</span>
+<a id="__codelineno-22-67" name="__codelineno-22-67" href="#__codelineno-22-67"></a>                <span class="n">title_indices</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+<a id="__codelineno-22-68" name="__codelineno-22-68" href="#__codelineno-22-68"></a>                <span class="n">stall_timeout</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+<a id="__codelineno-22-69" name="__codelineno-22-69" href="#__codelineno-22-69"></a>                <span class="n">title_error_callback</span><span class="o">=</span><span class="k">lambda</span> <span class="n">idx</span><span class="p">,</span> <span class="n">reason</span><span class="p">:</span> <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">idx</span><span class="p">,</span> <span class="n">reason</span><span class="p">)),</span>
+<a id="__codelineno-22-70" name="__codelineno-22-70" href="#__codelineno-22-70"></a>                <span class="n">job_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-22-71" name="__codelineno-22-71" href="#__codelineno-22-71"></a>            <span class="p">)</span>
+<a id="__codelineno-22-72" name="__codelineno-22-72" href="#__codelineno-22-72"></a>
+<a id="__codelineno-22-73" name="__codelineno-22-73" href="#__codelineno-22-73"></a>        <span class="c1"># Only the first two commands ever ran; the rest were abandoned.</span>
+<a id="__codelineno-22-74" name="__codelineno-22-74" href="#__codelineno-22-74"></a>        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">spawned</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+<a id="__codelineno-22-75" name="__codelineno-22-75" href="#__codelineno-22-75"></a>        <span class="c1"># All four titles are still accounted for as stalled, so none is left</span>
+<a id="__codelineno-22-76" name="__codelineno-22-76" href="#__codelineno-22-76"></a>        <span class="c1"># stranded in RIPPING with no review entry.</span>
+<a id="__codelineno-22-77" name="__codelineno-22-77" href="#__codelineno-22-77"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">stalled_titles</span> <span class="o">==</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>
+<a id="__codelineno-22-78" name="__codelineno-22-78" href="#__codelineno-22-78"></a>        <span class="k">assert</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">idx</span> <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">errors</span><span class="p">)</span> <span class="o">==</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>
+<a id="__codelineno-22-79" name="__codelineno-22-79" href="#__codelineno-22-79"></a>
+<a id="__codelineno-22-80" name="__codelineno-22-80" href="#__codelineno-22-80"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_region_mismatch_sets_the_specific_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">):</span>
+<a id="__codelineno-22-81" name="__codelineno-22-81" href="#__codelineno-22-81"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;A stall preceded by MSG:3032 reports the region cause, not &#39;dirty&#39;.&quot;&quot;&quot;</span>
+<a id="__codelineno-22-82" name="__codelineno-22-82" href="#__codelineno-22-82"></a>
+<a id="__codelineno-22-83" name="__codelineno-22-83" href="#__codelineno-22-83"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_fake_popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-22-84" name="__codelineno-22-84" href="#__codelineno-22-84"></a>            <span class="k">return</span> <span class="n">_FakeProc</span><span class="p">(</span>
+<a id="__codelineno-22-85" name="__codelineno-22-85" href="#__codelineno-22-85"></a>                <span class="p">[</span>
+<a id="__codelineno-22-86" name="__codelineno-22-86" href="#__codelineno-22-86"></a>                    <span class="s1">&#39;MSG:3032,0,2,&quot;Region setting of drive ASUS:BW-16D1HT does not &#39;</span>
+<a id="__codelineno-22-87" name="__codelineno-22-87" href="#__codelineno-22-87"></a>                    <span class="s1">&#39;match the region of currently inserted disc, trying to work &#39;</span>
+<a id="__codelineno-22-88" name="__codelineno-22-88" href="#__codelineno-22-88"></a>                    <span class="s1">&#39;around...&quot;&#39;</span><span class="p">,</span>
+<a id="__codelineno-22-89" name="__codelineno-22-89" href="#__codelineno-22-89"></a>                    <span class="s2">&quot;PRGV:14417,11915,65536&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-90" name="__codelineno-22-90" href="#__codelineno-22-90"></a>                <span class="p">]</span>
+<a id="__codelineno-22-91" name="__codelineno-22-91" href="#__codelineno-22-91"></a>            <span class="p">)</span>
+<a id="__codelineno-22-92" name="__codelineno-22-92" href="#__codelineno-22-92"></a>
+<a id="__codelineno-22-93" name="__codelineno-22-93" href="#__codelineno-22-93"></a>        <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-22-94" name="__codelineno-22-94" href="#__codelineno-22-94"></a>        <span class="n">ex</span> <span class="o">=</span> <span class="n">MakeMKVExtractor</span><span class="p">(</span><span class="n">makemkv_path</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/usr/bin/makemkvcon&quot;</span><span class="p">))</span>
+<a id="__codelineno-22-95" name="__codelineno-22-95" href="#__codelineno-22-95"></a>
+<a id="__codelineno-22-96" name="__codelineno-22-96" href="#__codelineno-22-96"></a>        <span class="k">with</span> <span class="p">(</span>
+<a id="__codelineno-22-97" name="__codelineno-22-97" href="#__codelineno-22-97"></a>            <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.extractor.subprocess.Popen&quot;</span><span class="p">,</span> <span class="n">side_effect</span><span class="o">=</span><span class="n">_fake_popen</span><span class="p">),</span>
+<a id="__codelineno-22-98" name="__codelineno-22-98" href="#__codelineno-22-98"></a>            <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.extractor.STALL_POLL_INTERVAL&quot;</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">),</span>
+<a id="__codelineno-22-99" name="__codelineno-22-99" href="#__codelineno-22-99"></a>        <span class="p">):</span>
+<a id="__codelineno-22-100" name="__codelineno-22-100" href="#__codelineno-22-100"></a>            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ex</span><span class="o">.</span><span class="n">rip_titles</span><span class="p">(</span>
+<a id="__codelineno-22-101" name="__codelineno-22-101" href="#__codelineno-22-101"></a>                <span class="s2">&quot;/dev/sr0&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-102" name="__codelineno-22-102" href="#__codelineno-22-102"></a>                <span class="n">tmp_path</span><span class="p">,</span>
+<a id="__codelineno-22-103" name="__codelineno-22-103" href="#__codelineno-22-103"></a>                <span class="n">title_indices</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<a id="__codelineno-22-104" name="__codelineno-22-104" href="#__codelineno-22-104"></a>                <span class="n">stall_timeout</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+<a id="__codelineno-22-105" name="__codelineno-22-105" href="#__codelineno-22-105"></a>                <span class="n">title_error_callback</span><span class="o">=</span><span class="k">lambda</span> <span class="n">idx</span><span class="p">,</span> <span class="n">reason</span><span class="p">:</span> <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">idx</span><span class="p">,</span> <span class="n">reason</span><span class="p">)),</span>
+<a id="__codelineno-22-106" name="__codelineno-22-106" href="#__codelineno-22-106"></a>                <span class="n">job_id</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-22-107" name="__codelineno-22-107" href="#__codelineno-22-107"></a>            <span class="p">)</span>
+<a id="__codelineno-22-108" name="__codelineno-22-108" href="#__codelineno-22-108"></a>
+<a id="__codelineno-22-109" name="__codelineno-22-109" href="#__codelineno-22-109"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">failure_reason</span> <span class="o">==</span> <span class="n">REGION_MISMATCH_FAILURE_REASON</span>
+<a id="__codelineno-22-110" name="__codelineno-22-110" href="#__codelineno-22-110"></a>        <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="n">reason</span> <span class="o">==</span> <span class="n">REGION_MISMATCH_FAILURE_REASON</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">reason</span> <span class="ow">in</span> <span class="n">errors</span><span class="p">)</span>
+<a id="__codelineno-22-111" name="__codelineno-22-111" href="#__codelineno-22-111"></a>
+<a id="__codelineno-22-112" name="__codelineno-22-112" href="#__codelineno-22-112"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_plain_stall_keeps_the_generic_reason</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">):</span>
+<a id="__codelineno-22-113" name="__codelineno-22-113" href="#__codelineno-22-113"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Without MSG:3032 the message is unchanged, so existing behaviour holds.&quot;&quot;&quot;</span>
+<a id="__codelineno-22-114" name="__codelineno-22-114" href="#__codelineno-22-114"></a>
+<a id="__codelineno-22-115" name="__codelineno-22-115" href="#__codelineno-22-115"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_fake_popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-22-116" name="__codelineno-22-116" href="#__codelineno-22-116"></a>            <span class="k">return</span> <span class="n">_FakeProc</span><span class="p">([</span><span class="s2">&quot;PRGV:14417,11915,65536&quot;</span><span class="p">])</span>
+<a id="__codelineno-22-117" name="__codelineno-22-117" href="#__codelineno-22-117"></a>
+<a id="__codelineno-22-118" name="__codelineno-22-118" href="#__codelineno-22-118"></a>        <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-22-119" name="__codelineno-22-119" href="#__codelineno-22-119"></a>        <span class="n">ex</span> <span class="o">=</span> <span class="n">MakeMKVExtractor</span><span class="p">(</span><span class="n">makemkv_path</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/usr/bin/makemkvcon&quot;</span><span class="p">))</span>
+<a id="__codelineno-22-120" name="__codelineno-22-120" href="#__codelineno-22-120"></a>
+<a id="__codelineno-22-121" name="__codelineno-22-121" href="#__codelineno-22-121"></a>        <span class="k">with</span> <span class="p">(</span>
+<a id="__codelineno-22-122" name="__codelineno-22-122" href="#__codelineno-22-122"></a>            <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.extractor.subprocess.Popen&quot;</span><span class="p">,</span> <span class="n">side_effect</span><span class="o">=</span><span class="n">_fake_popen</span><span class="p">),</span>
+<a id="__codelineno-22-123" name="__codelineno-22-123" href="#__codelineno-22-123"></a>            <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.extractor.STALL_POLL_INTERVAL&quot;</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">),</span>
+<a id="__codelineno-22-124" name="__codelineno-22-124" href="#__codelineno-22-124"></a>        <span class="p">):</span>
+<a id="__codelineno-22-125" name="__codelineno-22-125" href="#__codelineno-22-125"></a>            <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">ex</span><span class="o">.</span><span class="n">rip_titles</span><span class="p">(</span>
+<a id="__codelineno-22-126" name="__codelineno-22-126" href="#__codelineno-22-126"></a>                <span class="s2">&quot;/dev/sr0&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-127" name="__codelineno-22-127" href="#__codelineno-22-127"></a>                <span class="n">tmp_path</span><span class="p">,</span>
+<a id="__codelineno-22-128" name="__codelineno-22-128" href="#__codelineno-22-128"></a>                <span class="n">title_indices</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<a id="__codelineno-22-129" name="__codelineno-22-129" href="#__codelineno-22-129"></a>                <span class="n">stall_timeout</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+<a id="__codelineno-22-130" name="__codelineno-22-130" href="#__codelineno-22-130"></a>                <span class="n">title_error_callback</span><span class="o">=</span><span class="k">lambda</span> <span class="n">idx</span><span class="p">,</span> <span class="n">reason</span><span class="p">:</span> <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">idx</span><span class="p">,</span> <span class="n">reason</span><span class="p">)),</span>
+<a id="__codelineno-22-131" name="__codelineno-22-131" href="#__codelineno-22-131"></a>                <span class="n">job_id</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-22-132" name="__codelineno-22-132" href="#__codelineno-22-132"></a>            <span class="p">)</span>
+<a id="__codelineno-22-133" name="__codelineno-22-133" href="#__codelineno-22-133"></a>
+<a id="__codelineno-22-134" name="__codelineno-22-134" href="#__codelineno-22-134"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">failure_reason</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-22-135" name="__codelineno-22-135" href="#__codelineno-22-135"></a>        <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="n">reason</span> <span class="o">==</span> <span class="n">STALL_FAILURE_REASON</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">reason</span> <span class="ow">in</span> <span class="n">errors</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Run the tests to verify they fail</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor_zero_output.py::TestZeroOutputAbandonWiring<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: FAIL. <code>test_abandons_remaining_titles_and_reports_them_stalled</code> fails with <code>assert 4 == 2</code> (all four commands ran), and the region test fails with <code>assert None == '...region...'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 4: Track the region flag in the reader loop</strong></li>
+</ul>
+<p>In <code>run_rip_with_streaming</code>, alongside the existing <code>last_progress</code> declaration (<code>backend/app/core/extractor.py:686</code>), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>            <span class="c1"># Set when MakeMKV reports a region mismatch (MSG:3032). Single-element</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>            <span class="c1"># list so the watchdog thread sees writes from the reader loop, matching</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>            <span class="c1"># the last_progress pattern above.</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>            <span class="n">region_mismatch</span> <span class="o">=</span> <span class="p">[</span><span class="kc">False</span><span class="p">]</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>            <span class="k">def</span><span class="w"> </span><span class="nf">_stall_reason</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">                </span><span class="sd">&quot;&quot;&quot;The most specific reason we can give for a stall.&quot;&quot;&quot;</span>
+<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>                <span class="k">return</span> <span class="n">REGION_MISMATCH_FAILURE_REASON</span> <span class="k">if</span> <span class="n">region_mismatch</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">else</span> <span class="n">STALL_FAILURE_REASON</span>
+</code></pre></div>
+<p>In the stdout reader loop, directly after the existing <code>PRGV:</code>/<code>PRGC:</code>/<code>PRGT:</code> liveness block (<code>backend/app/core/extractor.py:836-837</code>), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>                        <span class="c1"># A region mismatch makes MakeMKV retry disc-open forever;</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>                        <span class="c1"># remember it so the stall is reported with its real cause.</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>                        <span class="k">if</span> <span class="n">_is_region_mismatch</span><span class="p">(</span><span class="n">line</span><span class="p">):</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>                            <span class="n">region_mismatch</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div>
+<p>In <code>_stall_watchdog</code>, replace the hardcoded <code>STALL_FAILURE_REASON</code> in the <code>title_error_callback</code> invocation (<code>backend/app/core/extractor.py:750</code>) with <code>_stall_reason()</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>                        <span class="k">if</span> <span class="n">title_error_callback</span><span class="p">:</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>                            <span class="n">_safe_callback</span><span class="p">(</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>                                <span class="n">title_error_callback</span><span class="p">,</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>                                <span class="n">current_title_idx</span><span class="p">,</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>                                <span class="n">_stall_reason</span><span class="p">(),</span>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>                                <span class="n">label</span><span class="o">=</span><span class="s2">&quot;title_error_callback&quot;</span><span class="p">,</span>
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a>                            <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 5: Add the circuit breaker to the command loop</strong></li>
+</ul>
+<p>In the command loop's stall-handling branch, after the incomplete-file cleanup and immediately before the existing <code>continue</code> (<code>backend/app/core/extractor.py:891-892</code>), replace:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>                            <span class="c1"># Don&#39;t break — continue to next command</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>                            <span class="k">continue</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>                            <span class="c1"># Give up rather than re-opening a disc that has</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>                            <span class="c1"># already failed at disc-open this many times with</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>                            <span class="c1"># nothing written. Each retry costs a full</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>                            <span class="c1"># stall_timeout, which is what made a region-locked</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>                            <span class="c1"># disc take ~26 minutes to resolve (issue #506).</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>                            <span class="k">if</span> <span class="n">_should_abandon_zero_output_rip</span><span class="p">(</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>                                <span class="nb">len</span><span class="p">(</span><span class="n">stalled_commands</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">output_files</span><span class="p">)</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>                            <span class="p">):</span>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>                                <span class="n">remaining</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
+<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a>                                    <span class="nb">range</span><span class="p">(</span><span class="n">current_title_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">commands</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>                                <span class="p">)</span>
+<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a>                                <span class="k">if</span> <span class="n">remaining</span><span class="p">:</span>
+<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a>                                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a>                                        <span class="sa">f</span><span class="s2">&quot;Abandoning rip after </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">stalled_commands</span><span class="p">)</span><span class="si">}</span><span class="s2"> &quot;</span>
+<a id="__codelineno-28-15" name="__codelineno-28-15" href="#__codelineno-28-15"></a>                                        <span class="sa">f</span><span class="s2">&quot;stalled command(s) with no output. Skipping &quot;</span>
+<a id="__codelineno-28-16" name="__codelineno-28-16" href="#__codelineno-28-16"></a>                                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">remaining</span><span class="p">)</span><span class="si">}</span><span class="s2"> remaining command(s).&quot;</span>
+<a id="__codelineno-28-17" name="__codelineno-28-17" href="#__codelineno-28-17"></a>                                    <span class="p">)</span>
+<a id="__codelineno-28-18" name="__codelineno-28-18" href="#__codelineno-28-18"></a>                                <span class="c1"># Report the untried commands as stalled too, so every</span>
+<a id="__codelineno-28-19" name="__codelineno-28-19" href="#__codelineno-28-19"></a>                                <span class="c1"># title still reaches review instead of being stranded.</span>
+<a id="__codelineno-28-20" name="__codelineno-28-20" href="#__codelineno-28-20"></a>                                <span class="k">for</span> <span class="n">skipped_idx</span> <span class="ow">in</span> <span class="n">remaining</span><span class="p">:</span>
+<a id="__codelineno-28-21" name="__codelineno-28-21" href="#__codelineno-28-21"></a>                                    <span class="n">stalled_commands</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">skipped_idx</span><span class="p">)</span>
+<a id="__codelineno-28-22" name="__codelineno-28-22" href="#__codelineno-28-22"></a>                                    <span class="k">if</span> <span class="n">title_error_callback</span><span class="p">:</span>
+<a id="__codelineno-28-23" name="__codelineno-28-23" href="#__codelineno-28-23"></a>                                        <span class="n">_safe_callback</span><span class="p">(</span>
+<a id="__codelineno-28-24" name="__codelineno-28-24" href="#__codelineno-28-24"></a>                                            <span class="n">title_error_callback</span><span class="p">,</span>
+<a id="__codelineno-28-25" name="__codelineno-28-25" href="#__codelineno-28-25"></a>                                            <span class="n">skipped_idx</span><span class="p">,</span>
+<a id="__codelineno-28-26" name="__codelineno-28-26" href="#__codelineno-28-26"></a>                                            <span class="n">_stall_reason</span><span class="p">(),</span>
+<a id="__codelineno-28-27" name="__codelineno-28-27" href="#__codelineno-28-27"></a>                                            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;title_error_callback&quot;</span><span class="p">,</span>
+<a id="__codelineno-28-28" name="__codelineno-28-28" href="#__codelineno-28-28"></a>                                        <span class="p">)</span>
+<a id="__codelineno-28-29" name="__codelineno-28-29" href="#__codelineno-28-29"></a>                                <span class="k">break</span>
+<a id="__codelineno-28-30" name="__codelineno-28-30" href="#__codelineno-28-30"></a>
+<a id="__codelineno-28-31" name="__codelineno-28-31" href="#__codelineno-28-31"></a>                            <span class="c1"># Don&#39;t break — continue to next command</span>
+<a id="__codelineno-28-32" name="__codelineno-28-32" href="#__codelineno-28-32"></a>                            <span class="k">continue</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 6: Populate <code>failure_reason</code> on the returned RipResult</strong></li>
+</ul>
+<p>There are three <code>return RipResult(...)</code> sites in the success/stall paths. Update the two that can carry a stall (<code>backend/app/core/extractor.py:967-973</code> and <code>:983-987</code>) so both report the reason. First:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>            <span class="k">if</span> <span class="n">returncode</span> <span class="o">!=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">stalled</span><span class="p">:</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>                <span class="k">return</span> <span class="n">RipResult</span><span class="p">(</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>                    <span class="n">success</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>                    <span class="n">output_files</span><span class="o">=</span><span class="n">output_files</span><span class="p">,</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>                    <span class="n">error_message</span><span class="o">=</span><span class="n">stderr</span> <span class="ow">or</span> <span class="s2">&quot;Unknown error during ripping&quot;</span><span class="p">,</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>                    <span class="n">stalled_titles</span><span class="o">=</span><span class="n">stalled_list</span><span class="p">,</span>
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a>                    <span class="n">failure_reason</span><span class="o">=</span><span class="n">REGION_MISMATCH_FAILURE_REASON</span> <span class="k">if</span> <span class="n">region_mismatch</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a>                <span class="p">)</span>
+</code></pre></div>
+<p>Second:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>            <span class="k">return</span> <span class="n">RipResult</span><span class="p">(</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>                <span class="n">success</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>                <span class="n">output_files</span><span class="o">=</span><span class="n">output_files</span><span class="p">,</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a>                <span class="n">stalled_titles</span><span class="o">=</span><span class="n">stalled_list</span><span class="p">,</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>                <span class="n">failure_reason</span><span class="o">=</span><span class="n">REGION_MISMATCH_FAILURE_REASON</span> <span class="k">if</span> <span class="n">region_mismatch</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a>            <span class="p">)</span>
+</code></pre></div>
+<p><code>region_mismatch</code> is declared inside <code>run_rip_with_streaming</code> but these returns are in the enclosing <code>_rip_titles_unlocked</code> scope. Hoist the declaration: move the <code>region_mismatch = [False]</code> line and the <code>_stall_reason</code> helper out of <code>run_rip_with_streaming</code> to just above its <code>def</code> (next to the <code>_fs_lock</code> declaration at <code>backend/app/core/extractor.py:625</code>), so both scopes can read it. Keep <code>last_progress</code> where it is.</p>
+<ul>
+<li>[ ] <strong>Step 7: Run the tests to verify they pass</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor_zero_output.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 15 passed.</p>
+<ul>
+<li>[ ] <strong>Step 8: Verify no existing extractor behaviour regressed</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_extractor.py<span class="w"> </span>tests/unit/test_extractor_callbacks.py<span class="w"> </span>tests/unit/test_extractor_shutdown.py<span class="w"> </span>tests/unit/test_extractor_skip.py<span class="w"> </span>tests/unit/test_title_completion_detector.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: all pass. If <code>test_extractor_shutdown.py</code> hangs, the <code>_FakeProc.wait()</code> timeout is masking a real deadlock in the new <code>break</code> path; check that <code>break</code> exits the <code>for</code> loop and not the <code>try</code>.</p>
+<ul>
+<li>[ ] <strong>Step 9: Lint and commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>.
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/extractor.py<span class="w"> </span>backend/tests/unit/test_extractor_zero_output.py
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(extractor): abandon a rip that stalls with zero output (#506)</span>
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a><span class="s2">A disc MakeMKV cannot open at all previously burned one full stall</span>
+<a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a><span class="s2">timeout per title. Stop issuing commands after two consecutive stalls</span>
+<a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a><span class="s2">with nothing written, and report the remaining titles as stalled so each</span>
+<a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a><span class="s2">still reaches review. Surface MakeMKV&#39;s MSG:3032 region mismatch as the</span>
+<a id="__codelineno-33-9" name="__codelineno-33-9" href="#__codelineno-33-9"></a><span class="s2">stall reason when present.</span>
+<a id="__codelineno-33-10" name="__codelineno-33-10" href="#__codelineno-33-10"></a>
+<a id="__codelineno-33-11" name="__codelineno-33-11" href="#__codelineno-33-11"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-5-skip-the-per-title-fallback-when-the-pass-stalled-with-no-output">Task 5: Skip the per-title fallback when the pass stalled with no output</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/job_manager.py:2485-2508</code> (fallback gate), <code>:2531-2533</code> (reason)
+- Test: <code>backend/tests/unit/test_job_manager.py</code> (extend <code>TestOnePassRipFallback</code>, line 871)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Append these three tests inside the existing <code>TestOnePassRipFallback</code> class in <code>backend/tests/unit/test_job_manager.py</code> (after <code>test_single_pass_failure_reripsonly_missing</code>, line 923). They reuse that class's existing <code>_seed_two_selected</code> and <code>rip_env</code> fixtures:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_stalled_pass_with_no_output_skips_fallback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rip_env</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;A disc that stalled and wrote nothing is unreadable: re-opening it</span>
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a><span class="sd">        once per title only burns another stall timeout each (issue #506).&quot;&quot;&quot;</span>
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>        <span class="n">job</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_two_selected</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">rip_env</span><span class="p">))</span>
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">job_manager</span><span class="p">,</span> <span class="s2">&quot;_backfill_unmatched_titles&quot;</span><span class="p">,</span> <span class="n">AsyncMock</span><span class="p">())</span>
+<a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a>
+<a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a>        <span class="n">rip</span> <span class="o">=</span> <span class="n">AsyncMock</span><span class="p">(</span>
+<a id="__codelineno-34-8" name="__codelineno-34-8" href="#__codelineno-34-8"></a>            <span class="n">return_value</span><span class="o">=</span><span class="n">RipResult</span><span class="p">(</span><span class="n">success</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">output_files</span><span class="o">=</span><span class="p">[],</span> <span class="n">stalled_titles</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<a id="__codelineno-34-9" name="__codelineno-34-9" href="#__codelineno-34-9"></a>        <span class="p">)</span>
+<a id="__codelineno-34-10" name="__codelineno-34-10" href="#__codelineno-34-10"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">job_manager</span><span class="o">.</span><span class="n">_extractor</span><span class="p">,</span> <span class="s2">&quot;rip_titles&quot;</span><span class="p">,</span> <span class="n">rip</span><span class="p">)</span>
+<a id="__codelineno-34-11" name="__codelineno-34-11" href="#__codelineno-34-11"></a>
+<a id="__codelineno-34-12" name="__codelineno-34-12" href="#__codelineno-34-12"></a>        <span class="k">await</span> <span class="n">job_manager</span><span class="o">.</span><span class="n">_run_ripping</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+<a id="__codelineno-34-13" name="__codelineno-34-13" href="#__codelineno-34-13"></a>
+<a id="__codelineno-34-14" name="__codelineno-34-14" href="#__codelineno-34-14"></a>        <span class="k">assert</span> <span class="n">rip</span><span class="o">.</span><span class="n">await_count</span> <span class="o">==</span> <span class="mi">1</span>
+<a id="__codelineno-34-15" name="__codelineno-34-15" href="#__codelineno-34-15"></a>
+<a id="__codelineno-34-16" name="__codelineno-34-16" href="#__codelineno-34-16"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_stalled_pass_with_some_output_still_falls_back</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rip_env</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-34-17" name="__codelineno-34-17" href="#__codelineno-34-17"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;A partially readable disc keeps the per-title recovery path: one bad</span>
+<a id="__codelineno-34-18" name="__codelineno-34-18" href="#__codelineno-34-18"></a><span class="sd">        title must not cost the rest of the disc.&quot;&quot;&quot;</span>
+<a id="__codelineno-34-19" name="__codelineno-34-19" href="#__codelineno-34-19"></a>        <span class="n">job</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed_two_selected</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">rip_env</span><span class="p">))</span>
+<a id="__codelineno-34-20" name="__codelineno-34-20" href="#__codelineno-34-20"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">job_manager</span><span class="p">,</span> <span class="s2">&quot;_backfill_unmatched_titles&quot;</span><span class="p">,</span> <span class="n">AsyncMock</span><span class="p">())</span>
+<a id="__codelineno-34-21" name="__codelineno-34-21" href="#__codelineno-34-21"></a>
+<a id="__codelineno-34-22" name="__codelineno-34-22" href="#__codelineno-34-22"></a>        <span class="n">produced</span> <span class="o">=</span> <span class="n">rip_env</span> <span class="o">/</span> <span class="s2">&quot;Some Show_t00.mkv&quot;</span>
+<a id="__codelineno-34-23" name="__codelineno-34-23" href="#__codelineno-34-23"></a>        <span class="n">produced</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;data&quot;</span><span class="p">)</span>
+<a id="__codelineno-34-24" name="__codelineno-34-24" href="#__codelineno-34-24"></a>
+<a id="__codelineno-34-25" name="__codelineno-34-25" href="#__codelineno-34-25"></a>        <span class="n">rip</span> <span class="o">=</span> <span class="n">AsyncMock</span><span class="p">(</span>
+<a id="__codelineno-34-26" name="__codelineno-34-26" href="#__codelineno-34-26"></a>            <span class="n">return_value</span><span class="o">=</span><span class="n">RipResult</span><span class="p">(</span>
+<a id="__codelineno-34-27" name="__codelineno-34-27" href="#__codelineno-34-27"></a>                <span class="n">success</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">output_files</span><span class="o">=</span><span class="p">[</span><span class="n">produced</span><span class="p">],</span> <span class="n">stalled_titles</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<a id="__codelineno-34-28" name="__codelineno-34-28" href="#__codelineno-34-28"></a>            <span class="p">)</span>
+<a id="__codelineno-34-29" name="__codelineno-34-29" href="#__codelineno-34-29"></a>        <span class="p">)</span>
+<a id="__codelineno-34-30" name="__codelineno-34-30" href="#__codelineno-34-30"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">job_manager</span><span class="o">.</span><span class="n">_extractor</span><span class="p">,</span> <span class="s2">&quot;rip_titles&quot;</span><span class="p">,</span> <span class="n">rip</span><span class="p">)</span>
+<a id="__codelineno-34-31" name="__codelineno-34-31" href="#__codelineno-34-31"></a>
+<a id="__codelineno-34-32" name="__codelineno-34-32" href="#__codelineno-34-32"></a>        <span class="k">await</span> <span class="n">job_manager</span><span class="o">.</span><span class="n">_run_ripping</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+<a id="__codelineno-34-33" name="__codelineno-34-33" href="#__codelineno-34-33"></a>
+<a id="__codelineno-34-34" name="__codelineno-34-34" href="#__codelineno-34-34"></a>        <span class="k">assert</span> <span class="n">rip</span><span class="o">.</span><span class="n">await_count</span> <span class="o">==</span> <span class="mi">2</span>
+<a id="__codelineno-34-35" name="__codelineno-34-35" href="#__codelineno-34-35"></a>
+<a id="__codelineno-34-36" name="__codelineno-34-36" href="#__codelineno-34-36"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_region_reason_reaches_the_review_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rip_env</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-34-37" name="__codelineno-34-37" href="#__codelineno-34-37"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;The region diagnosis must survive to match_details, under the existing</span>
+<a id="__codelineno-34-38" name="__codelineno-34-38" href="#__codelineno-34-38"></a><span class="sd">        rip_stalled code (a new code would be wiped by auto-escalation).&quot;&quot;&quot;</span>
+<a id="__codelineno-34-39" name="__codelineno-34-39" href="#__codelineno-34-39"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.extractor</span><span class="w"> </span><span class="kn">import</span> <span class="n">REGION_MISMATCH_FAILURE_REASON</span>
+<a id="__codelineno-34-40" name="__codelineno-34-40" href="#__codelineno-34-40"></a>
+<a id="__codelineno-34-41" name="__codelineno-34-41" href="#__codelineno-34-41"></a>        <span class="n">job</span><span class="p">,</span> <span class="n">title</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_seed</span><span class="p">(</span>
+<a id="__codelineno-34-42" name="__codelineno-34-42" href="#__codelineno-34-42"></a>            <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span>
+<a id="__codelineno-34-43" name="__codelineno-34-43" href="#__codelineno-34-43"></a>            <span class="n">staging</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">rip_env</span><span class="p">),</span>
+<a id="__codelineno-34-44" name="__codelineno-34-44" href="#__codelineno-34-44"></a>            <span class="n">is_selected</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-34-45" name="__codelineno-34-45" href="#__codelineno-34-45"></a>            <span class="n">title_index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-34-46" name="__codelineno-34-46" href="#__codelineno-34-46"></a>        <span class="p">)</span>
+<a id="__codelineno-34-47" name="__codelineno-34-47" href="#__codelineno-34-47"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">job_manager</span><span class="p">,</span> <span class="s2">&quot;_backfill_unmatched_titles&quot;</span><span class="p">,</span> <span class="n">AsyncMock</span><span class="p">())</span>
+<a id="__codelineno-34-48" name="__codelineno-34-48" href="#__codelineno-34-48"></a>        <span class="n">_mock_rip</span><span class="p">(</span>
+<a id="__codelineno-34-49" name="__codelineno-34-49" href="#__codelineno-34-49"></a>            <span class="n">monkeypatch</span><span class="p">,</span>
+<a id="__codelineno-34-50" name="__codelineno-34-50" href="#__codelineno-34-50"></a>            <span class="n">RipResult</span><span class="p">(</span>
+<a id="__codelineno-34-51" name="__codelineno-34-51" href="#__codelineno-34-51"></a>                <span class="n">success</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-34-52" name="__codelineno-34-52" href="#__codelineno-34-52"></a>                <span class="n">output_files</span><span class="o">=</span><span class="p">[],</span>
+<a id="__codelineno-34-53" name="__codelineno-34-53" href="#__codelineno-34-53"></a>                <span class="n">stalled_titles</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+<a id="__codelineno-34-54" name="__codelineno-34-54" href="#__codelineno-34-54"></a>                <span class="n">failure_reason</span><span class="o">=</span><span class="n">REGION_MISMATCH_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-34-55" name="__codelineno-34-55" href="#__codelineno-34-55"></a>            <span class="p">),</span>
+<a id="__codelineno-34-56" name="__codelineno-34-56" href="#__codelineno-34-56"></a>        <span class="p">)</span>
+<a id="__codelineno-34-57" name="__codelineno-34-57" href="#__codelineno-34-57"></a>
+<a id="__codelineno-34-58" name="__codelineno-34-58" href="#__codelineno-34-58"></a>        <span class="k">await</span> <span class="n">job_manager</span><span class="o">.</span><span class="n">_run_ripping</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+<a id="__codelineno-34-59" name="__codelineno-34-59" href="#__codelineno-34-59"></a>
+<a id="__codelineno-34-60" name="__codelineno-34-60" href="#__codelineno-34-60"></a>        <span class="k">async</span> <span class="k">with</span> <span class="n">_unit_session_factory</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+<a id="__codelineno-34-61" name="__codelineno-34-61" href="#__codelineno-34-61"></a>            <span class="n">refreshed</span> <span class="o">=</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">DiscTitle</span><span class="p">,</span> <span class="n">title</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+<a id="__codelineno-34-62" name="__codelineno-34-62" href="#__codelineno-34-62"></a>        <span class="n">d</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">refreshed</span><span class="o">.</span><span class="n">match_details</span><span class="p">)</span>
+<a id="__codelineno-34-63" name="__codelineno-34-63" href="#__codelineno-34-63"></a>        <span class="k">assert</span> <span class="n">d</span><span class="p">[</span><span class="s2">&quot;error&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;rip_stalled&quot;</span>
+<a id="__codelineno-34-64" name="__codelineno-34-64" href="#__codelineno-34-64"></a>        <span class="k">assert</span> <span class="n">d</span><span class="p">[</span><span class="s2">&quot;reason&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">REGION_MISMATCH_FAILURE_REASON</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_job_manager.py::TestOnePassRipFallback<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: <code>test_stalled_pass_with_no_output_skips_fallback</code> FAILS with <code>assert 2 == 1</code>, and <code>test_region_reason_reaches_the_review_entry</code> FAILS on the <code>reason</code> assertion. The other two pass already.</p>
+<p>Note: if <code>test_region_reason_reaches_the_review_entry</code> instead fails with a <code>KeyError: 'reason'</code>, inspect what <code>route_rip_failure_to_review</code> actually stores (<code>app/services/matching_coordinator.py:1813</code>) and assert against the field it uses, rather than changing the coordinator.</p>
+<ul>
+<li>[ ] <strong>Step 3: Gate the fallback</strong></li>
+</ul>
+<p>In <code>backend/app/services/job_manager.py</code>, change the fallback trigger at line 2485 from:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>                <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+</code></pre></div>
+<p>to:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>                <span class="c1"># A pass that stalled and wrote nothing means the disc itself is</span>
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>                <span class="c1"># unreadable (bad region setting, unsupported protection, dead</span>
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>                <span class="c1"># drive). The per-title fallback exists to rescue the &quot;one bad</span>
+<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>                <span class="c1"># title lost the rest of the disc&quot; case, which presupposes</span>
+<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a>                <span class="c1"># partial success; with zero output there is nothing to rescue</span>
+<a id="__codelineno-37-6" name="__codelineno-37-6" href="#__codelineno-37-6"></a>                <span class="c1"># and each retry costs another full stall timeout (issue #506).</span>
+<a id="__codelineno-37-7" name="__codelineno-37-7" href="#__codelineno-37-7"></a>                <span class="c1"># Both conditions are required: a pass that simply reported no</span>
+<a id="__codelineno-37-8" name="__codelineno-37-8" href="#__codelineno-37-8"></a>                <span class="c1"># files without stalling has given us no evidence of an</span>
+<a id="__codelineno-37-9" name="__codelineno-37-9" href="#__codelineno-37-9"></a>                <span class="c1"># unreadable disc, so it still earns a per-title retry.</span>
+<a id="__codelineno-37-10" name="__codelineno-37-10" href="#__codelineno-37-10"></a>                <span class="n">disc_unreadable</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">stalled_titles</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">result</span><span class="o">.</span><span class="n">output_files</span>
+<a id="__codelineno-37-11" name="__codelineno-37-11" href="#__codelineno-37-11"></a>                <span class="k">if</span> <span class="n">disc_unreadable</span> <span class="ow">and</span> <span class="n">missing</span><span class="p">:</span>
+<a id="__codelineno-37-12" name="__codelineno-37-12" href="#__codelineno-37-12"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-37-13" name="__codelineno-37-13" href="#__codelineno-37-13"></a>                        <span class="sa">f</span><span class="s2">&quot;Job </span><span class="si">{</span><span class="n">safe_job</span><span class="si">}</span><span class="s2">: single-pass rip stalled with no output; &quot;</span>
+<a id="__codelineno-37-14" name="__codelineno-37-14" href="#__codelineno-37-14"></a>                        <span class="sa">f</span><span class="s2">&quot;skipping the per-title fallback for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2"> title(s) &quot;</span>
+<a id="__codelineno-37-15" name="__codelineno-37-15" href="#__codelineno-37-15"></a>                        <span class="sa">f</span><span class="s2">&quot;and routing them to review.&quot;</span>
+<a id="__codelineno-37-16" name="__codelineno-37-16" href="#__codelineno-37-16"></a>                    <span class="p">)</span>
+<a id="__codelineno-37-17" name="__codelineno-37-17" href="#__codelineno-37-17"></a>                <span class="k">if</span> <span class="n">missing</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">disc_unreadable</span><span class="p">:</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Use the specific failure reason when routing stalled titles</strong></li>
+</ul>
+<p>Replace the hardcoded reason at <code>backend/app/services/job_manager.py:2531-2533</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>                        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_matching</span><span class="o">.</span><span class="n">route_rip_failure_to_review</span><span class="p">(</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>                            <span class="n">job_id</span><span class="p">,</span>
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a>                            <span class="n">stalled_title</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a>                            <span class="s2">&quot;rip_stalled&quot;</span><span class="p">,</span>
+<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a>                            <span class="n">result</span><span class="o">.</span><span class="n">failure_reason</span> <span class="ow">or</span> <span class="n">STALL_FAILURE_REASON</span><span class="p">,</span>
+<a id="__codelineno-38-6" name="__codelineno-38-6" href="#__codelineno-38-6"></a>                        <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 5: Run the tests to verify they pass</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_job_manager.py::TestOnePassRipFallback<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 6 passed, including the pre-existing <code>test_single_pass_failure_reripsonly_missing</code> and <code>test_all_selected_rips_in_single_pass</code>.</p>
+<ul>
+<li>[ ] <strong>Step 6: Run the full affected suites</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_job_manager.py<span class="w"> </span>tests/unit/test_rerip.py<span class="w"> </span>tests/unit/test_stuck_job_recovery.py<span class="w"> </span>tests/unit/test_auto_review_escalation.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: all pass. <code>test_rerip.py</code> and <code>test_auto_review_escalation.py</code> assert on the <code>rip_stalled</code> code, which this change deliberately preserves.</p>
+<ul>
+<li>[ ] <strong>Step 7: Lint and commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>.
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/services/job_manager.py<span class="w"> </span>backend/tests/unit/test_job_manager.py
+<a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix(ripping): skip per-title fallback when the pass stalled with no output (#506)</span>
+<a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>
+<a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-6-full-backend-verification">Task 6: Full backend verification</h3>
+<p><strong>Files:</strong> none modified.</p>
+<ul>
+<li>[ ] <strong>Step 1: Run the whole backend suite</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest
+</code></pre></div>
+<p>Expected: no new failures relative to the branch point. If <code>no such table</code> errors appear, initialize the worktree DB first (see "Context an implementer needs") and re-run.</p>
+<ul>
+<li>[ ] <strong>Step 2: Confirm the branch point baseline if anything fails</strong></li>
+</ul>
+<p>If a failure looks pre-existing, verify it against main rather than assuming:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>git<span class="w"> </span>stash<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>checkout<span class="w"> </span>main<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/&lt;failing_file&gt;<span class="w"> </span>-v<span class="p">;</span><span class="w"> </span>git<span class="w"> </span>checkout<span class="w"> </span>-<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>stash<span class="w"> </span>pop
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Lint</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>--check<span class="w"> </span>.
+</code></pre></div>
+<p>Expected: both clean.</p>
+<hr />
+<h3 id="task-7-changelog">Task 7: Changelog</h3>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code> (<code>[Unreleased]</code> section)</p>
+<ul>
+<li>[ ] <strong>Step 1: Add the entries</strong></li>
+</ul>
+<p>Under <code>## [Unreleased]</code>, add to <code>### Fixed</code> (create the subsection if absent). Write user-facing prose, not commit subjects:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a><span class="k">-</span><span class="w"> </span>A disc that MakeMKV cannot read at all now resolves in about two minutes
+<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>  instead of roughly twenty-six. Previously, when the initial rip pass stalled
+<a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a>  without writing anything, engram retried every title individually, spending a
+<a id="__codelineno-45-4" name="__codelineno-45-4" href="#__codelineno-45-4"></a>  full stall timeout on each before the phase watchdog finally stepped in. (#506)
+<a id="__codelineno-45-5" name="__codelineno-45-5" href="#__codelineno-45-5"></a><span class="k">-</span><span class="w"> </span>A rip that stalls because the drive&#39;s region setting does not match the disc
+<a id="__codelineno-45-6" name="__codelineno-45-6" href="#__codelineno-45-6"></a>  now says so, instead of reporting that the disc may be dirty or damaged. (#506)
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>git<span class="w"> </span>add<span class="w"> </span>CHANGELOG.md
+<a id="__codelineno-46-2" name="__codelineno-46-2" href="#__codelineno-46-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(changelog): note fast-fail and region-mismatch reporting (#506)</span>
+<a id="__codelineno-46-3" name="__codelineno-46-3" href="#__codelineno-46-3"></a>
+<a id="__codelineno-46-4" name="__codelineno-46-4" href="#__codelineno-46-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-8-open-the-pr">Task 8: Open the PR</h3>
+<ul>
+<li>[ ] <strong>Step 1: Stop any servers this session started</strong></li>
+</ul>
+<p>Per CLAUDE.md, servers must be stopped before opening a PR. This plan starts none, but confirm nothing is stray:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a><span class="nb">Get-Process</span> <span class="n">-Name</span> <span class="n">makemkvcon</span><span class="p">*</span> <span class="n">-ErrorAction</span> <span class="n">SilentlyContinue</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Push and open the PR</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>feat/506-fast-fail-zero-output-rip
+</code></pre></div>
+<p>Then open a PR whose body covers: the 26-minute timeline reconstruction (all-pass stall, then the serial per-title fallback, then the 1200 s phase watchdog); the three changes; the note that <code>fix/506-watchdog-cancel-mislabel</code> has not landed and touches nearby regions of <code>_run_ripping</code>; and that this does not fix the <code>"Cancelled by user"</code> mislabel.</p>
+<ul>
+<li>[ ] <strong>Step 3: Request review</strong></li>
+</ul>
+<p>Per project convention, <code>code-review.yml</code> only fires on the <code>opened</code> event, so the bot must be pinged explicitly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>gh<span class="w"> </span>pr<span class="w"> </span>comment<span class="w"> </span>&lt;PR#&gt;<span class="w"> </span>--body<span class="w"> </span><span class="s2">&quot;@claude please review this PR&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="self-review-notes">Self-Review Notes</h2>
+<ul>
+<li><strong>Spec coverage:</strong> change 1 is Task 5; change 2 is Tasks 2 and 4; change 3 is Tasks 1, 3, and 4. All three spec testing sections map to tests in Tasks 1 to 5. The spec's "reuse <code>rip_stalled</code>" constraint is asserted in Task 5 Step 1.</li>
+<li><strong>Known risk carried from the spec:</strong> Task 4 Step 6 requires hoisting <code>region_mismatch</code> out of <code>run_rip_with_streaming</code>'s scope. If that hoist proves awkward, the fallback is to return the reason out of <code>run_rip_with_streaming</code> alongside <code>stalled_commands</code> (it already returns a 3-tuple; make it a 4-tuple). Either is acceptable; do not leave the variable referenced from a scope that cannot see it.</li>
+<li><strong>Test-count expectations</strong> in each "Expected" line assume the tests are added cumulatively in the order given. If running a single class, the counts differ.
+</content>
+</invoke></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

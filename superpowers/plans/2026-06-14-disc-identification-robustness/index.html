@@ -1,0 +1,2174 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-06-14-disc-identification-robustness/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Disc Identification Robustness Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#disc-identification-robustness-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Disc Identification Robustness Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#task-1-fix-1-abbreviation-aware-name-corroboration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Fix 1 — Abbreviation-aware name corroboration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-2-fix-3-escalate-uncorroborated-identity-to-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Fix 3 — Escalate uncorroborated identity to review
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-3-fix-2-core-runtime-aware-play-all-extras-in-the-analyst" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Fix 2 (core) — Runtime-aware Play-All / Extras in the Analyst
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-4-fix-2-wiring-caller-fetches-expected-runtimes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Fix 2 (wiring) — Caller fetches expected runtimes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-5-ds9-end-to-end-reproduction-all-three-fixes-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: DS9 end-to-end reproduction (all three fixes together)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-6-changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Changelog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-7-e2e-verification-before-merge-manual-gate-no-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: E2E verification before merge (manual gate — no commit)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="disc-identification-robustness-implementation-plan">Disc Identification Robustness Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Make engram correctly identify abbreviated-label TV discs (e.g. <code>DS9</code> → "Star Trek: Deep Space Nine"), stop discarding feature-length episodes as Play-All/extras, and send genuinely unconfirmable identities to review instead of silently completing.</p>
+<p><strong>Architecture:</strong> Three changes in <code>backend/app/core/analyst.py</code> (a pure, synchronous analysis engine) plus a thin async caller change in <code>backend/app/services/identification_coordinator.py</code>. New data (expected episode runtimes) is <em>passed into</em> <code>analyze()</code> — the Analyst never does I/O. Review escalation reuses the existing <code>needs_review</code>/<code>review_reason</code> plumbing that already drives the review UI.</p>
+<p><strong>Tech Stack:</strong> Python 3.11, pytest (<code>uv run pytest</code>), FastAPI/SQLModel backend. TMDB via <code>app/matcher/tmdb_client.py</code>. Spec: <code>docs/superpowers/specs/2026-06-14-disc-identification-robustness-design.md</code>.</p>
+<p><strong>One-time setup (run before Task 1):</strong></p>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cd</span><span class="w"> </span>C:/Github/engram/.claude/worktrees/disc-identification/backend
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>uv<span class="w"> </span>sync
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_disc_name_identification.py<span class="w"> </span>tests/pipeline/test_play_all_detection.py<span class="w"> </span>-q
+</code></pre></div>
+Expected: existing tests PASS (clean baseline). If <code>uv sync</code> is heavy (ML deps), it only needs to run once.</p>
+<hr />
+<h3 id="task-1-fix-1-abbreviation-aware-name-corroboration">Task 1: Fix 1 — Abbreviation-aware name corroboration</h3>
+<p>Add an initialism/abbreviation acceptance path so an abbreviated disc label corroborates the TMDB name (<code>DS9</code> ↔ "Deep Space Nine", with <code>Nine</code>→<code>9</code>). Fold it into <code>_names_are_similar</code>, the single corroboration primitive used by both <code>analyze()</code> and <code>_apply_tmdb_signal</code>.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/analyst.py</code> (add helpers after <code>_names_are_similar</code> at line ~98; enhance <code>_names_are_similar</code> body)
+- Test: <code>backend/tests/unit/test_disc_name_identification.py</code> (append)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_disc_name_identification.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># ---------------------------------------------------------------------------</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># Fix 1: abbreviation / initialism corroboration (DS9 ↔ Deep Space Nine)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># ---------------------------------------------------------------------------</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.analyst</span><span class="w"> </span><span class="kn">import</span> <span class="n">_abbreviation_matches</span><span class="p">,</span> <span class="n">_names_are_similar</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="s2">&quot;label,full_name&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="p">[</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        <span class="p">(</span><span class="s2">&quot;DS9&quot;</span><span class="p">,</span> <span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">),</span>  <span class="c1"># number-word Nine -&gt; 9, drop &quot;Star Trek:&quot;</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>        <span class="p">(</span><span class="s2">&quot;Ds9&quot;</span><span class="p">,</span> <span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">),</span>  <span class="c1"># case-insensitive</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>        <span class="p">(</span><span class="s2">&quot;TNG&quot;</span><span class="p">,</span> <span class="s2">&quot;Star Trek: The Next Generation&quot;</span><span class="p">),</span>  <span class="c1"># &quot;Star Trek:&quot; prefix dropped via colon-split; The Next Generation -&gt; TNG</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="p">],</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="p">)</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_abbreviation_matches_positive</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">full_name</span><span class="p">):</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="k">assert</span> <span class="n">_abbreviation_matches</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">full_name</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="s2">&quot;label,full_name&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="p">[</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>        <span class="p">(</span><span class="s2">&quot;DS9&quot;</span><span class="p">,</span> <span class="s2">&quot;Star Trek: The Next Generation&quot;</span><span class="p">),</span>  <span class="c1"># ds9 != tng / stng</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>        <span class="p">(</span><span class="s2">&quot;HOUSE&quot;</span><span class="p">,</span> <span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">),</span>    <span class="c1"># has vowels, no digit -&gt; not abbrev-shaped</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>        <span class="p">(</span><span class="s2">&quot;STRANGENEWWORLDS&quot;</span><span class="p">,</span> <span class="s2">&quot;Star Trek: Strange New Worlds&quot;</span><span class="p">),</span>  <span class="c1"># too long (&gt;5) -&gt; not abbrev</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>        <span class="p">(</span><span class="s2">&quot;D&quot;</span><span class="p">,</span> <span class="s2">&quot;Deep Space Nine&quot;</span><span class="p">),</span>                   <span class="c1"># single char -&gt; rejected</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>    <span class="p">],</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="p">)</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_abbreviation_matches_negative</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">full_name</span><span class="p">):</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>    <span class="k">assert</span> <span class="n">_abbreviation_matches</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">full_name</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>
+<a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_names_are_similar_uses_abbreviation_path</span><span class="p">():</span>
+<a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>    <span class="k">assert</span> <span class="n">_names_are_similar</span><span class="p">(</span><span class="s2">&quot;Ds9&quot;</span><span class="p">,</span> <span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>
+<a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>
+<a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_analyst_adopts_tmdb_name_for_abbreviated_label</span><span class="p">():</span>
+<a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;DS9S1D1 -&gt; &#39;Ds9&#39; must corroborate and adopt TMDB &#39;Star Trek: Deep Space Nine&#39;.&quot;&quot;&quot;</span>
+<a id="__codelineno-1-39" name="__codelineno-1-39" href="#__codelineno-1-39"></a>    <span class="n">tmdb</span> <span class="o">=</span> <span class="n">TmdbSignal</span><span class="p">(</span>
+<a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a>        <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span>
+<a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a>        <span class="n">confidence</span><span class="o">=</span><span class="mf">0.70</span><span class="p">,</span>
+<a id="__codelineno-1-42" name="__codelineno-1-42" href="#__codelineno-1-42"></a>        <span class="n">tmdb_id</span><span class="o">=</span><span class="mi">580</span><span class="p">,</span>
+<a id="__codelineno-1-43" name="__codelineno-1-43" href="#__codelineno-1-43"></a>        <span class="n">tmdb_name</span><span class="o">=</span><span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-44" name="__codelineno-1-44" href="#__codelineno-1-44"></a>    <span class="p">)</span>
+<a id="__codelineno-1-45" name="__codelineno-1-45" href="#__codelineno-1-45"></a>    <span class="n">analyst</span> <span class="o">=</span> <span class="n">DiscAnalyst</span><span class="p">()</span>
+<a id="__codelineno-1-46" name="__codelineno-1-46" href="#__codelineno-1-46"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">analyst</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span><span class="n">_tv_titles</span><span class="p">(),</span> <span class="s2">&quot;DS9S1D1&quot;</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="o">=</span><span class="n">tmdb</span><span class="p">,</span> <span class="n">disc_title</span><span class="o">=</span><span class="s2">&quot;DS9S1D1&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-47" name="__codelineno-1-47" href="#__codelineno-1-47"></a>
+<a id="__codelineno-1-48" name="__codelineno-1-48" href="#__codelineno-1-48"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span> <span class="o">==</span> <span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span>
+<a id="__codelineno-1-49" name="__codelineno-1-49" href="#__codelineno-1-49"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">tmdb_id</span> <span class="o">==</span> <span class="mi">580</span>
+<a id="__codelineno-1-50" name="__codelineno-1-50" href="#__codelineno-1-50"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">content_type</span> <span class="o">==</span> <span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_disc_name_identification.py -k "abbreviation or abbreviated" -q</code>
+Expected: FAIL — <code>ImportError: cannot import name '_abbreviation_matches'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement the helpers and enhance <code>_names_are_similar</code></strong></li>
+</ul>
+<p>In <code>backend/app/core/analyst.py</code>, add immediately after <code>_names_are_similar</code> (after line ~98):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">_NUMBER_WORDS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">&quot;one&quot;</span><span class="p">:</span> <span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="s2">&quot;two&quot;</span><span class="p">:</span> <span class="s2">&quot;2&quot;</span><span class="p">,</span> <span class="s2">&quot;three&quot;</span><span class="p">:</span> <span class="s2">&quot;3&quot;</span><span class="p">,</span> <span class="s2">&quot;four&quot;</span><span class="p">:</span> <span class="s2">&quot;4&quot;</span><span class="p">,</span> <span class="s2">&quot;five&quot;</span><span class="p">:</span> <span class="s2">&quot;5&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="s2">&quot;six&quot;</span><span class="p">:</span> <span class="s2">&quot;6&quot;</span><span class="p">,</span> <span class="s2">&quot;seven&quot;</span><span class="p">:</span> <span class="s2">&quot;7&quot;</span><span class="p">,</span> <span class="s2">&quot;eight&quot;</span><span class="p">:</span> <span class="s2">&quot;8&quot;</span><span class="p">,</span> <span class="s2">&quot;nine&quot;</span><span class="p">:</span> <span class="s2">&quot;9&quot;</span><span class="p">,</span> <span class="s2">&quot;ten&quot;</span><span class="p">:</span> <span class="s2">&quot;10&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">}</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">_ACRONYM_STOPWORDS</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="s2">&quot;of&quot;</span><span class="p">,</span> <span class="s2">&quot;and&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">,</span> <span class="s2">&quot;an&quot;</span><span class="p">})</span>  <span class="c1"># NOT &quot;the&quot;: canonical initialisms like TNG keep it</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">_abbreviation_matches</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">full_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;True if ``label`` is an initialism/abbreviation of ``full_name``.</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="sd">    Handles fan-style abbreviations like &quot;DS9&quot; for &quot;Deep Space Nine&quot; (the</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="sd">    number-word &quot;Nine&quot; maps to the digit &quot;9&quot;), including dropping a franchise</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="sd">    prefix before a colon (&quot;Star Trek: Deep Space Nine&quot; -&gt; also tries</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="sd">    &quot;Deep Space Nine&quot;).</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="sd">    Conservative guards prevent false positives: ``label`` must be</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="sd">    abbreviation-shaped (2-5 alphanumerics, and either contains a digit or has</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="sd">    no vowels), and the acronym must derive from &gt;= 2 significant words.</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="n">cand</span> <span class="o">=</span> <span class="n">_collapsed</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>        <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">cand</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">5</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>        <span class="ow">and</span> <span class="p">(</span><span class="nb">any</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">isdigit</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cand</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">v</span> <span class="ow">in</span> <span class="n">cand</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="s2">&quot;aeiou&quot;</span><span class="p">))</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="p">):</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>    <span class="n">variants</span> <span class="o">=</span> <span class="p">[</span><span class="n">full_name</span><span class="p">]</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>    <span class="k">if</span> <span class="s2">&quot;:&quot;</span> <span class="ow">in</span> <span class="n">full_name</span><span class="p">:</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>        <span class="n">variants</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">full_name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>    <span class="k">for</span> <span class="n">variant</span> <span class="ow">in</span> <span class="n">variants</span><span class="p">:</span>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>        <span class="n">words</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>            <span class="n">w</span>
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>            <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[^\w\s]&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="n">variant</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>            <span class="k">if</span> <span class="n">w</span> <span class="ow">and</span> <span class="n">w</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_ACRONYM_STOPWORDS</span>
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>        <span class="p">]</span>
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">words</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>            <span class="k">continue</span>
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>        <span class="n">letters</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words</span><span class="p">)</span>
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>        <span class="n">digits</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_NUMBER_WORDS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words</span><span class="p">)</span>
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>        <span class="k">if</span> <span class="n">cand</span> <span class="ow">in</span> <span class="p">(</span><span class="n">letters</span><span class="p">,</span> <span class="n">digits</span><span class="p">):</span>
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>            <span class="k">return</span> <span class="kc">True</span>
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a>    <span class="k">return</span> <span class="kc">False</span>
+</code></pre></div>
+<p>Then change the final two lines of <code>_names_are_similar</code> (currently):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>    <span class="n">a_collapsed</span><span class="p">,</span> <span class="n">b_collapsed</span> <span class="o">=</span> <span class="n">_collapsed</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="n">_collapsed</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">a_collapsed</span><span class="p">)</span> <span class="ow">and</span> <span class="n">a_collapsed</span> <span class="o">==</span> <span class="n">b_collapsed</span>
+</code></pre></div>
+<p>to:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>    <span class="n">a_collapsed</span><span class="p">,</span> <span class="n">b_collapsed</span> <span class="o">=</span> <span class="n">_collapsed</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="n">_collapsed</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="k">if</span> <span class="n">a_collapsed</span> <span class="ow">and</span> <span class="n">a_collapsed</span> <span class="o">==</span> <span class="n">b_collapsed</span><span class="p">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>        <span class="k">return</span> <span class="kc">True</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="c1"># Abbreviation / initialism path (e.g. &quot;DS9&quot; &lt;-&gt; &quot;Deep Space Nine&quot;).</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="k">return</span> <span class="n">_abbreviation_matches</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_abbreviation_matches</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_disc_name_identification.py -q</code>
+Expected: PASS (new tests pass; all pre-existing tests in the file still pass — the <code>len(cand) &lt;= 5</code> guard keeps <code>Strangenewworlds</code>-style labels on the existing collapse path).</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/analyst.py<span class="w"> </span>backend/tests/unit/test_disc_name_identification.py
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(analyst): abbreviation-aware TMDB name corroboration (DS9)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-2-fix-3-escalate-uncorroborated-identity-to-review">Task 2: Fix 3 — Escalate uncorroborated identity to review</h3>
+<p>When the TMDB name cannot be corroborated (even after Task 1's abbreviation path), flag the job <code>needs_review</code> with a candidate-confirming reason instead of silently keeping the disc name. <code>_apply_tmdb_signal</code> is the funnel for all heuristic return paths and already re-checks corroboration — the natural injection point. The TMDB-only direct-return path is handled too.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/analyst.py</code> (<code>_apply_tmdb_signal</code> name block at line ~584-590; TMDB-only path at line ~436-446; add a helper near the other module helpers)
+- Test: <code>backend/tests/unit/test_disc_name_identification.py</code> (append + update two existing tests)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test and update existing ones</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_disc_name_identification.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># ---------------------------------------------------------------------------</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># Fix 3: uncorroborated identity escalates to review</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># ---------------------------------------------------------------------------</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_analyst_escalates_review_when_tmdb_uncorroborated</span><span class="p">():</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A TMDB name matching neither on-disc signal -&gt; needs_review with a candidate.&quot;&quot;&quot;</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">tmdb</span> <span class="o">=</span> <span class="n">TmdbSignal</span><span class="p">(</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>        <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>        <span class="n">confidence</span><span class="o">=</span><span class="mf">0.70</span><span class="p">,</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>        <span class="n">tmdb_id</span><span class="o">=</span><span class="mi">999</span><span class="p">,</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>        <span class="n">tmdb_name</span><span class="o">=</span><span class="s2">&quot;Some Unrelated Show&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>    <span class="p">)</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="n">analyst</span> <span class="o">=</span> <span class="n">DiscAnalyst</span><span class="p">()</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">analyst</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>        <span class="n">_tv_titles</span><span class="p">(),</span> <span class="s2">&quot;BREAKINGBADS2&quot;</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="o">=</span><span class="n">tmdb</span><span class="p">,</span> <span class="n">disc_title</span><span class="o">=</span><span class="s2">&quot;Breaking Bad&quot;</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>    <span class="p">)</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">review_reason</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>    <span class="k">assert</span> <span class="s2">&quot;Some Unrelated Show&quot;</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">review_reason</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>    <span class="c1"># The base name is kept as the suggestion; TMDB id still attached.</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span> <span class="o">==</span> <span class="s2">&quot;Breaking Bad&quot;</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_analyst_no_review_when_corroborated</span><span class="p">():</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A corroborated name (DS9 via abbreviation) must NOT trigger review.&quot;&quot;&quot;</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>    <span class="n">tmdb</span> <span class="o">=</span> <span class="n">TmdbSignal</span><span class="p">(</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a>        <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a>        <span class="n">confidence</span><span class="o">=</span><span class="mf">0.70</span><span class="p">,</span>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a>        <span class="n">tmdb_id</span><span class="o">=</span><span class="mi">580</span><span class="p">,</span>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a>        <span class="n">tmdb_name</span><span class="o">=</span><span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a>    <span class="p">)</span>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a>    <span class="n">analyst</span> <span class="o">=</span> <span class="n">DiscAnalyst</span><span class="p">()</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">analyst</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span><span class="n">_tv_titles</span><span class="p">(),</span> <span class="s2">&quot;DS9S1D1&quot;</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="o">=</span><span class="n">tmdb</span><span class="p">,</span> <span class="n">disc_title</span><span class="o">=</span><span class="s2">&quot;DS9S1D1&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a>
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span> <span class="ow">is</span> <span class="kc">False</span>
+</code></pre></div>
+<p>Then UPDATE the two existing tests to assert the new escalation (intentional behavior change). In <code>test_analyst_keeps_base_name_when_tmdb_uncorroborated</code>, after the existing assertion, add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>    <span class="c1"># Fix 3: an uncorroborated TMDB name now escalates to review.</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span> <span class="ow">is</span> <span class="kc">True</span>
+</code></pre></div>
+<p>In <code>test_analyst_without_disc_title_keeps_garbled_label_name</code>, after the existing assertions, add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>    <span class="c1"># Fix 3: the concatenated label does not corroborate, so the disc goes to review.</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span> <span class="ow">is</span> <span class="kc">True</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_disc_name_identification.py -k "uncorroborated or no_review or garbled" -q</code>
+Expected: FAIL — new escalation test fails (<code>needs_review is False</code>), and the two updated tests fail on the new assertion.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement the escalation</strong></li>
+</ul>
+<p>In <code>backend/app/core/analyst.py</code>, add this helper next to <code>_abbreviation_matches</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_uncorroborated_review_reason</span><span class="p">(</span><span class="n">detected_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a candidate-confirming review reason for an uncorroborated TMDB name.&quot;&quot;&quot;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">tid</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot; (TMDB #</span><span class="si">{</span><span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_id</span><span class="si">}</span><span class="s2">)&quot;</span> <span class="k">if</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_id</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="k">return</span> <span class="p">(</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>        <span class="sa">f</span><span class="s2">&quot;Couldn&#39;t confirm disc &#39;</span><span class="si">{</span><span class="n">detected_name</span><span class="si">}</span><span class="s2">&#39; is &quot;</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>        <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span><span class="si">}</span><span class="s2">&#39;</span><span class="si">{</span><span class="n">tid</span><span class="si">}</span><span class="s2">. Confirm or correct the title.&quot;</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="p">)</span>
+</code></pre></div>
+<p>In <code>_apply_tmdb_signal</code>, replace the name-adoption block (currently):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>        <span class="c1"># Use TMDB name if similar enough to the heuristic name (same guard as analyze())</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>        <span class="k">if</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span><span class="p">:</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>            <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">_names_are_similar</span><span class="p">(</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>                <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>            <span class="p">):</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>                <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span> <span class="o">=</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>        <span class="k">return</span> <span class="n">result</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>        <span class="c1"># Use TMDB name if similar enough to the heuristic name (same guard as analyze()).</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>        <span class="c1"># Otherwise the identity is uncorroborated -&gt; escalate to review (Fix 3).</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>        <span class="k">if</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span><span class="p">:</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>            <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">_names_are_similar</span><span class="p">(</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>                <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>            <span class="p">):</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>                <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span> <span class="o">=</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>            <span class="k">elif</span> <span class="ow">not</span> <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span><span class="p">:</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>                <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>                <span class="n">result</span><span class="o">.</span><span class="n">review_reason</span> <span class="o">=</span> <span class="n">_uncorroborated_review_reason</span><span class="p">(</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>                    <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span><span class="p">,</span> <span class="n">tmdb_signal</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>                <span class="p">)</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>        <span class="k">return</span> <span class="n">result</span>
+</code></pre></div>
+<p>Also cover the TMDB-only direct-return path. In <code>analyze()</code>, the block that returns when "Heuristics inconclusive, using TMDB signal" (currently ends with <code>return DiscAnalysisResult(... play_all_title_indices=tmdb_play_all,)</code>). Replace that <code>return DiscAnalysisResult(...)</code> with a built-then-escalated result:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>            <span class="n">tmdb_only</span> <span class="o">=</span> <span class="n">DiscAnalysisResult</span><span class="p">(</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>                <span class="n">content_type</span><span class="o">=</span><span class="n">tmdb_signal</span><span class="o">.</span><span class="n">content_type</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>                <span class="n">titles</span><span class="o">=</span><span class="n">titles</span><span class="p">,</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>                <span class="n">detected_name</span><span class="o">=</span><span class="n">effective_name</span><span class="p">,</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>                <span class="n">detected_season</span><span class="o">=</span><span class="n">detected_season</span><span class="p">,</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>                <span class="n">confidence</span><span class="o">=</span><span class="n">tmdb_signal</span><span class="o">.</span><span class="n">confidence</span><span class="p">,</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>                <span class="n">tmdb_id</span><span class="o">=</span><span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_id</span><span class="p">,</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>                <span class="n">tmdb_name</span><span class="o">=</span><span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span><span class="p">,</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>                <span class="n">classification_source</span><span class="o">=</span><span class="s2">&quot;tmdb&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>                <span class="n">play_all_title_indices</span><span class="o">=</span><span class="n">tmdb_play_all</span><span class="p">,</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>            <span class="p">)</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>            <span class="k">if</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_names_are_similar</span><span class="p">(</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>                <span class="n">effective_name</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_name</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>            <span class="p">):</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>                <span class="n">tmdb_only</span><span class="o">.</span><span class="n">needs_review</span> <span class="o">=</span> <span class="kc">True</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>                <span class="n">tmdb_only</span><span class="o">.</span><span class="n">review_reason</span> <span class="o">=</span> <span class="n">_uncorroborated_review_reason</span><span class="p">(</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>                    <span class="n">effective_name</span><span class="p">,</span> <span class="n">tmdb_signal</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>                <span class="p">)</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>            <span class="k">return</span> <span class="n">tmdb_only</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_disc_name_identification.py -q</code>
+Expected: PASS (all tests, including the two updated ones).</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/analyst.py<span class="w"> </span>backend/tests/unit/test_disc_name_identification.py
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(analyst): escalate uncorroborated TMDB identity to review&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-3-fix-2-core-runtime-aware-play-all-extras-in-the-analyst">Task 3: Fix 2 (core) — Runtime-aware Play-All / Extras in the Analyst</h3>
+<p>Teach the Play-All detectors to skip a feature-length title whose duration matches a legitimate expected episode runtime (a double-length pilot), via a new optional <code>expected_episode_runtimes</code> argument to <code>analyze()</code>.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/analyst.py</code> (<code>analyze</code> signature line ~267; <code>_detect_play_all</code> call site line ~357; <code>_detect_play_all</code> line ~691; <code>_detect_play_all_fallback</code> line ~734; add <code>_matches_expected_runtime</code> helper)
+- Test: <code>backend/tests/pipeline/test_play_all_detection.py</code> (append)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Append to <code>backend/tests/pipeline/test_play_all_detection.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># ---------------------------------------------------------------------------</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="c1"># Fix 2: runtime-aware Play-All (double-length pilot is NOT a Play-All)</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="c1"># ---------------------------------------------------------------------------</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.analyst</span><span class="w"> </span><span class="kn">import</span> <span class="n">_matches_expected_runtime</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.core.tmdb_classifier</span><span class="w"> </span><span class="kn">import</span> <span class="n">TmdbSignal</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="c1"># Note: ContentType is already imported at the top of this file.</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_matches_expected_runtime_single_and_two_parter</span><span class="p">():</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>    <span class="c1"># 90.5-min title matches a single 90-min expected episode (pilot)</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    <span class="k">assert</span> <span class="n">_matches_expected_runtime</span><span class="p">(</span><span class="mi">5429</span><span class="p">,</span> <span class="p">[</span><span class="mi">90</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">])</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    <span class="c1"># Same title matches sum of two consecutive 45-min episodes (two-parter)</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>    <span class="k">assert</span> <span class="n">_matches_expected_runtime</span><span class="p">(</span><span class="mi">5429</span><span class="p">,</span> <span class="p">[</span><span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">])</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>    <span class="c1"># A real 157-min Play-All matches no single/two-parter runtime</span>
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>    <span class="k">assert</span> <span class="n">_matches_expected_runtime</span><span class="p">(</span><span class="mi">9416</span><span class="p">,</span> <span class="p">[</span><span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">])</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>    <span class="c1"># Empty / zero runtimes -&gt; no match (caller falls back to heuristic)</span>
+<a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a>    <span class="k">assert</span> <span class="n">_matches_expected_runtime</span><span class="p">(</span><span class="mi">5429</span><span class="p">,</span> <span class="p">[])</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>    <span class="k">assert</span> <span class="n">_matches_expected_runtime</span><span class="p">(</span><span class="mi">5429</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>
+<a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a>
+<a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">pipeline</span>
+<a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestDS9PilotNotPlayAll</span><span class="p">:</span>
+<a id="__codelineno-14-25" name="__codelineno-14-25" href="#__codelineno-14-25"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;DS9 S1D1: t0 is the 90-min &#39;Emissary&#39; pilot, not a Play-All of t1+t2.&quot;&quot;&quot;</span>
+<a id="__codelineno-14-26" name="__codelineno-14-26" href="#__codelineno-14-26"></a>
+<a id="__codelineno-14-27" name="__codelineno-14-27" href="#__codelineno-14-27"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_titles</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-14-28" name="__codelineno-14-28" href="#__codelineno-14-28"></a>        <span class="k">return</span> <span class="p">[</span>
+<a id="__codelineno-14-29" name="__codelineno-14-29" href="#__codelineno-14-29"></a>            <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">5429</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="mi">2_000_000_000</span><span class="p">,</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">18</span><span class="p">),</span>
+<a id="__codelineno-14-30" name="__codelineno-14-30" href="#__codelineno-14-30"></a>            <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2718</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="mi">1_000_000_000</span><span class="p">,</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">8</span><span class="p">),</span>
+<a id="__codelineno-14-31" name="__codelineno-14-31" href="#__codelineno-14-31"></a>            <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2715</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="mi">1_000_000_000</span><span class="p">,</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">8</span><span class="p">),</span>
+<a id="__codelineno-14-32" name="__codelineno-14-32" href="#__codelineno-14-32"></a>        <span class="p">]</span>
+<a id="__codelineno-14-33" name="__codelineno-14-33" href="#__codelineno-14-33"></a>
+<a id="__codelineno-14-34" name="__codelineno-14-34" href="#__codelineno-14-34"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_pilot_flagged_without_runtimes_regression</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-14-35" name="__codelineno-14-35" href="#__codelineno-14-35"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Without runtimes, the old behavior stands (t0 ~ sum -&gt; flagged).&quot;&quot;&quot;</span>
+<a id="__codelineno-14-36" name="__codelineno-14-36" href="#__codelineno-14-36"></a>        <span class="n">config</span> <span class="o">=</span> <span class="n">_default_config</span><span class="p">()</span>
+<a id="__codelineno-14-37" name="__codelineno-14-37" href="#__codelineno-14-37"></a>        <span class="n">analyst</span> <span class="o">=</span> <span class="n">DiscAnalyst</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+<a id="__codelineno-14-38" name="__codelineno-14-38" href="#__codelineno-14-38"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">analyst</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_titles</span><span class="p">(),</span> <span class="s2">&quot;DS9S1D1&quot;</span><span class="p">)</span>
+<a id="__codelineno-14-39" name="__codelineno-14-39" href="#__codelineno-14-39"></a>        <span class="k">assert</span> <span class="mi">0</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">play_all_title_indices</span>
+<a id="__codelineno-14-40" name="__codelineno-14-40" href="#__codelineno-14-40"></a>
+<a id="__codelineno-14-41" name="__codelineno-14-41" href="#__codelineno-14-41"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_pilot_not_flagged_with_runtimes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-14-42" name="__codelineno-14-42" href="#__codelineno-14-42"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;With expected runtimes [90,45,45,...], t0 is recognized as a real episode.&quot;&quot;&quot;</span>
+<a id="__codelineno-14-43" name="__codelineno-14-43" href="#__codelineno-14-43"></a>        <span class="n">config</span> <span class="o">=</span> <span class="n">_default_config</span><span class="p">()</span>
+<a id="__codelineno-14-44" name="__codelineno-14-44" href="#__codelineno-14-44"></a>        <span class="n">analyst</span> <span class="o">=</span> <span class="n">DiscAnalyst</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+<a id="__codelineno-14-45" name="__codelineno-14-45" href="#__codelineno-14-45"></a>        <span class="n">signal</span> <span class="o">=</span> <span class="n">TmdbSignal</span><span class="p">(</span>
+<a id="__codelineno-14-46" name="__codelineno-14-46" href="#__codelineno-14-46"></a>            <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span> <span class="n">confidence</span><span class="o">=</span><span class="mf">0.70</span><span class="p">,</span> <span class="n">tmdb_id</span><span class="o">=</span><span class="mi">580</span><span class="p">,</span>
+<a id="__codelineno-14-47" name="__codelineno-14-47" href="#__codelineno-14-47"></a>            <span class="n">tmdb_name</span><span class="o">=</span><span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-48" name="__codelineno-14-48" href="#__codelineno-14-48"></a>        <span class="p">)</span>
+<a id="__codelineno-14-49" name="__codelineno-14-49" href="#__codelineno-14-49"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">analyst</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span>
+<a id="__codelineno-14-50" name="__codelineno-14-50" href="#__codelineno-14-50"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_titles</span><span class="p">(),</span> <span class="s2">&quot;DS9S1D1&quot;</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="o">=</span><span class="n">signal</span><span class="p">,</span>
+<a id="__codelineno-14-51" name="__codelineno-14-51" href="#__codelineno-14-51"></a>            <span class="n">expected_episode_runtimes</span><span class="o">=</span><span class="p">[</span><span class="mi">90</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">],</span>
+<a id="__codelineno-14-52" name="__codelineno-14-52" href="#__codelineno-14-52"></a>        <span class="p">)</span>
+<a id="__codelineno-14-53" name="__codelineno-14-53" href="#__codelineno-14-53"></a>        <span class="k">assert</span> <span class="mi">0</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">play_all_title_indices</span>
+<a id="__codelineno-14-54" name="__codelineno-14-54" href="#__codelineno-14-54"></a>        <span class="c1"># A runtime-confirmed pilot must keep the disc classified as TV, not flip</span>
+<a id="__codelineno-14-55" name="__codelineno-14-55" href="#__codelineno-14-55"></a>        <span class="c1"># it to MOVIE (only the single long title would otherwise look movie-like).</span>
+<a id="__codelineno-14-56" name="__codelineno-14-56" href="#__codelineno-14-56"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">content_type</span> <span class="o">==</span> <span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/pipeline/test_play_all_detection.py -k "expected_runtime or DS9" -q</code>
+Expected: FAIL — <code>ImportError: cannot import name '_matches_expected_runtime'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement runtime awareness</strong></li>
+</ul>
+<p>In <code>backend/app/core/analyst.py</code>, add this helper next to the other module helpers:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_matches_expected_runtime</span><span class="p">(</span><span class="n">duration_seconds</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">expected_runtimes_min</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;True if a title duration matches a legitimate expected episode runtime.</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="sd">    Matches a single expected runtime, or the sum of two consecutive expected</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="sd">    runtimes (a two-parter carried as one title), within ±max(5 min, 15%).</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="sd">    Zero / missing runtimes are ignored; an empty effective list returns False</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="sd">    so callers fall back to the duration-sum heuristic.</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    <span class="n">runtimes</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">expected_runtimes_min</span> <span class="k">if</span> <span class="n">r</span> <span class="ow">and</span> <span class="n">r</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">runtimes</span><span class="p">:</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>    <span class="n">actual_min</span> <span class="o">=</span> <span class="n">duration_seconds</span> <span class="o">/</span> <span class="mf">60.0</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_close</span><span class="p">(</span><span class="n">expected</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>        <span class="k">return</span> <span class="nb">abs</span><span class="p">(</span><span class="n">actual_min</span> <span class="o">-</span> <span class="n">expected</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">0.15</span> <span class="o">*</span> <span class="n">expected</span><span class="p">)</span>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a>    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">_close</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">runtimes</span><span class="p">):</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a>        <span class="k">return</span> <span class="kc">True</span>
+<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">runtimes</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+<a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a>        <span class="k">if</span> <span class="n">_close</span><span class="p">(</span><span class="n">runtimes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">runtimes</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]):</span>
+<a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a>            <span class="k">return</span> <span class="kc">True</span>
+<a id="__codelineno-15-22" name="__codelineno-15-22" href="#__codelineno-15-22"></a>    <span class="k">return</span> <span class="kc">False</span>
+</code></pre></div>
+<p>Change the <code>analyze</code> signature (line ~267) from:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">analyze</span><span class="p">(</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>        <span class="n">titles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">TitleInfo</span><span class="p">],</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>        <span class="n">volume_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>        <span class="n">tmdb_signal</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>        <span class="n">disc_title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiscAnalysisResult</span><span class="p">:</span>
+</code></pre></div>
+<p>to:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">analyze</span><span class="p">(</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>        <span class="n">titles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">TitleInfo</span><span class="p">],</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>        <span class="n">volume_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>        <span class="n">tmdb_signal</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>        <span class="n">disc_title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>        <span class="n">expected_episode_runtimes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiscAnalysisResult</span><span class="p">:</span>
+</code></pre></div>
+<p>Change the Play-All call site (line ~357) from:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>        <span class="n">play_all</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detect_play_all</span><span class="p">(</span><span class="n">titles</span><span class="p">,</span> <span class="n">tv_result</span><span class="p">)</span>
+</code></pre></div>
+<p>to:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>        <span class="n">play_all</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detect_play_all</span><span class="p">(</span><span class="n">titles</span><span class="p">,</span> <span class="n">tv_result</span><span class="p">,</span> <span class="n">expected_episode_runtimes</span><span class="p">)</span>
+</code></pre></div>
+<p>Add the movie-suppression guard. Keeping the pilot out of the Play-All bucket is not enough: with only two short episodes (&lt; the 3-title TV cluster), the single feature-length title would otherwise make <code>_detect_movie</code> classify the whole disc as a MOVIE. In <code>analyze()</code>, immediately after <code>movie_result = self._detect_movie(titles)</code> and its <code>logger.info(f"Movie detection result: {movie_result}")</code> line (line ~345-346), insert:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>        <span class="c1"># A feature-length title that matches an expected episode runtime on a</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>        <span class="c1"># TV-labeled disc (e.g. a 90-min double-length pilot) is a TV episode, not</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>        <span class="c1"># a movie feature — suppress the movie result so TV classification wins.</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>        <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>            <span class="n">movie_result</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>            <span class="ow">and</span> <span class="ow">not</span> <span class="n">movie_result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ambiguous&quot;</span><span class="p">)</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>            <span class="ow">and</span> <span class="n">is_likely_tv</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>            <span class="ow">and</span> <span class="n">expected_episode_runtimes</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>            <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>                <span class="n">_matches_expected_runtime</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">duration_seconds</span><span class="p">,</span> <span class="n">expected_episode_runtimes</span><span class="p">)</span>
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>                <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">titles</span>
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a>                <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">duration_seconds</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_config</span><span class="p">()</span><span class="o">.</span><span class="n">analyst_movie_min_duration</span>
+<a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>            <span class="p">)</span>
+<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>        <span class="p">):</span>
+<a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-20-16" name="__codelineno-20-16" href="#__codelineno-20-16"></a>                <span class="s2">&quot;Feature-length title(s) match expected episode runtimes on a &quot;</span>
+<a id="__codelineno-20-17" name="__codelineno-20-17" href="#__codelineno-20-17"></a>                <span class="s2">&quot;TV-labeled disc — treating as TV episodes, not a movie.&quot;</span>
+<a id="__codelineno-20-18" name="__codelineno-20-18" href="#__codelineno-20-18"></a>            <span class="p">)</span>
+<a id="__codelineno-20-19" name="__codelineno-20-19" href="#__codelineno-20-19"></a>            <span class="n">movie_result</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Change <code>_detect_play_all</code> signature and the per-title loop. Signature:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_detect_play_all</span><span class="p">(</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>        <span class="n">titles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">TitleInfo</span><span class="p">],</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>        <span class="n">tv_result</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>        <span class="n">expected_runtimes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+</code></pre></div>
+<p>Inside, change the fallback delegation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">tv_result</span> <span class="ow">or</span> <span class="s2">&quot;episode_indices&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tv_result</span><span class="p">:</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>            <span class="c1"># No episode cluster — try fallback using TV-range titles</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detect_play_all_fallback</span><span class="p">(</span><span class="n">titles</span><span class="p">,</span> <span class="n">expected_runtimes</span><span class="p">)</span>
+</code></pre></div>
+<p>And in its per-title loop, add the runtime guard right after the <code>if t.duration_seconds &lt; min_duration: continue</code> line:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>            <span class="c1"># A title matching a real expected episode runtime (e.g. a 90-min</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>            <span class="c1"># double-length pilot) is a legitimate episode, not a Play-All.</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>            <span class="k">if</span> <span class="n">expected_runtimes</span> <span class="ow">and</span> <span class="n">_matches_expected_runtime</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">duration_seconds</span><span class="p">,</span> <span class="n">expected_runtimes</span><span class="p">):</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>                <span class="k">continue</span>
+</code></pre></div>
+<p>Change <code>_detect_play_all_fallback</code> signature (line ~734):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_detect_play_all_fallback</span><span class="p">(</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">titles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">TitleInfo</span><span class="p">],</span> <span class="n">expected_runtimes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+</code></pre></div>
+<p>And in its per-title loop, add the same guard right after the <code>if t.duration_seconds &lt; config.analyst_movie_min_duration: continue</code> line:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>            <span class="k">if</span> <span class="n">expected_runtimes</span> <span class="ow">and</span> <span class="n">_matches_expected_runtime</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">duration_seconds</span><span class="p">,</span> <span class="n">expected_runtimes</span><span class="p">):</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>                <span class="k">continue</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/pipeline/test_play_all_detection.py -q</code>
+Expected: PASS — new tests pass AND existing Picard/Arrested/edge tests still pass (they pass no runtimes, so the new guard is inert).</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/analyst.py<span class="w"> </span>backend/tests/pipeline/test_play_all_detection.py
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(analyst): runtime-aware Play-All keeps double-length pilots&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-4-fix-2-wiring-caller-fetches-expected-runtimes">Task 4: Fix 2 (wiring) — Caller fetches expected runtimes</h3>
+<p>Fetch the season's expected episode runtimes (best-effort; see follow-up note below — this function is not memoized today) and pass them into <code>analyze()</code> from <code>_run_classification</code>.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/identification_coordinator.py</code> (<code>_run_classification</code>, the <code>analyze()</code> call at line ~1647)
+- Test: <code>backend/tests/unit/test_disc_name_identification.py</code> (append, mirroring the existing <code>_run_classification</code> tests)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_disc_name_identification.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_run_classification_fetches_runtimes_and_keeps_pilot</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;DS9 S1D1: caller fetches expected runtimes so the 90-min pilot is kept.&quot;&quot;&quot;</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">MagicMock</span><span class="p">,</span> <span class="n">patch</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.models.app_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">AppConfig</span>
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.services.identification_coordinator</span><span class="w"> </span><span class="kn">import</span> <span class="n">IdentificationCoordinator</span>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>
+<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>    <span class="n">coordinator</span> <span class="o">=</span> <span class="n">IdentificationCoordinator</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="n">IdentificationCoordinator</span><span class="p">)</span>
+<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>    <span class="n">analyst</span> <span class="o">=</span> <span class="n">DiscAnalyst</span><span class="p">()</span>
+<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a>    <span class="n">analyst</span><span class="o">.</span><span class="n">set_config</span><span class="p">(</span><span class="n">AppConfig</span><span class="p">())</span>
+<a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>    <span class="n">coordinator</span><span class="o">.</span><span class="n">_analyst</span> <span class="o">=</span> <span class="n">analyst</span>
+<a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>    <span class="n">coordinator</span><span class="o">.</span><span class="n">_get_discdb_mappings</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="p">[])</span>
+<a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a>    <span class="n">coordinator</span><span class="o">.</span><span class="n">_set_discdb_mappings</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a>
+<a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a>    <span class="n">titles</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a>        <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">5429</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="mf">2e9</span><span class="p">),</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">18</span><span class="p">),</span>
+<a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a>        <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2718</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="mf">1e9</span><span class="p">),</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">8</span><span class="p">),</span>
+<a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a>        <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2715</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="mf">1e9</span><span class="p">),</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">8</span><span class="p">),</span>
+<a id="__codelineno-27-20" name="__codelineno-27-20" href="#__codelineno-27-20"></a>    <span class="p">]</span>
+<a id="__codelineno-27-21" name="__codelineno-27-21" href="#__codelineno-27-21"></a>
+<a id="__codelineno-27-22" name="__codelineno-27-22" href="#__codelineno-27-22"></a>    <span class="n">mock_config</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-27-23" name="__codelineno-27-23" href="#__codelineno-27-23"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">tmdb_api_key</span> <span class="o">=</span> <span class="s2">&quot;fake-key&quot;</span>
+<a id="__codelineno-27-24" name="__codelineno-27-24" href="#__codelineno-27-24"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">ai_identification_enabled</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-27-25" name="__codelineno-27-25" href="#__codelineno-27-25"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">ai_api_key</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-27-26" name="__codelineno-27-26" href="#__codelineno-27-26"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">discdb_enabled</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-27-27" name="__codelineno-27-27" href="#__codelineno-27-27"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">analyst_movie_min_duration</span> <span class="o">=</span> <span class="mi">80</span> <span class="o">*</span> <span class="mi">60</span>
+<a id="__codelineno-27-28" name="__codelineno-27-28" href="#__codelineno-27-28"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">analyst_tv_duration_variance</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="mi">60</span>
+<a id="__codelineno-27-29" name="__codelineno-27-29" href="#__codelineno-27-29"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">analyst_tv_min_cluster_size</span> <span class="o">=</span> <span class="mi">3</span>
+<a id="__codelineno-27-30" name="__codelineno-27-30" href="#__codelineno-27-30"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">analyst_tv_min_duration</span> <span class="o">=</span> <span class="mi">18</span> <span class="o">*</span> <span class="mi">60</span>
+<a id="__codelineno-27-31" name="__codelineno-27-31" href="#__codelineno-27-31"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">analyst_tv_max_duration</span> <span class="o">=</span> <span class="mi">70</span> <span class="o">*</span> <span class="mi">60</span>
+<a id="__codelineno-27-32" name="__codelineno-27-32" href="#__codelineno-27-32"></a>    <span class="n">mock_config</span><span class="o">.</span><span class="n">analyst_movie_dominance_threshold</span> <span class="o">=</span> <span class="mf">0.6</span>
+<a id="__codelineno-27-33" name="__codelineno-27-33" href="#__codelineno-27-33"></a>
+<a id="__codelineno-27-34" name="__codelineno-27-34" href="#__codelineno-27-34"></a>    <span class="n">ds9_signal</span> <span class="o">=</span> <span class="n">TmdbSignal</span><span class="p">(</span>
+<a id="__codelineno-27-35" name="__codelineno-27-35" href="#__codelineno-27-35"></a>        <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span> <span class="n">confidence</span><span class="o">=</span><span class="mf">0.85</span><span class="p">,</span> <span class="n">tmdb_id</span><span class="o">=</span><span class="mi">580</span><span class="p">,</span>
+<a id="__codelineno-27-36" name="__codelineno-27-36" href="#__codelineno-27-36"></a>        <span class="n">tmdb_name</span><span class="o">=</span><span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">,</span>
+<a id="__codelineno-27-37" name="__codelineno-27-37" href="#__codelineno-27-37"></a>    <span class="p">)</span>
+<a id="__codelineno-27-38" name="__codelineno-27-38" href="#__codelineno-27-38"></a>
+<a id="__codelineno-27-39" name="__codelineno-27-39" href="#__codelineno-27-39"></a>    <span class="n">runtime_calls</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-27-40" name="__codelineno-27-40" href="#__codelineno-27-40"></a>
+<a id="__codelineno-27-41" name="__codelineno-27-41" href="#__codelineno-27-41"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">fake_runtimes</span><span class="p">(</span><span class="n">show_id</span><span class="p">,</span> <span class="n">season_number</span><span class="p">):</span>
+<a id="__codelineno-27-42" name="__codelineno-27-42" href="#__codelineno-27-42"></a>        <span class="n">runtime_calls</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">show_id</span><span class="p">,</span> <span class="n">season_number</span><span class="p">))</span>
+<a id="__codelineno-27-43" name="__codelineno-27-43" href="#__codelineno-27-43"></a>        <span class="k">return</span> <span class="p">[</span><span class="mi">90</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">]</span>
+<a id="__codelineno-27-44" name="__codelineno-27-44" href="#__codelineno-27-44"></a>
+<a id="__codelineno-27-45" name="__codelineno-27-45" href="#__codelineno-27-45"></a>    <span class="n">mock_job</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-27-46" name="__codelineno-27-46" href="#__codelineno-27-46"></a>    <span class="n">mock_job</span><span class="o">.</span><span class="n">volume_label</span> <span class="o">=</span> <span class="s2">&quot;DS9S1D1&quot;</span>
+<a id="__codelineno-27-47" name="__codelineno-27-47" href="#__codelineno-27-47"></a>    <span class="n">mock_job</span><span class="o">.</span><span class="n">detected_season</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-27-48" name="__codelineno-27-48" href="#__codelineno-27-48"></a>    <span class="n">mock_job</span><span class="o">.</span><span class="n">content_hash</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-27-49" name="__codelineno-27-49" href="#__codelineno-27-49"></a>    <span class="n">mock_job</span><span class="o">.</span><span class="n">discdb_slug</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-27-50" name="__codelineno-27-50" href="#__codelineno-27-50"></a>    <span class="n">mock_job</span><span class="o">.</span><span class="n">discdb_disc_slug</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-27-51" name="__codelineno-27-51" href="#__codelineno-27-51"></a>    <span class="n">mock_job</span><span class="o">.</span><span class="n">discdb_mappings_json</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-27-52" name="__codelineno-27-52" href="#__codelineno-27-52"></a>    <span class="n">mock_job</span><span class="o">.</span><span class="n">play_all_indices_json</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-27-53" name="__codelineno-27-53" href="#__codelineno-27-53"></a>
+<a id="__codelineno-27-54" name="__codelineno-27-54" href="#__codelineno-27-54"></a>    <span class="n">mock_session</span> <span class="o">=</span> <span class="n">AsyncMock</span><span class="p">()</span>
+<a id="__codelineno-27-55" name="__codelineno-27-55" href="#__codelineno-27-55"></a>
+<a id="__codelineno-27-56" name="__codelineno-27-56" href="#__codelineno-27-56"></a>    <span class="k">with</span> <span class="p">(</span>
+<a id="__codelineno-27-57" name="__codelineno-27-57" href="#__codelineno-27-57"></a>        <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.services.config_service.get_config&quot;</span><span class="p">,</span> <span class="n">new</span><span class="o">=</span><span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="n">mock_config</span><span class="p">)),</span>
+<a id="__codelineno-27-58" name="__codelineno-27-58" href="#__codelineno-27-58"></a>        <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.core.features.DISCDB_ENABLED&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">),</span>
+<a id="__codelineno-27-59" name="__codelineno-27-59" href="#__codelineno-27-59"></a>        <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-27-60" name="__codelineno-27-60" href="#__codelineno-27-60"></a>            <span class="s2">&quot;app.core.tmdb_classifier.classify_from_tmdb&quot;</span><span class="p">,</span>
+<a id="__codelineno-27-61" name="__codelineno-27-61" href="#__codelineno-27-61"></a>            <span class="n">side_effect</span><span class="o">=</span><span class="k">lambda</span> <span class="n">name</span><span class="p">,</span> <span class="n">api_key</span><span class="p">:</span> <span class="n">ds9_signal</span><span class="p">,</span>
+<a id="__codelineno-27-62" name="__codelineno-27-62" href="#__codelineno-27-62"></a>        <span class="p">),</span>
+<a id="__codelineno-27-63" name="__codelineno-27-63" href="#__codelineno-27-63"></a>        <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-27-64" name="__codelineno-27-64" href="#__codelineno-27-64"></a>            <span class="s2">&quot;app.matcher.tmdb_client.fetch_season_episode_runtimes&quot;</span><span class="p">,</span>
+<a id="__codelineno-27-65" name="__codelineno-27-65" href="#__codelineno-27-65"></a>            <span class="n">side_effect</span><span class="o">=</span><span class="n">fake_runtimes</span><span class="p">,</span>
+<a id="__codelineno-27-66" name="__codelineno-27-66" href="#__codelineno-27-66"></a>        <span class="p">),</span>
+<a id="__codelineno-27-67" name="__codelineno-27-67" href="#__codelineno-27-67"></a>    <span class="p">):</span>
+<a id="__codelineno-27-68" name="__codelineno-27-68" href="#__codelineno-27-68"></a>        <span class="n">analysis</span> <span class="o">=</span> <span class="k">await</span> <span class="n">coordinator</span><span class="o">.</span><span class="n">_run_classification</span><span class="p">(</span>
+<a id="__codelineno-27-69" name="__codelineno-27-69" href="#__codelineno-27-69"></a>            <span class="n">mock_job</span><span class="p">,</span> <span class="n">job_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">titles</span><span class="o">=</span><span class="n">titles</span><span class="p">,</span> <span class="n">session</span><span class="o">=</span><span class="n">mock_session</span><span class="p">,</span> <span class="n">disc_name</span><span class="o">=</span><span class="s2">&quot;DS9S1D1&quot;</span><span class="p">,</span>
+<a id="__codelineno-27-70" name="__codelineno-27-70" href="#__codelineno-27-70"></a>        <span class="p">)</span>
+<a id="__codelineno-27-71" name="__codelineno-27-71" href="#__codelineno-27-71"></a>
+<a id="__codelineno-27-72" name="__codelineno-27-72" href="#__codelineno-27-72"></a>    <span class="k">assert</span> <span class="p">(</span><span class="s2">&quot;580&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">in</span> <span class="n">runtime_calls</span>
+<a id="__codelineno-27-73" name="__codelineno-27-73" href="#__codelineno-27-73"></a>    <span class="k">assert</span> <span class="mi">0</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">analysis</span><span class="o">.</span><span class="n">play_all_title_indices</span>
+<a id="__codelineno-27-74" name="__codelineno-27-74" href="#__codelineno-27-74"></a>    <span class="k">assert</span> <span class="n">analysis</span><span class="o">.</span><span class="n">detected_name</span> <span class="o">==</span> <span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_disc_name_identification.py -k "fetches_runtimes" -q</code>
+Expected: FAIL — <code>("580", 1)</code> not in <code>runtime_calls</code> (the caller doesn't fetch runtimes yet), and/or <code>0 in play_all_title_indices</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement the caller change</strong></li>
+</ul>
+<p>In <code>backend/app/services/identification_coordinator.py</code>, the <code>analyze()</code> call (line ~1647) is currently:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>        <span class="n">analysis</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_analyst</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>            <span class="n">titles</span><span class="p">,</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>            <span class="n">job</span><span class="o">.</span><span class="n">volume_label</span><span class="p">,</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>            <span class="n">tmdb_signal</span><span class="o">=</span><span class="n">tmdb_signal</span><span class="p">,</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>            <span class="n">disc_title</span><span class="o">=</span><span class="n">disc_name_title</span><span class="p">,</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>        <span class="p">)</span>
+</code></pre></div>
+<p>Immediately before it, add the runtime fetch, then pass it in:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>        <span class="c1"># Expected episode runtimes let the analyst keep a double-length pilot</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>        <span class="c1"># (e.g. DS9 &quot;Emissary&quot;) instead of mistaking it for a Play-All concatenation.</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>        <span class="n">expected_runtimes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>        <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>            <span class="n">tmdb_signal</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>            <span class="ow">and</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_id</span>
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a>            <span class="ow">and</span> <span class="n">tmdb_signal</span><span class="o">.</span><span class="n">content_type</span> <span class="o">==</span> <span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span>
+<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a>        <span class="p">):</span>
+<a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a>            <span class="n">season_for_runtimes</span> <span class="o">=</span> <span class="n">label_season</span> <span class="ow">or</span> <span class="n">disc_name_season</span>
+<a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a>            <span class="k">if</span> <span class="n">season_for_runtimes</span><span class="p">:</span>
+<a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-29-12" name="__codelineno-29-12" href="#__codelineno-29-12"></a>                    <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.tmdb_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">fetch_season_episode_runtimes</span>
+<a id="__codelineno-29-13" name="__codelineno-29-13" href="#__codelineno-29-13"></a>
+<a id="__codelineno-29-14" name="__codelineno-29-14" href="#__codelineno-29-14"></a>                    <span class="n">expected_runtimes</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span>
+<a id="__codelineno-29-15" name="__codelineno-29-15" href="#__codelineno-29-15"></a>                        <span class="n">fetch_season_episode_runtimes</span><span class="p">,</span>
+<a id="__codelineno-29-16" name="__codelineno-29-16" href="#__codelineno-29-16"></a>                        <span class="nb">str</span><span class="p">(</span><span class="n">tmdb_signal</span><span class="o">.</span><span class="n">tmdb_id</span><span class="p">),</span>
+<a id="__codelineno-29-17" name="__codelineno-29-17" href="#__codelineno-29-17"></a>                        <span class="n">season_for_runtimes</span><span class="p">,</span>
+<a id="__codelineno-29-18" name="__codelineno-29-18" href="#__codelineno-29-18"></a>                    <span class="p">)</span>
+<a id="__codelineno-29-19" name="__codelineno-29-19" href="#__codelineno-29-19"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># network/runtime data is best-effort</span>
+<a id="__codelineno-29-20" name="__codelineno-29-20" href="#__codelineno-29-20"></a>                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-29-21" name="__codelineno-29-21" href="#__codelineno-29-21"></a>                        <span class="sa">f</span><span class="s2">&quot;Job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">: expected-runtime fetch failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span>
+<a id="__codelineno-29-22" name="__codelineno-29-22" href="#__codelineno-29-22"></a>                    <span class="p">)</span>
+<a id="__codelineno-29-23" name="__codelineno-29-23" href="#__codelineno-29-23"></a>
+<a id="__codelineno-29-24" name="__codelineno-29-24" href="#__codelineno-29-24"></a>        <span class="n">analysis</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_analyst</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span>
+<a id="__codelineno-29-25" name="__codelineno-29-25" href="#__codelineno-29-25"></a>            <span class="n">titles</span><span class="p">,</span>
+<a id="__codelineno-29-26" name="__codelineno-29-26" href="#__codelineno-29-26"></a>            <span class="n">job</span><span class="o">.</span><span class="n">volume_label</span><span class="p">,</span>
+<a id="__codelineno-29-27" name="__codelineno-29-27" href="#__codelineno-29-27"></a>            <span class="n">tmdb_signal</span><span class="o">=</span><span class="n">tmdb_signal</span><span class="p">,</span>
+<a id="__codelineno-29-28" name="__codelineno-29-28" href="#__codelineno-29-28"></a>            <span class="n">disc_title</span><span class="o">=</span><span class="n">disc_name_title</span><span class="p">,</span>
+<a id="__codelineno-29-29" name="__codelineno-29-29" href="#__codelineno-29-29"></a>            <span class="n">expected_episode_runtimes</span><span class="o">=</span><span class="n">expected_runtimes</span><span class="p">,</span>
+<a id="__codelineno-29-30" name="__codelineno-29-30" href="#__codelineno-29-30"></a>        <span class="p">)</span>
+</code></pre></div>
+<p>Confirm <code>ContentType</code> and <code>asyncio</code> are already imported in this file (they are — used elsewhere). <code>label_season</code> is defined at line ~1537 and <code>disc_name_season</code> at line ~1556, both before this point.</p>
+<ul>
+<li>[ ] <strong>Step 3b: Keep the existing <code>_run_classification</code> tests network-free</strong></li>
+</ul>
+<p>This new fetch runs inside the four pre-existing <code>_run_classification</code> tests, which set a TV <code>tmdb_id</code> + season and would now make a real (retrying) TMDB HTTP call. Add this exact line to the <code>with (...)</code> patch block of each of these four tests in <code>backend/tests/unit/test_disc_name_identification.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>        <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.tmdb_client.fetch_season_episode_runtimes&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="p">[]),</span>
+</code></pre></div>
+<p>The four tests:
+- <code>test_run_classification_uses_disc_name_when_label_fails</code>
+- <code>test_run_classification_uses_disc_name_when_label_resolves</code>
+- <code>test_run_classification_reresolves_tv_when_label_matches_movie</code>
+- <code>test_run_classification_skips_redundant_reresolve_after_disc_name_fallback</code></p>
+<p>(Returning <code>[]</code> means "no runtimes" — the analyst falls back to its existing heuristic, preserving each test's original behavior.)</p>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes (and existing ones stay green/fast)</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_disc_name_identification.py -q</code>
+Expected: PASS — the new test passes and all four existing <code>_run_classification</code> tests stay green without network calls.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/services/identification_coordinator.py<span class="w"> </span>backend/tests/unit/test_disc_name_identification.py
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(identify): fetch expected episode runtimes for Play-All check&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-5-ds9-end-to-end-reproduction-all-three-fixes-together">Task 5: DS9 end-to-end reproduction (all three fixes together)</h3>
+<p>A single analyst-level reproduction of Job 153 asserting the combined outcome: correct name, pilot kept, no spurious review.</p>
+<p><strong>Files:</strong>
+- Test: <code>backend/tests/pipeline/test_play_all_detection.py</code> (append)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the test</strong></li>
+</ul>
+<p>Append to <code>backend/tests/pipeline/test_play_all_detection.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">pipeline</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestDS9Job153Reproduction</span><span class="p">:</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;End-to-end analyst reproduction of the real DS9 S1D1 rip (Job 153).&quot;&quot;&quot;</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_ds9_resolves_correctly</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a>        <span class="n">config</span> <span class="o">=</span> <span class="n">_default_config</span><span class="p">()</span>
+<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a>        <span class="n">analyst</span> <span class="o">=</span> <span class="n">DiscAnalyst</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+<a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a>        <span class="n">titles</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-32-9" name="__codelineno-32-9" href="#__codelineno-32-9"></a>            <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">5429</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="mf">2e9</span><span class="p">),</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">18</span><span class="p">),</span>
+<a id="__codelineno-32-10" name="__codelineno-32-10" href="#__codelineno-32-10"></a>            <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2718</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="mf">1e9</span><span class="p">),</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">8</span><span class="p">),</span>
+<a id="__codelineno-32-11" name="__codelineno-32-11" href="#__codelineno-32-11"></a>            <span class="n">TitleInfo</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">duration_seconds</span><span class="o">=</span><span class="mi">2715</span><span class="p">,</span> <span class="n">size_bytes</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="mf">1e9</span><span class="p">),</span> <span class="n">chapter_count</span><span class="o">=</span><span class="mi">8</span><span class="p">),</span>
+<a id="__codelineno-32-12" name="__codelineno-32-12" href="#__codelineno-32-12"></a>        <span class="p">]</span>
+<a id="__codelineno-32-13" name="__codelineno-32-13" href="#__codelineno-32-13"></a>        <span class="n">signal</span> <span class="o">=</span> <span class="n">TmdbSignal</span><span class="p">(</span>
+<a id="__codelineno-32-14" name="__codelineno-32-14" href="#__codelineno-32-14"></a>            <span class="n">content_type</span><span class="o">=</span><span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span><span class="p">,</span> <span class="n">confidence</span><span class="o">=</span><span class="mf">0.70</span><span class="p">,</span> <span class="n">tmdb_id</span><span class="o">=</span><span class="mi">580</span><span class="p">,</span>
+<a id="__codelineno-32-15" name="__codelineno-32-15" href="#__codelineno-32-15"></a>            <span class="n">tmdb_name</span><span class="o">=</span><span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span><span class="p">,</span>
+<a id="__codelineno-32-16" name="__codelineno-32-16" href="#__codelineno-32-16"></a>        <span class="p">)</span>
+<a id="__codelineno-32-17" name="__codelineno-32-17" href="#__codelineno-32-17"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">analyst</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span>
+<a id="__codelineno-32-18" name="__codelineno-32-18" href="#__codelineno-32-18"></a>            <span class="n">titles</span><span class="p">,</span> <span class="s2">&quot;DS9S1D1&quot;</span><span class="p">,</span> <span class="n">tmdb_signal</span><span class="o">=</span><span class="n">signal</span><span class="p">,</span> <span class="n">disc_title</span><span class="o">=</span><span class="s2">&quot;DS9S1D1&quot;</span><span class="p">,</span>
+<a id="__codelineno-32-19" name="__codelineno-32-19" href="#__codelineno-32-19"></a>            <span class="n">expected_episode_runtimes</span><span class="o">=</span><span class="p">[</span><span class="mi">90</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">45</span><span class="p">],</span>
+<a id="__codelineno-32-20" name="__codelineno-32-20" href="#__codelineno-32-20"></a>        <span class="p">)</span>
+<a id="__codelineno-32-21" name="__codelineno-32-21" href="#__codelineno-32-21"></a>
+<a id="__codelineno-32-22" name="__codelineno-32-22" href="#__codelineno-32-22"></a>        <span class="c1"># Fix 1: abbreviation corroboration adopts the TMDB name</span>
+<a id="__codelineno-32-23" name="__codelineno-32-23" href="#__codelineno-32-23"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">detected_name</span> <span class="o">==</span> <span class="s2">&quot;Star Trek: Deep Space Nine&quot;</span>
+<a id="__codelineno-32-24" name="__codelineno-32-24" href="#__codelineno-32-24"></a>        <span class="c1"># Fix 2: the 90-min pilot is NOT dropped as a Play-All/extra</span>
+<a id="__codelineno-32-25" name="__codelineno-32-25" href="#__codelineno-32-25"></a>        <span class="k">assert</span> <span class="mi">0</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">play_all_title_indices</span>
+<a id="__codelineno-32-26" name="__codelineno-32-26" href="#__codelineno-32-26"></a>        <span class="c1"># Fix 2 corollary: disc stays TV (pilot is an episode, not a movie)</span>
+<a id="__codelineno-32-27" name="__codelineno-32-27" href="#__codelineno-32-27"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">content_type</span> <span class="o">==</span> <span class="n">ContentType</span><span class="o">.</span><span class="n">TV</span>
+<a id="__codelineno-32-28" name="__codelineno-32-28" href="#__codelineno-32-28"></a>        <span class="c1"># Fix 3: identity is corroborated, so no spurious review</span>
+<a id="__codelineno-32-29" name="__codelineno-32-29" href="#__codelineno-32-29"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">needs_review</span> <span class="ow">is</span> <span class="kc">False</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it passes</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/pipeline/test_play_all_detection.py::TestDS9Job153Reproduction -q</code>
+Expected: PASS (all three fixes already implemented in Tasks 1-3).</p>
+<ul>
+<li>[ ] <strong>Step 3: Run the full affected suites</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_disc_name_identification.py tests/pipeline/test_play_all_detection.py -q</code>
+Expected: PASS (no regressions).</p>
+<ul>
+<li>[ ] <strong>Step 4: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/tests/pipeline/test_play_all_detection.py
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(analyst): DS9 Job 153 end-to-end reproduction&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-6-changelog">Task 6: Changelog</h3>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code> (<code>[Unreleased]</code> section)</p>
+<ul>
+<li>[ ] <strong>Step 1: Add the entry</strong></li>
+</ul>
+<p>Under the <code>## [Unreleased]</code> heading, add a <code>### Fixed</code> block (create it if absent):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="gu">### Fixed</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="k">-</span><span class="w"> </span>Abbreviated TV disc labels (e.g. <span class="sb">`DS9`</span> → &quot;Star Trek: Deep Space Nine&quot;) now
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>  resolve to the correct TMDB show name instead of keeping the raw disc label.
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="k">-</span><span class="w"> </span>Feature-length episodes (e.g. a 90-minute double-length pilot) are no longer
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>  discarded as a &quot;Play All&quot; concatenation or extra — the analyst checks expected
+<a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a>  TMDB episode runtimes before flagging.
+<a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a><span class="k">-</span><span class="w"> </span>Discs whose identity cannot be corroborated now go to review instead of
+<a id="__codelineno-34-8" name="__codelineno-34-8" href="#__codelineno-34-8"></a>  silently completing under a guessed name.
+</code></pre></div>
+<p>If a <code>## [Unreleased]</code> section does not exist, add it directly under the changelog's top title. Append the PR reference (<code>(#NNN)</code>) to each bullet when the PR is opened.</p>
+<ul>
+<li>[ ] <strong>Step 2: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>git<span class="w"> </span>add<span class="w"> </span>CHANGELOG.md
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(changelog): disc identification robustness fixes&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-7-e2e-verification-before-merge-manual-gate-no-commit">Task 7: E2E verification before merge (manual gate — no commit)</h3>
+<p>Verify end-to-end behavior before opening/merging the PR. Requires the backend running with <code>DEBUG=true</code>.</p>
+<ul>
+<li>[ ] <strong>Step 1: Full backend test suite is green</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest -q</code>
+Expected: PASS (full suite; confirms no cross-suite regressions).</p>
+<ul>
+<li>[ ] <strong>Step 2: DEBUG simulation of the DS9 disc</strong></li>
+</ul>
+<p>Start the backend (<code>DEBUG=true</code>), then:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>localhost:8000/api/simulate/insert-disc<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;volume_label&quot;:&quot;DS9S1D1&quot;,&quot;content_type&quot;:&quot;tv&quot;,&quot;simulate_ripping&quot;:true}&#39;</span>
+</code></pre></div>
+<p>Verify in the dashboard / <code>GET /api/jobs/{id}/detail</code>: the job resolves to "Star Trek: Deep Space Nine", the 90-min title is <strong>not</strong> marked extra/Play-All, and the job completes (or reviews) per the balanced posture.</p>
+<ul>
+<li>[ ] <strong>Step 3: Frontend E2E suite (no regressions)</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; npm install &amp;&amp; npm run test:e2e</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 4: Real-disc confidence check (recommended)</strong></li>
+</ul>
+<p>Re-rip the physical <em>Star Trek: Deep Space Nine</em> S1D1 disc and confirm: name = "Star Trek: Deep Space Nine", all three episode titles organized (pilot included), correct <code>[tmdbid-580]</code> folder.</p>
+<ul>
+<li>[ ] <strong>Step 5: Finish the branch</strong></li>
+</ul>
+<p>Use the <code>superpowers:finishing-a-development-branch</code> skill to open the PR (append <code>(#NNN)</code> to the changelog bullets) or merge.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

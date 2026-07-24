@@ -1,0 +1,1822 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-07-19-manual-disc-metadata-entry-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Manual Disc Metadata Entry — Design - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#manual-disc-metadata-entry-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Manual Disc Metadata Entry — Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-existing-behavior-this-design-relies-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key existing behavior this design relies on
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backend-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backend design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Backend design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#provenance-marker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance marker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arm-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arm store
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#insert-hook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Insert hook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-identify-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual identify path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#card-edit-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Card edit path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frontend-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontend design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge cases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resolved-during-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolved during review
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="manual-disc-metadata-entry-design">Manual Disc Metadata Entry — Design</h1>
+<p><strong>Date</strong>: 2026-07-19
+<strong>Status</strong>: Draft, pending user review
+<strong>Origin</strong>: <a href="https://github.com/Jsakkos/engram/issues/520">Issue #520</a> (feature request), plus a
+direct request for a manual-entry escape hatch for edge-case discs.</p>
+<h2 id="problem">Problem</h2>
+<p>Engram identifies a disc automatically: MakeMKV scan, then the Analyst heuristics and the
+TMDB classifier resolve a show/movie name, content type, and season. For most discs this
+works and the walk-away workflow (v0.21.0, PR #398) means a disc rips immediately even when
+identification is uncertain, carrying a non-blocking prompt that pools into a single review
+at the end.</p>
+<p>There is no way for a user to assert the identity themselves. When a disc is a known edge
+case (a homemade compilation, an obscure release, a catalog-number label, a foreign title,
+a box set with a label TMDB cannot resolve) the user must let Engram guess wrong first, then
+correct it through a review or re-identify prompt. The correction path exists but is
+strictly reactive.</p>
+<p>Note on issue #520: the reporter's premise ("the system rips all titles first and only
+attempts to identify the series afterward... the process halts midway") is largely outdated.
+Identification runs before ripping, and the walk-away gates removed the mid-process halt for
+the four common identification-failure cases over a month before the issue was filed. The
+legitimate underlying ask, reframed, is proactive control over identity, which is what this
+design provides.</p>
+<h2 id="key-existing-behavior-this-design-relies-on">Key existing behavior this design relies on</h2>
+<p><code>POST /api/jobs/{job_id}/re-identify</code> (<code>routes.py:1301</code>) already accepts
+<code>{title, content_type, season, tmdb_id}</code> and is explicitly valid in <strong>both</strong> <code>REVIEW_NEEDED</code>
+and <code>RIPPING</code> states, dispatching identity-parked titles without interrupting an in-flight
+rip. <code>GET /api/tmdb/search</code> (<code>routes.py:1330</code>) already backs a live show/movie autocomplete,
+and <code>ReIdentifyModal.tsx</code> already renders that search plus the title/type/season fields.</p>
+<p>So the "edit a live job" half of this feature is mostly already built on the backend. The
+frontend gap is a single condition at <code>App.tsx:743</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nx">onReIdentify</span><span class="o">=</span><span class="p">{</span><span class="nx">disc</span><span class="p">.</span><span class="nx">needsReview</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">disc</span><span class="p">.</span><span class="nx">title</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{...}</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">undefined</span><span class="p">}</span>
+</code></pre></div>
+<p>The "Wrong title?" control only renders when the job needs review. Relaxing this condition
+is most of the work for entry point 2.</p>
+<p><code>DiscJob.classification_source</code> (<code>disc_job.py:66</code>) is already a plain string defaulting to
+<code>"heuristic"</code>, so recording manual provenance needs no new column.</p>
+<h2 id="scope">Scope</h2>
+<p>In scope:</p>
+<ul>
+<li><strong>Identity only</strong>: show/movie name, content type, season, and optional <code>tmdb_id</code>. Two entry
+  points, one shared modal.</li>
+<li><strong>Entry point 1, pre-insert (arm)</strong>: the user enters metadata <em>before</em> inserting, the next
+  disc in that drive adopts it, and the job rips unattended with no prompts.</li>
+<li><strong>Entry point 2, live card edit</strong>: an always-on identity control on active job cards,
+  routed through the existing re-identify endpoint.</li>
+<li>Provenance display so a manually identified job is visibly distinct.</li>
+</ul>
+<p>Out of scope (explicitly not building):</p>
+<ul>
+<li><strong>Manual title-to-episode mapping.</strong> Episode matching still runs automatically on a
+  manually identified disc. Anything matching cannot resolve falls into the existing Review
+  Queue, which already does hand-assignment. No duplicate UI.</li>
+<li><strong>A park-and-wait manual mode.</strong> Metadata is entered before insertion only. There is no
+  variant where a disc scans and then waits for the user to name it, because that reintroduces
+  the mid-process halt this project spent PR #398 removing.</li>
+<li><strong>A global "always ask me" setting.</strong> This is an edge-case escape hatch, not a new default.</li>
+<li><strong>Persistence of the armed state across a backend restart.</strong> In-memory only.</li>
+<li>Any change to matching, organizing, or the Review Queue.</li>
+</ul>
+<h2 id="decisions">Decisions</h2>
+<p>These were settled during brainstorming and should be confirmed before planning:</p>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Depth of manual override</td>
+<td>Identity only; Review Queue handles episode mapping</td>
+</tr>
+<tr>
+<td>Pre-insert timing</td>
+<td>Enter metadata before insert; no park-and-wait branch</td>
+</tr>
+<tr>
+<td>Identity button label</td>
+<td>Contextual: "Wrong title?" on auto-identified jobs, "Edit ID" on manual ones</td>
+</tr>
+<tr>
+<td>Armed drive expiry</td>
+<td>No timer. Cleared by disc insertion, explicit disarm, or backend restart</td>
+</tr>
+<tr>
+<td>Armed state persistence</td>
+<td>In-memory; a restart is the only implicit clear</td>
+</tr>
+<tr>
+<td>"Manual" button placement</td>
+<td>Top bar, beside IMPORT</td>
+</tr>
+</tbody>
+</table>
+<h2 id="backend-design">Backend design</h2>
+<h3 id="provenance-marker">Provenance marker</h3>
+<p><code>DiscJob.classification_source</code> records how identity was obtained. It is already a
+fine-grained descriptive taxonomy (<code>heuristic</code>, <code>tmdb</code>, <code>tmdb+heuristic</code>, <code>ai</code>,
+<code>fingerprint_network</code>, <code>discdb_*</code>, <code>staging_import</code>), so this design adds two values in the
+same spirit rather than collapsing both entry points into one:</p>
+<ul>
+<li><code>"manual"</code>: identity asserted up front via the arm path, never guessed.</li>
+<li><code>"manual_correction"</code>: the user overrode an automatic guess from a live card.</li>
+</ul>
+<p>The value is <strong>descriptive only</strong>. No control flow may branch on it. The manual identify
+branch is selected by the presence of an armed payload, not by reading this string back,
+which keeps a diagnostic label from silently becoming load-bearing. The field is already
+serialized into the DiscDB export (<code>discdb_exporter.py:168</code>) and diagnostic snapshots, so the
+distinction pays for itself in later debugging at no cost.</p>
+<p>The UI renders a single <code>MANUAL ID</code> chip for both values. The distinction is for diagnostics,
+not for the user. No schema change.</p>
+<h3 id="arm-store">Arm store</h3>
+<p>An in-memory dict on <code>JobManager</code>, keyed by drive id, holding one payload
+(<code>title</code>, <code>content_type</code>, <code>season</code>, <code>tmdb_id</code>, optional <code>disc_number</code>). One-shot: consumed by
+the next insert on that drive. This mirrors the existing <code>_last_job_created_at</code> pattern in
+<code>job_manager.py</code>. A backend restart clears it, which is the accepted expiry mechanism.</p>
+<h3 id="endpoints">Endpoints</h3>
+<ul>
+<li><code>POST /api/manual/arm</code> with the payload above plus a target <code>drive_id</code>. Rejects with 409 if
+  that drive already holds an active job (the caller should edit that job instead).</li>
+<li><code>POST /api/manual/disarm</code> with a <code>drive_id</code>.</li>
+<li>New WebSocket event <code>drive_armed</code> carrying the payload, or a cleared form on disarm, so the
+  dashboard chip stays in sync across clients and reloads.</li>
+</ul>
+<h3 id="insert-hook">Insert hook</h3>
+<p>In <code>_handle_disc_inserted</code> (<code>job_manager.py:635</code>), after the <code>DiscJob</code> row is created and
+before the identify task is spawned, pop any armed payload for that drive. If present, stamp
+the job with the manual metadata plus <code>classification_source="manual"</code> and spawn the manual
+identify path. If absent, today's <code>identify_disc</code> call is untouched. Every existing guard
+(the drive-occupied check, the 15 second cooldown, the re-rip lookup) runs unchanged before
+this point.</p>
+<h3 id="manual-identify-path">Manual identify path</h3>
+<p>An early branch inside <code>identify_disc</code>, placed after the MakeMKV scan and after the
+<code>DiscTitle</code> rows are persisted and broadcast, but before the classification block. A separate
+coroutine would have to duplicate the scan, persist, and broadcast logic, so a branch is
+preferred. The branch:</p>
+<ol>
+<li>Runs the MakeMKV scan as normal. This is still required: the manual payload supplies
+   identity, not the disc's title list, durations, or sizes.</li>
+<li>Runs <code>_run_classification</code> unchanged, then <strong>overrides</strong> its identity fields.</li>
+</ol>
+<p>Corrected during planning: an earlier draft of this spec said to skip
+   <code>_run_classification</code> entirely. That is the wrong seam. The method does two jobs, identity
+   resolution (DiscDB, TMDB, AI) <em>and</em> structural analysis (duration clustering, Play-All
+   index detection, ambiguous-movie detection), and its result feeds title persistence,
+   Play-All deselection (<code>identify_disc:361</code>), and DiscDB extras tagging (<code>identify_disc:387</code>).
+   All of that is identity-independent and still wanted. Overriding afterwards costs one
+   redundant TMDB lookup on an edge-case path and fully satisfies the actual requirement,
+   which is that a wrong guess must never drive subtitles or matching.</p>
+<ol>
+<li>Applies <code>detected_title</code>, <code>content_type</code>, <code>detected_season</code> from the payload. Resolves
+   <code>tmdb_id</code> from the payload if the user picked an autocomplete row; otherwise attempts a
+   best-effort TMDB search by name; otherwise leaves it <code>None</code>.</li>
+<li>Runs the existing title-selection heuristics unchanged. Play-All detection, extras
+   tagging, and main-feature selection depend on durations and DiscDB mappings, not on how
+   identity was obtained.</li>
+<li>Starts subtitle prefetch and transitions straight to <code>RIPPING</code>.</li>
+</ol>
+<p>Critically, <strong>none of the walk-away identity gates (A unreadable label, B TMDB lookup failed,
+C same-name collision, D unknown season) and no collision backstop may fire on a manual job.</strong>
+The user has asserted identity; a manual disc must never park or raise an identity prompt.</p>
+<p>Clearing the TMDB and DiscDB signals is <strong>not sufficient</strong> to achieve that. Two of the four
+gates fire on absence rather than presence, and both need an explicit <code>_is_manual</code> guard:</p>
+<ul>
+<li><strong>Gate B</strong> (<code>identify_disc:481</code>) fires when <code>content_type == TV and not job.tmdb_id</code>. A
+  freeform title with no TMDB match legitimately has no <code>tmdb_id</code>, so this gate would raise a
+  name prompt on exactly the discs this feature exists to serve.</li>
+<li>
+<p><strong>Gate D</strong> (<code>identify_disc:517</code>) fires when <code>detected_season is None</code>, raising a season
+  prompt.</p>
+</li>
+<li>
+<p><strong>Gate E</strong>, the catalog-number title-clearing block (<code>identify_disc:~344</code>), found during
+  implementation. It fires when <code>not tmdb_signal and not discdb_signal and
+  _looks_like_catalog_number(volume_label)</code>, nulling <code>detected_title</code> to trigger the name
+  prompt. This is the nastiest of the three, because the override <em>itself</em> creates the
+  trigger: clearing both signals is load-bearing for the collision gates, which makes
+  <code>not tmdb_signal and not discdb_signal</code> trivially true for every manual disc. On a
+  catalog-style label (<code>FHED3456</code>), exactly the kind this feature exists to serve, it would
+  erase the user's asserted title and silently re-trigger Gate A. Guarded with <code>not _is_manual</code>.</p>
+</li>
+</ul>
+<p>Gates A and C are already safe: A requires a missing title, which the manual path always
+supplies, and C sits inside the <code>needs_review</code> branch that the override clears.</p>
+<p><strong>Testing caveat:</strong> the guards are boolean clauses inside a long method. Tests that
+re-implement the condition in the test file are tautological and would still pass if the
+guard were deleted from production code. The real regression guard is the end-to-end test in
+Task 5, which drives <code>identify_disc</code> with a manual identity and asserts the job reaches
+<code>RIPPING</code> with no prompt.</p>
+<h3 id="card-edit-path">Card edit path</h3>
+<p>Reuses <code>POST /jobs/{job_id}/re-identify</code>. The one backend change is widening its
+accepted-state check from <code>{REVIEW_NEEDED, RIPPING}</code> to also include <code>IDENTIFYING</code>, so the
+control is usable for the whole window the UI offers it. Submitting from a live card sets
+<code>classification_source="manual"</code>, since the resulting identity is user-asserted regardless of
+entry point.</p>
+<h2 id="frontend-design">Frontend design</h2>
+<p>Mockup: <code>docs/design_handoff_synapse/explorations/2026-07-19-manual-disc-metadata-entry.html</code>,
+rendered against the real Synapse v2 tokens.</p>
+<ol>
+<li><strong><code>ManualIdentityModal</code></strong>, generalized from <code>ReIdentifyModal</code>. Content-type segmented
+   control, title with TMDB autocomplete, season, and an optional disc-number field. Two
+   modes differing only in header text and primary button label: "Arm drive" and
+   "Save &amp; re-match".</li>
+</ol>
+<p>The disc-number field is load-bearing, not decoration. <code>disc_number</code> is normally parsed
+   from the volume label by regex and defaults to <code>1</code> when that fails, and <code>organizer.py:619</code>
+   names extras <code>"{show} Disc {disc_number} Extra t{NN}.mkv"</code>. On a multi-disc box set with
+   unreadable labels, which is precisely this feature's target case, every disc would default
+   to <code>1</code> and their extras would collide on disk. The field prevents that.
+2. <strong>Top bar</strong>: a magenta <code>MANUAL</code> button beside <code>IMPORT</code> in <code>SvTopBar.tsx</code>, following the
+   existing IMPORT button's mono/uppercase/1px-border vocabulary.
+3. <strong>Armed card</strong>: a dashed, glow-less panel occupying a dashboard card slot, showing the
+   locked identity, the target drive, and a disarm control.
+4. <strong>Provenance chip</strong>: a <code>MANUAL ID</code> chip in the card header for jobs with
+   <code>classification_source="manual"</code>, styled like the existing <code>DAMAGED TRACK</code> badge.
+5. <strong>Always-on identity control</strong>: relax <code>App.tsx:743</code> so <code>onReIdentify</code> is passed for active
+   states (<code>scanning</code>, <code>ripping</code>, <code>review_needed</code>) whenever a title exists, with the label
+   contextual on provenance. Deliberately excluded: <code>matching</code> and <code>organizing</code> (work in
+   flight) and <code>completed</code> (the History page's <code>AmendTitleModal</code> already covers it).</p>
+<h2 id="edge-cases">Edge cases</h2>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Arm a drive that already holds an active job</td>
+<td>409; UI routes the user to that job's edit instead</td>
+</tr>
+<tr>
+<td>A different disc than intended is inserted</td>
+<td>It adopts the armed identity. That is the contract; disarm or edit the card to correct</td>
+</tr>
+<tr>
+<td>Freeform title with no TMDB match</td>
+<td>Allowed. <code>tmdb_id</code> stays null, matching falls back to name-keyed lookup, Review Queue catches misses</td>
+</tr>
+<tr>
+<td>Backend restarts between arm and insert</td>
+<td>Arm is lost. Accepted, and the only expiry mechanism</td>
+</tr>
+<tr>
+<td>Manual content type contradicts the disc</td>
+<td>The user's assertion wins. Correctable via card edit</td>
+</tr>
+<tr>
+<td>Manual movie</td>
+<td>Season field hidden; main-feature selection unchanged</td>
+</tr>
+<tr>
+<td>Multiple optical drives</td>
+<td>Arm targets one drive id; default to the sole detected drive when there is only one</td>
+</tr>
+</tbody>
+</table>
+<h2 id="testing">Testing</h2>
+<p>Backend unit:
+- Manual identify applies the payload and does not call the classifier.
+- No identity prompt or collision gate fires on a manual job.
+- Arm store is one-shot and drive-scoped.
+- <code>tmdb_id</code> resolution: payload value wins, name search is the fallback, null is tolerated.
+- <code>classification_source</code> persists as <code>"manual"</code> through both entry points.</p>
+<p>Backend integration:
+- Arm, then simulated insert, yields a job that reaches <code>RIPPING</code> with the asserted identity
+  and a null <code>identity_prompt_json</code>.
+- Arm rejected while the drive is occupied.
+- Re-identify during <code>RIPPING</code> still dispatches parked titles (existing coverage).</p>
+<p>Frontend unit (vitest, colocated):
+- Modal renders arm vs edit mode correctly and submits the right payload.
+- Armed card renders and disarms.
+- Identity button visibility and label per state and provenance.</p>
+<p>E2E: the simulation endpoints need an arm-aware path so
+<code>POST /api/simulate/insert-disc</code> can exercise arm, insert, and unattended rip.</p>
+<h2 id="resolved-during-review">Resolved during review</h2>
+<ul>
+<li><strong>Disc-number field: keep it.</strong> It prevents an extras filename collision on multi-disc sets
+  with unreadable labels. See the frontend section for the mechanism.</li>
+<li><strong>Provenance values: two, not one.</strong> <code>"manual"</code> and <code>"manual_correction"</code>, descriptive only,
+  rendered as one chip. See the provenance marker section.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

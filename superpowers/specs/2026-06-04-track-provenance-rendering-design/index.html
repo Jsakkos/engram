@@ -1,0 +1,1746 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-06-04-track-provenance-rendering-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Per-track provenance rendering — design - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#per-track-provenance-rendering-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Per-track provenance rendering — design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Problem">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#verified-root-causes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verified root causes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-full-file-fallbacks-genuinely-have-no-votes-not-a-bug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why full-file fallbacks genuinely have no votes (not a bug)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goal
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Goal">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rendering-policy-per-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering policy (per provenance)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-adapter-source-the-displayed-confidence-from-the-column-derive-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Adapter — source the displayed confidence from the column; derive method
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-track-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Track type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-brand-mark-chromaprint-fingerprint-variant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Brand mark — chromaprint "fingerprint" variant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-trackgrid-source-chip-confidence-method-rendering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. TrackGrid — source chip + confidence + method rendering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge cases
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-flagged-follow-ups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope (flagged follow-ups)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="per-track-provenance-rendering-design">Per-track provenance rendering — design</h1>
+<p><strong>Date:</strong> 2026-06-04
+<strong>Status:</strong> Approved design, pending implementation plan
+<strong>Scope:</strong> Frontend UI polish (one adapter + one component, plus a small brand-mark variant). No backend behavior change.</p>
+<h2 id="problem">Problem</h2>
+<p>The per-track cards inside a <code>DiscCard</code> render match provenance inconsistently. On one
+Gilmore Girls S2 job, three matched tracks rendered three different ways:</p>
+<ul>
+<li><code>S02E17</code> — <code>ENGRAM</code> chip <strong>and</strong> <code>71%  3/10</code> votes.</li>
+<li><code>S02E18</code> / <code>S02E19</code> — only <code>→ S02Exx</code>, <strong>no</strong> confidence, <strong>no</strong> votes, <strong>no</strong> chip (looks broken/empty).</li>
+<li>A bonus track — only an <code>EXTRA</code> badge.</li>
+</ul>
+<h3 id="verified-root-causes">Verified root causes</h3>
+<ol>
+<li><strong>Confidence + votes are read from <code>match_details</code>, not the reliable column.</strong>
+   The adapter's <code>extractFinalMatchInfo</code> (<a href="../../../frontend/src/types/adapters.ts">frontend/src/types/adapters.ts:92</a>)
+   returns confidence/votes only when <code>match_details</code> has <strong>both</strong> <code>score</code> <strong>and</strong> <code>vote_count</code>:</li>
+<li><strong>Chunk-vote path</strong> writes <code>vote_count</code> → card shows <code>71%  3/10</code>.</li>
+<li><strong>Full-file fallback</strong> (<a href="../../../backend/app/matcher/episode_identification.py">backend/app/matcher/episode_identification.py:1667</a>)
+     writes <code>match_details = {"method": "full_transcription", "score": ...}</code> with <strong>no <code>vote_count</code></strong>
+     → <code>extractFinalMatchInfo</code> returns <code>undefined</code> → matched card shows a bare <code>→ S02E18</code>.</li>
+</ol>
+<p>The <code>match_confidence</code> <strong>column</strong> is reliably populated on <em>every</em> path (<code>result.confidence</code>
+   for ASR at <a href="../../../backend/app/services/matching_coordinator.py">matching_coordinator.py:906</a>,
+   <code>0.99</code> for DiscDB, <code>1.0</code> for user/manual), but the UI ignores it for the displayed number.</p>
+<ol>
+<li><strong>The provider chip is gated on <code>match_source</code>, which varies by path/vintage.</strong>
+   The chip renders only when <code>track.matchSource</code> is truthy (<a href="../../../frontend/src/app/components/TrackGrid.tsx">TrackGrid.tsx:146</a>).
+   <code>match_source</code> is <code>"engram"</code> for MATCHED, <code>None</code> for REVIEW, <code>"discdb"</code>/<code>"user"</code>/<code>"engram_chromaprint"</code>/<code>"ai_llm"</code>
+   elsewhere, and absent on older/edge matched rows. So the chip appears unevenly across tracks of one job.</li>
+</ol>
+<h3 id="why-full-file-fallbacks-genuinely-have-no-votes-not-a-bug">Why full-file fallbacks genuinely have no votes (not a bug)</h3>
+<p>Engram has two distinct matchers. <strong>Ranked voting</strong> samples ~10 chunks, each chunk "votes" for an
+episode, and accepts on <code>(score_ok OR confidence_ok) AND votes_ok</code>. <strong>Full-file fallback</strong> is reached
+<em>because</em> ranked voting failed the vote gate; it transcribes the whole file and does a single
+whole-vs-whole TF-IDF comparison → one confidence number, <strong>no chunks, no votes by construction</strong>.
+Showing confidence-without-votes is the <em>correct</em> representation of a full-file match. The deeper
+question — <em>why so many tracks drop to full-file</em> (chunk-cosine scale / sparse sampling) — is a
+matching-quality concern and is <strong>out of scope</strong> here.</p>
+<h2 id="goal">Goal</h2>
+<p>Every track renders its provenance consistently. A matched track is never bare. "No votes" is shown
+as a meaningful method signal, not an empty gap. Fabricate nothing.</p>
+<h3 id="non-goals">Non-goals</h3>
+<ul>
+<li>No change to backend matching, scoring, vote thresholds, or the full-file fallback rate.</li>
+<li>No change to the Review-queue UI or the History detail panel.</li>
+<li>Extras keep their existing <code>EXTRA</code> treatment; Needs-Review keeps its existing best-guess treatment.</li>
+</ul>
+<h2 id="rendering-policy-per-provenance">Rendering policy (per provenance)</h2>
+<table>
+<thead>
+<tr>
+<th>Provenance (<code>match_source</code> / state)</th>
+<th>Episode line</th>
+<th>Confidence %</th>
+<th>Votes <code>N/M</code></th>
+<th>Method tag</th>
+<th>Chip</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chunk-vote — <code>engram</code>, has <code>vote_count</code></td>
+<td><code>→ S02E17</code></td>
+<td>✅ column</td>
+<td>✅</td>
+<td>—</td>
+<td>Engram mark, <strong>cyan</strong>, tooltip "Matched by Engram (ASR)"</td>
+</tr>
+<tr>
+<td>Full-file — <code>engram</code>, no <code>vote_count</code></td>
+<td><code>→ S02E18</code></td>
+<td>✅ column</td>
+<td>—</td>
+<td><code>FULL-FILE</code> (muted)</td>
+<td>Engram mark, <strong>cyan</strong>, tooltip "Matched by Engram (ASR)"</td>
+</tr>
+<tr>
+<td>Chromaprint — <code>engram_chromaprint</code></td>
+<td><code>→ S02E18</code></td>
+<td>✅ column</td>
+<td>✅ if present, else —</td>
+<td><code>FULL-FILE</code> only if no votes</td>
+<td>Engram mark + node, <strong>magenta</strong>, tooltip "Matched by Engram (audio fingerprint)"</td>
+</tr>
+<tr>
+<td>DiscDB — <code>discdb</code></td>
+<td><code>→ S02E05</code></td>
+<td>✅ column (0.99)</td>
+<td>—</td>
+<td>—</td>
+<td><code>DISCDB</code> text chip (blue)</td>
+</tr>
+<tr>
+<td>AI — <code>ai_llm</code></td>
+<td><code>→ S02E06</code></td>
+<td>✅ column</td>
+<td>—</td>
+<td>—</td>
+<td><code>AI</code> text chip (purple)</td>
+</tr>
+<tr>
+<td>User — <code>user</code></td>
+<td><code>→ S02E07</code></td>
+<td>✅ column (1.0)</td>
+<td>—</td>
+<td>—</td>
+<td><code>MANUAL</code> text chip (green)</td>
+</tr>
+<tr>
+<td>Matched, <code>match_source</code> missing (legacy/edge)</td>
+<td><code>→ S02Exx</code></td>
+<td>✅ column</td>
+<td>✅ if present</td>
+<td><code>FULL-FILE</code> if no votes</td>
+<td>Engram mark, <strong>cyan</strong> (default), tooltip "Matched by Engram"</td>
+</tr>
+<tr>
+<td>Extra — <code>matched_episode == "extra"</code></td>
+<td><code>→ [EXTRA]</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><code>EXTRA</code> (unchanged)</td>
+</tr>
+<tr>
+<td>Needs review — <code>REVIEW</code></td>
+<td>best-guess + <code>NEEDS REVIEW</code></td>
+<td>best-guess % (from <code>match_details</code>)</td>
+<td>if present</td>
+<td>—</td>
+<td>none (unchanged)</td>
+</tr>
+</tbody>
+</table>
+<p>Decisions locked with the user: confidence always shows from the column; votes only when they exist;
+chip always present on matched/done; <strong>icon-only Engram mark</strong> for Engram-engine sources (cyan ASR /
+magenta fingerprint) with a hover tooltip; <strong><code>FULL-FILE</code></strong> method tag on voteless full-file matches.</p>
+<h2 id="design">Design</h2>
+<h3 id="1-adapter-source-the-displayed-confidence-from-the-column-derive-method">1. Adapter — source the displayed confidence from the column; derive method</h3>
+<p><code>frontend/src/types/adapters.ts</code>, <code>transformDiscTitleToTrack</code>:</p>
+<ul>
+<li><strong>Displayed matched confidence</strong> comes from the <code>match_confidence</code> <strong>column</strong> when it is <code>&gt; 0</code>
+  (covers every matched/done path), and falls back to the <code>match_details</code>-derived value when the
+  column is <code>0</code> (covers the REVIEW best-guess, where the column is <code>0.0</code> but <code>match_details</code> carries
+  the best-guess score). Concretely: <code>finalMatchConfidence = title.match_confidence &gt; 0 ? title.match_confidence : extractFinalMatchInfo(title)?.confidence</code>.</li>
+<li><strong>Votes</strong> (<code>finalMatchVotes</code> / <code>finalMatchTargetVotes</code>) continue to come from <code>match_details</code>
+  and are populated <strong>only</strong> when <code>vote_count</code> is present. (Unchanged semantics, just no longer
+  the gate for confidence.)</li>
+<li><strong>New derived field <code>matchMethod?: 'chunk_vote' | 'full_file'</code></strong> on <code>Track</code>, computed from
+  <code>match_details</code>: <code>vote_count</code> present → <code>'chunk_vote'</code>; <code>method === 'full_transcription'</code>
+  (or <code>score</code> present without <code>vote_count</code>) → <code>'full_file'</code>; otherwise <code>undefined</code> (DiscDB/AI/manual
+  carry their own chip and need no method tag).</li>
+</ul>
+<p><code>extractMatchCandidates</code> and the runner-up rendering are unchanged.</p>
+<h3 id="2-track-type">2. <code>Track</code> type</h3>
+<p>Add <code>matchMethod?: 'chunk_vote' | 'full_file'</code> to the <code>Track</code> interface in <code>DiscCard.tsx</code>. No other
+field changes; <code>matchSource</code>, <code>finalMatch*</code>, <code>isExtra</code> stay as-is.</p>
+<h3 id="3-brand-mark-chromaprint-fingerprint-variant">3. Brand mark — chromaprint "fingerprint" variant</h3>
+<p><code>MarkMono</code> (three open arcs) already serves ASR. Add an optional <code>node?: boolean</code> prop that renders
+a small filled center node, giving the fingerprint variant. (Single prop on the existing component;
+no new file.) The chip uses <code>MarkMono</code> at ~12px: cyan for ASR, <code>magenta</code> + <code>node</code> for chromaprint.</p>
+<h3 id="4-trackgrid-source-chip-confidence-method-rendering">4. TrackGrid — source chip + confidence + method rendering</h3>
+<p><code>frontend/src/app/components/TrackGrid.tsx</code>:</p>
+<ul>
+<li><strong>Provider chip</strong> (<code>badges</code> row): for <code>engram</code> / <code>engram_chromaprint</code> / missing-source-but-matched,
+  render an <strong>icon chip</strong> — <code>MarkMono</code> wrapped so it has an accessible label and a hover tooltip
+  (reuse <code>components/ui/tooltip</code>), with <code>aria-label</code>/<code>title</code> for non-hover/AT users. For
+  <code>discdb</code> / <code>ai_llm</code> / <code>user</code>, keep the existing <strong>text</strong> <code>SvBadge</code> (<code>DISCDB</code> / <code>AI</code> / <code>MANUAL</code>).
+  Replace the current <code>matchSourceLabel</code>/<code>matchSourceColor</code> helpers with a single source-descriptor
+  map that returns <code>{ kind: 'icon' | 'text', label, tone, tooltip, node? }</code>.</li>
+<li><strong>Method tag</strong>: when <code>track.matchMethod === 'full_file'</code>, render a muted <code>SvBadge</code>
+  (<code>tone: sv.inkDim</code>) reading <code>FULL-FILE</code> next to the source chip. Not shown for chunk-vote.</li>
+<li><strong>Matched body</strong> (<a href="../../../frontend/src/app/components/TrackGrid.tsx">TrackGrid.tsx:346</a>): the
+  confidence <code>%</code> now renders whenever <code>finalMatchConfidence !== undefined</code> (which is now true for
+  full-file/DiscDB/manual via the column). Votes still render only when <code>finalMatchVotes !== undefined</code>.
+  Existing color thresholds (<code>≥0.7</code> green, <code>≥0.4</code> yellow, else red) unchanged.</li>
+</ul>
+<h3 id="edge-cases">Edge cases</h3>
+<ul>
+<li><strong>REVIEW best-guess</strong> confidence still comes from <code>match_details</code> (column is <code>0.0</code> there) — the
+  <code>&gt; 0 ? column : match_details</code> rule handles this without a special case.</li>
+<li><strong>Legacy matched rows without <code>match_source</code></strong>: default to the cyan Engram (ASR) icon, since a
+  MATCHED ASR title is the only way to reach that state historically. Tooltip omits the method
+  qualifier ("Matched by Engram").</li>
+<li><strong>Extras</strong> are detected by <code>is_extra</code> / <code>matched_episode == "extra"</code> and keep the <code>EXTRA</code> badge;
+  no provider chip, no confidence.</li>
+</ul>
+<h2 id="testing">Testing</h2>
+<ul>
+<li><strong>Adapter unit tests</strong> (<code>frontend/src/types/__tests__/adapters.test.ts</code>): extend with fixtures for
+  each provenance — chunk-vote (votes + confidence + <code>chunk_vote</code>), full-file (<code>{method, score}</code> →
+  confidence from column + <code>full_file</code> + no votes), DiscDB (<code>0.99</code>, no votes, no method), manual
+  (<code>1.0</code>), REVIEW (column <code>0</code> → confidence from <code>match_details</code>), extra (no confidence). Assert
+  <code>finalMatchConfidence</code>, <code>finalMatchVotes</code>, and <code>matchMethod</code>.</li>
+<li><strong>Component test</strong> (<code>DiscCard.test.tsx</code> or a <code>TrackGrid</code> test): assert the icon chip + tooltip for
+  <code>engram</code>/<code>engram_chromaprint</code>, the text chip for <code>discdb</code>/<code>ai_llm</code>/<code>user</code>, the <code>FULL-FILE</code> tag on a
+  voteless full-file track, and that a full-file matched track shows a confidence <code>%</code> (no longer bare).</li>
+<li><strong>No new E2E</strong> required; existing track-grid E2E selectors (<code>sv-track-card</code>, <code>source-badge-*</code>)
+  must continue to resolve — keep stable <code>data-testid</code>s on the chip.</li>
+</ul>
+<h2 id="out-of-scope-flagged-follow-ups">Out of scope (flagged follow-ups)</h2>
+<ul>
+<li>The high <strong>full-file fallback rate</strong> on sparse-sampling discs (chunk-cosine scale) — a separate
+  matching-quality investigation, not a rendering fix.</li>
+<li>Backend normalization of <code>match_source</code> on legacy rows (the UI default covers it for display).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

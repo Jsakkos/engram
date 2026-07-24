@@ -1,0 +1,1680 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-06-21-track-reassignment-fingerprint-correction-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Post-Completion Track Reassignment with Fingerprint Correction - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#post-completion-track-reassignment-with-fingerprint-correction" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Post-Completion Track Reassignment with Fingerprint Correction
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-findings-that-shape-the-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key findings that shape the design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-in-place-amendment-approach-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture: in-place amendment (Approach B)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture: in-place amendment (Approach B)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-server-post-v1retract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Server: POST /v1/retract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-client-contributioncorrectionservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Client: ContributionCorrectionService
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-client-data-model-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Client data model changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-client-organizer-amendment-helper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Client: organizer amendment helper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-client-endpoint-orchestration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Client: endpoint + orchestration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-frontend-history-detail-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Frontend: History detail panel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-live-cleanup-of-jobs-214-221-final-dogfood-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Live cleanup of jobs 214 / 221 (final dogfood step)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-v1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope (v1)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="post-completion-track-reassignment-with-fingerprint-correction">Post-Completion Track Reassignment with Fingerprint Correction</h1>
+<p><strong>Date:</strong> 2026-06-21
+<strong>Status:</strong> Design — pending review
+<strong>Motivating incident:</strong> Breaking Bad S3 D2 (job 214) had a 56-minute featurette (title 2265) erroneously
+organized as <code>S03E10.mkv</code>. This blocked disc 3 (job 221, title 2440 — the <em>real</em> E10) with a <code>file_exists</code>
+conflict. There was no way to correct the completed job, and no way to retract a fingerprint from the shared
+network once contributed.</p>
+<h2 id="problem">Problem</h2>
+<ol>
+<li>Once a job reaches <code>COMPLETED</code>, track assignments are locked. <code>reassign_episode()</code> explicitly blocks
+   <code>COMPLETED</code>/<code>ORGANIZING</code>/<code>FAILED</code> states (<a href="../../../backend/app/services/job_manager.py">job_manager.py:1509</a>).</li>
+<li>A wrong assignment leaves a mis-organized library file that can collide with a later, correct disc.</li>
+<li>If the wrong track was contributed to the fingerprint network, there is no per-fingerprint retraction.
+   The only tool is <code>POST /fingerprint/forget</code>, which wipes <strong>all</strong> contributions for a pseudonym, and the
+   server comment claims canonical fingerprints "can't be recalled."</li>
+</ol>
+<p>For the correctness of the fingerprint network, users must be able to (a) reassign a track after the fact,
+(b) retract the erroneous fingerprint, and (c) contribute the corrected one.</p>
+<h2 id="key-findings-that-shape-the-design">Key findings that shape the design</h2>
+<ul>
+<li><strong>The server's promotion is fully re-derivable.</strong> <code>runPromotion</code> (<a href="../../../../engram-fingerprint-server/src/workers/promotion.ts">engram-fingerprint-server/src/workers/promotion.ts</a>)
+  loads <em>all</em> raw contributions for an episode, dedupes to one-vote-per-pseudonym, and recomputes the
+  canonical fingerprint and tier from scratch. So "fix the network" = <strong>delete the bad raw row + re-run
+  promotion for that episode</strong>. The "canonical can't be recalled" limitation is only because <code>/forget</code>
+  never re-promotes — not a fundamental constraint.</li>
+<li><strong>The retraction key must be the exact fingerprint, never the episode.</strong> A good E10 and a bad E10 are both
+  <code>(tmdb_id, season, episode)</code> and differ only by <code>fingerprint_sha256</code>. The server's dedup key is
+  <code>(pseudonym, tmdb_id, season, episode, fingerprint_sha256)</code>; retraction targets that exact tuple. The
+  client's clean handle is the <code>FingerprintContribution.title_id</code> link.</li>
+<li><strong><code>user_review</code> is already a first-class, highest-trust <code>match_source</code></strong> in the server allowlist. A user
+  correction is the strongest signal the network can receive.</li>
+<li><strong>In the live incident the network was never poisoned.</strong> Title 2265 has <code>match_source=None</code> and produced
+  no <code>FingerprintContribution</code> row, so the live cleanup needs no network round-trip — but the feature must
+  still implement full retraction for the general (ASR-matched) case.</li>
+</ul>
+<h2 id="architecture-in-place-amendment-approach-b">Architecture: in-place amendment (Approach B)</h2>
+<p>A completed job is treated as an immutable historical record being <em>corrected in place</em>. The job stays
+<code>COMPLETED</code> throughout; we never re-enter the job state machine. Three shared units:</p>
+<ol>
+<li>Server <code>POST /v1/retract</code> endpoint.</li>
+<li>Client <code>ContributionCorrectionService</code> (retract old fingerprint, re-contribute new).</li>
+<li>Client <code>organizer.amend_organized_file</code> (move/rename the organized library file).</li>
+</ol>
+<p>Wired together by a new <code>JobManager.amend_title_assignment()</code> behind a new REST endpoint, surfaced in the
+History detail panel.</p>
+<h3 id="1-server-post-v1retract">1. Server: <code>POST /v1/retract</code></h3>
+<p>Request (<code>engram-fingerprint-server</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;wire_format_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;pseudonym&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;tmdb_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1396</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;season&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;episode&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;fingerprint_sha256_b64&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Behaviour:</p>
+<ol>
+<li><code>DELETE FROM contribution WHERE pseudonym=? AND tmdb_id=? AND season=? AND episode=? AND
+   fingerprint_sha256=?</code> (cascades <code>overlap_observation</code>). The <code>pseudonym</code> predicate enforces that a caller
+   can only retract its own contributions — identical trust model to <code>/forget</code>.</li>
+<li>Heal canonical by re-derivation for that <code>(tmdb_id, season, episode)</code>:</li>
+<li>If contributions remain, set their <code>promoted_at = NULL</code> so the promotion cron recomputes consensus
+     without the retracted vote.</li>
+<li>If none remain, delete the <code>episode_canonical</code> and <code>canonical_sketch</code> rows.</li>
+<li>Idempotent: a missing row returns <code>200</code> with <code>deleted: 0</code>.</li>
+</ol>
+<p>Response: <code>{ "deleted": &lt;int&gt;, "canonical": "requeued" | "removed" | "untouched" }</code>.</p>
+<p>Schema/validation mirrors <code>contribute.ts</code> (zod schema in <code>src/schemas.ts</code>, route registered in
+<code>src/index.ts</code>). New unit tests under <code>test/</code>.</p>
+<p><strong>Scope cut:</strong> v1 retracts <em>episode</em> fingerprints only. Disc-layout (<code>disc_contribution</code>) correction is a
+follow-up — it is lower-stakes, re-derivable, and self-heals when the disc is next contributed with a
+different <code>titles_digest</code>.</p>
+<h3 id="2-client-contributioncorrectionservice">2. Client: <code>ContributionCorrectionService</code></h3>
+<p>New service in <code>backend/app/services/contribution_correction.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">correct_title_contribution</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">new_target</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CorrectionResult</span>
+</code></pre></div>
+<ul>
+<li>Find local <code>FingerprintContribution</code> rows by <code>title_id</code>.</li>
+<li><strong>Pending row</strong> (<code>upload_status != "success"</code>): delete the local row, never touch the network (reuses the
+  existing <code>DELETE /fingerprint/contributions/{id}</code> logic path).</li>
+<li><strong>Uploaded row</strong> (<code>upload_status == "success"</code>): POST <code>/v1/retract</code> with the row's stored
+  <code>{pseudonym, tmdb_id, season, episode, uploaded_fingerprint_sha256}</code>. On success, delete the row and write
+  a <code>contribution_log.jsonl</code> audit line. On transient failure, mark the row <code>retraction_status="pending"</code>
+  and let the drain loop retry.</li>
+<li><strong>Re-contribute:</strong> if <code>new_target.kind == "episode"</code>, enqueue a fresh <code>FingerprintContribution</code> from
+  <code>title.chromaprint_blob</code> with the new <code>(tmdb_id, season, episode)</code>, <code>match_source="user_review"</code>,
+  <code>match_confidence=1.0</code>. For <code>extra</code>/<code>discard</code>, re-contribute nothing.</li>
+</ul>
+<h3 id="3-client-data-model-changes">3. Client data model changes</h3>
+<p><code>FingerprintContribution</code> (<a href="../../../backend/app/models/fingerprint.py">backend/app/models/fingerprint.py</a>):</p>
+<ul>
+<li>Add <code>uploaded_fingerprint_sha256: bytes | None</code> — persisted at upload time so retraction targets the exact
+  bytes the server holds (avoids reserialization drift between contribute and retract).</li>
+<li>Add <code>retraction_status: str | None</code> (<code>None</code> | <code>"pending"</code> | <code>"done"</code>) and <code>retracted_at: datetime | None</code>
+  for the retry queue.</li>
+</ul>
+<p>Drained by the existing <code>ContributionUploader</code> loop (same two-phase pattern as contributions) — a pending
+retraction is retried on each drain until the server acknowledges.</p>
+<p>Schema convergence: add columns via <code>database.py</code> reconcilers (<code>_add_missing_columns</code>) so frozen builds pick
+them up, plus an Alembic migration for dev parity. (Frozen builds skip Alembic; the reconciler is what
+reaches users.)</p>
+<h3 id="4-client-organizer-amendment-helper">4. Client: organizer amendment helper</h3>
+<p>New <code>amend_organized_file(current_path, target, *, show, season, ...)</code> in
+<a href="../../../backend/app/core/organizer.py">backend/app/core/organizer.py</a>, reusing existing format/move/conflict
+helpers:</p>
+<ul>
+<li><strong>→ episode:</strong> rename the library file to the new episode path
+  (<code>format_episode_filename</code>). If the target path already exists, <strong>abort with a structured conflict error</strong>
+  (<code>error="file_exists"</code>) — never silently overwrite.</li>
+<li><strong>→ extra</strong> and <strong>→ discard:</strong> move the file into the show's <code>Extras/</code> folder using the
+  <code>organize_tv_extras</code> naming convention. (Per decision, discards are not deleted and not given a separate
+  quarantine directory; they land in <code>Extras/</code> and differ from a legitimate extra only as a record/UI intent
+  flag.)</li>
+</ul>
+<p>Returns <code>{ success, final_path, error }</code>, matching the existing organizer contract.</p>
+<h3 id="5-client-endpoint-orchestration">5. Client: endpoint + orchestration</h3>
+<p><code>POST /api/jobs/{job_id}/titles/{title_id}/amend</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;target&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;episode&quot;</span><span class="w"> </span><span class="err">|</span><span class="w"> </span><span class="s2">&quot;extra&quot;</span><span class="w"> </span><span class="err">|</span><span class="w"> </span><span class="s2">&quot;discard&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;episode_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;S03E10&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Allowed only when <code>job.state == COMPLETED</code>. <code>JobManager.amend_title_assignment()</code> runs in order:</p>
+<ol>
+<li>Validate the target (parse <code>episode_code</code>; confirm the title belongs to the job).</li>
+<li>Move/rename the organized library file via <code>amend_organized_file</code>. Abort on a real conflict or missing
+   source file with a clear error.</li>
+<li>Update the <code>DiscTitle</code>: <code>matched_episode</code>, <code>is_extra</code>, <code>organized_to</code>/<code>organized_from</code>,
+   <code>match_source="user"</code>, <code>match_confidence=1.0</code>, strip stale review-reason keys, set a <code>discarded</code> marker for
+   the discard kind.</li>
+<li>Fire <code>ContributionCorrectionService.correct_title_contribution</code> (best-effort, independently retryable).</li>
+<li>Broadcast <code>title_update</code> + <code>job_update</code> over WebSocket.</li>
+</ol>
+<p>Ordering rationale: file + DB correctness (user-visible) commits first; network hygiene is retryable so a
+server hiccup never blocks the local fix.</p>
+<p>Error handling:</p>
+<ul>
+<li>Target episode path already occupied → abort, surface "target occupied; resolve that conflict first."</li>
+<li>Source library file missing (user moved/deleted it) → abort with a clear error.</li>
+<li><code>chromaprint_blob</code> absent on the title (older job) → skip re-contribution with a logged note.</li>
+</ul>
+<h3 id="6-frontend-history-detail-panel">6. Frontend: History detail panel</h3>
+<p>In the <code>HistoryPage</code> slide-out detail panel, add a per-track <strong>Reassign</strong> action. It opens a small modal:</p>
+<ul>
+<li>Pick an episode (season episode dropdown), <strong>Mark as Extra</strong>, or <strong>Discard (move to Extras)</strong>.</li>
+<li>When the track has an uploaded fingerprint, show a one-line note: <em>"This will retract the previous
+  fingerprint from the shared network and submit your correction."</em></li>
+<li>On submit → <code>POST .../amend</code> → optimistic update reconciled by the <code>title_update</code>/<code>job_update</code> WS messages.</li>
+</ul>
+<p>No reassignment UI is added for jobs already in <code>REVIEW_NEEDED</code> — that path already exists in <code>ReviewQueue</code>.</p>
+<h3 id="7-live-cleanup-of-jobs-214-221-final-dogfood-step">7. Live cleanup of jobs 214 / 221 (final dogfood step)</h3>
+<p>Run after the feature is built and tested, against the real running backend:</p>
+<ol>
+<li>Amend job 214 / <code>title 2265</code> → <strong>Extra</strong>. Moves <code>X:\...\Season 3\Breaking Bad - S03E10.mkv</code> into
+   <code>Season 3\Extras\</code>, clears the episode assignment. No network retraction (the track was never contributed).</li>
+<li>Job 221 / <code>title 2440</code> (the real E10) is in <code>REVIEW_NEEDED</code> with <code>file_exists</code>. With the path now free,
+   resolve it through the <strong>existing review flow</strong> (reassign/confirm E10) so it organizes cleanly.</li>
+<li>Verify: <code>Season 3</code> holds correct <code>S03E06</code>–<code>S03E13</code>, the disc-2 featurette sits in <code>Extras/</code>, and the
+   network's E10 vote (contrib 1813, the disc-3 fingerprint) is untouched and correct.</li>
+</ol>
+<h2 id="testing">Testing</h2>
+<ul>
+<li><strong>Server (<code>engram-fingerprint-server/test/</code>):</strong> <code>/v1/retract</code> — deletes the targeted row, requeues
+  promotion when votes remain, removes canonical + sketch when none remain, is idempotent, and rejects/ignores
+  cross-pseudonym deletion.</li>
+<li><strong>Client unit:</strong></li>
+<li><code>ContributionCorrectionService</code> — pending row deletes locally with no network call; uploaded row calls
+    retract then deletes; episode target re-contributes as <code>user_review</code>; extra/discard re-contribute nothing.</li>
+<li><code>amend_organized_file</code> — episode rename, extra move, discard→Extras, conflict abort, missing-source abort.</li>
+<li><code>uploaded_fingerprint_sha256</code> persisted at upload and reused verbatim by retraction.</li>
+<li><strong>Client integration (<code>tests/integration/</code>):</strong> amend endpoint end-to-end via simulation — completed TV job,
+  amend a track to a different episode, assert file moved + <code>DiscTitle</code> updated + WS broadcast + correction
+  enqueued. Amend-to-extra and amend-twice (idempotency) cases.</li>
+</ul>
+<h2 id="out-of-scope-v1">Out of scope (v1)</h2>
+<ul>
+<li>Disc-layout (<code>disc_contribution</code>) correction.</li>
+<li>Cross-show reassignment (wrong <code>tmdb_id</code>) — the heavy cross-namespace retraction case.</li>
+<li>Cross-job auto-resolution (fixing job A automatically re-attempting blocked job B). The freed path lets the
+  user resolve the blocked job through the normal flow.</li>
+<li>Movie reassignment after completion (this design targets TV episodes; movie amendment can reuse the same
+  scaffolding in a follow-up).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

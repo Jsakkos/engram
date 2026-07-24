@@ -1,0 +1,2266 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-06-04-parallel-asr-matching-visibility/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Parallel ASR Matching + Honest Dashboard Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#parallel-asr-matching-honest-dashboard-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Parallel ASR Matching + Honest Dashboard Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-1-asr-runtime-sizing-helpers-pure-fully-unit-tested" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: ASR runtime sizing helpers (pure, fully unit-tested)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-2-pass-workersthreads-to-the-shared-model-fix-cache-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Pass workers/threads to the shared model + fix cache keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-3-episodematcher-carries-requested_workers-into-model-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: EpisodeMatcher carries requested_workers into model config
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-4-curator-passes-configmax_concurrent_matches-into-the-matcher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Curator passes config.max_concurrent_matches into the matcher
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-5-size-the-match-semaphore-from-real-worker-capacity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Size the match semaphore from real worker capacity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-6-get-apiasr-status-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: GET /api/asr-status endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-7-frontend-asr-mode-badge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Frontend ASR mode badge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-8-configwizard-honest-hint-input-bound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: ConfigWizard — honest hint + input bound
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-9-full-backend-regression-final-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 9: Full backend regression + final verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-review-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-Review Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="parallel-asr-matching-honest-dashboard-implementation-plan">Parallel ASR Matching + Honest Dashboard Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Give the shared Whisper model real parallelism via faster-whisper <code>num_workers</code>, tie the match-admission semaphore to that real capacity so the dashboard stops overstating <code>MATCHING</code>, and surface the active ASR backend.</p>
+<p><strong>Architecture:</strong> A single pure helper (<code>resolve_asr_runtime</code>) in the ASR model layer computes <code>(workers, cpu_threads)</code> from the detected device and the requested worker count (<code>config.max_concurrent_matches</code>), clamped to hardware. That one value flows to three consumers: the shared <code>WhisperModel</code> (parallel inference), the <code>asyncio.Semaphore</code> in <code>JobManager</code> (honest admission), and a new <code>GET /api/asr-status</code> endpoint (a read-only dashboard badge).</p>
+<p><strong>Tech Stack:</strong> Python 3.11, FastAPI, faster-whisper / ctranslate2, psutil, pytest/pytest-asyncio; React + TypeScript + Vite frontend.</p>
+<p><strong>Spec:</strong> <code>docs/superpowers/specs/2026-06-04-parallel-asr-matching-visibility.md</code></p>
+<hr />
+<h2 id="file-structure">File Structure</h2>
+<p><strong>Backend</strong>
+- <code>backend/app/matcher/asr_models.py</code> — add <code>AsrRuntime</code>, <code>GPU_WORKER_CAP</code>, <code>detect_asr_device()</code>, <code>resolve_asr_runtime()</code>; thread <code>requested_workers</code> into <code>FasterWhisperModel</code> and both <code>_model_cache</code> keys (Tasks 1, 2).
+- <code>backend/app/matcher/episode_identification.py</code> — <code>EpisodeMatcher</code> carries <code>requested_workers</code> into a shared <code>_model_config()</code> helper (Task 3).
+- <code>backend/app/core/curator.py</code> — pass <code>config.max_concurrent_matches</code> into <code>EpisodeMatcher</code> (Task 4).
+- <code>backend/app/services/job_manager.py</code> — size the semaphore from <code>resolve_asr_runtime(...).workers</code> (Task 5).
+- <code>backend/app/api/routes.py</code> — <code>GET /api/asr-status</code> (Task 6).
+- <code>backend/tests/unit/test_asr_runtime.py</code> — new test module (Tasks 1, 2).
+- <code>backend/tests/unit/test_api_routes.py</code> — extend for the new endpoint (Task 6).</p>
+<p><strong>Frontend</strong>
+- <code>frontend/src/app/components/AsrStatusBadge.tsx</code> — new self-contained badge (Task 7).
+- <code>frontend/src/app/App.tsx</code> — mount the badge (Task 7).
+- <code>frontend/src/components/ConfigWizard.tsx</code> — honest hint text + input bound (Task 8).</p>
+<hr />
+<h2 id="task-1-asr-runtime-sizing-helpers-pure-fully-unit-tested">Task 1: ASR runtime sizing helpers (pure, fully unit-tested)</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/asr_models.py</code> (top-of-file imports + new module-level helpers)
+- Test: <code>backend/tests/unit/test_asr_runtime.py</code> (create)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Create <code>backend/tests/unit/test_asr_runtime.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="sd">&quot;&quot;&quot;Unit tests for ASR runtime sizing (resolve_asr_runtime / detect_asr_device).&quot;&quot;&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">patch</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.asr_models</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">GPU_WORKER_CAP</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">AsrRuntime</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">resolve_asr_runtime</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestResolveAsrRuntimeCpu</span><span class="p">:</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_divides_threads_so_total_matches_cores</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">16</span><span class="p">):</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>            <span class="n">rt</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>        <span class="k">assert</span> <span class="n">rt</span> <span class="o">==</span> <span class="n">AsrRuntime</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">compute_type</span><span class="o">=</span><span class="s2">&quot;int8&quot;</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">cpu_threads</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_clamps_workers_to_physical_cores</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">8</span><span class="p">):</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>            <span class="n">rt</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">32</span><span class="p">)</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">workers</span> <span class="o">==</span> <span class="mi">8</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">cpu_threads</span> <span class="o">==</span> <span class="mi">1</span>  <span class="c1"># 8 // 8</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_floor_division_never_yields_zero_threads</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">6</span><span class="p">):</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>            <span class="n">rt</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">workers</span> <span class="o">==</span> <span class="mi">6</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">cpu_threads</span> <span class="o">==</span> <span class="mi">1</span>  <span class="c1"># max(1, 6 // 6)</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_requested_below_one_becomes_one</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">8</span><span class="p">):</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>            <span class="n">rt</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">workers</span> <span class="o">==</span> <span class="mi">1</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">cpu_threads</span> <span class="o">==</span> <span class="mi">8</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_missing_core_count_falls_back_to_one</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>            <span class="n">rt</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">workers</span> <span class="o">==</span> <span class="mi">1</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">cpu_threads</span> <span class="o">==</span> <span class="mi">1</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestResolveAsrRuntimeGpu</span><span class="p">:</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_caps_workers_at_gpu_cap</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>        <span class="n">rt</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cuda&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>        <span class="k">assert</span> <span class="n">rt</span> <span class="o">==</span> <span class="n">AsrRuntime</span><span class="p">(</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>            <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">,</span> <span class="n">compute_type</span><span class="o">=</span><span class="s2">&quot;float16&quot;</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="n">GPU_WORKER_CAP</span><span class="p">,</span> <span class="n">cpu_threads</span><span class="o">=</span><span class="kc">None</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>        <span class="p">)</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_below_cap_is_passed_through</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>        <span class="n">rt</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cuda&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">workers</span> <span class="o">==</span> <span class="mi">2</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">cpu_threads</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>        <span class="k">assert</span> <span class="n">rt</span><span class="o">.</span><span class="n">compute_type</span> <span class="o">==</span> <span class="s2">&quot;float16&quot;</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_asr_runtime.py -v</code>
+Expected: FAIL — <code>ImportError: cannot import name 'GPU_WORKER_CAP'</code> (helpers not defined yet).</p>
+<ul>
+<li>[ ] <strong>Step 3: Add the imports and helpers</strong></li>
+</ul>
+<p>In <code>backend/app/matcher/asr_models.py</code>, add to the existing top-of-file imports (the module already imports <code>ctranslate2</code>; add these two):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">psutil</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+</code></pre></div>
+<p>Then add these module-level definitions near the top of the file, after the imports and the <code>_model_cache = {}</code> line:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">GPU_WORKER_CAP</span> <span class="o">=</span> <span class="mi">4</span>  <span class="c1"># Conservative parallel-stream cap on GPU (VRAM auto-sizing is a future enhancement).</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">AsrRuntime</span><span class="p">:</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolved ASR execution parameters — the single source of truth for sizing.</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="sd">    Consumed by the shared WhisperModel (num_workers/cpu_threads), the JobManager</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="sd">    match semaphore (workers == admission slots, so the dashboard cannot overstate</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="sd">    MATCHING), and the /api/asr-status endpoint.</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">device</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># &quot;cuda&quot; | &quot;cpu&quot;</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">compute_type</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># &quot;float16&quot; (cuda) | &quot;int8&quot; (cpu)</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">workers</span><span class="p">:</span> <span class="nb">int</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">cpu_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span>  <span class="c1"># None on GPU (not applicable)</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="k">def</span><span class="w"> </span><span class="nf">detect_asr_device</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return &#39;cuda&#39; when a CUDA device is visible to ctranslate2, else &#39;cpu&#39;.&quot;&quot;&quot;</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>        <span class="k">return</span> <span class="s2">&quot;cuda&quot;</span> <span class="k">if</span> <span class="n">ctranslate2</span><span class="o">.</span><span class="n">get_cuda_device_count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="s2">&quot;cpu&quot;</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 — any probe failure means no usable GPU</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>        <span class="k">return</span> <span class="s2">&quot;cpu&quot;</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve_asr_runtime</span><span class="p">(</span><span class="n">device</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">requested_workers</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsrRuntime</span><span class="p">:</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve (workers, cpu_threads) from a requested worker count, clamped to hardware.</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="sd">    CPU: workers clamp to physical cores; cpu_threads = cores // workers so the total</span>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="sd">    thread count stays ~= cores (avoids the oversubscription that makes naive</span>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="sd">    parallelism slower). GPU: workers clamp to GPU_WORKER_CAP; cpu_threads is N/A.</span>
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>    <span class="n">requested</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">requested_workers</span> <span class="ow">or</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>    <span class="k">if</span> <span class="n">device</span> <span class="o">==</span> <span class="s2">&quot;cuda&quot;</span><span class="p">:</span>
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>        <span class="k">return</span> <span class="n">AsrRuntime</span><span class="p">(</span>
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>            <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>            <span class="n">compute_type</span><span class="o">=</span><span class="s2">&quot;float16&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>            <span class="n">workers</span><span class="o">=</span><span class="nb">min</span><span class="p">(</span><span class="n">requested</span><span class="p">,</span> <span class="n">GPU_WORKER_CAP</span><span class="p">),</span>
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>            <span class="n">cpu_threads</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>        <span class="p">)</span>
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>    <span class="n">cores</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">(</span><span class="n">logical</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="ow">or</span> <span class="n">psutil</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">(</span><span class="n">logical</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">1</span>
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a>    <span class="n">workers</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">requested</span><span class="p">,</span> <span class="n">cores</span><span class="p">))</span>
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a>    <span class="n">cpu_threads</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">cores</span> <span class="o">//</span> <span class="n">workers</span><span class="p">)</span>
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a>    <span class="k">return</span> <span class="n">AsrRuntime</span><span class="p">(</span>
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a>        <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">compute_type</span><span class="o">=</span><span class="s2">&quot;int8&quot;</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span> <span class="n">cpu_threads</span><span class="o">=</span><span class="n">cpu_threads</span>
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a>    <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_asr_runtime.py -v</code>
+Expected: PASS (all 7 tests).</p>
+<ul>
+<li>[ ] <strong>Step 5: Lint and commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>app/matcher/asr_models.py<span class="w"> </span>tests/unit/test_asr_runtime.py
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/matcher/asr_models.py<span class="w"> </span>backend/tests/unit/test_asr_runtime.py
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(asr): add resolve_asr_runtime hardware-clamped sizing helper&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-2-pass-workersthreads-to-the-shared-model-fix-cache-keys">Task 2: Pass workers/threads to the shared model + fix cache keys</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/asr_models.py</code> — <code>FasterWhisperModel.__init__</code> (123-138), <code>load()</code> (149-220), <code>create_asr_model</code> (360-396), <code>get_cached_model</code> (399-416)
+- Test: <code>backend/tests/unit/test_asr_runtime.py</code> (add a class)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_asr_runtime.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestModelConstruction</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;FasterWhisperModel must pass num_workers/cpu_threads and key the cache by them.&quot;&quot;&quot;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_fake_whisper</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;A WhisperModel stand-in that records constructor kwargs.&quot;&quot;&quot;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="n">calls</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="k">class</span><span class="w"> </span><span class="nc">FakeWhisperModel</span><span class="p">:</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>            <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>                <span class="n">calls</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;model_name&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">})</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="k">return</span> <span class="n">FakeWhisperModel</span><span class="p">,</span> <span class="n">calls</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_cpu_model_gets_num_workers_and_cpu_threads</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">app.matcher.asr_models</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">m</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>        <span class="n">m</span><span class="o">.</span><span class="n">_model_cache</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>        <span class="n">Fake</span><span class="p">,</span> <span class="n">calls</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fake_whisper</span><span class="p">()</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;faster_whisper.WhisperModel&quot;</span><span class="p">,</span> <span class="n">Fake</span><span class="p">),</span> <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>            <span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">8</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>        <span class="p">):</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>            <span class="n">model</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">FasterWhisperModel</span><span class="p">(</span><span class="s2">&quot;small&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>            <span class="n">model</span><span class="o">.</span><span class="n">load</span><span class="p">()</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>        <span class="k">assert</span> <span class="n">calls</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;num_workers&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">4</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>        <span class="k">assert</span> <span class="n">calls</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;cpu_threads&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span>  <span class="c1"># 8 // 4</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_cache_key_varies_by_requested_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>        <span class="kn">import</span><span class="w"> </span><span class="nn">app.matcher.asr_models</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">m</span>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>        <span class="n">m</span><span class="o">.</span><span class="n">_model_cache</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>        <span class="n">Fake</span><span class="p">,</span> <span class="n">calls</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fake_whisper</span><span class="p">()</span>
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;faster_whisper.WhisperModel&quot;</span><span class="p">,</span> <span class="n">Fake</span><span class="p">),</span> <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>            <span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">8</span>
+<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>        <span class="p">):</span>
+<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>            <span class="n">m</span><span class="o">.</span><span class="n">get_cached_model</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;whisper&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;small&quot;</span><span class="p">,</span> <span class="s2">&quot;device&quot;</span><span class="p">:</span> <span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="s2">&quot;requested_workers&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">})</span>
+<a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a>            <span class="n">m</span><span class="o">.</span><span class="n">get_cached_model</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;whisper&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;small&quot;</span><span class="p">,</span> <span class="s2">&quot;device&quot;</span><span class="p">:</span> <span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="s2">&quot;requested_workers&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">})</span>
+<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>        <span class="c1"># Two distinct worker counts -&gt; two distinct constructions, not a stale reuse.</span>
+<a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a>        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">calls</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_asr_runtime.py::TestModelConstruction -v</code>
+Expected: FAIL — <code>TypeError: __init__() got an unexpected keyword argument 'requested_workers'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement — <code>FasterWhisperModel.__init__</code></strong></li>
+</ul>
+<p>Replace the existing <code>__init__</code> (lines 123-138) with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;small&quot;</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">requested_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="p">):</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="sd">        Initialize Faster Whisper model.</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="sd">        Args:</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="sd">            model_name: Whisper model size (tiny, base, small, medium, large-v3)</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="sd">            device: Device to run on (&#39;cpu&#39;, &#39;cuda&#39;, or None for auto-detect)</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="sd">            requested_workers: Desired parallel ASR workers; resolve_asr_runtime</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="sd">                clamps this to hardware at load time.</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        <span class="k">if</span> <span class="n">model_name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;openai/whisper-&quot;</span><span class="p">):</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>            <span class="n">model_name</span> <span class="o">=</span> <span class="n">model_name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;openai/whisper-&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">requested_workers</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">requested_workers</span> <span class="ow">or</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>        <span class="c1"># Ensure NVIDIA libraries are in PATH for Windows CUDA support</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>        <span class="k">if</span> <span class="n">device</span> <span class="o">==</span> <span class="s2">&quot;cuda&quot;</span> <span class="ow">or</span> <span class="p">(</span><span class="n">device</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">ctranslate2</span><span class="o">.</span><span class="n">get_cuda_device_count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>            <span class="n">_ensure_nvidia_libraries</span><span class="p">()</span>
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Implement — <code>load()</code> cache key + WhisperModel kwargs</strong></li>
+</ul>
+<p>In <code>load()</code>, replace the cache_key line (154):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>        <span class="n">cache_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;faster_whisper_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="si">}</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>        <span class="n">runtime</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">requested_workers</span><span class="p">)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>        <span class="n">cache_key</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>            <span class="sa">f</span><span class="s2">&quot;faster_whisper_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>            <span class="sa">f</span><span class="s2">&quot;_w</span><span class="si">{</span><span class="n">runtime</span><span class="o">.</span><span class="n">workers</span><span class="si">}</span><span class="s2">_t</span><span class="si">{</span><span class="n">runtime</span><span class="o">.</span><span class="n">cpu_threads</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>        <span class="p">)</span>
+</code></pre></div>
+<p>Replace the primary <code>WhisperModel(...)</code> construction (lines 172-177):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">WhisperModel</span><span class="p">(</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>                    <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>                    <span class="n">compute_type</span><span class="o">=</span><span class="n">compute_type</span><span class="p">,</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>                    <span class="n">download_root</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># Use default cache location</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>                <span class="p">)</span>
+</code></pre></div>
+<p>with (adds num_workers always; cpu_threads only when applicable):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>                <span class="n">_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>                    <span class="s2">&quot;device&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>                    <span class="s2">&quot;compute_type&quot;</span><span class="p">:</span> <span class="n">compute_type</span><span class="p">,</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>                    <span class="s2">&quot;download_root&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># Use default cache location</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>                    <span class="s2">&quot;num_workers&quot;</span><span class="p">:</span> <span class="n">runtime</span><span class="o">.</span><span class="n">workers</span><span class="p">,</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>                <span class="p">}</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>                <span class="k">if</span> <span class="n">runtime</span><span class="o">.</span><span class="n">cpu_threads</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>                    <span class="n">_kwargs</span><span class="p">[</span><span class="s2">&quot;cpu_threads&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">runtime</span><span class="o">.</span><span class="n">cpu_threads</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">WhisperModel</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span> <span class="o">**</span><span class="n">_kwargs</span><span class="p">)</span>
+</code></pre></div>
+<p>Replace the CUDA-to-CPU fallback construction (lines 200-207) so the fallback re-resolves for CPU:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">device</span> <span class="o">=</span> <span class="s2">&quot;cpu&quot;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>                    <span class="n">compute_type</span> <span class="o">=</span> <span class="s2">&quot;int8&quot;</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>                    <span class="n">cpu_runtime</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">requested_workers</span><span class="p">)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">WhisperModel</span><span class="p">(</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>                        <span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>                        <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>                        <span class="n">compute_type</span><span class="o">=</span><span class="n">compute_type</span><span class="p">,</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>                        <span class="n">download_root</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>                        <span class="n">num_workers</span><span class="o">=</span><span class="n">cpu_runtime</span><span class="o">.</span><span class="n">workers</span><span class="p">,</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>                        <span class="n">cpu_threads</span><span class="o">=</span><span class="n">cpu_runtime</span><span class="o">.</span><span class="n">cpu_threads</span><span class="p">,</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>                    <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 5: Implement — <code>create_asr_model</code> forwards <code>requested_workers</code></strong></li>
+</ul>
+<p>In <code>create_asr_model</code>, after <code>device = model_config.get("device")</code> (line 376) add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>    <span class="n">requested_workers</span> <span class="o">=</span> <span class="n">model_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;requested_workers&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+<p>and update both <code>FasterWhisperModel(...)</code> calls (lines 384 and 391) to pass it:</p>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>        <span class="k">return</span> <span class="n">FasterWhisperModel</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="n">requested_workers</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>        <span class="k">return</span> <span class="n">FasterWhisperModel</span><span class="p">(</span><span class="s2">&quot;small&quot;</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="n">requested_workers</span><span class="p">)</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 6: Implement — <code>get_cached_model</code> cache key</strong></li>
+</ul>
+<p>In <code>get_cached_model</code>, replace the cache_key line (409):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>    <span class="n">cache_key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;type&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">model_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">model_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;device&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;auto&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>    <span class="n">cache_key</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">model_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;type&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">model_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>        <span class="sa">f</span><span class="s2">&quot;_</span><span class="si">{</span><span class="n">model_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;device&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;auto&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">_w</span><span class="si">{</span><span class="n">model_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;requested_workers&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 7: Run the tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_asr_runtime.py -v</code>
+Expected: PASS (all tests, including <code>TestModelConstruction</code>).</p>
+<ul>
+<li>[ ] <strong>Step 8: Lint and commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>app/matcher/asr_models.py<span class="w"> </span>tests/unit/test_asr_runtime.py
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/matcher/asr_models.py<span class="w"> </span>backend/tests/unit/test_asr_runtime.py
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(asr): give the shared Whisper model num_workers/cpu_threads&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-3-episodematcher-carries-requested_workers-into-model-config">Task 3: <code>EpisodeMatcher</code> carries <code>requested_workers</code> into model config</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/episode_identification.py</code> — <code>EpisodeMatcher.__init__</code> (820-844), <code>transcribe_full</code> model_config (1143), <code>identify_episode</code> model_config (1361-1365)
+- Test: <code>backend/app/matcher/test_episode_identification.py</code> (add a test alongside the existing <code>TestEpisodeMatcherConfiguration</code>)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Append to <code>backend/app/matcher/test_episode_identification.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestEpisodeMatcherWorkers</span><span class="p">:</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_model_config_includes_requested_workers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.episode_identification</span><span class="w"> </span><span class="kn">import</span> <span class="n">EpisodeMatcher</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>        <span class="n">matcher</span> <span class="o">=</span> <span class="n">EpisodeMatcher</span><span class="p">(</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>            <span class="n">cache_dir</span><span class="o">=</span><span class="n">Path</span><span class="o">.</span><span class="n">home</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;.engram&quot;</span> <span class="o">/</span> <span class="s2">&quot;cache&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>            <span class="n">show_name</span><span class="o">=</span><span class="s2">&quot;Test Show&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>            <span class="n">requested_workers</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>        <span class="p">)</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>        <span class="n">cfg</span> <span class="o">=</span> <span class="n">matcher</span><span class="o">.</span><span class="n">_model_config</span><span class="p">()</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>        <span class="k">assert</span> <span class="n">cfg</span><span class="p">[</span><span class="s2">&quot;requested_workers&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">5</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>        <span class="k">assert</span> <span class="n">cfg</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;whisper&quot;</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>        <span class="k">assert</span> <span class="n">cfg</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">matcher</span><span class="o">.</span><span class="n">model_name</span>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_requested_workers_defaults_to_one</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.episode_identification</span><span class="w"> </span><span class="kn">import</span> <span class="n">EpisodeMatcher</span>
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>
+<a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a>        <span class="n">matcher</span> <span class="o">=</span> <span class="n">EpisodeMatcher</span><span class="p">(</span>
+<a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a>            <span class="n">cache_dir</span><span class="o">=</span><span class="n">Path</span><span class="o">.</span><span class="n">home</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;.engram&quot;</span> <span class="o">/</span> <span class="s2">&quot;cache&quot;</span><span class="p">,</span> <span class="n">show_name</span><span class="o">=</span><span class="s2">&quot;Test Show&quot;</span>
+<a id="__codelineno-17-24" name="__codelineno-17-24" href="#__codelineno-17-24"></a>        <span class="p">)</span>
+<a id="__codelineno-17-25" name="__codelineno-17-25" href="#__codelineno-17-25"></a>        <span class="k">assert</span> <span class="n">matcher</span><span class="o">.</span><span class="n">_model_config</span><span class="p">()[</span><span class="s2">&quot;requested_workers&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest app/matcher/test_episode_identification.py::TestEpisodeMatcherWorkers -v</code>
+Expected: FAIL — <code>TypeError: __init__() got an unexpected keyword argument 'requested_workers'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement — add the param and a shared <code>_model_config()</code> helper</strong></li>
+</ul>
+<p>In <code>EpisodeMatcher.__init__</code> (820-832), add the parameter after <code>model_name="small",</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>        <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;small&quot;</span><span class="p">,</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>        <span class="n">requested_workers</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>        <span class="n">expected_tmdb_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    <span class="p">):</span>
+</code></pre></div>
+<p>and store it alongside <code>self.model_name = model_name</code> (line 841):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">requested_workers</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">requested_workers</span> <span class="ow">or</span> <span class="mi">1</span><span class="p">))</span>
+</code></pre></div>
+<p>Add this method to <code>EpisodeMatcher</code> (place it just above <code>transcribe_full</code>, near line 1127):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">_model_config</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Single source for the ASR model_config dict (keeps both call sites DRY).&quot;&quot;&quot;</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>        <span class="k">return</span> <span class="p">{</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;whisper&quot;</span><span class="p">,</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>            <span class="s2">&quot;device&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>            <span class="s2">&quot;requested_workers&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">requested_workers</span><span class="p">,</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>        <span class="p">}</span>
+</code></pre></div>
+<p>Replace the inline dict in <code>transcribe_full</code> (line 1143):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>        <span class="n">model_config</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;whisper&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span> <span class="s2">&quot;device&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">}</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>        <span class="n">model_config</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_config</span><span class="p">()</span>
+</code></pre></div>
+<p>Replace the inline dict in <code>identify_episode</code> (lines 1361-1365):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>            <span class="n">model_config</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;whisper&quot;</span><span class="p">,</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>                <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>                <span class="s2">&quot;device&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>            <span class="p">}</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>            <span class="n">model_config</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_config</span><span class="p">()</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the test to verify it passes</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest app/matcher/test_episode_identification.py::TestEpisodeMatcherWorkers -v</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Run the existing matcher config tests (no regressions)</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest app/matcher/test_episode_identification.py -v</code>
+Expected: PASS (existing <code>TestEpisodeMatcherConfiguration</code> still green).</p>
+<ul>
+<li>[ ] <strong>Step 6: Lint and commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>app/matcher/episode_identification.py<span class="w"> </span>app/matcher/test_episode_identification.py
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/matcher/episode_identification.py<span class="w"> </span>backend/app/matcher/test_episode_identification.py
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(asr): thread requested_workers through EpisodeMatcher model_config&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-4-curator-passes-configmax_concurrent_matches-into-the-matcher">Task 4: Curator passes <code>config.max_concurrent_matches</code> into the matcher</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/curator.py</code> — <code>_ensure_initialized</code> <code>EpisodeMatcher(...)</code> construction (102-107)
+- Test: <code>backend/tests/unit/test_curator_workers.py</code> (create)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Create <code>backend/tests/unit/test_curator_workers.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="sd">&quot;&quot;&quot;The curator forwards config.max_concurrent_matches as the matcher&#39;s requested_workers.&quot;&quot;&quot;</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">MagicMock</span><span class="p">,</span> <span class="n">patch</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_ensure_initialized_passes_concurrency_as_workers</span><span class="p">():</span>
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.core.curator</span><span class="w"> </span><span class="kn">import</span> <span class="n">EpisodeCurator</span>
+<a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a>
+<a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a>    <span class="n">fake_config</span> <span class="o">=</span> <span class="n">MagicMock</span><span class="p">()</span>
+<a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a>    <span class="n">fake_config</span><span class="o">.</span><span class="n">subtitles_cache_path</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-26-11" name="__codelineno-26-11" href="#__codelineno-26-11"></a>    <span class="n">fake_config</span><span class="o">.</span><span class="n">max_concurrent_matches</span> <span class="o">=</span> <span class="mi">7</span>
+<a id="__codelineno-26-12" name="__codelineno-26-12" href="#__codelineno-26-12"></a>
+<a id="__codelineno-26-13" name="__codelineno-26-13" href="#__codelineno-26-13"></a>    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.episode_identification.EpisodeMatcher&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">MockMatcher</span><span class="p">,</span> <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-26-14" name="__codelineno-26-14" href="#__codelineno-26-14"></a>        <span class="s2">&quot;app.services.config_service.get_config_sync&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="n">fake_config</span>
+<a id="__codelineno-26-15" name="__codelineno-26-15" href="#__codelineno-26-15"></a>    <span class="p">),</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.tmdb_client.fetch_show_id&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span> <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-26-16" name="__codelineno-26-16" href="#__codelineno-26-16"></a>        <span class="s2">&quot;app.matcher.tmdb_client.fetch_show_details&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">None</span>
+<a id="__codelineno-26-17" name="__codelineno-26-17" href="#__codelineno-26-17"></a>    <span class="p">):</span>
+<a id="__codelineno-26-18" name="__codelineno-26-18" href="#__codelineno-26-18"></a>        <span class="n">curator</span> <span class="o">=</span> <span class="n">EpisodeCurator</span><span class="p">()</span>
+<a id="__codelineno-26-19" name="__codelineno-26-19" href="#__codelineno-26-19"></a>        <span class="n">curator</span><span class="o">.</span><span class="n">_ensure_initialized</span><span class="p">(</span><span class="s2">&quot;Test Show&quot;</span><span class="p">)</span>
+<a id="__codelineno-26-20" name="__codelineno-26-20" href="#__codelineno-26-20"></a>
+<a id="__codelineno-26-21" name="__codelineno-26-21" href="#__codelineno-26-21"></a>    <span class="k">assert</span> <span class="n">MockMatcher</span><span class="o">.</span><span class="n">call_args</span><span class="o">.</span><span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;requested_workers&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">7</span>
+</code></pre></div>
+<blockquote>
+<p>Note: <code>EpisodeCurator</code> is defined at <code>backend/app/core/curator.py:30</code> (module singleton <code>curator</code> at line 737). Instantiating a fresh <code>EpisodeCurator()</code> in the test is fine.</p>
+</blockquote>
+<ul>
+<li>[ ] <strong>Step 2: Run the test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_curator_workers.py -v</code>
+Expected: FAIL — <code>KeyError: 'requested_workers'</code> (not passed yet).</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement</strong></li>
+</ul>
+<p>In <code>_ensure_initialized</code>, update the <code>EpisodeMatcher(...)</code> construction (lines 102-107) to pass the requested workers (the <code>config</code> local is already populated at line 93):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_matcher</span> <span class="o">=</span> <span class="n">EpisodeMatcher</span><span class="p">(</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>                <span class="n">cache_dir</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_cache_dir</span><span class="p">,</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>                <span class="n">show_name</span><span class="o">=</span><span class="n">canonical_name</span><span class="p">,</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>                <span class="n">min_confidence</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">LOW_CONFIDENCE_THRESHOLD</span><span class="p">,</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>                <span class="n">requested_workers</span><span class="o">=</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">max_concurrent_matches</span> <span class="k">if</span> <span class="n">config</span> <span class="k">else</span> <span class="mi">1</span><span class="p">),</span>
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>                <span class="n">expected_tmdb_id</span><span class="o">=</span><span class="n">tmdb_id</span><span class="p">,</span>
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>            <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the test to verify it passes</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_curator_workers.py -v</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Lint and commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>app/core/curator.py<span class="w"> </span>tests/unit/test_curator_workers.py
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/core/curator.py<span class="w"> </span>tests/unit/test_curator_workers.py
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(asr): forward max_concurrent_matches as matcher requested_workers&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-5-size-the-match-semaphore-from-real-worker-capacity">Task 5: Size the match semaphore from real worker capacity</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/job_manager.py</code> — <code>start()</code> semaphore init (174-181) and the startup log line (207)
+- Test: <code>backend/tests/unit/test_semaphore_sizing.py</code> (create)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Create <code>backend/tests/unit/test_semaphore_sizing.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="sd">&quot;&quot;&quot;The match semaphore is sized to resolved ASR workers, not the raw config value.&quot;&quot;&quot;</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">patch</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.asr_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_asr_runtime</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.services.matching_coordinator</span><span class="w"> </span><span class="kn">import</span> <span class="n">MatchingCoordinator</span>
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a>
+<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a>
+<a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_semaphore_value_equals_resolved_workers_cpu</span><span class="p">():</span>
+<a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a>    <span class="c1"># 16 cores, requested 4 -&gt; 4 workers -&gt; 4 admission slots.</span>
+<a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a>    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">16</span><span class="p">):</span>
+<a id="__codelineno-29-12" name="__codelineno-29-12" href="#__codelineno-29-12"></a>        <span class="n">runtime</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<a id="__codelineno-29-13" name="__codelineno-29-13" href="#__codelineno-29-13"></a>    <span class="n">coord</span> <span class="o">=</span> <span class="n">MatchingCoordinator</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="n">MatchingCoordinator</span><span class="p">)</span>  <span class="c1"># no full __init__ needed</span>
+<a id="__codelineno-29-14" name="__codelineno-29-14" href="#__codelineno-29-14"></a>    <span class="n">coord</span><span class="o">.</span><span class="n">_match_semaphore</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-29-15" name="__codelineno-29-15" href="#__codelineno-29-15"></a>    <span class="n">coord</span><span class="o">.</span><span class="n">init_semaphore</span><span class="p">(</span><span class="n">runtime</span><span class="o">.</span><span class="n">workers</span><span class="p">)</span>
+<a id="__codelineno-29-16" name="__codelineno-29-16" href="#__codelineno-29-16"></a>    <span class="k">assert</span> <span class="n">coord</span><span class="o">.</span><span class="n">_match_semaphore</span><span class="o">.</span><span class="n">_value</span> <span class="o">==</span> <span class="mi">4</span>
+<a id="__codelineno-29-17" name="__codelineno-29-17" href="#__codelineno-29-17"></a>
+<a id="__codelineno-29-18" name="__codelineno-29-18" href="#__codelineno-29-18"></a>
+<a id="__codelineno-29-19" name="__codelineno-29-19" href="#__codelineno-29-19"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_semaphore_clamped_when_request_exceeds_cores</span><span class="p">():</span>
+<a id="__codelineno-29-20" name="__codelineno-29-20" href="#__codelineno-29-20"></a>    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">8</span><span class="p">):</span>
+<a id="__codelineno-29-21" name="__codelineno-29-21" href="#__codelineno-29-21"></a>        <span class="n">runtime</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">requested_workers</span><span class="o">=</span><span class="mi">32</span><span class="p">)</span>
+<a id="__codelineno-29-22" name="__codelineno-29-22" href="#__codelineno-29-22"></a>    <span class="n">coord</span> <span class="o">=</span> <span class="n">MatchingCoordinator</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="n">MatchingCoordinator</span><span class="p">)</span>
+<a id="__codelineno-29-23" name="__codelineno-29-23" href="#__codelineno-29-23"></a>    <span class="n">coord</span><span class="o">.</span><span class="n">_match_semaphore</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-29-24" name="__codelineno-29-24" href="#__codelineno-29-24"></a>    <span class="n">coord</span><span class="o">.</span><span class="n">init_semaphore</span><span class="p">(</span><span class="n">runtime</span><span class="o">.</span><span class="n">workers</span><span class="p">)</span>
+<a id="__codelineno-29-25" name="__codelineno-29-25" href="#__codelineno-29-25"></a>    <span class="k">assert</span> <span class="n">coord</span><span class="o">.</span><span class="n">_match_semaphore</span><span class="o">.</span><span class="n">_value</span> <span class="o">==</span> <span class="mi">8</span>  <span class="c1"># clamped to cores</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the test to verify it fails or passes</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_semaphore_sizing.py -v</code>
+Expected: PASS for both (this asserts the helper→semaphore contract; <code>init_semaphore</code> already exists). If <code>MatchingCoordinator.__new__</code> cannot set <code>_match_semaphore</code>, the test will error — in that case construct it normally and call <code>init_semaphore</code>. This test locks the contract Step 3 wires into <code>JobManager</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement the JobManager wiring</strong></li>
+</ul>
+<p>In <code>backend/app/services/job_manager.py</code> <code>start()</code>, replace lines 174-181:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>        <span class="c1"># Initialize matching concurrency limiter</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>        <span class="n">concurrency</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">max_concurrent_matches</span><span class="p">)</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>        <span class="k">if</span> <span class="n">concurrency</span> <span class="o">!=</span> <span class="n">config</span><span class="o">.</span><span class="n">max_concurrent_matches</span><span class="p">:</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>                <span class="sa">f</span><span class="s2">&quot;Invalid max_concurrent_matches=</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">max_concurrent_matches</span><span class="si">}</span><span class="s2"> &quot;</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a>                <span class="sa">f</span><span class="s2">&quot;in config, using </span><span class="si">{</span><span class="n">concurrency</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a>            <span class="p">)</span>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_matching</span><span class="o">.</span><span class="n">init_semaphore</span><span class="p">(</span><span class="n">concurrency</span><span class="p">)</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>        <span class="c1"># Initialize matching concurrency limiter from REAL ASR capacity, so the</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>        <span class="c1"># dashboard&#39;s MATCHING count can&#39;t exceed what can actually be transcribing.</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.asr_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">detect_asr_device</span><span class="p">,</span> <span class="n">resolve_asr_runtime</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>        <span class="n">_asr_runtime</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="n">detect_asr_device</span><span class="p">(),</span> <span class="n">config</span><span class="o">.</span><span class="n">max_concurrent_matches</span><span class="p">)</span>
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_matching</span><span class="o">.</span><span class="n">init_semaphore</span><span class="p">(</span><span class="n">_asr_runtime</span><span class="o">.</span><span class="n">workers</span><span class="p">)</span>
+</code></pre></div>
+<p>Replace the startup log line (207):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Job manager started (max_concurrent_matches=</span><span class="si">{</span><span class="n">concurrency</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>            <span class="sa">f</span><span class="s2">&quot;Job manager started (asr_device=</span><span class="si">{</span><span class="n">_asr_runtime</span><span class="o">.</span><span class="n">device</span><span class="si">}</span><span class="s2">, &quot;</span>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>            <span class="sa">f</span><span class="s2">&quot;asr_workers=</span><span class="si">{</span><span class="n">_asr_runtime</span><span class="o">.</span><span class="n">workers</span><span class="si">}</span><span class="s2">, cpu_threads=</span><span class="si">{</span><span class="n">_asr_runtime</span><span class="o">.</span><span class="n">cpu_threads</span><span class="si">}</span><span class="s2">, &quot;</span>
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>            <span class="sa">f</span><span class="s2">&quot;requested=</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">max_concurrent_matches</span><span class="si">}</span><span class="s2">)&quot;</span>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>        <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the test + existing job_manager unit tests</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_semaphore_sizing.py tests/unit/test_job_manager.py tests/unit/test_stuck_job_recovery.py -v</code>
+Expected: PASS (the existing stuck-job/semaphore tests call <code>init_semaphore</code> directly and are unaffected).</p>
+<ul>
+<li>[ ] <strong>Step 5: Lint and commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>app/services/job_manager.py<span class="w"> </span>tests/unit/test_semaphore_sizing.py
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/services/job_manager.py<span class="w"> </span>tests/unit/test_semaphore_sizing.py
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(matching): size match semaphore from real ASR worker capacity&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-6-get-apiasr-status-endpoint">Task 6: <code>GET /api/asr-status</code> endpoint</h2>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/api/routes.py</code> — add a new route (place it near the other read-only status routes; the file uses <code>router = APIRouter(prefix="/api")</code> at line 40)
+- Test: <code>backend/tests/unit/test_api_routes.py</code> (add a test)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_api_routes.py</code> (this file already constructs an <code>AsyncClient</code> against the app — mirror its existing client fixture/usage):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestAsrStatusEndpoint</span><span class="p">:</span>
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_asr_status_reports_cpu_runtime</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">):</span>
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">patch</span>
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;app.matcher.asr_models.detect_asr_device&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">),</span> <span class="n">patch</span><span class="p">(</span>
+<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>            <span class="s2">&quot;app.matcher.asr_models.psutil.cpu_count&quot;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="mi">8</span>
+<a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a>        <span class="p">):</span>
+<a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a>            <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/api/asr-status&quot;</span><span class="p">)</span>
+<a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a>        <span class="k">assert</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+<a id="__codelineno-35-10" name="__codelineno-35-10" href="#__codelineno-35-10"></a>        <span class="n">body</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+<a id="__codelineno-35-11" name="__codelineno-35-11" href="#__codelineno-35-11"></a>        <span class="k">assert</span> <span class="n">body</span><span class="p">[</span><span class="s2">&quot;device&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;cpu&quot;</span>
+<a id="__codelineno-35-12" name="__codelineno-35-12" href="#__codelineno-35-12"></a>        <span class="k">assert</span> <span class="n">body</span><span class="p">[</span><span class="s2">&quot;compute_type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;int8&quot;</span>
+<a id="__codelineno-35-13" name="__codelineno-35-13" href="#__codelineno-35-13"></a>        <span class="k">assert</span> <span class="n">body</span><span class="p">[</span><span class="s2">&quot;workers&quot;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="mi">1</span>
+<a id="__codelineno-35-14" name="__codelineno-35-14" href="#__codelineno-35-14"></a>        <span class="k">assert</span> <span class="s2">&quot;max_concurrent_matches&quot;</span> <span class="ow">in</span> <span class="n">body</span>
+<a id="__codelineno-35-15" name="__codelineno-35-15" href="#__codelineno-35-15"></a>        <span class="k">assert</span> <span class="s2">&quot;model&quot;</span> <span class="ow">in</span> <span class="n">body</span>
+</code></pre></div>
+<blockquote>
+<p>Note: use whatever <code>client</code> fixture <code>test_api_routes.py</code> already defines (the file at lines 34/212 sets up config and an async client). If the module isn't <code>asyncio</code>-marked globally, add <code>@pytest.mark.asyncio</code> to the test.</p>
+</blockquote>
+<ul>
+<li>[ ] <strong>Step 2: Run the test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_api_routes.py::TestAsrStatusEndpoint -v</code>
+Expected: FAIL — 404 (route not defined).</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement the endpoint</strong></li>
+</ul>
+<p>Add to <code>backend/app/api/routes.py</code> (anywhere among the route handlers; keep it self-contained). Alias the config getter to avoid colliding with the <code>get_config</code> route handler defined at line 1100:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/asr-status&quot;</span><span class="p">)</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_asr_status</span><span class="p">():</span>
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolved ASR backend for the dashboard badge (read-only, no secrets).&quot;&quot;&quot;</span>
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.asr_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">detect_asr_device</span><span class="p">,</span> <span class="n">resolve_asr_runtime</span>
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">app.services.config_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_config</span> <span class="k">as</span> <span class="n">_get_app_config</span>
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a>
+<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a>    <span class="n">config</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_get_app_config</span><span class="p">()</span>
+<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a>    <span class="n">runtime</span> <span class="o">=</span> <span class="n">resolve_asr_runtime</span><span class="p">(</span><span class="n">detect_asr_device</span><span class="p">(),</span> <span class="n">config</span><span class="o">.</span><span class="n">max_concurrent_matches</span><span class="p">)</span>
+<a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a>    <span class="k">return</span> <span class="p">{</span>
+<a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a>        <span class="s2">&quot;device&quot;</span><span class="p">:</span> <span class="n">runtime</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+<a id="__codelineno-36-11" name="__codelineno-36-11" href="#__codelineno-36-11"></a>        <span class="s2">&quot;compute_type&quot;</span><span class="p">:</span> <span class="n">runtime</span><span class="o">.</span><span class="n">compute_type</span><span class="p">,</span>
+<a id="__codelineno-36-12" name="__codelineno-36-12" href="#__codelineno-36-12"></a>        <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;small&quot;</span><span class="p">,</span>  <span class="c1"># current hardcoded matcher default (EpisodeMatcher.model_name)</span>
+<a id="__codelineno-36-13" name="__codelineno-36-13" href="#__codelineno-36-13"></a>        <span class="s2">&quot;workers&quot;</span><span class="p">:</span> <span class="n">runtime</span><span class="o">.</span><span class="n">workers</span><span class="p">,</span>
+<a id="__codelineno-36-14" name="__codelineno-36-14" href="#__codelineno-36-14"></a>        <span class="s2">&quot;cpu_threads&quot;</span><span class="p">:</span> <span class="n">runtime</span><span class="o">.</span><span class="n">cpu_threads</span><span class="p">,</span>
+<a id="__codelineno-36-15" name="__codelineno-36-15" href="#__codelineno-36-15"></a>        <span class="s2">&quot;max_concurrent_matches&quot;</span><span class="p">:</span> <span class="n">config</span><span class="o">.</span><span class="n">max_concurrent_matches</span><span class="p">,</span>
+<a id="__codelineno-36-16" name="__codelineno-36-16" href="#__codelineno-36-16"></a>    <span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the test to verify it passes</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/test_api_routes.py::TestAsrStatusEndpoint -v</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Lint and commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>app/api/routes.py<span class="w"> </span>tests/unit/test_api_routes.py
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/api/routes.py<span class="w"> </span>tests/unit/test_api_routes.py
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(api): add GET /api/asr-status for the dashboard ASR badge&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-7-frontend-asr-mode-badge">Task 7: Frontend ASR mode badge</h2>
+<p><strong>Files:</strong>
+- Create: <code>frontend/src/app/components/AsrStatusBadge.tsx</code>
+- Modify: <code>frontend/src/app/App.tsx</code> — mount the badge in the filter/view strip (just after <code>&lt;SvTopBar ... /&gt;</code>, around line 199)</p>
+<ul>
+<li>[ ] <strong>Step 1: Create the badge component</strong></li>
+</ul>
+<p>Create <code>frontend/src/app/components/AsrStatusBadge.tsx</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useEffect</span><span class="p">,</span><span class="w"> </span><span class="nx">useState</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;react&quot;</span><span class="p">;</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a><span class="kr">type</span><span class="w"> </span><span class="nx">AsrStatus</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a><span class="w">  </span><span class="nx">device</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a><span class="w">  </span><span class="nx">compute_type</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="__codelineno-38-6" name="__codelineno-38-6" href="#__codelineno-38-6"></a><span class="w">  </span><span class="nx">model</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span>
+<a id="__codelineno-38-7" name="__codelineno-38-7" href="#__codelineno-38-7"></a><span class="w">  </span><span class="nx">workers</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span>
+<a id="__codelineno-38-8" name="__codelineno-38-8" href="#__codelineno-38-8"></a><span class="w">  </span><span class="nx">cpu_threads</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+<a id="__codelineno-38-9" name="__codelineno-38-9" href="#__codelineno-38-9"></a><span class="w">  </span><span class="nx">max_concurrent_matches</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span>
+<a id="__codelineno-38-10" name="__codelineno-38-10" href="#__codelineno-38-10"></a><span class="p">};</span>
+<a id="__codelineno-38-11" name="__codelineno-38-11" href="#__codelineno-38-11"></a>
+<a id="__codelineno-38-12" name="__codelineno-38-12" href="#__codelineno-38-12"></a><span class="cm">/** Read-only chip showing the resolved ASR backend (device · compute · N workers). */</span>
+<a id="__codelineno-38-13" name="__codelineno-38-13" href="#__codelineno-38-13"></a><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">AsrStatusBadge</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-38-14" name="__codelineno-38-14" href="#__codelineno-38-14"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">status</span><span class="p">,</span><span class="w"> </span><span class="nx">setStatus</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">&lt;</span><span class="nt">AsrStatus</span><span class="w"> </span><span class="err">|</span><span class="w"> </span><span class="na">null</span><span class="p">&gt;(</span><span class="kc">null</span><span class="p">);</span>
+<a id="__codelineno-38-15" name="__codelineno-38-15" href="#__codelineno-38-15"></a>
+<a id="__codelineno-38-16" name="__codelineno-38-16" href="#__codelineno-38-16"></a><span class="w">  </span><span class="nx">useEffect</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-38-17" name="__codelineno-38-17" href="#__codelineno-38-17"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="nx">cancelled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span>
+<a id="__codelineno-38-18" name="__codelineno-38-18" href="#__codelineno-38-18"></a><span class="w">    </span><span class="nx">fetch</span><span class="p">(</span><span class="s2">&quot;/api/asr-status&quot;</span><span class="p">)</span>
+<a id="__codelineno-38-19" name="__codelineno-38-19" href="#__codelineno-38-19"></a><span class="w">      </span><span class="p">.</span><span class="nx">then</span><span class="p">((</span><span class="nx">r</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">ok</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">json</span><span class="p">()</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">))</span>
+<a id="__codelineno-38-20" name="__codelineno-38-20" href="#__codelineno-38-20"></a><span class="w">      </span><span class="p">.</span><span class="nx">then</span><span class="p">((</span><span class="nx">data</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-38-21" name="__codelineno-38-21" href="#__codelineno-38-21"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">cancelled</span><span class="p">)</span><span class="w"> </span><span class="nx">setStatus</span><span class="p">(</span><span class="nx">data</span><span class="p">);</span>
+<a id="__codelineno-38-22" name="__codelineno-38-22" href="#__codelineno-38-22"></a><span class="w">      </span><span class="p">})</span>
+<a id="__codelineno-38-23" name="__codelineno-38-23" href="#__codelineno-38-23"></a><span class="w">      </span><span class="p">.</span><span class="k">catch</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-38-24" name="__codelineno-38-24" href="#__codelineno-38-24"></a><span class="w">        </span><span class="cm">/* badge is best-effort; stay hidden on failure */</span>
+<a id="__codelineno-38-25" name="__codelineno-38-25" href="#__codelineno-38-25"></a><span class="w">      </span><span class="p">});</span>
+<a id="__codelineno-38-26" name="__codelineno-38-26" href="#__codelineno-38-26"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-38-27" name="__codelineno-38-27" href="#__codelineno-38-27"></a><span class="w">      </span><span class="nx">cancelled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">;</span>
+<a id="__codelineno-38-28" name="__codelineno-38-28" href="#__codelineno-38-28"></a><span class="w">    </span><span class="p">};</span>
+<a id="__codelineno-38-29" name="__codelineno-38-29" href="#__codelineno-38-29"></a><span class="w">  </span><span class="p">},</span><span class="w"> </span><span class="p">[]);</span>
+<a id="__codelineno-38-30" name="__codelineno-38-30" href="#__codelineno-38-30"></a>
+<a id="__codelineno-38-31" name="__codelineno-38-31" href="#__codelineno-38-31"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">status</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+<a id="__codelineno-38-32" name="__codelineno-38-32" href="#__codelineno-38-32"></a>
+<a id="__codelineno-38-33" name="__codelineno-38-33" href="#__codelineno-38-33"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">accent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">status</span><span class="p">.</span><span class="nx">device</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;cuda&quot;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s2">&quot;#22d3ee&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;#8893a8&quot;</span><span class="p">;</span>
+<a id="__codelineno-38-34" name="__codelineno-38-34" href="#__codelineno-38-34"></a><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">label</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`ASR: </span><span class="si">${</span><span class="nx">status</span><span class="p">.</span><span class="nx">device</span><span class="p">.</span><span class="nx">toUpperCase</span><span class="p">()</span><span class="si">}</span><span class="sb"> · </span><span class="si">${</span><span class="nx">status</span><span class="p">.</span><span class="nx">compute_type</span><span class="si">}</span><span class="sb"> · </span><span class="si">${</span><span class="nx">status</span><span class="p">.</span><span class="nx">workers</span><span class="si">}</span><span class="sb">w`</span><span class="p">;</span>
+<a id="__codelineno-38-35" name="__codelineno-38-35" href="#__codelineno-38-35"></a>
+<a id="__codelineno-38-36" name="__codelineno-38-36" href="#__codelineno-38-36"></a><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-38-37" name="__codelineno-38-37" href="#__codelineno-38-37"></a><span class="w">    </span><span class="p">&lt;</span><span class="nt">span</span>
+<a id="__codelineno-38-38" name="__codelineno-38-38" href="#__codelineno-38-38"></a><span class="w">      </span><span class="na">title</span><span class="o">=</span><span class="p">{</span><span class="sb">`Whisper &quot;</span><span class="si">${</span><span class="nx">status</span><span class="p">.</span><span class="nx">model</span><span class="si">}</span><span class="sb">&quot; · requested </span><span class="si">${</span><span class="nx">status</span><span class="p">.</span><span class="nx">max_concurrent_matches</span><span class="si">}${</span>
+<a id="__codelineno-38-39" name="__codelineno-38-39" href="#__codelineno-38-39"></a><span class="w">        </span><span class="nx">status</span><span class="p">.</span><span class="nx">cpu_threads</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="sb">` · </span><span class="si">${</span><span class="nx">status</span><span class="p">.</span><span class="nx">cpu_threads</span><span class="si">}</span><span class="sb"> threads/worker`</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
+<a id="__codelineno-38-40" name="__codelineno-38-40" href="#__codelineno-38-40"></a><span class="w">      </span><span class="si">}</span><span class="sb"> · restart to change`</span><span class="p">}</span>
+<a id="__codelineno-38-41" name="__codelineno-38-41" href="#__codelineno-38-41"></a><span class="w">      </span><span class="na">style</span><span class="o">=</span><span class="p">{{</span>
+<a id="__codelineno-38-42" name="__codelineno-38-42" href="#__codelineno-38-42"></a><span class="w">        </span><span class="nx">fontFamily</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;&#39;JetBrains Mono&#39;, monospace&quot;</span><span class="p">,</span>
+<a id="__codelineno-38-43" name="__codelineno-38-43" href="#__codelineno-38-43"></a><span class="w">        </span><span class="nx">fontSize</span><span class="o">:</span><span class="w"> </span><span class="kt">11</span><span class="p">,</span>
+<a id="__codelineno-38-44" name="__codelineno-38-44" href="#__codelineno-38-44"></a><span class="w">        </span><span class="nx">letterSpacing</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;0.08em&quot;</span><span class="p">,</span>
+<a id="__codelineno-38-45" name="__codelineno-38-45" href="#__codelineno-38-45"></a><span class="w">        </span><span class="nx">color</span><span class="o">:</span><span class="w"> </span><span class="kt">accent</span><span class="p">,</span>
+<a id="__codelineno-38-46" name="__codelineno-38-46" href="#__codelineno-38-46"></a><span class="w">        </span><span class="nx">border</span><span class="o">:</span><span class="w"> </span><span class="sb">`1px solid </span><span class="si">${</span><span class="nx">accent</span><span class="si">}</span><span class="sb">44`</span><span class="p">,</span>
+<a id="__codelineno-38-47" name="__codelineno-38-47" href="#__codelineno-38-47"></a><span class="w">        </span><span class="nx">background</span><span class="o">:</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">accent</span><span class="si">}</span><span class="sb">0a`</span><span class="p">,</span>
+<a id="__codelineno-38-48" name="__codelineno-38-48" href="#__codelineno-38-48"></a><span class="w">        </span><span class="nx">padding</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;2px 8px&quot;</span><span class="p">,</span>
+<a id="__codelineno-38-49" name="__codelineno-38-49" href="#__codelineno-38-49"></a><span class="w">        </span><span class="nx">whiteSpace</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;nowrap&quot;</span><span class="p">,</span>
+<a id="__codelineno-38-50" name="__codelineno-38-50" href="#__codelineno-38-50"></a><span class="w">      </span><span class="p">}}</span>
+<a id="__codelineno-38-51" name="__codelineno-38-51" href="#__codelineno-38-51"></a><span class="w">    </span><span class="p">&gt;</span>
+<a id="__codelineno-38-52" name="__codelineno-38-52" href="#__codelineno-38-52"></a><span class="w">      </span><span class="p">{</span><span class="nx">label</span><span class="p">}</span>
+<a id="__codelineno-38-53" name="__codelineno-38-53" href="#__codelineno-38-53"></a><span class="w">    </span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-38-54" name="__codelineno-38-54" href="#__codelineno-38-54"></a><span class="w">  </span><span class="p">);</span>
+<a id="__codelineno-38-55" name="__codelineno-38-55" href="#__codelineno-38-55"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Mount the badge in App.tsx</strong></li>
+</ul>
+<p>In <code>frontend/src/app/App.tsx</code>, add the import near the other component imports (top of file):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">AsrStatusBadge</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./components/AsrStatusBadge&quot;</span><span class="p">;</span>
+</code></pre></div>
+<p>Then render it inside the filter/view-mode strip. The strip begins around line 200 with <code>&lt;div style={{ padding: "10px 28px", ... display: "flex", alignItems: "center", ... }}&gt;</code>. Add the badge as the last child of that flex row, pushed to the right:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="w">        </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">style</span><span class="o">=</span><span class="p">{{</span><span class="w"> </span><span class="nx">marginLeft</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;auto&quot;</span><span class="w"> </span><span class="p">}}&gt;</span>
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a><span class="w">          </span><span class="p">&lt;</span><span class="nt">AsrStatusBadge</span><span class="w"> </span><span class="p">/&gt;</span>
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a><span class="w">        </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+</code></pre></div>
+<blockquote>
+<p>If the strip already has a right-aligned cluster (e.g. the grid/list view toggle), place <code>&lt;AsrStatusBadge /&gt;</code> immediately before that cluster instead of adding a second <code>marginLeft: auto</code>.</p>
+</blockquote>
+<ul>
+<li>[ ] <strong>Step 3: Build to verify it compiles</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; npm run build</code>
+Expected: TypeScript check + Vite build succeed (no type errors). If <code>node_modules</code> is missing in this worktree, run <code>npm install</code> first, then <code>git checkout package-lock.json</code> before committing (the committed lockfile is stale and <code>install</code> rewrites it).</p>
+<ul>
+<li>[ ] <strong>Step 4: Manual visual check (optional but recommended)</strong></li>
+</ul>
+<p>With a backend running (<code>DEBUG=true</code>) and <code>npm run dev</code>, confirm the chip reads e.g. <code>ASR: CUDA · float16 · 4w</code> (your GPU-from-source setup) or <code>ASR: CPU · int8 · Nw</code>.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>git<span class="w"> </span>add<span class="w"> </span>frontend/src/app/components/AsrStatusBadge.tsx<span class="w"> </span>frontend/src/app/App.tsx
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(ui): show resolved ASR backend as a dashboard badge&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-8-configwizard-honest-hint-input-bound">Task 8: ConfigWizard — honest hint + input bound</h2>
+<p><strong>Files:</strong>
+- Modify: <code>frontend/src/components/ConfigWizard.tsx</code> — the Max Concurrent Matches field (1239-1251)</p>
+<ul>
+<li>[ ] <strong>Step 1: Update the hint text and input bounds</strong></li>
+</ul>
+<p>Replace the input + hint block (lines 1240-1250) with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a><span class="w">                            </span><span class="p">&lt;</span><span class="nt">input</span>
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a><span class="w">                                </span><span class="na">id</span><span class="o">=</span><span class="s">&quot;maxConcurrentMatches&quot;</span>
+<a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a><span class="w">                                </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;number&quot;</span>
+<a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a><span class="w">                                </span><span class="na">min</span><span class="o">=</span><span class="p">{</span><span class="mf">1</span><span class="p">}</span>
+<a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a><span class="w">                                </span><span class="na">max</span><span class="o">=</span><span class="p">{</span><span class="mf">8</span><span class="p">}</span>
+<a id="__codelineno-42-6" name="__codelineno-42-6" href="#__codelineno-42-6"></a><span class="w">                                </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">config</span><span class="p">.</span><span class="nx">maxConcurrentMatches</span><span class="p">}</span>
+<a id="__codelineno-42-7" name="__codelineno-42-7" href="#__codelineno-42-7"></a><span class="w">                                </span><span class="na">onChange</span><span class="o">=</span><span class="p">{(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">handleInputChange</span><span class="p">(</span><span class="s1">&#39;maxConcurrentMatches&#39;</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="mf">8</span><span class="p">,</span><span class="w"> </span><span class="nb">parseInt</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="mf">1</span><span class="p">)))}</span>
+<a id="__codelineno-42-8" name="__codelineno-42-8" href="#__codelineno-42-8"></a><span class="w">                            </span><span class="p">/&gt;</span>
+<a id="__codelineno-42-9" name="__codelineno-42-9" href="#__codelineno-42-9"></a><span class="w">                            </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;form-hint&quot;</span><span class="p">&gt;</span>
+<a id="__codelineno-42-10" name="__codelineno-42-10" href="#__codelineno-42-10"></a><span class="w">                                </span><span class="nx">Requested</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">episodes</span><span class="w"> </span><span class="nx">transcribed</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="nx">parallel</span><span class="p">.</span><span class="w"> </span><span class="nx">Automatically</span>
+<a id="__codelineno-42-11" name="__codelineno-42-11" href="#__codelineno-42-11"></a><span class="w">                                </span><span class="nx">clamped</span><span class="w"> </span><span class="nx">to</span><span class="w"> </span><span class="nx">your</span><span class="w"> </span><span class="nx">hardware</span><span class="w"> </span><span class="p">(</span><span class="nx">CPU</span><span class="w"> </span><span class="nx">cores</span><span class="p">,</span><span class="w"> </span><span class="nx">or</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">GPU</span><span class="w"> </span><span class="nx">limit</span><span class="p">).</span><span class="w"> </span><span class="nx">Takes</span><span class="w"> </span><span class="nx">effect</span>
+<a id="__codelineno-42-12" name="__codelineno-42-12" href="#__codelineno-42-12"></a><span class="w">                                </span><span class="nx">after</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">backend</span><span class="w"> </span><span class="nx">restart</span><span class="p">.</span>
+<a id="__codelineno-42-13" name="__codelineno-42-13" href="#__codelineno-42-13"></a><span class="w">                            </span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Build to verify it compiles</strong></li>
+</ul>
+<p>Run: <code>cd frontend &amp;&amp; npm run build</code>
+Expected: success.</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>git<span class="w"> </span>add<span class="w"> </span>frontend/src/components/ConfigWizard.tsx
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix(ui): clarify Max Concurrent Matches semantics + restart note&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-9-full-backend-regression-final-verification">Task 9: Full backend regression + final verification</h2>
+<p><strong>Files:</strong> none (verification only)</p>
+<ul>
+<li>[ ] <strong>Step 1: Run the full backend test suite</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run pytest tests/unit/ app/matcher/test_episode_identification.py -v</code>
+Expected: PASS. Investigate any failure before proceeding (the known pre-existing <code>test_movie_ambiguous_rip_first_workflow</code> flake is unrelated to this change).</p>
+<ul>
+<li>[ ] <strong>Step 2: Lint the whole touched surface</strong></li>
+</ul>
+<p>Run: <code>cd backend &amp;&amp; uv run ruff check app/ tests/</code>
+Expected: no errors.</p>
+<ul>
+<li>[ ] <strong>Step 3: Manual end-to-end sanity (optional)</strong></li>
+</ul>
+<p>Start one backend (<code>DEBUG=true</code>), set <code>max_concurrent_matches</code> high, and confirm via logs (<code>Job manager started (asr_device=..., asr_workers=...)</code>) and <code>GET /api/asr-status</code> that the resolved worker count matches expectation, and that on a multi-track disc exactly <code>workers</code> tracks show <code>MATCHING</code> while the rest show <code>QUEUED</code>.</p>
+<hr />
+<h2 id="self-review-notes">Self-Review Notes</h2>
+<ul>
+<li><strong>Spec coverage:</strong> §1 sizing → Task 1; §2 model wiring + cache keys → Tasks 2-4; §3 semaphore honesty → Task 5; §5 visibility (<code>/api/asr-status</code> + badge) → Tasks 6-7; config hint/restart → Task 8. GPU bundling, model-size UI, VRAM auto-sizing, live-apply remain out of scope (spec non-goals).</li>
+<li><strong>Type consistency:</strong> <code>AsrRuntime(device, compute_type, workers, cpu_threads)</code> and <code>resolve_asr_runtime(device, requested_workers)</code> / <code>detect_asr_device()</code> are used with identical signatures across Tasks 1, 2, 5, 6. The <code>model_config</code> key is <code>requested_workers</code> everywhere (Tasks 2, 3). The endpoint is <code>/api/asr-status</code> in both Task 6 and Task 7.</li>
+<li><strong>Restart semantics:</strong> <code>num_workers</code> is fixed at model load; the plan does not attempt live re-init (a spec non-goal) and the ConfigWizard hint states this.
+```</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

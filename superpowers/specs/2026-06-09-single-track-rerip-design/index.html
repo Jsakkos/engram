@@ -1,0 +1,1683 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-06-09-single-track-rerip-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Single-Track Re-Rip After Clean & Reinsert (Feature C) — Design - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#single-track-re-rip-after-clean-reinsert-feature-c-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Single-Track Re-Rip After Clean &amp; Reinsert (Feature C) — Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Motivation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-guiding-principle-completion-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Guiding principle (completion semantics)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-trigger-marking-rip-failures-become-identifiable-non-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Trigger marking — rip failures become identifiable &amp; non-terminal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-reinsert-interception-the-heart-in-_create_job_for_disc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Reinsert interception (the heart) — in _create_job_for_disc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-re-rip-orchestration-rerip_titlesjob_id-title_ids-new-jobmanager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Re-rip orchestration — rerip_titles(job_id, title_ids) (new, JobManager)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-failure-retry-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Failure / retry handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Frontend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-error-handling-edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Error handling &amp; edge cases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-out-of-scope-follow-ups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Out of scope (follow-ups)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="single-track-re-rip-after-clean-reinsert-feature-c-design">Single-Track Re-Rip After Clean &amp; Reinsert (Feature C) — Design</h1>
+<p><strong>Status:</strong> Approved design (2026-06-09). Ready for implementation planning.</p>
+<p><strong>Depends on:</strong> PR #366 (truncated-rip fast-fail) and PR #369 (per-disc <code>content_hash</code> at
+insert + <code>_same_disc</code> dedup), both merged to <code>main</code>. This branch is rebased on top of #369.</p>
+<p><strong>Scope:</strong> Let a user recover a single damaged track without re-ripping the whole disc. A
+rip-level failure routes the track to review; cleaning and reinserting the <strong>same</strong> disc
+(verified by <code>content_hash</code>) auto re-rips just the failed track(s), re-matches, and re-checks
+job completion.</p>
+<hr />
+<h2 id="1-motivation">1. Motivation</h2>
+<p>When MakeMKV aborts a title mid-rip on an uncorrectable read error (a scratch/bad sector),
+PR #366 now recognizes the truncated-but-stable file within ~90 s and routes that title to
+<strong>review</strong> instead of wedging the job for hours. But the only recovery is to re-rip the
+<strong>entire disc</strong> as a fresh job. The damaged track is usually one of several; re-ripping all of
+them wastes time and drive wear.</p>
+<p>Feature C closes the loop: surface a clear "clean the disc and reinsert to re-rip this title"
+affordance, and on reinsert of the <strong>same physical disc</strong> (confirmed by the per-disc
+<code>content_hash</code> from PR #369) re-rip only the failed title index, overwrite the truncated
+staging file, re-match that one title, and re-evaluate completion.</p>
+<hr />
+<h2 id="2-guiding-principle-completion-semantics">2. Guiding principle (completion semantics)</h2>
+<p><strong>COMPLETED means every title succeeded.</strong> This single rule shapes the whole design:</p>
+<ul>
+<li>Any <strong>rip-level</strong> failure (truncated <em>or</em> stall/error) routes the title to
+  <code>TitleState.REVIEW</code>, <strong>not</strong> <code>TitleState.FAILED</code>. The job holds in <code>REVIEW_NEEDED</code>
+  ("a damaged title needs your attention") while the good titles still organize.</li>
+<li>A job reaches <code>COMPLETED</code> only once the damaged title is genuinely resolved: a re-rip
+  succeeds and it matches, <strong>or</strong> the user explicitly skips it (deliberate "give up on this
+  title" → the existing skip action, after which the job can complete).</li>
+<li>Because rip failures never land in a <strong>terminal</strong> job, Feature C <strong>never needs to reopen</strong>
+  <code>COMPLETED</code>/<code>FAILED</code> (which are terminal in <code>JobStateMachine.VALID_TRANSITIONS</code>). One clean
+  <code>REVIEW_NEEDED → RIPPING</code> path covers every re-rip.</li>
+</ul>
+<p>Behavior change this introduces: today a disc with 4 good titles + 1 rip-stalled title
+auto-completes (good titles organized, stalled one <code>FAILED</code>). After this change it holds in
+<code>REVIEW_NEEDED</code> until the user re-rips or skips the damaged title. This is more honest (the
+disc isn't fully done) but means a permanently-dead title needs an explicit skip to clear — so
+the review UI must always offer <strong>both</strong> "re-rip" and "skip".</p>
+<p>Scope guard: <strong>only rip-level failures</strong> (truncated/stall/error) are rerouted. Match-level
+outcomes and deliberate user skips are untouched.</p>
+<hr />
+<h2 id="3-trigger-marking-rip-failures-become-identifiable-non-terminal">3. Trigger marking — rip failures become identifiable &amp; non-terminal</h2>
+<p>A small <code>match_details</code> error-code namespace for <strong>rip-level</strong> failures, all routed to
+<code>TitleState.REVIEW</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Source today</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>incomplete_rip</code></td>
+<td>Truncated rip (#366) routes via <code>_handle_match_failure</code>, which mislabels it <code>error: "matching_task_failed"</code></td>
+<td>Route through a new shared helper that writes <code>{"error": "incomplete_rip", "message": …, "rerip_eligible": true}</code></td>
+</tr>
+<tr>
+<td><code>rip_stalled</code></td>
+<td>Two stall sites mark <code>FAILED</code> with <code>{"reason": …}</code>: <code>_on_title_error</code> (<code>job_manager.py:2130</code>) and the fallback block (<code>job_manager.py:1775</code>)</td>
+<td>Route to <code>REVIEW</code> with <code>{"error": "rip_stalled", "message": …, "rerip_eligible": true}</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Shared routing helper.</strong> Add a single helper (in <code>MatchingCoordinator</code>, alongside
+<code>_handle_match_failure</code>) that, given <code>(job_id, title_id, error_code, message)</code>, transitions an
+<strong>active or review</strong> title to <code>REVIEW</code>, writes the structured <code>match_details</code>, broadcasts the
+title update, and runs <code>check_job_completion</code>. The truncated branch of
+<code>_handle_file_wait_result</code> and both stall sites call it. This removes the current mislabeling
+of truncated rips as <code>matching_task_failed</code>.</p>
+<p><strong>Retry counter.</strong> New column <code>DiscTitle.rerip_attempts: int = 0</code> (default 0).
+- Frozen builds converge via <code>database.py</code> <code>_add_missing_columns</code> (ALTER TABLE ADD COLUMN);
+  add the matching Alembic migration for dev parity (frozen builds skip Alembic — the
+  reconciler is what reaches users).</p>
+<p><strong>Auto-re-rippable predicate.</strong> A title is eligible for <strong>auto</strong> re-rip when:
+<code>state == REVIEW</code> ∧ <code>match_details.error ∈ {incomplete_rip, rip_stalled}</code> ∧
+<code>rerip_attempts &lt; RERIP_MAX_ATTEMPTS</code> (module constant, <code>2</code>).</p>
+<hr />
+<h2 id="4-reinsert-interception-the-heart-in-_create_job_for_disc">4. Reinsert interception (the heart) — in <code>_create_job_for_disc</code></h2>
+<p>The drive sentinel delivers disc inserts to <code>JobManager._create_job_for_disc</code>
+(<code>job_manager.py:478</code>), which already computes <code>new_hash = await self._compute_disc_hash(...)</code>
+under the per-drive lock (PR #369). Feature C hooks <strong>immediately after</strong> the hash probe and
+<strong>before</strong> the dedup/blocking predicate:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>disc inserted → sentinel → _create_job_for_disc (per-drive lock)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  → new_hash = _compute_disc_hash(drive)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  → rerip_job = await _find_rerip_job(new_hash)            # NEW
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>      ├─ found → spawn rerip_titles(job_id, eligible_title_ids); return
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      └─ none  → existing _same_disc dedup + new-job creation (unchanged)
+</code></pre></div>
+<p><strong><code>_find_rerip_job(new_hash) -&gt; (job_id, [title_id]) | None</code></strong> (new): when <code>new_hash</code> is
+non-null, find a job in <code>REVIEW_NEEDED</code> with <code>content_hash == new_hash</code> that has ≥1
+auto-re-rippable title (§3). Return its id + eligible title ids. Hash match is the gate — a
+different disc (different hash, or null) never triggers a re-rip. Scoped to <code>REVIEW_NEEDED</code>
+so we never race a job that's still actively <code>MATCHING</code> other titles.</p>
+<p><strong>Why here, not a separate sentinel callback (chosen vs. alternative):</strong> the insert already
+arrives here with the hash computed under the dedup lock. A separate callback would duplicate
+the hash probe and race the same lock. Hooking in-place reuses both.</p>
+<p>The 15 s creation cooldown (<code>_last_job_created_at</code>) is irrelevant — a clean-and-reinsert is
+far longer than 15 s — but the interception returns before the cooldown/creation path anyway.</p>
+<hr />
+<h2 id="5-re-rip-orchestration-rerip_titlesjob_id-title_ids-new-jobmanager">5. Re-rip orchestration — <code>rerip_titles(job_id, title_ids)</code> (new, JobManager)</h2>
+<p>A focused operation (distinct from the full-disc rip flow) that reuses the existing
+rip→match→complete machinery:</p>
+<ol>
+<li>Transition <strong>job <code>REVIEW_NEEDED → RIPPING</code></strong> (valid transition; also makes any spurious
+   sentinel re-fire an unconditional <code>disc_required</code> block during the re-rip).</li>
+<li>For each eligible title (in <code>title_index</code> order):</li>
+<li><code>state REVIEW → RIPPING</code>; <code>rerip_attempts += 1</code>; broadcast title update.</li>
+<li><strong>Delete the stale staging file</strong> (<code>title.output_filename</code>, guarded against <code>OSError</code> /
+     missing) so MakeMKV writes a fresh file instead of a numbered duplicate.</li>
+<li><code>extractor.rip_titles(drive_id, staging_dir, title_indices=[…], title_complete_callback=…,
+   title_error_callback=…, stall_timeout=…, log_dir=…, job_id=job_id)</code>.</li>
+<li><strong><code>title_complete_callback</code> → <code>_on_title_ripped(job_id, rip_index, path, subset)</code></strong> — it
+     resolves the title from the ripped <strong>filename</strong> and re-spawns <code>match_single_file</code>, so it
+     works unchanged for a re-rip.</li>
+<li><strong><code>title_error_callback</code> → the §3 shared helper</strong> (reroute to <code>REVIEW</code> /
+     <code>rip_stalled</code>, attempts already incremented). It must map <code>cmd_idx</code> against the <strong>re-rip
+     subset in command order</strong>, not the job's full sorted title list (<code>_on_title_error</code>'s
+     <code>sorted_titles[cmd_idx-1]</code> is only correct when the subset <em>is</em> the command list).</li>
+<li>Completion is the existing path: <code>_on_title_ripped → match_single_file →
+   check_job_completion</code> → <code>COMPLETED</code> (now all-good) or back to <code>REVIEW_NEEDED</code> (re-rip
+   failed again, <code>rerip_attempts</code> higher).</li>
+<li>Eject the disc + <code>notify_ejected</code> when the re-rip finishes (mirrors the normal flow), so a
+   subsequent reinsert is detected.</li>
+</ol>
+<p>Run as a background task spawned from <code>_create_job_for_disc</code> (mirrors how identification is
+spawned), tracked in <code>_active_jobs</code>, with the job-log context wrapper.</p>
+<hr />
+<h2 id="6-failure-retry-handling">6. Failure / retry handling</h2>
+<ul>
+<li>Re-rip fails again → title back to <code>REVIEW</code> (<code>incomplete_rip</code>/<code>rip_stalled</code>),
+  <code>rerip_attempts</code> incremented. Once <code>rerip_attempts &gt;= RERIP_MAX_ATTEMPTS</code> the <strong>auto</strong>
+  trigger skips it (<code>_find_rerip_job</code> excludes it); the review UI message flips to "still
+  damaged after N tries — clean again, replace the disc, or skip this title."</li>
+<li><strong>Manual fallback</strong> — <code>POST /api/jobs/{job_id}/titles/{title_id}/rerip</code>: re-rip on demand
+  using the disc currently in the drive. Verifies the inserted disc's <code>content_hash</code> matches
+  the job's (rejects on mismatch or no disc, with a clear error). <strong>Bypasses the cap</strong> (the
+  user explicitly asked). Powers both the always-available review button and the post-cap
+  path. Internally calls the same <code>rerip_titles</code> core.</li>
+</ul>
+<hr />
+<h2 id="7-frontend">7. Frontend</h2>
+<ul>
+<li><strong>ReviewQueue</strong> (<code>frontend/src/components/ReviewQueue.tsx</code>): a damaged-track card variant
+  when <code>match_details.error ∈ {incomplete_rip, rip_stalled}</code> — distinct icon + copy:
+  "Clean the disc and reinsert to re-rip this title (automatic), or skip it." Shows the
+  attempt count and the cap-reached message. A manual <strong>"Re-rip this title"</strong> button calls the
+  §6 endpoint. Skip reuses the existing skip action so the track is never a dead end.</li>
+<li><strong>DiscCard</strong> (<code>frontend/src/app/components/DiscCard.tsx</code>): a damaged-track indicator so the
+  needs-attention state is visible on the dashboard, not only inside the review queue.</li>
+<li><strong>Live updates:</strong> re-rip progress flows through the existing <code>title_state_changed</code> /
+  <code>rip_progress</code> / <code>job_update</code> WebSocket events (job → <code>RIPPING</code>, title → <code>RIPPING</code>, then the
+  normal match events). No new WS message type required.</li>
+</ul>
+<hr />
+<h2 id="8-error-handling-edge-cases">8. Error handling &amp; edge cases</h2>
+<ul>
+<li><strong>Different disc</strong> (hash mismatch or null hash) → <code>_find_rerip_job</code> returns <code>None</code> → normal
+  dedup/new-job flow. A re-rip is never triggered for a disc we can't positively fingerprint.</li>
+<li><strong>Reinsert while the job is still <code>MATCHING</code></strong> other titles → not yet <code>REVIEW_NEEDED</code>, so no
+  interception; the existing <code>_same_disc</code> predicate blocks the duplicate. The user reinserts
+  again once the job settles to <code>REVIEW_NEEDED</code>. (Accepted: a one-time "reinsert again after it
+  settles" rather than queuing a re-rip against a busy drive.)</li>
+<li><strong>Cleared job</strong> (<code>cleared_at</code> set) with a <code>REVIEW</code> title → still re-rippable; a re-rip clears
+  <code>cleared_at</code> so the job reappears on the dashboard while it re-processes.</li>
+<li><strong>All titles unreadable</strong> → every title <code>REVIEW</code> → job <code>REVIEW_NEEDED</code> ("clean &amp; reinsert"),
+  not <code>FAILED</code> — a recoverable dead end rather than a terminal one.</li>
+<li><strong>Manual re-rip with the wrong disc in the drive</strong> → hash check fails → endpoint returns a
+  clear error; nothing rips.</li>
+</ul>
+<hr />
+<h2 id="9-testing">9. Testing</h2>
+<ul>
+<li><strong>Unit:</strong></li>
+<li>Trigger rerouting: truncated → <code>incomplete_rip</code> + <code>REVIEW</code>; both stall sites →
+    <code>rip_stalled</code> + <code>REVIEW</code>; structured <code>match_details</code>; <code>check_job_completion</code> invoked.</li>
+<li><code>rerip_attempts</code> increment + cap; the auto-re-rippable predicate truth table.</li>
+<li><code>_find_rerip_job</code>: hash match + eligible title ⇒ returns; hash mismatch / null ⇒ <code>None</code>;
+    job in <code>MATCHING</code> ⇒ <code>None</code>.</li>
+<li><code>rerip_titles</code> with a <strong>mocked extractor</strong>: stale file deleted; job/title transitions;
+    completion re-checked; re-fail increments attempts and returns to <code>REVIEW</code>.</li>
+<li>Completion-semantics change: a stalled title holds the job in <code>REVIEW_NEEDED</code> (regression
+    on the old auto-complete behavior — update affected stall/completion tests).</li>
+<li><strong>Integration:</strong> seed a job with a <code>REVIEW</code> <code>incomplete_rip</code> title directly in the DB and
+  exercise the manual <code>rerip</code> endpoint with a mocked extractor + mocked hash.</li>
+<li><strong>Note:</strong> <code>/api/simulate/insert-disc</code> bypasses <code>_create_job_for_disc</code> (it injects jobs
+  directly), so the reinsert interception is <strong>unit-tested with mocked hash/extractor</strong>
+  (consistent with the #369 dedup tests), not via the E2E simulation harness.</li>
+<li><strong>Frontend E2E:</strong> add a DEBUG-only simulation helper to seed an <code>incomplete_rip</code> review
+  title and drive a re-rip completion, then assert the damaged-track affordance + the post-rip
+  matched state in the UI.</li>
+<li><strong>Lint/format:</strong> <code>uv run ruff check</code> / <code>ruff format</code> clean; backend <code>uv run pytest</code> green
+  (modulo the known <code>test_movie_ambiguous_rip_first_workflow</code> flake); frontend <code>npm run build</code></li>
+<li><code>npm run lint</code>.</li>
+</ul>
+<hr />
+<h2 id="10-out-of-scope-follow-ups">10. Out of scope (follow-ups)</h2>
+<ul>
+<li>Reopening genuinely-terminal <code>COMPLETED</code>/<code>FAILED</code> jobs — the §2 completion rule means rip
+  failures never reach a terminal job, so this is unnecessary.</li>
+<li>Promoting <code>RERIP_MAX_ATTEMPTS</code> / messages to <code>AppConfig</code> (module constants for now — YAGNI;
+  avoids the config three-way-sync surface).</li>
+<li>DiscDB ungating (<code>FEATURES.DISCDB</code> / <code>DISCDB_ENABLED</code>) — independent decision.</li>
+<li>Part B of the truncated-rip plan (real ripped-file size in the UI) — separate plan.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
