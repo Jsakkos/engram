@@ -90,7 +90,7 @@
         "globals": "^17.6.0",
         "jsdom": "^29.1.1",
         "png2icons": "^2.0.1",
-        "postcss": "^8.5.19",
+        "postcss": "^8.5.23",
         "sharp": "^0.35.3",
         "tailwindcss": "4.3.2",
         "typescript": "^5.9.3",
