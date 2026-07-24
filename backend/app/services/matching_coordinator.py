@@ -275,19 +275,17 @@ class MatchingCoordinator:
             self.download_subtitles_all_seasons(job_id, show_name, seasons, tmdb_id=tmdb_id)
         )
 
-    async def restart_subtitle_download(
-        self, job_id: int, show_name: str, season: int, tmdb_id: int | None = None
-    ) -> None:
-        """Cancel any in-flight subtitle download and start a fresh one.
+    async def cancel_subtitle_download(self, job_id: int) -> None:
+        """Cancel an in-flight subtitle download and clear its stale DB status.
 
-        Used after re-identification corrects the show title. Resets the
-        in-memory event/task pair, clears stale `subtitle_status` and
-        subtitle-related error_message in the DB, then kicks off a new download.
+        Shared by ``restart_subtitle_download`` and the mid-rip re-identify path:
+        a corrected show must not keep the previous show's download — or its
+        stale ``subtitle_status`` (a lingering "failed" would gate matching for
+        the new show) — alive. Awaiting cancellation prevents the old task's DB
+        write from racing past whatever starts next.
         """
         from sqlalchemy import update
 
-        # Cancel a stale or in-flight task. Awaiting cancellation prevents the
-        # old task's DB write from racing past the new one.
         old_task = self._subtitle_tasks.get(job_id)
         if old_task is not None and not old_task.done():
             old_task.cancel()
@@ -314,10 +312,18 @@ class MatchingCoordinator:
             )
             await session.commit()
 
-        # Clear the persistent UI banner immediately; the new task will emit
-        # progress events as it runs.
+        # Clear the persistent UI banner immediately; whatever starts next emits
+        # its own progress events.
         await ws_manager.broadcast_subtitle_event(job_id, "downloading", downloaded=0, total=0)
 
+    async def restart_subtitle_download(
+        self, job_id: int, show_name: str, season: int, tmdb_id: int | None = None
+    ) -> None:
+        """Cancel any in-flight subtitle download and start a fresh one.
+
+        Used after re-identification corrects the show title.
+        """
+        await self.cancel_subtitle_download(job_id)
         self.start_subtitle_download(job_id, show_name, season, tmdb_id)
 
     async def try_discdb_assignment(self, job_id: int, title: "DiscTitle", session) -> bool:

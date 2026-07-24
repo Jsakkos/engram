@@ -1,0 +1,514 @@
+"""Mid-rip identity correction re-match (spec 2026-07-22)."""
+
+import asyncio
+import json
+from unittest.mock import AsyncMock
+
+import pytest
+
+from app.api.websocket import manager as ws_manager
+from app.models import DiscJob, JobState
+from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.services.job_manager import job_manager
+from tests.unit.conftest import _unit_session_factory
+
+
+@pytest.fixture(autouse=True)
+def _patch_coordinator_session(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.identification_coordinator.async_session", _unit_session_factory
+    )
+
+
+@pytest.fixture(autouse=True)
+def _quiet_ws(monkeypatch):
+    async def _noop(*a, **k):
+        return None
+
+    monkeypatch.setattr(ws_manager, "broadcast_job_update", _noop)
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", _noop)
+
+
+async def _seed_job(**kwargs):
+    kwargs.setdefault("content_type", ContentType.TV)
+    kwargs.setdefault("detected_title", "Show A")
+    kwargs.setdefault("identity_prompt_json", None)
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="E:",
+            volume_label="SHOW_A_S1D1",
+            state=JobState.RIPPING,
+            staging_path=kwargs.pop("staging", "/tmp/staging/repro"),
+            **kwargs,
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        return job
+
+
+async def _add_title(job_id, index, state, output=None, **kwargs):
+    async with _unit_session_factory() as session:
+        t = DiscTitle(
+            job_id=job_id,
+            title_index=index,
+            duration_seconds=1380,
+            state=state,
+            output_filename=output,
+            is_selected=True,
+            **kwargs,
+        )
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        return t
+
+
+async def _get_job(job_id):
+    async with _unit_session_factory() as session:
+        return await session.get(DiscJob, job_id)
+
+
+async def _get_title(title_id):
+    async with _unit_session_factory() as session:
+        return await session.get(DiscTitle, title_id)
+
+
+async def _drain_rematch(job_id):
+    """Await the detached mid-rip re-match task (and let its callbacks settle).
+
+    _rematch_ripped_titles now runs as a task detached from the answer request
+    (FIX 1) rather than inline, so tests must await it explicitly before
+    asserting on dispatch. A no-op when the resume action wasn't
+    "rematch_ripped" (e.g. dispatch_matches never populates _rematch_tasks).
+    """
+    task = job_manager._rematch_tasks.get(job_id)
+    if task is not None:
+        await asyncio.gather(task)
+    await asyncio.sleep(0)
+
+
+@pytest.mark.unit
+async def test_dispatch_title_match_tracks_then_clears_task(monkeypatch, tmp_path):
+    released = asyncio.Event()
+    started = asyncio.Event()
+
+    async def fake_match(job_id, title_id, file_path):
+        started.set()
+        await released.wait()
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job()
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.QUEUED, output=str(f))
+
+    assert await job_manager._dispatch_title_match(job.id, t.id, f)
+    await started.wait()
+    task = job_manager._match_tasks.get(t.id)
+    assert task is not None  # tracked while running
+
+    released.set()
+    await asyncio.gather(task)
+    await asyncio.sleep(0)  # let the done-callback run
+    assert t.id not in job_manager._match_tasks  # cleared on completion
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_resets_and_dispatches_matched_title(monkeypatch, tmp_path):
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job()
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(
+        job.id,
+        0,
+        TitleState.MATCHED,
+        output=str(f),
+        matched_episode="S01E01",
+        match_confidence=0.9,
+        match_details=json.dumps({"reason": "old show"}),
+    )
+
+    await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await _drain_rematch(job.id)
+
+    refreshed = await _get_title(t.id)
+    assert refreshed.state == TitleState.QUEUED
+    assert refreshed.matched_episode is None
+    assert refreshed.match_confidence == 0.0
+    assert refreshed.match_details is None
+    assert t.id in dispatched
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_leaves_ripping_titles_alone(monkeypatch, tmp_path):
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job()
+    still_ripping = await _add_title(job.id, 1, TitleState.RIPPING)  # no file yet
+
+    await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await _drain_rematch(job.id)
+
+    assert (await _get_title(still_ripping.id)).state == TitleState.RIPPING
+    assert still_ripping.id not in dispatched
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_cancels_inflight_match(monkeypatch, tmp_path):
+    released = asyncio.Event()
+    started = asyncio.Event()
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        # First dispatch blocks (old identity); re-dispatch is recorded.
+        dispatched.append(title_id)
+        if len(dispatched) == 1:
+            started.set()
+            await released.wait()
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job()
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.QUEUED, output=str(f))
+
+    # Kick the first (old-identity) match; it parks in fake_match.
+    await job_manager._dispatch_title_match(job.id, t.id, f)
+    await started.wait()
+    old_task = job_manager._match_tasks[t.id]
+
+    # Release the parked task the instant it is cancelled so gather() returns.
+    def _release_on_cancel():
+        released.set()
+
+    old_task.add_done_callback(lambda _t: _release_on_cancel())
+
+    await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await _drain_rematch(job.id)
+
+    assert old_task.cancelled() or old_task.done()
+    assert dispatched.count(t.id) == 2  # re-dispatched after cancel
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_skips_non_tv(monkeypatch, tmp_path):
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job(content_type=ContentType.MOVIE, detected_title="A Movie")
+    f = tmp_path / "MOVIE_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.MATCHED, output=str(f))
+
+    await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await _drain_rematch(job.id)
+
+    assert dispatched == []
+    assert (await _get_title(t.id)).state == TitleState.MATCHED
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_preserves_rip_failure_review_title(monkeypatch, tmp_path):
+    """A REVIEW title parked by a rip-level failure (rerip bookkeeping) must be
+    left untouched by a mid-rip identity correction — the identity change can't
+    fix a truncated/stalled rip, and resetting it would wipe rerip_eligible/
+    rerip_attempts that _is_auto_rerippable depends on. A REVIEW title parked
+    for an ordinary match failure MUST still be reset/dispatched — that's the
+    point of the feature."""
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job()
+
+    rip_failure_details = json.dumps(
+        {
+            "error": "incomplete_rip",
+            "message": "Rip incomplete",
+            "rerip_eligible": True,
+            "rerip_attempts": 1,
+        }
+    )
+    f1 = tmp_path / "SHOW_A_t00.mkv"
+    f1.write_text("x")
+    rip_failed = await _add_title(
+        job.id,
+        0,
+        TitleState.REVIEW,
+        output=str(f1),
+        match_details=rip_failure_details,
+    )
+
+    match_failure_details = json.dumps({"error": "no_match_found", "message": "No match"})
+    f2 = tmp_path / "SHOW_A_t01.mkv"
+    f2.write_text("x")
+    match_failed = await _add_title(
+        job.id,
+        1,
+        TitleState.REVIEW,
+        output=str(f2),
+        match_details=match_failure_details,
+    )
+
+    await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await _drain_rematch(job.id)
+
+    # Rip-failure title: untouched, metadata preserved.
+    still_review = await _get_title(rip_failed.id)
+    assert still_review.state == TitleState.REVIEW
+    assert still_review.match_details == rip_failure_details
+    assert rip_failed.id not in dispatched
+
+    # Ordinary match-failure title: reset and re-dispatched.
+    reset = await _get_title(match_failed.id)
+    assert reset.state == TitleState.QUEUED
+    assert reset.match_details is None
+    assert match_failed.id in dispatched
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_cancelled_match_not_routed_to_review(monkeypatch, tmp_path):
+    """A cancelled in-flight match must NOT flip the re-dispatched title to REVIEW
+    (the detached _handle_match_failure race)."""
+    released = asyncio.Event()
+    started = asyncio.Event()
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+        if len(dispatched) == 1:
+            started.set()
+            await released.wait()
+
+    async def _flip_to_review(job_id, title_id):
+        # Faithful mirror of MatchingCoordinator._handle_match_failure on cancel.
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title_id)
+            if title and title.state in (
+                TitleState.PENDING,
+                TitleState.RIPPING,
+                TitleState.QUEUED,
+                TitleState.MATCHING,
+            ):
+                title.state = TitleState.REVIEW
+                title.match_details = json.dumps(
+                    {"error": "matching_task_failed", "message": "Task cancelled"}
+                )
+                session.add(title)
+                await session.commit()
+
+    def fake_on_match_task_done(task, job_id, title_id):
+        # Mirror the real cancel fan-out (matching_coordinator.on_match_task_done).
+        if task.cancelled():
+            asyncio.ensure_future(_flip_to_review(job_id, title_id))
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", fake_on_match_task_done)
+
+    job = await _seed_job()
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.QUEUED, output=str(f))
+
+    await job_manager._dispatch_title_match(job.id, t.id, f)
+    await started.wait()
+    old_task = job_manager._match_tasks[t.id]
+    old_task.add_done_callback(lambda _t: released.set())
+
+    await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await _drain_rematch(job.id)
+    await asyncio.sleep(0.05)  # let any detached failure handler run + commit
+
+    refreshed = await _get_title(t.id)
+    assert refreshed.state != TitleState.REVIEW, refreshed.match_details
+    assert t.id in dispatched  # was re-dispatched
+
+
+def _stub_reidentify_network(monkeypatch):
+    """Keep re_identify off the network (TMDB re-lookup, subtitle, year)."""
+    coord = job_manager._identification
+    monkeypatch.setattr(coord, "_start_tv_subtitle_prefetch", AsyncMock())
+    monkeypatch.setattr(coord, "_cancel_subtitle_download", AsyncMock())
+    monkeypatch.setattr(coord, "_restart_subtitle_download", AsyncMock())
+    monkeypatch.setattr(
+        "app.services.identification_coordinator._resolve_show_year",
+        lambda tmdb_id, signal: None,
+    )
+
+
+@pytest.mark.unit
+async def test_midrip_reidentify_show_change_rematches_processed_title(monkeypatch, tmp_path):
+    _stub_reidentify_network(monkeypatch)
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job(detected_title="Show A", tmdb_id=111)
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.MATCHED, output=str(f), match_confidence=0.9)
+
+    await job_manager.re_identify_job(job.id, "Show B", "tv", season=1, tmdb_id=999)
+    await _drain_rematch(job.id)
+
+    assert t.id in dispatched  # already-matched title re-matched against corrected show
+    assert (await _get_title(t.id)).match_confidence == 0.0
+
+
+@pytest.mark.unit
+async def test_midrip_reidentify_unchanged_show_preserves_matches(monkeypatch, tmp_path):
+    _stub_reidentify_network(monkeypatch)
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job(detected_title="Show A", tmdb_id=111)
+    f = tmp_path / "SHOW_A_t00.mkv"
+    f.write_text("x")
+    t = await _add_title(job.id, 0, TitleState.MATCHED, output=str(f), match_confidence=0.9)
+
+    # Same title + tmdb_id → season-only/no-op change, NOT a show change.
+    await job_manager.re_identify_job(job.id, "Show A", "tv", season=1, tmdb_id=111)
+    await _drain_rematch(job.id)  # no-op: dispatch_matches path spawns no task
+
+    assert dispatched == []  # dispatch_matches path — MATCHED title untouched
+    assert (await _get_title(t.id)).state == TitleState.MATCHED
+
+
+@pytest.mark.unit
+async def test_cancel_subtitle_download_cancels_and_clears_status(monkeypatch, tmp_path):
+    from sqlalchemy import update as _sqla_update
+
+    mc = job_manager._matching
+
+    async def _never_finish(job_id, show_name, season, tmdb_id=None):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(mc, "download_subtitles", _never_finish)
+
+    async def _quiet_sub_event(*a, **k):
+        return None
+
+    monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _quiet_sub_event)
+
+    job = await _seed_job()
+    async with _unit_session_factory() as session:
+        await session.execute(
+            _sqla_update(DiscJob).where(DiscJob.id == job.id).values(subtitle_status="failed")
+        )
+        await session.commit()
+
+    mc.start_subtitle_download(job.id, "Show A", 1)
+    old_task = mc._subtitle_tasks[job.id]
+
+    await mc.cancel_subtitle_download(job.id)
+
+    assert old_task.cancelled() or old_task.done()
+    assert (await _get_job(job.id)).subtitle_status is None
+
+
+@pytest.mark.unit
+async def test_midrip_show_change_refreshes_subtitles(monkeypatch, tmp_path):
+    from unittest.mock import AsyncMock
+
+    coord = job_manager._identification
+    cancels: list[int] = []
+
+    async def fake_cancel(job_id):
+        cancels.append(job_id)
+
+    monkeypatch.setattr(coord, "_cancel_subtitle_download", fake_cancel, raising=False)
+    monkeypatch.setattr(coord, "_start_tv_subtitle_prefetch", AsyncMock())
+    monkeypatch.setattr(coord, "_restart_subtitle_download", AsyncMock())
+    monkeypatch.setattr(
+        "app.services.identification_coordinator._resolve_show_year",
+        lambda tmdb_id, signal: None,
+    )
+    monkeypatch.setattr(job_manager._matching, "match_single_file", AsyncMock())
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job(detected_title="Show A", tmdb_id=111)
+
+    await job_manager.re_identify_job(job.id, "Show B", "tv", season=1, tmdb_id=999)
+
+    assert cancels == [job.id]
+    coord._start_tv_subtitle_prefetch.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_coalesces_concurrent_corrections(monkeypatch):
+    """Two rematch actions for the same job don't run concurrently; the second
+    coalesces into a single rerun after the first finishes (last identity wins)."""
+    gate = asyncio.Event()
+    calls: list[int] = []
+
+    async def fake_rematch(job_id):
+        calls.append(job_id)
+        if len(calls) == 1:
+            await gate.wait()  # first pass parks in flight
+
+    monkeypatch.setattr(job_manager, "_rematch_ripped_titles", fake_rematch)
+
+    # First correction spawns the detached pass, which parks in flight.
+    await job_manager._apply_identity_resume_action(7, "rematch_ripped")
+    await asyncio.sleep(0)
+    assert calls == [7]
+    assert 7 in job_manager._rematch_tasks
+
+    # Second correction while the first is still running: coalesced, not run
+    # concurrently, rerun flagged.
+    await job_manager._apply_identity_resume_action(7, "rematch_ripped")
+    await asyncio.sleep(0)
+    assert calls == [7]
+    assert 7 in job_manager._rematch_rerun
+
+    # Release the first pass; its done-callback fires exactly one rerun.
+    first = job_manager._rematch_tasks[7]
+    gate.set()
+    await asyncio.gather(first)
+    for _ in range(4):
+        await asyncio.sleep(0)  # let the done-callback + rerun spawn/run
+    rerun = job_manager._rematch_tasks.get(7)
+    if rerun is not None:
+        await asyncio.gather(rerun)
+    await asyncio.sleep(0)
+
+    assert calls == [7, 7]  # exactly one rerun, never two concurrent passes
+    assert 7 not in job_manager._rematch_rerun
+    assert 7 not in job_manager._rematch_tasks

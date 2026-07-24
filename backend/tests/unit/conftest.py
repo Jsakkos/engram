@@ -190,6 +190,15 @@ async def isolate_database(monkeypatch):
     # entry would make an unrelated test's genuine user cancel look watchdog-initiated.
     _jm_inst._cancel_reasons.clear()
 
+    # Same hazard for the mid-rip re-match state: a leaked _match_tasks entry is a
+    # Task bound to a now-closed loop (cancelling/awaiting it from a later test's
+    # loop raises), and a leaked _suppress_match_done id would silently swallow a
+    # later test's match failure.
+    _jm_inst._match_tasks.clear()
+    _jm_inst._suppress_match_done.clear()
+    _jm_inst._rematch_tasks.clear()
+    _jm_inst._rematch_rerun.clear()
+
     yield
 
     async with _unit_engine.begin() as conn:

@@ -116,6 +116,7 @@ def _coord(prefetch_calls=None):
     coord._resolve_missing_tmdb_id = fake_resolve_tmdb
     coord._start_tv_subtitle_prefetch = fake_prefetch
     coord._restart_subtitle_download = AsyncMock()
+    coord._cancel_subtitle_download = AsyncMock()
     return coord
 
 
