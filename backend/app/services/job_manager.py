@@ -3533,6 +3533,16 @@ class JobManager:
         try:
             # Await cancellations so each stale done-callback runs (suppressed,
             # so the cancellation is NOT routed to REVIEW) before re-dispatch.
+            #
+            # ORDERING GUARANTEE this leans on: a title's _on_match_dispatch_done
+            # was registered via add_done_callback in _dispatch_title_match, i.e.
+            # BEFORE gather wrapped the task here, so asyncio's FIFO call_soon
+            # scheduling runs it before gather's own completion callback resolves
+            # this await. So by the time gather returns, every cancelled title has
+            # been discarded from _inflight_match_dispatch (letting the re-dispatch
+            # below re-claim it) and its suppressed cancellation has been absorbed.
+            # The explicit _inflight_match_dispatch.discard before each re-dispatch
+            # is a belt-and-suspenders backstop if that ordering ever changes.
             if cancelled:
                 await asyncio.gather(*cancelled, return_exceptions=True)
         finally:
