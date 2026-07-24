@@ -74,6 +74,20 @@ async def _get_title(title_id):
         return await session.get(DiscTitle, title_id)
 
 
+async def _drain_rematch(job_id):
+    """Await the detached mid-rip re-match task (and let its callbacks settle).
+
+    _rematch_ripped_titles now runs as a task detached from the answer request
+    (FIX 1) rather than inline, so tests must await it explicitly before
+    asserting on dispatch. A no-op when the resume action wasn't
+    "rematch_ripped" (e.g. dispatch_matches never populates _rematch_tasks).
+    """
+    task = job_manager._rematch_tasks.get(job_id)
+    if task is not None:
+        await task
+    await asyncio.sleep(0)
+
+
 @pytest.mark.unit
 async def test_dispatch_title_match_tracks_then_clears_task(monkeypatch, tmp_path):
     released = asyncio.Event()
@@ -126,7 +140,7 @@ async def test_rematch_ripped_resets_and_dispatches_matched_title(monkeypatch, t
     )
 
     await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
-    await asyncio.sleep(0)
+    await _drain_rematch(job.id)
 
     refreshed = await _get_title(t.id)
     assert refreshed.state == TitleState.QUEUED
@@ -150,7 +164,7 @@ async def test_rematch_ripped_leaves_ripping_titles_alone(monkeypatch, tmp_path)
     still_ripping = await _add_title(job.id, 1, TitleState.RIPPING)  # no file yet
 
     await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
-    await asyncio.sleep(0)
+    await _drain_rematch(job.id)
 
     assert (await _get_title(still_ripping.id)).state == TitleState.RIPPING
     assert still_ripping.id not in dispatched
@@ -189,7 +203,7 @@ async def test_rematch_ripped_cancels_inflight_match(monkeypatch, tmp_path):
     old_task.add_done_callback(lambda _t: _release_on_cancel())
 
     await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
-    await asyncio.sleep(0)
+    await _drain_rematch(job.id)
 
     assert old_task.cancelled() or old_task.done()
     assert dispatched.count(t.id) == 2  # re-dispatched after cancel
@@ -211,10 +225,73 @@ async def test_rematch_ripped_skips_non_tv(monkeypatch, tmp_path):
     t = await _add_title(job.id, 0, TitleState.MATCHED, output=str(f))
 
     await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
-    await asyncio.sleep(0)
+    await _drain_rematch(job.id)
 
     assert dispatched == []
     assert (await _get_title(t.id)).state == TitleState.MATCHED
+
+
+@pytest.mark.unit
+async def test_rematch_ripped_preserves_rip_failure_review_title(monkeypatch, tmp_path):
+    """A REVIEW title parked by a rip-level failure (rerip bookkeeping) must be
+    left untouched by a mid-rip identity correction — the identity change can't
+    fix a truncated/stalled rip, and resetting it would wipe rerip_eligible/
+    rerip_attempts that _is_auto_rerippable depends on. A REVIEW title parked
+    for an ordinary match failure MUST still be reset/dispatched — that's the
+    point of the feature."""
+    dispatched: list[int] = []
+
+    async def fake_match(job_id, title_id, file_path):
+        dispatched.append(title_id)
+
+    monkeypatch.setattr(job_manager._matching, "match_single_file", fake_match)
+    monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
+
+    job = await _seed_job()
+
+    rip_failure_details = json.dumps(
+        {
+            "error": "incomplete_rip",
+            "message": "Rip incomplete",
+            "rerip_eligible": True,
+            "rerip_attempts": 1,
+        }
+    )
+    f1 = tmp_path / "SHOW_A_t00.mkv"
+    f1.write_text("x")
+    rip_failed = await _add_title(
+        job.id,
+        0,
+        TitleState.REVIEW,
+        output=str(f1),
+        match_details=rip_failure_details,
+    )
+
+    match_failure_details = json.dumps({"error": "no_match_found", "message": "No match"})
+    f2 = tmp_path / "SHOW_A_t01.mkv"
+    f2.write_text("x")
+    match_failed = await _add_title(
+        job.id,
+        1,
+        TitleState.REVIEW,
+        output=str(f2),
+        match_details=match_failure_details,
+    )
+
+    await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await _drain_rematch(job.id)
+
+    # Rip-failure title: untouched, metadata preserved.
+    still_review = await _get_title(rip_failed.id)
+    assert still_review.state == TitleState.REVIEW
+    assert still_review.match_details == rip_failure_details
+    assert rip_failed.id not in dispatched
+
+    # Ordinary match-failure title: reset and re-dispatched.
+    reset = await _get_title(match_failed.id)
+    assert reset.state == TitleState.QUEUED
+    assert reset.match_details is None
+    assert match_failed.id in dispatched
 
 
 @pytest.mark.unit
@@ -267,6 +344,7 @@ async def test_rematch_ripped_cancelled_match_not_routed_to_review(monkeypatch, 
     old_task.add_done_callback(lambda _t: released.set())
 
     await job_manager._apply_identity_resume_action(job.id, "rematch_ripped")
+    await _drain_rematch(job.id)
     await asyncio.sleep(0.05)  # let any detached failure handler run + commit
 
     refreshed = await _get_title(t.id)
@@ -278,7 +356,7 @@ def _stub_reidentify_network(monkeypatch):
     """Keep re_identify off the network (TMDB re-lookup, subtitle, year)."""
     coord = job_manager._identification
     monkeypatch.setattr(coord, "_start_tv_subtitle_prefetch", AsyncMock())
-    monkeypatch.setattr(coord, "_cancel_subtitle_download", AsyncMock(), raising=False)
+    monkeypatch.setattr(coord, "_cancel_subtitle_download", AsyncMock())
     monkeypatch.setattr(coord, "_restart_subtitle_download", AsyncMock())
     monkeypatch.setattr(
         "app.services.identification_coordinator._resolve_show_year",
@@ -303,7 +381,7 @@ async def test_midrip_reidentify_show_change_rematches_processed_title(monkeypat
     t = await _add_title(job.id, 0, TitleState.MATCHED, output=str(f), match_confidence=0.9)
 
     await job_manager.re_identify_job(job.id, "Show B", "tv", season=1, tmdb_id=999)
-    await asyncio.sleep(0)
+    await _drain_rematch(job.id)
 
     assert t.id in dispatched  # already-matched title re-matched against corrected show
     assert (await _get_title(t.id)).match_confidence == 0.0
@@ -327,7 +405,7 @@ async def test_midrip_reidentify_unchanged_show_preserves_matches(monkeypatch, t
 
     # Same title + tmdb_id → season-only/no-op change, NOT a show change.
     await job_manager.re_identify_job(job.id, "Show A", "tv", season=1, tmdb_id=111)
-    await asyncio.sleep(0)
+    await _drain_rematch(job.id)  # no-op: dispatch_matches path spawns no task
 
     assert dispatched == []  # dispatch_matches path — MATCHED title untouched
     assert (await _get_title(t.id)).state == TitleState.MATCHED

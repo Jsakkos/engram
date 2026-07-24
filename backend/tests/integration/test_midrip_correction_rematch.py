@@ -79,6 +79,12 @@ async def test_midrip_correction_rematches_already_matched_title(monkeypatch, tm
         job_id, title_id = job.id, title.id
 
     await job_manager.re_identify_job(job_id, "Show B", "tv", season=1, tmdb_id=999)
+    # _rematch_ripped_titles now runs as a task detached from the answer
+    # request (FIX 1) — await it first so the cancel/reset/re-dispatch it does
+    # has actually happened before we look for the re-dispatched match task.
+    rematch_task = job_manager._rematch_tasks.get(job_id)
+    if rematch_task is not None:
+        await rematch_task
     # Await the re-dispatched match task directly rather than relying on a bare
     # sleep(0) — deterministic, and letting the done-callback run keeps the
     # JobManager singleton's _match_tasks/_inflight_match_dispatch clean.

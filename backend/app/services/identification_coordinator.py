@@ -1328,7 +1328,10 @@ class IdentificationCoordinator:
             dict with 'job_id', 'has_ripped' (bool), and 'resume_action' — the
             same contract as ``set_name_and_resume`` (see its docstring), plus
             ``"rerun_matching"`` for the TV post-rip review answer (full
-            re-match with corrected metadata, today's behavior).
+            re-match with corrected metadata, today's behavior), and
+            ``"rematch_ripped"`` for a mid-rip identity CHANGE (re-match
+            already-ripped titles against the corrected show; see
+            ``JobManager._rematch_ripped_titles``).
         """
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -1491,8 +1494,10 @@ class IdentificationCoordinator:
             # subtitle attempt likely failed against the unresolvable label,
             # leaving subtitle_status="failed" and a stale `_subtitle_ready`
             # event that would gate matching back into REVIEW. (Review-resume
-            # only: the mid-rip branch above starts a fresh prefetch instead —
-            # nothing stale exists while the identity question is open.)
+            # only: the mid-rip case has its own cancel-then-prefetch handling
+            # below, via `mid_rip_subtitle_refresh` — it cancels the OLD show's
+            # in-flight download before starting a fresh one for the corrected
+            # show, since stale subtitle state DOES exist mid-rip.)
             should_restart_subtitles = (
                 not mid_rip
                 and job.content_type == ContentType.TV
