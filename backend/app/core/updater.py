@@ -32,6 +32,7 @@ from app.core.errors import ConfigurationError, EngramError
 from app.database import async_session
 
 GITHUB_API_URL = "https://api.github.com/repos/Jsakkos/engram/releases/latest"
+GITHUB_TAG_API_URL = "https://api.github.com/repos/Jsakkos/engram/releases/tags/v{version}"
 STAGING_BASE = Path.home() / ".engram" / "update"
 
 
@@ -66,6 +67,11 @@ class UpdateChecker:
         self.latest_version: str | None = None
         self.release_notes: str | None = None
         self.release_url: str | None = None
+        # Notes for the version ALREADY RUNNING, for the what's-new modal. Kept
+        # separate from latest_version/release_notes so nothing in the update flow
+        # can mistake the running build for an available update.
+        self.current_release_notes: str | None = None
+        self.current_release_url: str | None = None
         self.download_progress: float = 0.0
         self.staging_path: Path | None = None
         self.error: str | None = None
@@ -85,7 +91,8 @@ class UpdateChecker:
         self._prune_staging()
         skipped_version = await self._load_skipped_version()
         await self._check(skipped_version)
-        if self.last_update_error or self.last_update_success_version:
+        await self._fetch_current_release_notes()
+        if self.last_update_error or self.last_update_success_version or self.current_release_notes:
             await self._broadcast()
 
     def _prune_staging(self) -> None:
@@ -218,6 +225,37 @@ class UpdateChecker:
             return
 
         await self._download(data)
+
+    async def _fetch_current_release_notes(self) -> None:
+        """Populate release notes for the version already running.
+
+        ``GITHUB_API_URL`` points at /releases/latest, which is the wrong release for
+        a user sitting on 0.27.0 while 0.28.0 is out. The what's-new modal shows what
+        changed in the build you are running, so it needs the tag-specific release.
+
+        Failure is expected and silent: dev builds have no published release (404),
+        and offline installs cannot reach GitHub at all. Both leave the fields None,
+        which the frontend treats as "do not show the modal".
+        """
+        if self.current_release_notes is not None:
+            return
+
+        url = GITHUB_TAG_API_URL.format(version=self._current_version)
+        try:
+            headers = {
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": f"engram/{self._current_version}",
+            }
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:
+            logger.debug(f"Release notes for v{self._current_version} unavailable: {exc}")
+            return
+
+        self.current_release_notes = data.get("body")
+        self.current_release_url = data.get("html_url")
 
     @staticmethod
     def _is_older_or_equal(tag: str, current: str) -> bool:

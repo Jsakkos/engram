@@ -1230,6 +1230,86 @@ def test_windows_swap_succeeds_end_to_end(tmp_path):
         subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
 
 
+class TestCurrentReleaseNotes:
+    """Notes for the version already running, used by the what's-new modal."""
+
+    def _mock_client(self, response):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=response)
+        return mock_client
+
+    async def test_fetches_notes_for_the_running_version(self):
+        """The tag-specific endpoint is queried, and body/html_url are stored."""
+        checker = UpdateChecker()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "tag_name": f"v{checker._current_version}",
+            "html_url": "https://github.com/Jsakkos/engram/releases/tag/v1.2.3",
+            "body": "## Highlights\n- Community data",
+        }
+        mock_client = self._mock_client(mock_response)
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            await checker._fetch_current_release_notes()
+
+        requested_url = mock_client.get.call_args[0][0]
+        assert f"/releases/tags/v{checker._current_version}" in requested_url
+        assert checker.current_release_notes == "## Highlights\n- Community data"
+        assert checker.current_release_url == (
+            "https://github.com/Jsakkos/engram/releases/tag/v1.2.3"
+        )
+
+    async def test_missing_tag_leaves_fields_none(self):
+        """A dev version with no GitHub release must not raise or set anything."""
+        import httpx as _httpx
+
+        checker = UpdateChecker()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock(
+            side_effect=_httpx.HTTPStatusError("404", request=MagicMock(), response=MagicMock())
+        )
+        mock_client = self._mock_client(mock_response)
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            await checker._fetch_current_release_notes()
+
+        assert checker.current_release_notes is None
+        assert checker.current_release_url is None
+
+    async def test_network_failure_leaves_fields_none(self):
+        """Offline installs degrade silently."""
+        import httpx as _httpx
+
+        checker = UpdateChecker()
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(side_effect=_httpx.ConnectError("timeout"))
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            await checker._fetch_current_release_notes()
+
+        assert checker.current_release_notes is None
+
+    async def test_second_call_does_not_refetch(self):
+        """Notes are immutable for a given build; one call per process is enough."""
+        checker = UpdateChecker()
+        checker.current_release_notes = "already here"
+
+        mock_client = self._mock_client(MagicMock())
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            await checker._fetch_current_release_notes()
+
+        mock_client.get.assert_not_called()
+
+
 @windows_only
 def test_windows_swap_failure_writes_marker_and_keeps_install(tmp_path):
     """A missing sentinel causes verify to fail -> failure marker written, install left intact."""
