@@ -297,9 +297,12 @@ detect, and the endpoint returns them before doing any work. The "Try AI match"
 button should be disabled with an explanatory tooltip when config says AI
 matching is unusable, so the user is not invited to spend a transcription run on
 a request that cannot succeed. `ReviewQueue.tsx` already fetches config for
-`aiEpisodeMatchingEnabled`; it needs the key-present flag too, which
-`GET /api/config` can expose as a boolean (`ai_api_key_set`) in the same shape it
-already uses for `discdb_api_key_set`, without revealing the key.
+`aiEpisodeMatchingEnabled` and needs the key-present flag too. No new field is
+required: `GET /api/config` already returns `ai_api_key` as `"***"` when set and
+`""` when not (`routes.py:1647`), which is exactly how `ConfigWizard.tsx:296`
+derives its own `savedKeys.ai`. Adding an `ai_api_key_set` boolean would mean a
+new field to keep in three-way sync across `AppConfig`, `ConfigUpdate` and
+`ConfigResponse` for information the response already carries.
 
 The stale comment at `ReviewQueue.tsx:413` and the `no_suggestion` case in
 `llmFeedback.test.ts:23` are corrected as part of this.
