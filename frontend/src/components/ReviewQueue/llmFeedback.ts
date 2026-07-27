@@ -7,14 +7,6 @@ export interface LLMFeedback {
     text: string;
 }
 
-/**
- * Map a `runLLMMatch` result to inline Inspector feedback.
- *
- * Returns null when the result surfaces on its own as the cyan suggestion card
- * (a fresh suggestion, or a `"cached"` one). Only the "silent" outcomes — where
- * the endpoint returned HTTP 200 but produced no suggestion — get a notice.
- */
-
 /** Reason to user-facing message. Only `no_match` means the model actually ran
  *  and was not confident; every other reason is a guard that fired first, so
  *  reporting them all as "no confident match" tells the user the AI ran when it
@@ -28,6 +20,13 @@ const REASON_MESSAGES: Record<string, string> = {
     no_match: 'No confident AI match found.',
 };
 
+/**
+ * Map a `runLLMMatch` result to inline Inspector feedback.
+ *
+ * Returns null when the result surfaces on its own as the cyan suggestion card
+ * (a fresh suggestion, or a `"cached"` one). Only the "silent" outcomes, where
+ * the endpoint returned HTTP 200 but produced no suggestion, get a notice.
+ */
 export function llmResultToFeedback(result: LLMMatchResult): LLMFeedback | null {
     if (result.suggestion) return null;
     if (!result.reason || result.reason === 'cached') return null;
