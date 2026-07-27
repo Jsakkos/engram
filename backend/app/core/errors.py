@@ -81,7 +81,14 @@ class AIProviderError(EngramError):
     confident" (which stays a plain ``None``/no-match result).
     """
 
-    pass
+    def __init__(self, message: str, *, code: str = "unknown", detail: str = "") -> None:
+        """``code`` is a stable machine-readable cause (see
+        ``ai_client.classify_provider_error``); ``detail`` is the provider's own
+        truncated explanation, kept for logs. Both default so existing
+        single-argument call sites are unaffected."""
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
 
 
 # Error Handling Decorator

@@ -372,3 +372,20 @@ class TestCompleteJsonRaiseOnError:
                 )
         # A non-transport error must NOT be coerced into AIProviderError.
         assert not issubclass(RuntimeError, AIProviderError)
+
+
+class TestAIProviderErrorFields:
+    def test_defaults_keep_existing_call_sites_working(self):
+        from app.core.errors import AIProviderError
+
+        err = AIProviderError("boom")
+        assert str(err) == "boom"
+        assert err.code == "unknown"
+        assert err.detail == ""
+
+    def test_code_and_detail_are_carried(self):
+        from app.core.errors import AIProviderError
+
+        err = AIProviderError("boom", code="no_credits", detail="quota exhausted")
+        assert err.code == "no_credits"
+        assert err.detail == "quota exhausted"
