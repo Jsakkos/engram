@@ -417,9 +417,9 @@ function ReviewQueue() {
     };
 
     // Run the LLM matcher for a single title, then refresh so the persisted
-    // llm_suggestion surfaces in the Inspector. The endpoint always returns 200,
-    // so a "silent" outcome (no_suggestion / internal_error) is reported via
-    // inline Inspector feedback rather than a thrown error. Pending + feedback
+    // llm_suggestion surfaces in the Inspector. Outcomes arrive two ways: a 200
+    // with a discriminating `reason` (mapped by llmResultToFeedback), or a
+    // thrown ApiError for the 503 retryable failures and 500. Pending + feedback
     // are keyed by title id so they follow the selected title.
     const handleTryLLMMatch = async (titleId: number) => {
         if (!jobId) return;
