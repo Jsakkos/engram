@@ -138,12 +138,15 @@ install path.
 **Components.** A new `useWhatsNewModal` hook, plus a read-only mode for the existing
 `UpdateModal`: same markdown body and chrome, with "Skip this version" and "Restart"
 replaced by a single "Close". If `current_release_notes` is null (rate-limited GitHub,
-air-gapped install) the modal does not open, and the localStorage key still advances so
-it does not retry on every launch.
+air-gapped install) the modal does not open and the localStorage key is **not** advanced,
+so the notes still get shown once they arrive, either later in the same session via the
+WebSocket push or on a later launch. The key therefore means "the last version whose
+notes we have shown", with a fresh install seeding it to suppress the first one.
 
 **Bonus.** With current-version notes always available, "What's new" becomes reachable
-permanently from the version string in Settings, not only from an update banner that
-renders while `state === 'ready'`.
+permanently by clicking the version string in the top bar (`SvTopBar`, the only place
+the version renders alongside `SvStatusBar`), not only from an update banner that renders
+while `state === 'ready'`.
 
 ### D. CHANGELOG
 
