@@ -19,24 +19,31 @@ describe('llmResultToFeedback', () => {
         expect(llmResultToFeedback({ suggestion, reason: 'cached' })).toBeNull();
     });
 
-    it('warns when no confident match was found', () => {
-        expect(llmResultToFeedback({ suggestion: null, reason: 'no_suggestion' })).toEqual({
+    it.each([
+        ['ai_disabled', 'AI episode matching is turned off. Enable it in Settings.'],
+        ['not_configured', 'No AI API key is set. Add one in Settings, then use Test Connection.'],
+        ['no_show', 'This job has no detected show title, so there is nothing to match against.'],
+        ['no_season', 'This job has no detected season, so there is nothing to match against.'],
+        ['show_not_found', 'The show could not be found on TMDB.'],
+        ['no_match', 'No confident AI match found.'],
+    ])('maps reason %s to its own message', (reason, text) => {
+        expect(llmResultToFeedback({ suggestion: null, reason })).toEqual({
             tone: 'warn',
-            text: 'No confident AI match found.',
+            text,
         });
     });
 
-    it('errors on an internal server error', () => {
+    it('keeps internal_error as an error tone', () => {
         expect(llmResultToFeedback({ suggestion: null, reason: 'internal_error' })).toEqual({
             tone: 'error',
-            text: 'AI match failed — check the server log.',
+            text: 'AI match failed. Check the server log.',
         });
     });
 
-    it('falls through unknown non-error reasons to the warn message', () => {
-        expect(llmResultToFeedback({ suggestion: null, reason: 'ai_disabled' })).toEqual({
+    it('falls back to a generic message for an unrecognised reason', () => {
+        expect(llmResultToFeedback({ suggestion: null, reason: 'brand_new_reason' })).toEqual({
             tone: 'warn',
-            text: 'No confident AI match found.',
+            text: 'AI match did not produce a suggestion (brand_new_reason).',
         });
     });
 });
