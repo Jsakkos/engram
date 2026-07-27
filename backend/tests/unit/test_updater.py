@@ -1323,22 +1323,41 @@ class TestCurrentReleaseNotes:
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
         mock_response.json.return_value = release
+        mock_client = self._mock_client(mock_response)
 
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(return_value=mock_response)
-
-        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
-            with patch.object(checker, "_broadcast", AsyncMock()):
-                with patch.object(checker, "_load_skipped_version", AsyncMock(return_value=None)):
-                    await checker._check(skipped_version=None)
+        with (
+            patch("app.core.updater.httpx.AsyncClient", return_value=mock_client),
+            patch.object(checker, "_broadcast", AsyncMock()),
+        ):
+            await checker._check(skipped_version=None)
 
         assert checker.state == UpdateStatus.UP_TO_DATE
         assert checker.current_release_notes == "## Highlights\n- Community data"
         assert checker.current_release_url == (
             "https://github.com/Jsakkos/engram/releases/tag/v1.2.3"
         )
+
+    async def test_dev_build_ahead_of_latest_does_not_store_the_older_release(self):
+        """A build ahead of latest must fall through to its own tag lookup."""
+        checker = UpdateChecker()
+        checker._current_version = "9.9.9"
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "tag_name": "v0.27.0",
+            "html_url": "https://example.com/tag/v0.27.0",
+            "body": "OLD",
+        }
+        mock_client = self._mock_client(mock_response)
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            with patch.object(checker, "_broadcast", AsyncMock()):
+                await checker._check(skipped_version=None)
+
+        assert checker.state == UpdateStatus.UP_TO_DATE
+        assert checker.current_release_notes is None
+        assert checker._current_release_fetched is False  # tag-specific path still runs
 
     async def test_check_stored_release_prevents_refetch(self):
         """Once _check() has stored the running version's release, a subsequent
@@ -1353,16 +1372,13 @@ class TestCurrentReleaseNotes:
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
         mock_response.json.return_value = release
+        mock_client = self._mock_client(mock_response)
 
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(return_value=mock_response)
-
-        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
-            with patch.object(checker, "_broadcast", AsyncMock()):
-                with patch.object(checker, "_load_skipped_version", AsyncMock(return_value=None)):
-                    await checker._check(skipped_version=None)
+        with (
+            patch("app.core.updater.httpx.AsyncClient", return_value=mock_client),
+            patch.object(checker, "_broadcast", AsyncMock()),
+        ):
+            await checker._check(skipped_version=None)
 
             mock_client.get.reset_mock()
             await checker._fetch_current_release_notes()
@@ -1380,16 +1396,16 @@ class TestCurrentReleaseNotes:
         checker._broadcaster = MagicMock()
         checker._broadcaster.broadcast_update_status = AsyncMock()
 
-        with patch.object(checker, "_consume_update_result_marker", MagicMock()):
-            with patch.object(checker, "_prune_staging", MagicMock()):
-                with patch.object(checker, "_load_skipped_version", AsyncMock(return_value=None)):
-                    with patch.object(checker, "_check", AsyncMock()):
-                        with patch.object(
-                            checker,
-                            "_fetch_current_release_notes",
-                            AsyncMock(side_effect=_fake_fetch),
-                        ):
-                            await checker.start()
+        with (
+            patch.object(checker, "_consume_update_result_marker", MagicMock()),
+            patch.object(checker, "_prune_staging", MagicMock()),
+            patch.object(checker, "_load_skipped_version", AsyncMock(return_value=None)),
+            patch.object(checker, "_check", AsyncMock()),
+            patch.object(
+                checker, "_fetch_current_release_notes", AsyncMock(side_effect=_fake_fetch)
+            ),
+        ):
+            await checker.start()
 
         assert checker.current_release_notes == "## What's new"
         checker._broadcaster.broadcast_update_status.assert_awaited()
