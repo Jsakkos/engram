@@ -394,6 +394,21 @@ git commit -m "feat(errors): AIProviderError carries a machine-readable code and
 
 Context: `httpx.HTTPStatusError`'s string carries status and URL but never the response body, so today's logs cannot tell an exhausted quota from a rate limit.
 
+Two carry-overs from the Task 5 review, both to be handled here:
+
+- **`"unknown"` is about to become ambiguous.** It is already `AIProviderError`'s
+  default for "never classified", and this task also makes it the classifier's
+  verdict for "classified but genuinely indeterminate" (the 500 case). Task 14
+  branches on `detail` for the UI, so decide deliberately: either accept the
+  collision (both should render the same generic sentence, so it is arguably
+  fine) or give the constructor default a distinct value such as `"unset"`.
+  State which you chose and why in the commit message.
+- **Type the closed set.** This task defines the complete list of causes, so
+  declare `ProviderErrorCode = Literal["bad_key", "no_credits", ...]` and use it
+  for the return annotation and for `AIProviderError.code`. The codebase reserves
+  `StrEnum` for persisted model values (`JobState`, `ContentType`, `TitleState`),
+  so a `Literal` alias is the right weight here.
+
 - [ ] **Step 1: Write the failing tests**
 
 The bodies below are the documented shapes for each provider. Before finalising, capture one real 4xx body per provider and correct these fixtures if they differ, per the project's rule that parsers are validated against verbatim provider output rather than synthetic fixtures.
