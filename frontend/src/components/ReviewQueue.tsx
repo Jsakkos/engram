@@ -179,6 +179,7 @@ function ReviewQueue() {
     const [llmMatchingId, setLlmMatchingId] = useState<number | null>(null);
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
+    const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
 
     // Bulk multiselect — ids checked for bulk actions (independent of the
     // single inspected title). `lastBulkClickRef` anchors shift-click ranges.
@@ -249,13 +250,19 @@ function ReviewQueue() {
         });
     }, [jobId, addMessageListener]);
 
-    // Fetch config once on mount to know whether AI matching is enabled.
+    // Fetch config once on mount to know whether AI matching is usable. Both
+    // flags gate the "Try AI match" button: enabling the feature without a key
+    // makes every click burn a full transcription before failing a guard.
     useEffect(() => {
         fetch('/api/config')
             .then((r) => r.ok ? r.json() : null)
             .then((data) => {
                 if (data?.ai_episode_matching_enabled) {
                     setAiEpisodeMatchingEnabled(true);
+                }
+                // "***" is the redacted stand-in for a stored key; "" means unset.
+                if (data?.ai_api_key === '***') {
+                    setAiKeyConfigured(true);
                 }
             })
             .catch(() => {/* non-critical */});
@@ -1219,6 +1226,7 @@ function ReviewQueue() {
                                 titleIndexById={titleIndexById}
                                 isRematching={isRematching}
                                 aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
+                                aiKeyConfigured={aiKeyConfigured}
                                 llmFeedback={llmFeedback[selectedTitle.id] ?? null}
                                 isLlmMatching={llmMatchingId === selectedTitle.id}
                                 onAssign={(code) => handleEpisodeChange(selectedTitle.id, code)}
