@@ -7,6 +7,7 @@ handling, so this locks in their wrap/reraise/swallow contract.
 import pytest
 
 from app.core.errors import (
+    AIProviderError,
     ConfigurationError,
     DatabaseError,
     EngramError,
@@ -35,6 +36,27 @@ class TestExceptionHierarchy:
     def test_subclasses_are_engram_errors(self, exc_cls):
         assert issubclass(exc_cls, EngramError)
         assert isinstance(exc_cls("boom"), EngramError)
+
+
+@pytest.mark.unit
+class TestAIProviderErrorFields:
+    """AIProviderError carries the classified cause alongside the message.
+
+    ``code`` is populated by ``ai_client.classify_provider_error`` so callers can
+    branch on a stable value instead of parsing a human sentence; ``detail`` keeps
+    the provider's own body for the log.
+    """
+
+    def test_defaults_keep_existing_call_sites_working(self):
+        err = AIProviderError("boom")
+        assert str(err) == "boom"
+        assert err.code == "unknown"
+        assert err.detail == ""
+
+    def test_code_and_detail_are_carried(self):
+        err = AIProviderError("boom", code="no_credits", detail="quota exhausted")
+        assert err.code == "no_credits"
+        assert err.detail == "quota exhausted"
 
 
 @pytest.mark.unit
