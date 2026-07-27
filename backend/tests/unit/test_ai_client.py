@@ -372,3 +372,59 @@ class TestCompleteJsonRaiseOnError:
                 )
         # A non-transport error must NOT be coerced into AIProviderError.
         assert not issubclass(RuntimeError, AIProviderError)
+
+
+class TestClassifyProviderError:
+    def _status_error(self, status: int, body: str):
+        from httpx import HTTPStatusError, Request, Response
+
+        req = Request("POST", "http://x")
+        return HTTPStatusError(
+            "err", request=req, response=Response(status, request=req, text=body)
+        )
+
+    @pytest.mark.parametrize(
+        "provider,status,body,expected",
+        [
+            ("openai", 429, '{"error":{"code":"insufficient_quota"}}', "no_credits"),
+            ("openai", 429, '{"error":{"code":"rate_limit_exceeded"}}', "rate_limited"),
+            ("openai", 401, '{"error":{"code":"invalid_api_key"}}', "bad_key"),
+            ("openai", 404, '{"error":{"code":"model_not_found"}}', "model_unavailable"),
+            ("openrouter", 402, '{"error":{"message":"Insufficient credits"}}', "no_credits"),
+            ("anthropic", 401, '{"error":{"type":"authentication_error"}}', "bad_key"),
+            ("anthropic", 429, '{"error":{"type":"rate_limit_error"}}', "rate_limited"),
+            ("gemini", 429, '{"error":{"status":"RESOURCE_EXHAUSTED"}}', "rate_limited"),
+            ("gemini", 400, '{"error":{"status":"INVALID_ARGUMENT"}}', "bad_key"),
+            ("gemini", 403, '{"error":{"status":"PERMISSION_DENIED"}}', "model_unavailable"),
+            ("openai", 500, '{"error":{"message":"oops"}}', "unknown"),
+        ],
+    )
+    def test_http_statuses(self, provider, status, body, expected):
+        from app.core.ai_client import classify_provider_error
+
+        code, message = classify_provider_error(provider, self._status_error(status, body))
+        assert code == expected
+        assert message  # never empty; the UI renders it verbatim
+
+    def test_connect_error_is_network(self):
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        code, _ = classify_provider_error("openai", httpx.ConnectError("no route"))
+        assert code == "network"
+
+    def test_timeout_is_timeout(self):
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        code, _ = classify_provider_error("openai", httpx.ReadTimeout("slow"))
+        assert code == "timeout"
+
+    def test_body_is_capped_and_not_echoed_whole(self):
+        from app.core.ai_client import classify_provider_error
+
+        huge = '{"error":{"message":"' + ("x" * 9000) + '"}}'
+        code, message = classify_provider_error("openai", self._status_error(429, huge))
+        assert len(message) < 500

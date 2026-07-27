@@ -13,7 +13,7 @@ import random
 
 import httpx
 
-from app.core.errors import AIProviderError
+from app.core.errors import AIProviderError, ProviderErrorCode
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,84 @@ _TIMEOUT_SECONDS = 30.0
 
 MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0  # seconds
+
+_MAX_DETAIL_CHARS = 2048
+
+# Human sentences per cause. Rendered verbatim in the UI, so they must be
+# actionable and must never contain the provider's raw body.
+_CAUSE_MESSAGES: dict[ProviderErrorCode, str] = {
+    "bad_key": "The API key was rejected. Check it was copied in full and belongs to {provider}.",
+    "no_credits": (
+        "{provider} accepted the key but the account has no API credits. "
+        "Note that a paid chat subscription does not include API usage."
+    ),
+    "rate_limited": "{provider} is rate limiting this key. Wait a moment and try again.",
+    "model_unavailable": "This key does not have access to the model Engram uses for {provider}.",
+    "bad_request": "{provider} rejected the request.",
+    "network": "Could not reach {provider}. Check the internet connection.",
+    "timeout": "{provider} did not respond in time.",
+    "unknown": "{provider} returned an unexpected error.",
+}
+
+
+def classify_provider_error(provider: str, exc: Exception) -> tuple[ProviderErrorCode, str]:
+    """Map a provider failure to a stable ``(code, human_message)`` pair.
+
+    The provider's own body is the only thing that separates a permanently
+    exhausted quota from transient throttling (both are HTTP 429 on OpenAI), so
+    this reads it. The body is never returned to the caller; it is summarised
+    into a fixed sentence and left to the logs.
+    """
+    code: ProviderErrorCode
+    if isinstance(exc, httpx.TimeoutException):
+        code = "timeout"
+    elif isinstance(exc, httpx.HTTPStatusError):
+        code = _classify_status(provider, exc)
+    elif isinstance(exc, httpx.HTTPError):
+        code = "network"
+    else:
+        code = "unknown"
+    return code, _CAUSE_MESSAGES[code].format(provider=provider)
+
+
+def _classify_status(provider: str, exc: httpx.HTTPStatusError) -> ProviderErrorCode:
+    status = exc.response.status_code
+    try:
+        body = (exc.response.text or "")[:_MAX_DETAIL_CHARS].lower()
+    except Exception:  # noqa: BLE001 — a body we cannot read must not mask the status
+        body = ""
+
+    # OpenRouter signals exhausted credit with 402, unlike OpenAI's 429.
+    if status == 402:
+        return "no_credits"
+    if status in (401, 403):
+        # Gemini uses 403 PERMISSION_DENIED for model access, not for a bad key.
+        if status == 403 and "permission_denied" in body:
+            return "model_unavailable"
+        return "bad_key"
+    if status == 404:
+        return "model_unavailable"
+    if status == 429:
+        if "insufficient_quota" in body or "exceeded your current quota" in body:
+            return "no_credits"
+        return "rate_limited"
+    if status == 400:
+        # Gemini reports a malformed/invalid key as 400 INVALID_ARGUMENT.
+        if "invalid_argument" in body or "api key" in body:
+            return "bad_key"
+        return "bad_request"
+    return "unknown"
+
+
+def detail_from(exc: Exception) -> str:
+    """The provider's own body, capped, for logs and diagnostics only."""
+    response = getattr(exc, "response", None)
+    if response is None:
+        return str(exc)[:_MAX_DETAIL_CHARS]
+    try:
+        return (response.text or "")[:_MAX_DETAIL_CHARS]
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 async def _with_429_retry(coro_factory):
