@@ -1117,6 +1117,75 @@ async def test_broadcast_update_status_carries_marker_fields():
     assert payload["last_update_success_version"] == "9.9.9"
 
 
+def test_get_status_carries_current_release_fields():
+    """REST seed must expose the running version's notes."""
+    checker = UpdateChecker()
+    checker.current_release_notes = "## Highlights"
+    checker.current_release_url = "https://example.com/tag/v1.2.3"
+
+    status = checker.get_status()
+
+    assert status["current_release_notes"] == "## Highlights"
+    assert status["current_release_url"] == "https://example.com/tag/v1.2.3"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_carries_current_release_fields():
+    """WS push must expose the same fields as the REST seed (drift regression)."""
+    ws = _FakeWS()
+    eb = EventBroadcaster(ws)
+
+    await eb.broadcast_update_status(
+        state="up_to_date",
+        current_release_notes="## Highlights",
+        current_release_url="https://example.com/tag/v1.2.3",
+    )
+
+    payload = ws.sent[-1]
+    assert payload["current_release_notes"] == "## Highlights"
+    assert payload["current_release_url"] == "https://example.com/tag/v1.2.3"
+
+
+@pytest.mark.asyncio
+async def test_get_status_and_broadcast_agree_on_non_none_fields():
+    """Anti-drift invariant: every non-None key from get_status() must also
+    appear in the WebSocket payload produced from that same state.
+
+    This is the test that would have caught the historical is_frozen bug
+    (dropped from broadcast_update_status while present in get_status) and
+    will catch the next field that gets added to one serialiser and not
+    the other.
+    """
+    checker = UpdateChecker()
+    checker.state = UpdateStatus.READY
+    checker.latest_version = "9.9.9"
+    checker.release_notes = "## Release notes"
+    checker.release_url = "https://example.com/tag/v9.9.9"
+    checker.current_release_notes = "## Highlights"
+    checker.current_release_url = "https://example.com/tag/v1.2.3"
+    checker.error = "boom"
+    checker.last_update_error = "update boom"
+    checker.last_update_success_version = "1.2.3"
+
+    ws = _FakeWS()
+    checker.set_broadcaster(EventBroadcaster(ws))
+
+    await checker._broadcast()
+
+    status = checker.get_status()
+    payload = ws.sent[-1]
+
+    # download_progress is only populated by get_status() while state ==
+    # DOWNLOADING (it's None here since state == READY), and broadcast_update_status
+    # never carries it at all — it's a REST-only polling field, not pushed live.
+    # It falls out naturally via the "value is not None" filter below.
+    for key, value in status.items():
+        if value is None:
+            continue
+        assert key in payload, f"{key!r} present in get_status() but missing from broadcast"
+        assert payload[key] == value, f"{key!r} disagrees between get_status() and broadcast"
+
+
 # ---------------------------------------------------------------------------
 # Task 8: End-to-end Windows swap via the real _spawn_detached_helper
 # ---------------------------------------------------------------------------

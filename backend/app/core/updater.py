@@ -554,6 +554,8 @@ class UpdateChecker:
             "latest_version": self.latest_version,
             "release_notes": self.release_notes,
             "release_url": self.release_url,
+            "current_release_notes": self.current_release_notes,
+            "current_release_url": self.current_release_url,
             "download_progress": (
                 self.download_progress if self.state == UpdateStatus.DOWNLOADING else None
             ),
@@ -903,6 +905,8 @@ class UpdateChecker:
                 latest_version=self.latest_version,
                 release_notes=self.release_notes,
                 release_url=self.release_url,
+                current_release_notes=self.current_release_notes,
+                current_release_url=self.current_release_url,
                 error=self.error,
                 last_update_error=self.last_update_error,
                 last_update_success_version=self.last_update_success_version,
