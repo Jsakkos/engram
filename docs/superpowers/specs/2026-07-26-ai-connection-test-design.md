@@ -53,7 +53,53 @@ Provider failure information is destroyed at three layers.
    endpoint always returns 200, which stopped being true when #350 added the 503
    contract; the frontend was never updated to map those reasons.
 
-Two secondary findings:
+### The more likely cause: a second, silent failure channel
+
+The `llm_error` path above is only the visible half. There is a second channel
+that produces no error at all, and it fits the report better.
+
+`llmFeedback.ts:26` collapses **every** non-`internal_error` reason into a single
+sentence:
+
+```ts
+return { tone: 'warn', text: 'No confident AI match found.' };
+```
+
+That branch is reached by `ai_disabled`, `not_configured`, `no_show`,
+`no_season`, `show_not_found` and `no_match` alike. So a user whose AI key is
+not set clicks "Try AI match", waits through a full Whisper transcription, and
+is told the AI ran and found nothing. It never ran. The differentiated 200
+reasons that #350 built on the backend are discarded by the frontend, which was
+never updated to consume them; the same oversight left the stale
+"endpoint always returns 200" comment at `ReviewQueue.tsx:413` and a test at
+`llmFeedback.test.ts:23` still asserting against `no_suggestion`, a reason the
+backend no longer emits.
+
+Combined with the nesting bug in #546, this reproduces the user's report exactly
+and without any provider fault: the API key field is hidden unless AI disc
+identification is enabled, so the key is never set, so every attempt returns
+`not_configured`, so the UI says "No confident AI match found" forever. Buying a
+paid OpenAI account would not change that message.
+
+Two provider-response shapes reach the same dead end, both confirmed by probing
+`complete_json` with a mocked transport:
+
+- **Truncated JSON** (what OpenAI returns when `finish_reason == "length"`)
+  fails `json.loads`, and `_parse_json_text` returns `None`. `complete_json`
+  returns `None` *even when `raise_on_error=True`*, so it becomes `no_match`
+  and a 200. `_call_openai_compatible` never inspects `finish_reason`, which
+  OpenAI's own documentation says to check before parsing.
+- **`"content": null`**, which OpenAI sends on a refusal, hits
+  `.get("content", "")` returning `None` rather than `""`, so
+  `_parse_json_text(None)` raises `AttributeError`. That is not an
+  `AIProviderError`, so `raise_on_error` re-raises it unwrapped, the
+  `except AIProviderError` in `_run_llm_match_for_title` misses it, and the
+  endpoint's bare `except Exception` turns it into a 500 `internal_error`. The
+  same `.get(key, "")`-returns-`None` pattern exists in the Anthropic
+  (`content[0].get("text", "")`) and Gemini (`parts[0].get("text", "")`)
+  adapters.
+
+Two further findings:
 
 - `_with_429_retry` (`ai_client.py:38`) retries every 429 three times with
   backoff. OpenAI returns 429 for `insufficient_quota`, which never resolves, so
@@ -69,6 +115,10 @@ Two secondary findings:
    transcription run, and get a specific reason when they do not work.
 2. Make every AI provider failure, including those during real matching, report
    a specific cause rather than `llm_error`.
+3. Never tell a user "No confident AI match found" when the matcher did not run.
+   This is the highest-priority item of the three: it is the failure mode most
+   likely to be behind the report, the fix is frontend-only, and it is what makes
+   users conclude the feature is broken when it is merely unconfigured.
 
 ## Non-goals
 
@@ -222,7 +272,59 @@ the selected provider's prefix, the button reports the mismatch without spending
 a request. This is a hint, not a gate: an unrecognised prefix warns but still
 allows the test, since provider key formats change.
 
-### 6. Testing
+### 6. Honest reasons in the Inspector
+
+`llmFeedback.ts` maps each backend reason to its own sentence instead of
+funnelling all of them into "No confident AI match found". The reason strings
+already exist and are already documented in `client.ts:69-81`; only the frontend
+mapping is missing.
+
+| Reason | Tone | Message |
+|--------|------|---------|
+| `ai_disabled` | warn | AI episode matching is turned off. Enable it in Settings. |
+| `not_configured` | warn | No AI API key is set. Add one in Settings, then use Test Connection. |
+| `no_show` | warn | This job has no detected show title, so there is nothing to match against. |
+| `no_season` | warn | This job has no detected season, so there is nothing to match against. |
+| `show_not_found` | warn | The show could not be found on TMDB. |
+| `no_match` | warn | No confident AI match found. |
+| `internal_error` | error | AI match failed. Check the server log. |
+
+Only `no_match` keeps the current wording, because it is the only reason for
+which that wording is true.
+
+The two guard cases (`ai_disabled`, `not_configured`) are also the cheapest to
+detect, and the endpoint returns them before doing any work. The "Try AI match"
+button should be disabled with an explanatory tooltip when config says AI
+matching is unusable, so the user is not invited to spend a transcription run on
+a request that cannot succeed. `ReviewQueue.tsx` already fetches config for
+`aiEpisodeMatchingEnabled`; it needs the key-present flag too, which
+`GET /api/config` can expose as a boolean (`ai_api_key_set`) in the same shape it
+already uses for `discdb_api_key_set`, without revealing the key.
+
+The stale comment at `ReviewQueue.tsx:413` and the `no_suggestion` case in
+`llmFeedback.test.ts:23` are corrected as part of this.
+
+### 7. Adapter hardening
+
+Both silent-failure shapes get closed in `ai_client.py`:
+
+- **Check `finish_reason` before parsing.** When it is `length`, raise
+  `AIProviderError` with code `response_truncated` rather than handing truncated
+  text to `_parse_json_text`. The user then learns the response was cut off
+  instead of being told there was no match.
+- **Treat a null content field as empty.** Replace `.get("content", "")` with
+  `.get("content") or ""` in all three adapters (`_call_openai_compatible`,
+  `_call_anthropic`, `_call_gemini`), so a provider refusal produces a clean
+  "empty response" outcome rather than an `AttributeError` that escapes
+  `raise_on_error` and surfaces as a 500.
+- **Distinguish "unparseable" from "no match."** When `_parse_json_text` fails,
+  `complete_json` currently returns `None`, which the matcher cannot tell apart
+  from a legitimate no-match. Under `raise_on_error=True` it should raise
+  `AIProviderError` with code `malformed_response` instead. The default
+  (`raise_on_error=False`) keeps returning `None`, so the in-pipeline fallback in
+  `curator._maybe_add_llm_suggestion` is unaffected.
+
+### 8. Testing
 
 Backend unit:
 
@@ -230,6 +332,12 @@ Backend unit:
   providers, one case per code in the table.
 - `complete_json(retries=0)` issues exactly one request on a 429.
 - `_with_429_retry` does not retry when the classifier returns `no_credits`.
+- A `finish_reason: "length"` response raises `response_truncated`, not `None`.
+- A `"content": null` response returns cleanly rather than raising
+  `AttributeError`, for all three adapters.
+- Unparseable JSON raises `malformed_response` under `raise_on_error=True` and
+  still returns `None` under the default, so `curator._maybe_add_llm_suggestion`
+  keeps its current behaviour.
 
 Backend route:
 
@@ -243,7 +351,10 @@ Frontend:
 - vitest for `aiValidation.ts` covering valid, invalid, network failure,
   non-JSON response and the omitted-key path.
 - vitest for the button's state transitions and the prefix-mismatch hint.
-- vitest for `llmResultToFeedback`'s 503 branch.
+- vitest for `llmResultToFeedback`: one case per row of the reason table, plus
+  the 503 branch. The existing `no_suggestion` case is replaced with `no_match`.
+- vitest that the "Try AI match" button is disabled when AI matching is off or
+  no key is set.
 
 ## Open questions
 
