@@ -72,6 +72,7 @@ class UpdateChecker:
         # can mistake the running build for an available update.
         self.current_release_notes: str | None = None
         self.current_release_url: str | None = None
+        self._current_release_fetched: bool = False
         self.download_progress: float = 0.0
         self.staging_path: Path | None = None
         self.error: str | None = None
@@ -202,6 +203,10 @@ class UpdateChecker:
             return
 
         if self._is_older_or_equal(tag, self._current_version):
+            if tag == self._current_version:
+                # This IS the running version's release, so the what's-new modal
+                # already has what it needs; skip the tag-specific refetch.
+                self._store_current_release(data)
             self.state = UpdateStatus.UP_TO_DATE
             return
 
@@ -237,7 +242,7 @@ class UpdateChecker:
         and offline installs cannot reach GitHub at all. Both leave the fields None,
         which the frontend treats as "do not show the modal".
         """
-        if self.current_release_notes is not None:
+        if self._current_release_fetched:
             return
 
         url = GITHUB_TAG_API_URL.format(version=self._current_version)
@@ -251,11 +256,19 @@ class UpdateChecker:
                 resp.raise_for_status()
                 data = resp.json()
         except Exception as exc:
-            logger.debug(f"Release notes for v{self._current_version} unavailable: {exc}")
+            logger.debug(
+                f"Release notes for v{self._current_version} unavailable "
+                f"({type(exc).__name__}): {exc}"
+            )
             return
 
+        self._store_current_release(data)
+
+    def _store_current_release(self, data: dict) -> None:
+        """Record the running version's release notes from a GitHub release payload."""
         self.current_release_notes = data.get("body")
         self.current_release_url = data.get("html_url")
+        self._current_release_fetched = True
 
     @staticmethod
     def _is_older_or_equal(tag: str, current: str) -> bool:
