@@ -582,6 +582,16 @@ no_credits from rate_limited, bad_key, model_unavailable and network."
 - Modify: `backend/app/core/ai_client.py:110-123`
 - Test: `backend/tests/unit/test_ai_client.py`
 
+Carry-over from the Task 6 review, to be handled here: **this task is the first
+place `detail_from(exc)` reaches a real log line, so it must be sanitised.** The
+value is a raw provider response body, which is attacker-adjacent (a compromised
+provider, or a MITM proxy, could embed CRLF to forge log entries). Route it
+through `sanitize_log_value` from `app/core/security.py`, which is what the rest
+of the codebase already uses for exactly this, before it is passed to
+`logger.warning`. The value stored on `AIProviderError.detail` may stay raw,
+since that is structured data rather than a log line, but anything that gets
+formatted into a log message must be sanitised.
+
 - [ ] **Step 1: Write the failing test**
 
 ```python
