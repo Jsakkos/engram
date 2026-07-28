@@ -4,6 +4,17 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Test your AI provider connection before you rely on it.** Settings → AI Provider now has a **Test Connection** button that sends one tiny request and tells you exactly what happened: the key was rejected, the account has no API credits, the provider is rate limiting you, or the key has no access to the model Engram uses. Previously the only way to find out was to rip a disc and wait through a one-to-three-minute transcription before the request was even attempted. Leave the key field blank to test the key you already saved, without having to paste it again.
+
+### Fixed
+
+- **AI episode matching now tells you why it did nothing, instead of claiming it found no match.** Clicking **Try AI match** reported "No confident AI match found" for almost every outcome, including ones where the matcher never ran at all: AI matching switched off, no API key configured, no show or season detected, or the show missing from TMDB. Each of those now says what actually happened and what to do about it. The button is also disabled outright when no API key is set, so a click can no longer spend a full transcription only to fail a check that was knowable up front.
+- **A failing AI provider now names the actual cause instead of showing raw JSON.** Every provider failure collapsed into one opaque message, surfaced in the review inspector as `Request failed (503 Service Unavailable): {"suggestion":null,"reason":"llm_error"}`. The provider's own explanation was discarded before anyone could read it, so an exhausted account quota, a rejected key, ordinary rate limiting, and a network outage were indistinguishable from each other in the app and in the logs. Engram now reads the provider's response and reports the specific cause. A permanently out-of-credit key also stops being retried, which previously cost four requests and several seconds of backoff on every attempt for a failure that could never succeed.
+- **A truncated or refused AI response no longer masquerades as "no match".** When a provider cut its reply off at the token limit, or refused the request outright, the reply was silently discarded and reported as though the model had run and simply been unsure. A refusal could also crash the request outright with an internal server error. Both now report what actually went wrong.
+- **Gemini failures no longer blame your API key for unrelated problems.** Google returns the same generic error code for nearly every rejected request, so a bad prompt, an unsupported parameter, or an internal schema problem would all have been reported as "the API key was rejected", sending people to re-check a key that was fine.
+
 ## [0.27.0] - 2026-07-24
 
 _Highlights: contribute your own disc metadata back to TheDiscDB, plus fixes for mid-rip track skipping, LAN manual import, and a mid-rip identity correction that now re-matches already-ripped titles._
