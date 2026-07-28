@@ -83,6 +83,7 @@ export function SvTopBar({
                 type="button"
                 onClick={onVersionClick}
                 title="What's new in this version"
+                aria-label="What's new in this version"
                 data-testid="sv-topbar-version"
                 style={{
                   font: "inherit",
