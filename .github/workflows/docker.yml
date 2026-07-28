@@ -103,17 +103,39 @@ jobs:
           fi
           echo "smoke test passed"
 
+      # Guards against makemkv.com changing its download page format and silently
+      # breaking our scraping. It must NOT fail the build when makemkv.com is
+      # simply unreachable (Cloudflare 5xx, DNS, timeout). That is an upstream
+      # outage with nothing for us to fix, and it would block unrelated PRs.
+      # install-makemkv.sh exits 2 for "could not fetch" and 3 for "fetched but
+      # could not parse" so the two cases can be told apart here.
       - name: Verify MakeMKV version detection
         run: |
+          STATUS=0
           VERSION=$(docker run --rm \
             --entrypoint /usr/local/bin/install-makemkv.sh \
             -e MAKEMKV_DETECT_ONLY=1 \
-            engram:ci || true)
-          if [ -z "$VERSION" ]; then
-            echo "::error::MakeMKV version detection returned empty — check if download page format changed"
-            exit 1
-          fi
-          echo "Detected MakeMKV version: $VERSION"
+            engram:ci) || STATUS=$?
+          case "$STATUS" in
+            0)
+              if [ -z "$VERSION" ]; then
+                echo "::error::MakeMKV version detection succeeded but printed nothing; the detect-only contract in docker/install-makemkv.sh is broken"
+                exit 1
+              fi
+              echo "Detected MakeMKV version: $VERSION"
+              ;;
+            2)
+              echo "::warning::Could not reach makemkv.com to verify version detection (upstream outage or network failure). Skipping this check; it is not a problem with this change."
+              ;;
+            3)
+              echo "::error::Fetched the MakeMKV download page but could not find a version in it. The page format has likely changed and the scraping logic in docker/install-makemkv.sh needs updating"
+              exit 1
+              ;;
+            *)
+              echo "::error::MakeMKV version detection exited with unexpected status $STATUS"
+              exit 1
+              ;;
+          esac
 
       - name: Log in to GHCR
         if: env.IS_RELEASE == 'true'
