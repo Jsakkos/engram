@@ -50,6 +50,11 @@ _CAUSE_MESSAGES: dict[ProviderErrorCode, str] = {
     "bad_request": "{provider} rejected the request.",
     "network": "Could not reach {provider}. Check the internet connection.",
     "timeout": "{provider} did not respond in time.",
+    "response_truncated": (
+        "{provider} cut the response off before it was complete. "
+        "This usually means the reply exceeded the token budget."
+    ),
+    "malformed_response": "{provider} returned a reply that was not valid JSON.",
     "unknown": "{provider} returned an unexpected error.",
 }
 
@@ -142,6 +147,14 @@ async def _with_429_retry(coro_factory, *, provider: str, retries: int = MAX_RET
     return None
 
 
+class _TruncatedResponse(Exception):
+    """Internal: provider stopped generating because it hit the token budget.
+
+    Not an AIProviderError: complete_json translates it, so the adapters stay
+    free of the raise_on_error policy decision.
+    """
+
+
 async def complete_json(
     *,
     prompt: str,
@@ -156,15 +169,22 @@ async def complete_json(
 ) -> dict | None:
     """Send a prompt to an LLM provider and return its JSON response as a dict.
 
-    Returns None on any failure (network, HTTP, malformed JSON). Callers must
-    treat None as "no usable result" and fall back to other behaviour.
+    Returns None on any failure (network, HTTP, malformed JSON) when
+    ``raise_on_error`` is False (the default). Callers must treat None as "no
+    usable result" and fall back to other behaviour.
 
     When ``raise_on_error`` is True, a transport/HTTP failure raises
-    ``AIProviderError`` (carrying a classified ``code`` and provider ``detail``)
-    and an unexpected (non-transport) error propagates as-is, so callers can
-    distinguish a provider outage from a genuine bug. The early-return paths
-    (empty ``api_key``, unknown provider) and an empty or unparseable response
-    body still return None regardless.
+    ``AIProviderError`` (carrying a classified ``code`` and provider ``detail``),
+    a truncated response (provider stopped at the token budget) raises it with
+    code ``response_truncated``, an empty or unparseable response body raises it
+    with code ``malformed_response``, and an unexpected (non-transport) error
+    propagates as-is — so callers can distinguish a provider outage or a
+    truncated/garbled reply from "the model ran and was not confident" (which
+    stays a plain ``None`` from the layer above ``complete_json``, e.g.
+    ``match_episode_via_llm`` returning None for a low-confidence match). The
+    early-return paths (empty ``api_key``, unknown provider) still return None
+    regardless of ``raise_on_error`` — see the trace in the code, they exit
+    before the try/except that implements the policy above.
 
     ``retries`` and ``timeout`` let a caller (e.g. a "test connection"
     pre-flight check) fail fast instead of paying the full backoff ladder.
@@ -203,7 +223,15 @@ async def complete_json(
         return None
 
     try:
-        return await _with_429_retry(factory, provider=provider, retries=retries)
+        result = await _with_429_retry(factory, provider=provider, retries=retries)
+    except _TruncatedResponse:
+        logger.warning("AI provider %s truncated its response (token budget)", provider)
+        if raise_on_error:
+            raise AIProviderError(
+                _CAUSE_MESSAGES["response_truncated"].format(provider=provider),
+                code="response_truncated",
+            ) from None
+        return None
     except httpx.HTTPError as e:
         code, message = classify_provider_error(provider, e)
         logger.warning(
@@ -224,6 +252,16 @@ async def complete_json(
             # callers classify them as internal errors, not retryable provider errors.
             raise
         return None
+
+    if result is None and raise_on_error:
+        # The transport succeeded but the body was empty or unparseable. Callers
+        # with raise_on_error set need this separated from "the model ran and had
+        # no confident answer", which is also a None from the layer above.
+        raise AIProviderError(
+            _CAUSE_MESSAGES["malformed_response"].format(provider=provider),
+            code="malformed_response",
+        )
+    return result
 
 
 def _to_gemini_schema(schema):
@@ -299,6 +337,8 @@ async def _call_anthropic(
         )
         resp.raise_for_status()
         data = resp.json()
+        if data.get("stop_reason") == "max_tokens":
+            raise _TruncatedResponse
         content = data.get("content") or []
         if not content:
             return None
@@ -338,6 +378,8 @@ async def _call_openai_compatible(
         choices = data.get("choices") or []
         if not choices:
             return None
+        if choices[0].get("finish_reason") == "length":
+            raise _TruncatedResponse
         text = choices[0].get("message", {}).get("content") or ""
         return _parse_json_text(text)
 
@@ -378,6 +420,8 @@ async def _call_gemini(
         candidates = data.get("candidates") or []
         if not candidates:
             return None
+        if candidates[0].get("finishReason") == "MAX_TOKENS":
+            raise _TruncatedResponse
         parts = candidates[0].get("content", {}).get("parts") or []
         if not parts:
             return None

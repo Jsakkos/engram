@@ -23,6 +23,8 @@ ProviderErrorCode = Literal[
     "bad_request",
     "network",
     "timeout",
+    "response_truncated",
+    "malformed_response",
     "unknown",
 ]
 
