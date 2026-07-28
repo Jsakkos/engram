@@ -39,6 +39,11 @@ export default function UpdateModal({
     const version = isWhatsNew ? updateStatus?.current_version : updateStatus?.latest_version;
     const notes = isWhatsNew ? updateStatus?.current_release_notes : updateStatus?.release_notes;
     const releaseUrl = isWhatsNew ? updateStatus?.current_release_url : updateStatus?.release_url;
+    // Both variants can be mounted (and open) at once, so the dialog's labelling id
+    // and test id must differ per variant or aria-labelledby resolves to whichever
+    // heading comes first in DOM order and getByTestId matches two elements.
+    const titleId = isWhatsNew ? "whats-new-modal-title" : "update-modal-title";
+    const testId = isWhatsNew ? "whats-new-modal" : "update-modal";
 
     useEffect(() => {
         if (!open) return;
@@ -112,7 +117,7 @@ export default function UpdateModal({
                     exit={{ opacity: 0 }}
                     role="dialog"
                     aria-modal="true"
-                    aria-labelledby="update-modal-title"
+                    aria-labelledby={titleId}
                 >
                     <motion.div
                         className="absolute inset-0"
@@ -139,7 +144,7 @@ export default function UpdateModal({
                                 display: "flex",
                                 flexDirection: "column",
                             }}
-                            data-testid="update-modal"
+                            testid={testId}
                         >
                             {/* Header */}
                             <div
@@ -158,7 +163,7 @@ export default function UpdateModal({
                                 />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <h2
-                                        id="update-modal-title"
+                                        id={titleId}
                                         style={{
                                             fontFamily: sv.display,
                                             fontWeight: 700,
@@ -266,7 +271,7 @@ export default function UpdateModal({
                                             background: sv.cyan,
                                         }}
                                     >
-                                        Close
+                                        Got it
                                     </button>
                                 ) : (
                                     <>

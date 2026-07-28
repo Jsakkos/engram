@@ -11,6 +11,8 @@ interface Props {
   isConnected: boolean;
   /** App version, shown beneath the wordmark. */
   version: string;
+  /** When provided, the version string becomes a button that opens the what's-new modal. */
+  onVersionClick?: () => void;
   /** Render a [MOCK] tag next to the LIVE pill. */
   devMode?: boolean;
   navItems: NavItem[];
@@ -29,6 +31,7 @@ interface Props {
 export function SvTopBar({
   isConnected,
   version,
+  onVersionClick,
   devMode = false,
   navItems,
   onSettingsClick,
@@ -74,7 +77,29 @@ export function SvTopBar({
               textTransform: "uppercase",
             }}
           >
-            <span style={{ color: sv.cyan }}>›</span> MEMORY · ARCHIVAL · v{version}
+            <span style={{ color: sv.cyan }}>›</span> MEMORY · ARCHIVAL ·{" "}
+            {onVersionClick ? (
+              <button
+                type="button"
+                onClick={onVersionClick}
+                title="What's new in this version"
+                data-testid="sv-topbar-version"
+                style={{
+                  font: "inherit",
+                  letterSpacing: "inherit",
+                  textTransform: "uppercase",
+                  color: "inherit",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                v{version}
+              </button>
+            ) : (
+              <>v{version}</>
+            )}
           </span>
         </div>
       </div>

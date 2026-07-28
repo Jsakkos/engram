@@ -9,6 +9,7 @@ import { useDiscFilters } from "./hooks/useDiscFilters";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useNotifications } from "./hooks/useNotifications";
 import { useUpdateSuccessToast } from "./hooks/useUpdateSuccessToast";
+import { useWhatsNewModal } from "./hooks/useWhatsNewModal";
 import { useBackgroundEffectsEnabled } from "./hooks/useBackgroundEffectsEnabled";
 import ReviewQueue from "../components/ReviewQueue";
 import ConfigWizard from "../components/ConfigWizard";
@@ -164,6 +165,7 @@ function MainDashboard() {
   // Job management with WebSocket
   const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   useUpdateSuccessToast(updateStatus);
+  const whatsNew = useWhatsNewModal(updateStatus);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
   const [bugReportJobId, setBugReportJobId] = useState<number | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -322,6 +324,7 @@ function MainDashboard() {
       <SvTopBar
         isConnected={isConnected}
         version={__APP_VERSION__}
+        onVersionClick={whatsNew.show}
         devMode={DEV_MODE}
         navItems={navItems}
         onSettingsClick={() => openSettings()}
@@ -975,6 +978,15 @@ function MainDashboard() {
           setUpdateDismissed(true);
           setShowUpdateModal(false);
         }}
+      />
+
+      {/* What's new: release notes for the version currently running, shown once
+          per version and re-openable from the top-bar version string. */}
+      <UpdateModal
+        open={whatsNew.open}
+        variant="whatsNew"
+        updateStatus={updateStatus}
+        onClose={whatsNew.close}
       />
 
       {/* Onboarding Wizard (first run) */}

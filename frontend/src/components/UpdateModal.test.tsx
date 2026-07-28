@@ -34,12 +34,40 @@ describe("UpdateModal whatsNew variant", () => {
 
         expect(screen.getByText(/What's new in 0\.28\.0/)).toBeInTheDocument();
         expect(screen.getByText(/Community data features/)).toBeInTheDocument();
-        // Queried by test id, not by role+name: the header's X button already has
-        // aria-label="Close", so getByRole("button", { name: "Close" }) matches two
-        // elements and throws.
+        // The footer button says "Got it" rather than "Close" so it does not share an
+        // accessible name with the header's aria-label="Close" X button.
         expect(screen.getByTestId("whats-new-close")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Got it" })).toBeInTheDocument();
         expect(screen.queryByText("Skip this version")).not.toBeInTheDocument();
         expect(screen.queryByText(/Restart to update/)).not.toBeInTheDocument();
+    });
+
+    it("uses variant-scoped ids so both instances can be mounted at once", () => {
+        const { rerender } = render(
+            <UpdateModal open variant="whatsNew" updateStatus={base} onClose={() => {}} />,
+        );
+
+        expect(screen.getByTestId("whats-new-modal")).toBeInTheDocument();
+        expect(screen.queryByTestId("update-modal")).not.toBeInTheDocument();
+        expect(screen.getByRole("dialog")).toHaveAttribute(
+            "aria-labelledby",
+            "whats-new-modal-title",
+        );
+
+        rerender(
+            <UpdateModal
+                open
+                updateStatus={{ ...base, latest_version: "0.29.0", release_notes: "Newer" }}
+                onClose={() => {}}
+            />,
+        );
+
+        expect(screen.getByTestId("update-modal")).toBeInTheDocument();
+        expect(screen.queryByTestId("whats-new-modal")).not.toBeInTheDocument();
+        expect(screen.getByRole("dialog")).toHaveAttribute(
+            "aria-labelledby",
+            "update-modal-title",
+        );
     });
 
     it("defaults to the update variant with its actions intact", () => {
