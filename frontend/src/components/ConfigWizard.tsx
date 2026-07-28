@@ -1177,7 +1177,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         <span className="checkbox-text">
                                             <strong>AI-Powered Episode Matching (TV)</strong>
                                             <span className="checkbox-hint">
-                                                When audio fingerprint matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
+                                                When episode matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
                                             </span>
                                         </span>
                                     </label>

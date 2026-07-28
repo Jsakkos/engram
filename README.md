@@ -7,7 +7,9 @@
 <p align="center">
   Disc ripping and media organization with a reactive web dashboard.
   <br />
-  Monitors optical drives, rips with MakeMKV, identifies episodes via audio fingerprinting,
+  Monitors optical drives, rips with MakeMKV, identifies episodes by transcribing
+  <br />
+  the audio and matching it against reference subtitles,
   <br />
   and files everything into your media library — automatically.
 </p>
@@ -48,7 +50,7 @@
 - **Real-time dashboard** — web UI with WebSocket live updates, progress tracking, and notifications
 - **Human-in-the-loop** — review queue for low-confidence matches, unreadable disc labels, and ambiguous content with a pre-filled correction modal
 - **Job history & analytics** — searchable archive of all completed/failed jobs with drill-down detail panel, processing timeline, and TheDiscDB metadata
-- **TheDiscDB integration** — automatic disc identification via content-hash fingerprinting with persisted title mappings
+- **TheDiscDB integration** — automatic disc identification via content-hash disc lookup with persisted title mappings
 - **Contribute back** — share disc layouts with [TheDiscDB](https://thediscdb.com) so others can identify the same pressings automatically. Opt in under Settings → TheDiscDB Contributions
 - **Responsive design** — works on desktop and mobile with compact/expanded view modes
 
@@ -71,7 +73,7 @@ On all platforms, Engram supports a **staging folder workflow**: drop a folder o
 ## Prerequisites
 
 - [MakeMKV](https://www.makemkv.com/) with a valid license
-- [FFmpeg](https://ffmpeg.org/download.html) for episode matching (audio fingerprinting). Engram auto-detects it on your `PATH` — see [installing FFmpeg](docs/getting-started/installation.md#installing-ffmpeg), or [Troubleshooting](docs/troubleshooting.md#ffmpeg-not-detected-windows) if it isn't found
+- [FFmpeg](https://ffmpeg.org/download.html) for episode matching (audio extraction and transcription). Engram auto-detects it on your `PATH` — see [installing FFmpeg](docs/getting-started/installation.md#installing-ffmpeg), or [Troubleshooting](docs/troubleshooting.md#ffmpeg-not-detected-windows) if it isn't found
 - A TMDB API Read Access Token (v4) from [TMDB](https://www.themoviedb.org/settings/api)
 - If running from source: Python 3.11–3.13 with [uv](https://docs.astral.sh/uv/), and Node.js 24 (Python 3.14 is not yet supported — some ML dependencies have no 3.14 wheels)
 
@@ -197,7 +199,7 @@ AGPL-3.0. See [LICENSE](LICENSE).
 ## Acknowledgments
 
 - [MakeMKV](https://www.makemkv.com/) for disc decryption
-- [mkv-episode-matcher](https://github.com/Jsakkos/mkv-episode-matcher) for audio fingerprinting
+- [mkv-episode-matcher](https://github.com/Jsakkos/mkv-episode-matcher) for episode matching
 - [TheDiscDB](https://thediscdb.com/) for disc content-hash lookups
 - [TMDB](https://www.themoviedb.org/) for media metadata and poster art
 

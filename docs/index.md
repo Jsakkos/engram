@@ -11,8 +11,8 @@ hide:
 
 **Disc ripping and media organization with a reactive web dashboard.**
 
-Monitors optical drives, rips with MakeMKV, identifies episodes via audio fingerprinting,
-and files everything into your media library -- automatically.
+Monitors optical drives, rips with MakeMKV, identifies episodes by transcribing the audio and
+matching it against reference subtitles, and files everything into your media library -- automatically.
 
 [![Release](https://img.shields.io/github/v/release/Jsakkos/engram?style=flat-square&color=06b6d4)](https://github.com/Jsakkos/engram/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/Jsakkos/engram/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Jsakkos/engram/actions/workflows/ci.yml)
@@ -53,7 +53,7 @@ and files everything into your media library -- automatically.
 - **Real-time dashboard** -- web UI with WebSocket live updates, progress tracking, and notifications
 - **Human-in-the-loop** -- review queue for low-confidence matches, unreadable disc labels, and ambiguous content with a pre-filled correction modal
 - **Job history & analytics** -- searchable archive of all completed/failed jobs with drill-down detail panel, processing timeline, and TheDiscDB metadata
-- **TheDiscDB integration** -- automatic disc identification via content hash fingerprinting with persisted title mappings
+- **TheDiscDB integration** -- automatic disc identification via content-hash disc lookup with persisted title mappings
 - **Contribute back** -- share disc layouts with [TheDiscDB](https://thediscdb.com) so others can identify the same pressings automatically. Opt in under Settings → TheDiscDB Contributions
 - **Responsive design** -- works on desktop and mobile with compact/expanded view modes
 

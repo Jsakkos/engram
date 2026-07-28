@@ -155,7 +155,10 @@ a modified client:
 - Transcripts or subtitles, even when speech recognition made the match
 - Any indication of what else is in your library
 - Email, account, hardware identifier, or any other identity
-- Your IP address is not logged or stored alongside contributions
+
+Your IP address is a separate case: like any web request, the connection itself carries it,
+so the schema is not what protects you there. The server does not log it or store it
+alongside contributions, and deletion works purely by pseudonym.
 
 ### How a fingerprint becomes canonical
 
@@ -181,7 +184,9 @@ so nothing further leaves the machine.
 The same panel shows your anonymous contribution ID and offers **Forget me on the server**.
 That sends your pseudonym to the network's deletion endpoint, which removes every raw
 contribution recorded under it, clears the local upload queue, and rotates you to a fresh
-ID. You can also rotate the ID on its own, which unlinks future contributions from past ones.
+ID. It also resets your acceptance of the disclosure, so contributing stops there: nothing is
+uploaded again until you accept that dialog a second time. You can also rotate the ID on its
+own, which unlinks future contributions from past ones without pausing contributions.
 
 !!! warning "Promoted data cannot be un-aggregated"
     Deletion removes your raw contributions. If some of them had already been promoted into a

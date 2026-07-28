@@ -7,12 +7,67 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowUp, ExternalLink, X } from "lucide-react";
+import { ArrowUp, ExternalLink, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import { toast } from "sonner";
 import { SvPanel, sv } from "../app/components/synapse";
 import { apiFetchVoid, ApiError } from "../api/client";
 import type { UpdateStatus } from "../types";
+
+// Tailwind's preflight strips heading sizes and weights, so markdown headings in the
+// release notes would otherwise render identically to body text. Release bodies are
+// long and section-heavy, so the headings have to be scannable.
+const headingBase: CSSProperties = {
+    fontFamily: sv.display,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    marginTop: 20,
+    marginBottom: 8,
+};
+
+const markdownComponents: Components = {
+    h1: ({ children }) => (
+        <h3
+            style={{
+                ...headingBase,
+                fontSize: 15,
+                letterSpacing: "0.16em",
+                color: sv.cyanHi,
+                borderBottom: `1px solid ${sv.line}`,
+                paddingBottom: 6,
+            }}
+        >
+            {children}
+        </h3>
+    ),
+    h2: ({ children }) => (
+        <h4
+            style={{
+                ...headingBase,
+                fontSize: 13,
+                letterSpacing: "0.16em",
+                color: sv.cyanHi,
+            }}
+        >
+            {children}
+        </h4>
+    ),
+    h3: ({ children }) => (
+        <h5
+            style={{
+                ...headingBase,
+                fontFamily: sv.mono,
+                fontSize: 11,
+                letterSpacing: "0.18em",
+                color: sv.cyan,
+                marginBottom: 4,
+            }}
+        >
+            {children}
+        </h5>
+    ),
+};
 
 interface UpdateModalProps {
     open: boolean;
@@ -44,6 +99,7 @@ export default function UpdateModal({
     // heading comes first in DOM order and getByTestId matches two elements.
     const titleId = isWhatsNew ? "whats-new-modal-title" : "update-modal-title";
     const testId = isWhatsNew ? "whats-new-modal" : "update-modal";
+    const HeaderIcon = isWhatsNew ? Sparkles : ArrowUp;
 
     useEffect(() => {
         if (!open) return;
@@ -156,7 +212,9 @@ export default function UpdateModal({
                                     borderBottom: `1px solid ${sv.line}`,
                                 }}
                             >
-                                <ArrowUp
+                                {/* The whatsNew variant describes the version already
+                                    running, so an "update available" arrow would be wrong. */}
+                                <HeaderIcon
                                     size={20}
                                     color={sv.cyan}
                                     style={{ filter: `drop-shadow(0 0 6px ${sv.cyan}99)` }}
@@ -211,7 +269,9 @@ export default function UpdateModal({
                                             lineHeight: 1.65,
                                         }}
                                     >
-                                        <ReactMarkdown>{notes}</ReactMarkdown>
+                                        <ReactMarkdown components={markdownComponents}>
+                                            {notes}
+                                        </ReactMarkdown>
                                     </div>
                                 ) : (
                                     <p
