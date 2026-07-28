@@ -260,8 +260,14 @@ def _to_gemini_schema(schema):
     return out
 
 
-def _parse_json_text(text: str) -> dict | None:
-    """Parse JSON, tolerating ```json fences and surrounding whitespace."""
+def _parse_json_text(text: str | None) -> dict | None:
+    """Parse JSON, tolerating ```json fences and surrounding whitespace.
+
+    Accepts None so a provider that sends an explicit null text field yields a
+    clean "no usable result" rather than an AttributeError.
+    """
+    if not text:
+        return None
     text = text.strip()
     if text.startswith("```"):
         lines = [ln for ln in text.split("\n") if not ln.strip().startswith("```")]
@@ -296,7 +302,7 @@ async def _call_anthropic(
         content = data.get("content") or []
         if not content:
             return None
-        text = content[0].get("text", "")
+        text = content[0].get("text") or ""
         return _parse_json_text(text)
 
 
@@ -332,7 +338,7 @@ async def _call_openai_compatible(
         choices = data.get("choices") or []
         if not choices:
             return None
-        text = choices[0].get("message", {}).get("content", "")
+        text = choices[0].get("message", {}).get("content") or ""
         return _parse_json_text(text)
 
 
@@ -375,5 +381,5 @@ async def _call_gemini(
         parts = candidates[0].get("content", {}).get("parts") or []
         if not parts:
             return None
-        text = parts[0].get("text", "")
+        text = parts[0].get("text") or ""
         return _parse_json_text(text)

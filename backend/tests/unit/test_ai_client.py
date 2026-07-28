@@ -560,3 +560,66 @@ class TestCompleteJsonErrorCodes:
                 prompt="x", schema=None, provider="openai", api_key="k", timeout=10.0
             )
         assert ctor.call_args.kwargs["timeout"] == 10.0
+
+
+class TestNullContent:
+    """A provider that sends an explicit JSON null for its text field must produce
+    a clean empty result, not an AttributeError.
+
+    ``.get(key, "")`` returns None when the key is PRESENT with a null value, so
+    the default never applies. OpenAI does this on a refusal. The resulting
+    AttributeError is not an AIProviderError, so it escapes raise_on_error
+    unwrapped and reaches the user as an HTTP 500 rather than a clean outcome.
+    """
+
+    @pytest.mark.asyncio
+    async def test_openai_null_content_returns_none(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"choices": [{"message": {"content": None}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x",
+                schema=None,
+                provider="openai",
+                api_key="k",
+                raise_on_error=True,
+            )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_anthropic_null_text_returns_none(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"content": [{"text": None}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x",
+                schema=None,
+                provider="anthropic",
+                api_key="k",
+                raise_on_error=True,
+            )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_gemini_null_text_returns_none(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"candidates": [{"content": {"parts": [{"text": None}]}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x",
+                schema=None,
+                provider="gemini",
+                api_key="k",
+                raise_on_error=True,
+            )
+        assert result is None
+
+    def test_parse_json_text_tolerates_none(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text(None) is None
+        assert _parse_json_text("") is None
+        assert _parse_json_text("   ") is None
