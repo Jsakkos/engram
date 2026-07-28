@@ -12,7 +12,7 @@ A `DiscJob` moves through the following states during its lifecycle:
 | **IDENTIFYING** | `identifying` | Scanning disc structure, classifying content type |
 | **REVIEW_NEEDED** | `review_needed` | Human intervention required (low confidence, ambiguous content) |
 | **RIPPING** | `ripping` | Active extraction via MakeMKV |
-| **MATCHING** | `matching` | Audio fingerprinting to identify episodes |
+| **MATCHING** | `matching` | Episode matching (transcript against reference subtitles) |
 | **ORGANIZING** | `organizing` | Moving files from staging to the media library |
 | **COMPLETED** | `completed` | Terminal state -- all processing finished successfully |
 | **FAILED** | `failed` | Terminal state -- processing failed with an error |
@@ -77,7 +77,7 @@ The `REVIEW_NEEDED` state is reachable from multiple stages, each for a differen
 
 - **From IDENTIFYING**: Classification confidence is too low. The Analyst or TMDB Classifier could not determine whether the disc is TV or movie with sufficient certainty.
 - **From RIPPING**: Ambiguous results during extraction (e.g., unusual title structure).
-- **From MATCHING**: Audio fingerprint matching produced low-confidence results or competing candidates for the same episode slot.
+- **From MATCHING**: Episode matching produced low-confidence results or competing candidates for the same episode slot.
 - **From ORGANIZING**: A file conflict requires user resolution (when `conflict_resolution_default` is set to `"ask"`).
 
 When a job enters `REVIEW_NEEDED`, it appears in the Review Queue on the frontend. After the user resolves the issue, the job transitions to `RIPPING` (to continue processing) or `COMPLETED` (if the user chooses to skip).
@@ -103,7 +103,7 @@ Individual titles (tracks) on a disc have their own state machine tracked by `Ti
 |-------|-------|-------------|
 | **PENDING** | `pending` | Title discovered, waiting to be processed |
 | **RIPPING** | `ripping` | Currently being extracted by MakeMKV |
-| **MATCHING** | `matching` | Audio fingerprinting in progress |
+| **MATCHING** | `matching` | Episode matching in progress |
 | **MATCHED** | `matched` | Successfully matched to an episode but not yet organized |
 | **REVIEW** | `review` | Ripped successfully but needs human review for episode assignment |
 | **COMPLETED** | `completed` | Organized into the media library |

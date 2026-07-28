@@ -29,7 +29,7 @@
 <table>
   <tr>
     <td><img src="docs/screenshots/03-ripping-state.png" alt="Ripping in progress" /><br /><sub>Ripping a TV disc with real-time progress</sub></td>
-    <td><img src="docs/screenshots/08-match-candidates.png" alt="Episode matching" /><br /><sub>Audio fingerprint matching with confidence scores</sub></td>
+    <td><img src="docs/screenshots/08-match-candidates.png" alt="Episode matching" /><br /><sub>Episode matching with confidence scores</sub></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/26-review-page.png" alt="Review queue" /><br /><sub>Human-in-the-loop episode review queue</sub></td>

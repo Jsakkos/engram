@@ -37,7 +37,7 @@ and files everything into your media library -- automatically.
 
 | ![Episode matching](screenshots/08-match-candidates.png) |
 |:--:|
-| *Audio fingerprint matching with confidence scores* |
+| *Episode matching with confidence scores* |
 
 </div>
 
