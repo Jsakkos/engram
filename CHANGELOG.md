@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Engram is part of two shared identification networks, and you can now see exactly what that means.** A new [Contributing Data](https://jsakkos.github.io/engram/guide/contributing-data/) guide explains both halves. **TheDiscDB** answers "which disc is this?" by content hash, and you can now contribute disc layouts back to it so others can identify the same pressing automatically: opt in under Settings → TheDiscDB Contributions, with no account and no API key needed. The **Engram acoustic fingerprint network** answers "which episode is this track?" from chromaprint audio fingerprints, so episode identification no longer depends on finding reference subtitles for the specific show you are ripping. No audio or video ever leaves your machine, contributions are pseudonymous, and everything you have sent can be deleted. Identification now reads from the fingerprint catalog by default and falls back to the existing TMDB, AI, and heuristic paths on a miss.
+- **A "What's new" summary after you update.** Engram now shows the release notes for the version you are running, once per version, the first time you open the dashboard after updating. It works however you updated: in-app self-update, a fresh download, or a new Docker image. Click the version number in the top bar to read them again at any time.
+
+### Fixed
+
+- **Settings no longer implies you need a TheDiscDB API key to contribute.** The API key field was labelled as required for submitting directly to TheDiscDB, with an empty field meaning local-only export. That was never true: TheDiscDB accepts contributions openly and Engram submits fine without a key. The field is now marked optional. The Data Sharing step also claimed that nothing was enabled by default, which understated fingerprint contributions (on by default, and gated behind the consent dialog shown before the first upload); it now says what is actually on.
+
 ## [0.27.0] - 2026-07-24
 
 _Highlights: contribute your own disc metadata back to TheDiscDB, plus fixes for mid-rip track skipping, LAN manual import, and a mid-rip identity correction that now re-matches already-ripped titles._
