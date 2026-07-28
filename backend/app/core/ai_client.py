@@ -95,8 +95,12 @@ def _classify_status(provider: str, exc: httpx.HTTPStatusError) -> ProviderError
             return "no_credits"
         return "rate_limited"
     if status == 400:
-        # Gemini reports a malformed/invalid key as 400 INVALID_ARGUMENT.
-        if "invalid_argument" in body or "api key" in body:
+        # Gemini returns 400 INVALID_ARGUMENT for nearly every validation failure
+        # (bad prompt, bad schema, bad model name, ...), not just a bad key — see
+        # PR #344, where a schema-union request 400'd with "Proto field is not
+        # repeating, cannot start list." Only a body that actually names the API
+        # key counts as bad_key; everything else is an honest bad_request.
+        if "api key" in body:
             return "bad_key"
         return "bad_request"
     return "unknown"

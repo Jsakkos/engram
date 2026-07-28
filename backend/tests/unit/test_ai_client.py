@@ -394,7 +394,26 @@ class TestClassifyProviderError:
             ("anthropic", 401, '{"error":{"type":"authentication_error"}}', "bad_key"),
             ("anthropic", 429, '{"error":{"type":"rate_limit_error"}}', "rate_limited"),
             ("gemini", 429, '{"error":{"status":"RESOURCE_EXHAUSTED"}}', "rate_limited"),
-            ("gemini", 400, '{"error":{"status":"INVALID_ARGUMENT"}}', "bad_key"),
+            # Bare INVALID_ARGUMENT with no key-related message is Gemini's catch-all
+            # for validation failures (bad prompt, bad schema, bad model name, ...),
+            # not evidence of a bad key.
+            ("gemini", 400, '{"error":{"status":"INVALID_ARGUMENT"}}', "bad_request"),
+            (
+                "gemini",
+                400,
+                '{"error":{"status":"INVALID_ARGUMENT",'
+                '"message":"API key not valid. Please pass a valid API key."}}',
+                "bad_key",
+            ),
+            # Regression for PR #344: a schema-union 400 was misclassified as bad_key
+            # because it also carries status INVALID_ARGUMENT. It must stay bad_request.
+            (
+                "gemini",
+                400,
+                '{"error":{"status":"INVALID_ARGUMENT",'
+                '"message":"Proto field is not repeating, cannot start list."}}',
+                "bad_request",
+            ),
             ("gemini", 403, '{"error":{"status":"PERMISSION_DENIED"}}', "model_unavailable"),
             ("openai", 500, '{"error":{"message":"oops"}}', "unknown"),
         ],
@@ -422,9 +441,37 @@ class TestClassifyProviderError:
         code, _ = classify_provider_error("openai", httpx.ReadTimeout("slow"))
         assert code == "timeout"
 
-    def test_body_is_capped_and_not_echoed_whole(self):
+    def test_message_never_echoes_body_content(self):
         from app.core.ai_client import classify_provider_error
 
         huge = '{"error":{"message":"' + ("x" * 9000) + '"}}'
         code, message = classify_provider_error("openai", self._status_error(429, huge))
-        assert len(message) < 500
+        assert "x" * 9000 not in message
+
+
+class TestDetailFrom:
+    def _status_error(self, status: int, body: str):
+        from httpx import HTTPStatusError, Request, Response
+
+        req = Request("POST", "http://x")
+        return HTTPStatusError(
+            "err", request=req, response=Response(status, request=req, text=body)
+        )
+
+    def test_http_status_error_body_is_capped_at_2048(self):
+        from app.core.ai_client import detail_from
+
+        huge = '{"error":{"message":"' + ("x" * 9000) + '"}}'
+        detail = detail_from(self._status_error(429, huge))
+        assert len(detail) == 2048
+        assert detail == huge[:2048]
+
+    def test_non_http_status_error_falls_back_to_str_and_is_capped(self):
+        import httpx
+
+        from app.core.ai_client import detail_from
+
+        exc = httpx.ConnectError("no route" * 500)
+        detail = detail_from(exc)
+        assert detail == str(exc)[:2048]
+        assert len(detail) <= 2048
