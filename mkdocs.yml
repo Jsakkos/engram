@@ -63,6 +63,7 @@ nav:
     - Linux / macOS Setup: guide/linux-setup.md
     - Review Queue: guide/review-queue.md
     - Job History: guide/history.md
+    - Contributing Data: guide/contributing-data.md
     - LLM Episode Matcher: guide/llm-episode-matcher.md
   - Troubleshooting: troubleshooting.md
   - Deployment:
