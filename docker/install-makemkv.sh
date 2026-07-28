@@ -45,6 +45,11 @@ resolve_latest_version() {
         | head -n1 \
         | sed -E 's/makemkv-sha-([0-9.]+)\.txt/\1/')" || version=""
 
+    # Residual ambiguity, accepted: an outage that returns a maintenance page
+    # with HTTP 200 satisfies curl and lands here rather than in the fetch
+    # branch, so it reports as a parse failure. Sniffing for "looks like a
+    # maintenance page" is not worth the false negatives it would add to the
+    # format-change check, so the messages below name both possibilities.
     if [ -z "${version}" ]; then
         return "${EXIT_PARSE_FAILED}"
     fi
@@ -69,7 +74,9 @@ if [ "${MAKEMKV_DETECT_ONLY:-}" = "1" ]; then
             exit "${EXIT_FETCH_FAILED}"
             ;;
         "${EXIT_PARSE_FAILED}")
-            echo "ERROR: fetched ${DL_BASE}/ but found no version in it; the download page format has changed." >&2
+            echo "ERROR: fetched ${DL_BASE}/ but found no version in it." >&2
+            echo "       The download page format has probably changed; makemkv.com serving an" >&2
+            echo "       error or maintenance page with a 200 status would look the same." >&2
             exit "${EXIT_PARSE_FAILED}"
             ;;
         *)
@@ -87,7 +94,9 @@ if [ "${VERSION}" = "latest" ]; then
             echo "ERROR: could not reach ${DL_BASE}/ to resolve the latest MakeMKV version." >&2
             echo "       makemkv.com may be down; check your network and try again." >&2
         else
-            echo "ERROR: fetched ${DL_BASE}/ but found no version in it; the download page format has changed." >&2
+            echo "ERROR: fetched ${DL_BASE}/ but found no version in it." >&2
+            echo "       The download page format has probably changed; makemkv.com serving an" >&2
+            echo "       error or maintenance page with a 200 status would look the same." >&2
         fi
         echo "       Set MAKEMKV_VERSION to a specific release (e.g. 1.18.1) to skip detection." >&2
         exit 1

@@ -128,7 +128,7 @@ jobs:
               echo "::warning::Could not reach makemkv.com to verify version detection (upstream outage or network failure). Skipping this check; it is not a problem with this change."
               ;;
             3)
-              echo "::error::Fetched the MakeMKV download page but could not find a version in it. The page format has likely changed and the scraping logic in docker/install-makemkv.sh needs updating"
+              echo "::error::Fetched the MakeMKV download page but could not find a version in it. The page format has probably changed and the scraping logic in docker/install-makemkv.sh needs updating; a maintenance page served with a 200 status would look the same, so check makemkv.com before assuming a format change"
               exit 1
               ;;
             *)
