@@ -1,3 +1,4 @@
+import { ApiError } from '../../api/client';
 import type { LLMMatchResult } from '../../api/client';
 import type { SvNoticeTone } from '../../app/components/synapse';
 
@@ -38,4 +39,32 @@ export function llmResultToFeedback(result: LLMMatchResult): LLMFeedback | null 
         tone: 'warn',
         text: known ?? `AI match did not produce a suggestion (${result.reason}).`,
     };
+}
+
+/** Retryable 503 reasons, for when the body carries no provider message. */
+const RETRYABLE_MESSAGES: Record<string, string> = {
+    matcher_unavailable: 'The episode matcher is not ready for this show yet. Try again shortly.',
+    transcription_failed: 'Could not transcribe this file, so there was nothing to match.',
+    llm_error: 'The AI provider call failed. Check the provider key in Settings.',
+};
+
+/**
+ * Map a thrown `runLLMMatch` error (503 or 500) to Inspector feedback.
+ *
+ * Prefers the backend's `message`, which the provider-error classifier composed
+ * from the provider's own response body. Falls back to a per-reason sentence so
+ * the raw JSON body of ApiError.message never reaches the user.
+ */
+export function llmErrorToFeedback(err: unknown): LLMFeedback {
+    if (err instanceof ApiError) {
+        try {
+            const body = JSON.parse(err.body) as { reason?: string; message?: string };
+            if (body.message) return { tone: 'error', text: body.message };
+            const known = body.reason ? RETRYABLE_MESSAGES[body.reason] : undefined;
+            if (known) return { tone: 'error', text: known };
+        } catch {
+            // Unparseable body falls through to the generic message below.
+        }
+    }
+    return { tone: 'error', text: 'AI match failed. Check the server log.' };
 }

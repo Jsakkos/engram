@@ -15,7 +15,7 @@ import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
-import { llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
+import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
 import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
@@ -435,13 +435,7 @@ function ReviewQueue() {
             }
         } catch (err) {
             console.error('LLM match failed', err);
-            setLlmFeedback((prev) => ({
-                ...prev,
-                [titleId]: {
-                    tone: 'error',
-                    text: err instanceof Error ? err.message : 'AI match failed.',
-                },
-            }));
+            setLlmFeedback((prev) => ({ ...prev, [titleId]: llmErrorToFeedback(err) }));
         } finally {
             // Only clear if this title is still the in-flight one (a fast click on
             // another title must not clear the wrong spinner).

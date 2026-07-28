@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { llmResultToFeedback } from './llmFeedback';
+import { llmErrorToFeedback, llmResultToFeedback } from './llmFeedback';
+import { ApiError } from '../../api/client';
 import type { LLMMatchResult } from '../../api/client';
 
 const suggestion: LLMMatchResult['suggestion'] = {
@@ -44,6 +45,49 @@ describe('llmResultToFeedback', () => {
         expect(llmResultToFeedback({ suggestion: null, reason: 'brand_new_reason' })).toEqual({
             tone: 'warn',
             text: 'AI match did not produce a suggestion (brand_new_reason).',
+        });
+    });
+});
+
+describe('llmErrorToFeedback', () => {
+    it('renders the provider message from a 503 body', () => {
+        const err = new ApiError(503, 'Service Unavailable', JSON.stringify({
+            suggestion: null, reason: 'llm_error',
+            detail: 'no_credits', message: 'This account has no API credits.',
+        }));
+        expect(llmErrorToFeedback(err)).toEqual({
+            tone: 'error', text: 'This account has no API credits.',
+        });
+    });
+
+    it('falls back to a per-reason sentence when the body has no message', () => {
+        const err = new ApiError(503, 'Service Unavailable', JSON.stringify({
+            suggestion: null, reason: 'transcription_failed',
+        }));
+        expect(llmErrorToFeedback(err)).toEqual({
+            tone: 'error',
+            text: 'Could not transcribe this file, so there was nothing to match.',
+        });
+    });
+
+    it('never leaks the raw JSON body for an unrecognised reason', () => {
+        const err = new ApiError(503, 'Service Unavailable', JSON.stringify({
+            suggestion: null, reason: 'something_new',
+        }));
+        const feedback = llmErrorToFeedback(err);
+        expect(feedback.text).not.toContain('{');
+        expect(feedback.tone).toBe('error');
+    });
+
+    it('handles an unparseable body', () => {
+        expect(llmErrorToFeedback(new ApiError(503, 'x', 'not json'))).toEqual({
+            tone: 'error', text: 'AI match failed. Check the server log.',
+        });
+    });
+
+    it('handles a non-ApiError', () => {
+        expect(llmErrorToFeedback(new Error('boom'))).toEqual({
+            tone: 'error', text: 'AI match failed. Check the server log.',
         });
     });
 });

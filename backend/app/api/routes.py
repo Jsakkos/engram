@@ -4257,14 +4257,16 @@ class LLMMatchOutcome:
 
     suggestion: dict | None
     reason: str | None
+    detail: str = ""
+    message: str = ""
 
     @classmethod
     def ok(cls, suggestion: dict) -> "LLMMatchOutcome":
         return cls(suggestion=suggestion, reason=None)
 
     @classmethod
-    def failed(cls, reason: str) -> "LLMMatchOutcome":
-        return cls(suggestion=None, reason=reason)
+    def failed(cls, reason: str, *, detail: str = "", message: str = "") -> "LLMMatchOutcome":
+        return cls(suggestion=None, reason=reason, detail=detail, message=message)
 
 
 # Operational failures the caller may retry (HTTP 503). Every other reason is a
@@ -4336,13 +4338,14 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
             tmdb_api_key=config.tmdb_api_key,
             raise_on_error=True,
         )
-    except AIProviderError:
+    except AIProviderError as e:
         logger.warning(
-            "LLM match: provider error for title %s -> llm_error",
+            "LLM match: provider error for title %s -> llm_error (%s)",
             sanitize_log_value(title.id),
+            e.code,
             exc_info=True,
         )
-        return LLMMatchOutcome.failed("llm_error")
+        return LLMMatchOutcome.failed("llm_error", detail=e.code, message=str(e))
 
     if not suggestion:
         return LLMMatchOutcome.failed("no_match")
@@ -4396,7 +4399,15 @@ async def llm_match_title(
         )
 
     if outcome.reason in _LLM_MATCH_RETRYABLE_REASONS:
-        return JSONResponse(status_code=503, content={"suggestion": None, "reason": outcome.reason})
+        return JSONResponse(
+            status_code=503,
+            content={
+                "suggestion": None,
+                "reason": outcome.reason,
+                "detail": outcome.detail,
+                "message": outcome.message,
+            },
+        )
 
     if outcome.suggestion is None:
         return {"suggestion": None, "reason": outcome.reason}
