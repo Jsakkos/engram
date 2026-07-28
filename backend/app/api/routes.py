@@ -4253,12 +4253,19 @@ async def set_show_ordering(
 
 @dataclass(frozen=True)
 class LLMMatchOutcome:
-    """Result of an LLM-match attempt. ``reason is None`` means success."""
+    """Result of an LLM-match attempt. ``reason is None`` means success.
+
+    CAUTION: this ``detail`` is NOT ``AIProviderError.detail``. Here it is the
+    classified cause code (``"no_credits"``, ``"bad_key"``, ...), which is safe
+    to send to the client. There it is the provider's raw response body, which
+    must never leave the backend. Populate this field from ``e.code``, never
+    from ``e.detail``.
+    """
 
     suggestion: dict | None
     reason: str | None
-    detail: str = ""
-    message: str = ""
+    detail: str = ""  # classified cause code, client-safe. See the caution above.
+    message: str = ""  # composed human sentence, rendered verbatim in the Inspector
 
     @classmethod
     def ok(cls, suggestion: dict) -> "LLMMatchOutcome":

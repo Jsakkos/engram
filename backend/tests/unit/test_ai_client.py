@@ -455,6 +455,32 @@ class TestClassifyProviderError:
         code, message = classify_provider_error("openai", self._status_error(429, huge))
         assert "x" * 9000 not in message
 
+    @pytest.mark.parametrize(
+        "provider,label",
+        [
+            ("openai", "OpenAI"),
+            ("anthropic", "Anthropic"),
+            ("openrouter", "OpenRouter"),
+            ("gemini", "Gemini"),
+        ],
+    )
+    def test_message_uses_the_display_label_not_the_slug(self, provider, label):
+        """These sentences are read by users, so the lowercase internal slug
+        must not leak into them ("OpenAI accepted the key", not "openai")."""
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error(
+            provider, self._status_error(429, '{"error":{"code":"insufficient_quota"}}')
+        )
+        assert label in message
+        assert provider not in message
+
+    def test_unknown_provider_falls_back_to_its_own_name(self):
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error("hal9000", self._status_error(500, "{}"))
+        assert "hal9000" in message
+
 
 class TestDetailFrom:
     def _status_error(self, status: int, body: str):

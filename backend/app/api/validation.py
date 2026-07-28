@@ -681,7 +681,16 @@ async def validate_ai(
     if not api_key:
         from app.services.config_service import get_config
 
-        config = await get_config()
+        # Guarded: this endpoint promises never to 500, and a config read can
+        # fail (locked or migrating DB). Reporting "could not read the saved
+        # key" is more useful than a stack trace behind a dead button.
+        try:
+            config = await get_config()
+        except Exception:  # noqa: BLE001 — a validator must never 500
+            logger.warning("AI validation could not read the stored key", exc_info=True)
+            return ValidationResponse(
+                valid=False, error="Could not read the saved API key from the database"
+            )
         api_key = (getattr(config, "ai_api_key", "") or "").strip()
     if not api_key:
         return ValidationResponse(

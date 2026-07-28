@@ -37,6 +37,17 @@ _BACKOFF_BASE = 1.0  # seconds
 
 _MAX_DETAIL_CHARS = 2048
 
+# Display names for the four provider slugs. The slugs themselves are lowercase
+# identifiers, and these sentences are read by users, so "OpenAI accepted the
+# key" beats "openai accepted the key". Mirrors AI_PROVIDER_LABELS in the
+# frontend's ConfigWizard, which labels the same four providers.
+_PROVIDER_LABELS = {
+    "anthropic": "Anthropic",
+    "openai": "OpenAI",
+    "openrouter": "OpenRouter",
+    "gemini": "Gemini",
+}
+
 # Human sentences per cause. Rendered verbatim in the UI, so they must be
 # actionable and must never contain the provider's raw body.
 _CAUSE_MESSAGES: dict[ProviderErrorCode, str] = {
@@ -76,7 +87,7 @@ def classify_provider_error(provider: str, exc: Exception) -> tuple[ProviderErro
         code = "network"
     else:
         code = "unknown"
-    return code, _CAUSE_MESSAGES[code].format(provider=provider)
+    return code, _CAUSE_MESSAGES[code].format(provider=_PROVIDER_LABELS.get(provider, provider))
 
 
 def _classify_status(provider: str, exc: httpx.HTTPStatusError) -> ProviderErrorCode:

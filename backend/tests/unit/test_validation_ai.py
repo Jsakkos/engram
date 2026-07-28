@@ -82,6 +82,19 @@ class TestValidateAI:
         assert spy.await_args.kwargs["timeout"] == 10.0
 
     @pytest.mark.asyncio
+    async def test_config_read_failure_does_not_500(self, client):
+        """This endpoint promises never to 500. A config read can fail on a
+        locked or migrating DB, and it is the one call outside the try block."""
+        with patch(
+            "app.services.config_service.get_config",
+            new=AsyncMock(side_effect=RuntimeError("database is locked")),
+        ):
+            resp = await client.post("/api/validate/ai", json={"provider": "openai"})
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is False
+        assert "saved api key" in resp.json()["error"].lower()
+
+    @pytest.mark.asyncio
     async def test_empty_provider_response_is_invalid(self, client):
         with patch("app.core.ai_client.complete_json", new=AsyncMock(return_value=None)):
             resp = await client.post(

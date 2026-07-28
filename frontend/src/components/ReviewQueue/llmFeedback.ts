@@ -8,6 +8,11 @@ export interface LLMFeedback {
     text: string;
 }
 
+/** Last resort when we cannot say anything specific. Shared by both mappers so a
+ *  200 `internal_error` and a thrown 500 never drift into two different wordings
+ *  for what is the same outcome to the user. */
+const GENERIC_FAILURE = 'AI match failed. Check the server log.';
+
 /** Reason to user-facing message. Only `no_match` means the model actually ran
  *  and was not confident; every other reason is a guard that fired first, so
  *  reporting them all as "no confident match" tells the user the AI ran when it
@@ -32,7 +37,7 @@ export function llmResultToFeedback(result: LLMMatchResult): LLMFeedback | null 
     if (result.suggestion) return null;
     if (!result.reason || result.reason === 'cached') return null;
     if (result.reason === 'internal_error') {
-        return { tone: 'error', text: 'AI match failed. Check the server log.' };
+        return { tone: 'error', text: GENERIC_FAILURE };
     }
     const known = REASON_MESSAGES[result.reason];
     return {
