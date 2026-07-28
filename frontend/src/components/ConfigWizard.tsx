@@ -8,6 +8,7 @@ import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
 import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
+import { requestAiValidation } from '../utils/aiValidation';
 import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
 import { formatToolVersion } from '../utils/formatting';
 import './ConfigWizard.css';
@@ -244,6 +245,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // not exist (#243). 'error' never counts as validated, but the gate still
     // lets the user continue without TMDB.
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string}>({status: 'idle'});
+    const [aiValidation, setAiValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string, model?: string}>({status: 'idle'});
     // Inline validation for manually-entered tool paths (MakeMKV/FFmpeg), keyed by
     // the config field. Without this, a hand-typed override was saved blind — no
     // confirmation it actually points at a working binary.
@@ -557,6 +559,31 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         // the endpoint" and console.errors the underlying cause for either failure
         // (#243). The returned discriminated union maps straight onto our state.
         setTmdbValidation(await requestTmdbValidation(key));
+    };
+
+    const handleTestAi = async () => {
+        const key = config.aiApiKey.trim();
+        if (!key && !savedKeys.ai) {
+            setAiValidation({status: 'invalid', error: 'Please enter a key first'});
+            return;
+        }
+        // Prefix hint only, never a gate: provider key formats change, and a
+        // wrong-provider key is the common mistake after switching providers.
+        const expectedPrefix = AI_KEY_PLACEHOLDERS[config.aiProvider]?.replace('...', '');
+        if (key && expectedPrefix && !key.startsWith(expectedPrefix)) {
+            setAiValidation({
+                status: 'invalid',
+                error: `That does not look like a ${AI_PROVIDER_LABELS[config.aiProvider] || config.aiProvider} key (expected it to start with "${expectedPrefix}")`,
+            });
+            return;
+        }
+        setAiValidation({status: 'testing'});
+        const result = await requestAiValidation(config.aiProvider, config.aiApiKey);
+        if (result.status === 'valid') {
+            setAiValidation({status: 'valid', model: result.model});
+        } else {
+            setAiValidation({status: result.status, error: result.error});
+        }
     };
 
     // Validate a manually-entered tool path against the backend, which actually
@@ -1140,7 +1167,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                     <EngramSelect
                                         id="aiProvider"
                                         value={config.aiProvider}
-                                        onValueChange={(v) => handleInputChange('aiProvider', v)}
+                                        onValueChange={(v) => {
+                                            handleInputChange('aiProvider', v);
+                                            setAiValidation({status: 'idle'});
+                                        }}
                                         options={[
                                             { value: 'anthropic', label: 'Anthropic (Claude)' },
                                             { value: 'openai', label: 'OpenAI' },
@@ -1159,8 +1189,35 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         type="password"
                                         placeholder={savedKeys.ai ? 'Enter new key to replace existing' : (AI_KEY_PLACEHOLDERS[config.aiProvider] || '')}
                                         value={config.aiApiKey}
-                                        onChange={(e) => handleInputChange('aiApiKey', e.target.value)}
+                                        onChange={(e) => {
+                                            handleInputChange('aiApiKey', e.target.value);
+                                            setAiValidation({status: 'idle'});
+                                        }}
                                     />
+                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                        <button
+                                            type="button"
+                                            onClick={handleTestAi}
+                                            disabled={aiValidation.status === 'testing' || (!config.aiApiKey && !savedKeys.ai)}
+                                            className="btn-secondary"
+                                            style={{padding: '0.25rem 0.75rem', fontSize: '0.85rem'}}
+                                        >
+                                            {aiValidation.status === 'testing' ? 'Testing...' : 'Test Connection'}
+                                        </button>
+                                        {aiValidation.status === 'valid' && (
+                                            <span style={{color: '#22c55e', fontSize: '0.85rem'}}>
+                                                ✓ Connected{aiValidation.model ? ` (${aiValidation.model})` : ''}
+                                            </span>
+                                        )}
+                                        {aiValidation.status === 'invalid' && (
+                                            <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {aiValidation.error}</span>
+                                        )}
+                                        {/* Amber, not red: the key wasn't rejected, the check
+                                            itself failed. Same distinction as the TMDB test. */}
+                                        {aiValidation.status === 'error' && (
+                                            <span style={{color: '#f59e0b', fontSize: '0.85rem'}}>⚠ {aiValidation.error}</span>
+                                        )}
+                                    </div>
                                     <span className="form-hint">
                                         API key for {providerLabel}. Used only when TMDB lookup fails.
                                     </span>
