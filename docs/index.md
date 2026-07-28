@@ -47,12 +47,14 @@ and files everything into your media library -- automatically.
 
 - **Automatic disc detection** -- monitors optical drives and starts processing on insertion
 - **Smart classification** -- distinguishes TV shows from movies using duration analysis, TMDB lookup, and TheDiscDB; uses the MakeMKV disc name as a TMDB fallback for merged-word volume labels (e.g. `STRANGENEWWORLDS_SEASON3`)
-- **Audio fingerprint matching** -- identifies TV episodes via ASR transcription matched against subtitles
+- **Episode matching** -- identifies TV episodes by transcribing the audio and matching it against reference subtitles
+- **Acoustic fingerprint network** -- a shared catalog of chromaprint audio fingerprints that identifies episodes without needing subtitles for the show. No audio or video leaves your machine; see [Contributing Data](guide/contributing-data.md)
 - **Subtitle downloads** -- fetches subtitles via the OpenSubtitles.com REST API (preferred, free tier available) with Addic7ed as fallback
 - **Real-time dashboard** -- web UI with WebSocket live updates, progress tracking, and notifications
 - **Human-in-the-loop** -- review queue for low-confidence matches, unreadable disc labels, and ambiguous content with a pre-filled correction modal
 - **Job history & analytics** -- searchable archive of all completed/failed jobs with drill-down detail panel, processing timeline, and TheDiscDB metadata
 - **TheDiscDB integration** -- automatic disc identification via content hash fingerprinting with persisted title mappings
+- **Contribute back** -- share disc layouts with [TheDiscDB](https://thediscdb.com) so others can identify the same pressings automatically. Opt in under Settings → TheDiscDB Contributions
 - **Responsive design** -- works on desktop and mobile with compact/expanded view modes
 
 ## Platform Support

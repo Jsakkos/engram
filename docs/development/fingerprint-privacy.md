@@ -271,7 +271,9 @@ upload.
 
 Identification (querying the network to find what episode a fingerprint matches) is
 controlled by a separate config flag: `enable_fingerprint_identification`, which defaults
-to `false`. It is gated off until the catalog has sufficient coverage to be useful.
+to `true`. The catalog is seeded, and a lookup miss costs nothing: identification falls
+back to the existing TMDB, AI, and heuristic paths. The flag remains available as a kill
+switch.
 
 When enabled, identification sends **only the query fingerprint** (a zstd-varint
 chromaprint) to `GET /v1/identify` with no additional request metadata — no pseudonym, no

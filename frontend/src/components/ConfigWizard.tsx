@@ -974,9 +974,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     <div className="wizard-step">
                         <h3 className="step-title">Data Sharing</h3>
                         <p className="step-description">
-                            Everything here is optional and governs data that leaves your machine. Nothing is on by
-                            default except local fingerprint extraction — and no filenames, paths, or personal
-                            information are ever sent.
+                            Everything here is optional and governs data that leaves your machine. Fingerprint
+                            contributions are on by default and ask for your consent before the first upload;
+                            TheDiscDB contributions are off until you turn them on. No filenames, paths, or
+                            personal information are ever sent.
                         </p>
 
                         {/* ── Fingerprint network ─────────────────────────────── */}
@@ -1251,9 +1252,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                                 type="password"
                                                 value={config.discdbApiKey}
                                                 onChange={(e) => handleInputChange('discdbApiKey', e.target.value)}
-                                                placeholder="Enter API key for automatic submission"
+                                                placeholder="Optional"
                                             />
-                                            <small>Required for submitting directly to TheDiscDB. Leave empty for local-only export.</small>
+                                            <small>No API key is needed: TheDiscDB accepts contributions without an account. This field is only for contributors who have been issued a key.</small>
                                         </div>
 
                                         <div className="form-group">
