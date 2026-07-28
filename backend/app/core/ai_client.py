@@ -14,6 +14,7 @@ import random
 import httpx
 
 from app.core.errors import AIProviderError, ProviderErrorCode
+from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -117,17 +118,23 @@ def detail_from(exc: Exception) -> str:
         return ""
 
 
-async def _with_429_retry(coro_factory):
-    """Call coro_factory() up to MAX_RETRIES+1 times, backing off on 429.
+async def _with_429_retry(coro_factory, *, provider: str, retries: int = MAX_RETRIES):
+    """Call coro_factory() up to retries+1 times, backing off on 429.
+
+    A 429 that classifies as ``no_credits`` is permanent within any retry window,
+    so it is re-raised immediately rather than paying the backoff ladder for a
+    guaranteed failure.
 
     coro_factory must be a no-arg callable returning a fresh coroutine each call.
     """
     delay = _BACKOFF_BASE
-    for attempt in range(MAX_RETRIES + 1):
+    for attempt in range(retries + 1):
         try:
             return await coro_factory()
         except httpx.HTTPStatusError as e:
-            if e.response.status_code != 429 or attempt == MAX_RETRIES:
+            if e.response.status_code != 429 or attempt == retries:
+                raise
+            if classify_provider_error(provider, e)[0] == "no_credits":
                 raise
             jitter = random.uniform(0, 0.25 * delay)
             await asyncio.sleep(delay + jitter)
@@ -144,6 +151,8 @@ async def complete_json(
     model: str | None = None,
     max_tokens: int = 1024,
     raise_on_error: bool = False,
+    retries: int = MAX_RETRIES,
+    timeout: float = _TIMEOUT_SECONDS,
 ) -> dict | None:
     """Send a prompt to an LLM provider and return its JSON response as a dict.
 
@@ -151,10 +160,14 @@ async def complete_json(
     treat None as "no usable result" and fall back to other behaviour.
 
     When ``raise_on_error`` is True, a transport/HTTP failure raises
-    ``AIProviderError`` and an unexpected (non-transport) error propagates as-is,
-    so callers can distinguish a provider outage from a genuine bug. The
-    early-return paths (empty ``api_key``, unknown provider) and an empty or
-    unparseable response body still return None regardless.
+    ``AIProviderError`` (carrying a classified ``code`` and provider ``detail``)
+    and an unexpected (non-transport) error propagates as-is, so callers can
+    distinguish a provider outage from a genuine bug. The early-return paths
+    (empty ``api_key``, unknown provider) and an empty or unparseable response
+    body still return None regardless.
+
+    ``retries`` and ``timeout`` let a caller (e.g. a "test connection"
+    pre-flight check) fail fast instead of paying the full backoff ladder.
     """
     if not api_key:
         logger.debug("complete_json called with empty api_key; returning None")
@@ -168,33 +181,41 @@ async def complete_json(
     if provider == "anthropic":
 
         def factory():
-            return _call_anthropic(prompt, api_key, model, max_tokens)
+            return _call_anthropic(prompt, api_key, model, max_tokens, timeout)
     elif provider == "openai":
 
         def factory():
             return _call_openai_compatible(
-                prompt, api_key, OPENAI_API_URL, model, max_tokens, schema
+                prompt, api_key, OPENAI_API_URL, model, max_tokens, schema, timeout
             )
     elif provider == "openrouter":
 
         def factory():
             return _call_openai_compatible(
-                prompt, api_key, OPENROUTER_API_URL, model, max_tokens, schema
+                prompt, api_key, OPENROUTER_API_URL, model, max_tokens, schema, timeout
             )
     elif provider == "gemini":
 
         def factory():
-            return _call_gemini(prompt, api_key, model, max_tokens, schema)
+            return _call_gemini(prompt, api_key, model, max_tokens, schema, timeout)
     else:
         logger.warning("Unsupported AI provider: %s", provider)
         return None
 
     try:
-        return await _with_429_retry(factory)
+        return await _with_429_retry(factory, provider=provider, retries=retries)
     except httpx.HTTPError as e:
-        logger.warning("AI provider %s HTTP error: %s", provider, e, exc_info=True)
+        code, message = classify_provider_error(provider, e)
+        logger.warning(
+            "AI provider %s failed (%s): %s | body=%s",
+            provider,
+            code,
+            e,
+            sanitize_log_value(detail_from(e)),
+            exc_info=True,
+        )
         if raise_on_error:
-            raise AIProviderError(f"{provider} request failed: {e}") from e
+            raise AIProviderError(message, code=code, detail=detail_from(e)) from e
         return None
     except Exception as e:
         logger.warning("AI provider %s unexpected error: %s", provider, e, exc_info=True)
@@ -253,8 +274,10 @@ def _parse_json_text(text: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-async def _call_anthropic(prompt: str, api_key: str, model: str, max_tokens: int) -> dict | None:
-    async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+async def _call_anthropic(
+    prompt: str, api_key: str, model: str, max_tokens: int, timeout: float
+) -> dict | None:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(
             ANTHROPIC_API_URL,
             headers={
@@ -284,6 +307,7 @@ async def _call_openai_compatible(
     model: str,
     max_tokens: int,
     schema: dict | None,
+    timeout: float,
 ) -> dict | None:
     body: dict = {
         "model": model,
@@ -294,7 +318,7 @@ async def _call_openai_compatible(
     if schema is not None:
         body["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(
             api_url,
             headers={
@@ -318,6 +342,7 @@ async def _call_gemini(
     model: str,
     max_tokens: int,
     schema: dict | None,
+    timeout: float,
 ) -> dict | None:
     url = f"{GEMINI_API_BASE}/{model}:generateContent"
     generation_config: dict = {
@@ -333,7 +358,7 @@ async def _call_gemini(
         "generationConfig": generation_config,
     }
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(
             url,
             headers={

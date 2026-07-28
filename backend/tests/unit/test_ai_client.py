@@ -26,6 +26,13 @@ def _mock_httpx(response_json: dict, status: int = 200):
     return client
 
 
+def _status_error_with_body(status: int, body: str):
+    from httpx import HTTPStatusError, Request, Response
+
+    req = Request("POST", "http://x")
+    return HTTPStatusError("err", request=req, response=Response(status, request=req, text=body))
+
+
 class TestCompleteJsonAnthropic:
     @pytest.mark.asyncio
     async def test_anthropic_success(self):
@@ -475,3 +482,81 @@ class TestDetailFrom:
         detail = detail_from(exc)
         assert detail == str(exc)[:2048]
         assert len(detail) <= 2048
+
+
+class TestCompleteJsonErrorCodes:
+    @pytest.mark.asyncio
+    async def test_429_quota_raises_no_credits(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({}, status=429)
+        mock.post.return_value.raise_for_status.side_effect = _status_error_with_body(
+            429, '{"error":{"code":"insufficient_quota"}}'
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="openai",
+                    api_key="k",
+                    raise_on_error=True,
+                    retries=0,
+                )
+        assert exc_info.value.code == "no_credits"
+        assert "credits" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_no_credits_is_not_retried(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({}, status=429)
+        mock.post.return_value.raise_for_status.side_effect = _status_error_with_body(
+            429, '{"error":{"code":"insufficient_quota"}}'
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError):
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="openai",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert mock.post.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_is_still_retried(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({}, status=429)
+        mock.post.return_value.raise_for_status.side_effect = _status_error_with_body(
+            429, '{"error":{"code":"rate_limit_exceeded"}}'
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with patch("app.core.ai_client.asyncio.sleep", new=AsyncMock()):
+                with pytest.raises(AIProviderError) as exc_info:
+                    await complete_json(
+                        prompt="x",
+                        schema=None,
+                        provider="openai",
+                        api_key="k",
+                        raise_on_error=True,
+                        retries=2,
+                    )
+        assert exc_info.value.code == "rate_limited"
+        assert mock.post.await_count == 3  # initial + 2 retries
+
+    @pytest.mark.asyncio
+    async def test_timeout_param_reaches_the_client(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"choices": [{"message": {"content": '{"ok": true}'}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock) as ctor:
+            await complete_json(
+                prompt="x", schema=None, provider="openai", api_key="k", timeout=10.0
+            )
+        assert ctor.call_args.kwargs["timeout"] == 10.0
