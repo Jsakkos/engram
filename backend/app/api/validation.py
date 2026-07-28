@@ -10,9 +10,10 @@ import sys
 from pathlib import Path
 
 import requests
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.api.routes import require_localhost_or_lan
 from app.core.security import executable_basename_allowed
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,18 @@ class DiscordTemplateValidationRequest(BaseModel):
     """Request model for Discord notification template validation."""
 
     template: str
+
+
+class AiValidationRequest(BaseModel):
+    """Request model for AI provider connection testing.
+
+    ``api_key`` is optional: when omitted or blank the stored key for the
+    provider is used, so a user can verify a key they saved earlier without
+    having it to hand. The stored key is never returned.
+    """
+
+    provider: str
+    api_key: str | None = None
 
 
 class ValidationResponse(BaseModel):
@@ -640,3 +653,63 @@ async def validate_discord_template_endpoint(
     if error:
         return ValidationResponse(valid=False, error=error)
     return ValidationResponse(valid=True)
+
+
+@router.post("/validate/ai", response_model=ValidationResponse)
+async def validate_ai(
+    request: AiValidationRequest,
+    _: None = Depends(require_localhost_or_lan),
+) -> ValidationResponse:
+    """Verify an AI provider credential with one real, tiny completion.
+
+    Deliberately routed through the same ``complete_json`` the episode matcher
+    uses, rather than a bespoke auth ping: a ping would exercise a different
+    endpoint, without the structured-output convention, and could therefore pass
+    while real matching fails. Gated to the host (or an opted-in LAN) because,
+    unlike the other validators, this one spends the user's money.
+    """
+    from app.core.ai_client import DEFAULT_MODELS, complete_json
+    from app.core.errors import AIProviderError
+
+    provider = (request.provider or "").strip()
+    if provider not in DEFAULT_MODELS:
+        return ValidationResponse(
+            valid=False, error=f"Unknown AI provider: {provider or '(empty)'}"
+        )
+
+    api_key = (request.api_key or "").strip()
+    if not api_key:
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        api_key = (getattr(config, "ai_api_key", "") or "").strip()
+    if not api_key:
+        return ValidationResponse(
+            valid=False, error="No API key provided and none is saved for this provider"
+        )
+
+    try:
+        result = await complete_json(
+            # "JSON" must appear in the prompt: OpenAI rejects a json_object
+            # response_format whose messages never mention it.
+            prompt='Reply with {"ok": true} and nothing else. Respond as JSON.',
+            schema={"type": "object", "properties": {"ok": {"type": "boolean"}}},
+            provider=provider,
+            api_key=api_key,
+            max_tokens=16,
+            raise_on_error=True,
+            # A dead key must fail in one request rather than paying the backoff
+            # ladder, and a user waiting on a button should not sit for 30s.
+            retries=0,
+            timeout=10.0,
+        )
+    except AIProviderError as e:
+        logger.warning("AI validation failed for %s: %s", provider, e.code)
+        return ValidationResponse(valid=False, error=str(e))
+    except Exception as e:  # noqa: BLE001 — a validator must never 500
+        logger.warning("AI validation raised unexpectedly for %s", provider, exc_info=True)
+        return ValidationResponse(valid=False, error=f"Validation failed: {e}")
+
+    if not result:
+        return ValidationResponse(valid=False, error="Provider returned an empty response")
+    return ValidationResponse(valid=True, version=DEFAULT_MODELS[provider])
