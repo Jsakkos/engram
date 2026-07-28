@@ -109,6 +109,15 @@ class AIProviderError(EngramError):
         truncated explanation, kept for logs. Both default so existing
         single-argument call sites are unaffected.
 
+        ``detail`` holds the provider's response body VERBATIM and is deliberately
+        left unsanitized, because it is structured data rather than a log line.
+        A provider body is attacker-adjacent (a compromised provider or an
+        intercepting proxy can embed CRLF to forge log entries), so any caller
+        that writes ``detail`` into a log message must pass it through
+        ``app.core.security.sanitize_log_value`` first, the way ``complete_json``
+        already does. Do not send it to the client either; the UI is given the
+        ``code`` and the composed human message, never the raw body.
+
         The default deliberately reuses ``"unknown"`` rather than introducing a
         separate "never classified" sentinel: ``classify_provider_error`` already
         returns ``"unknown"`` for its own genuinely-indeterminate verdict (e.g. an
