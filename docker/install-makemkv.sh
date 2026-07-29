@@ -16,33 +16,89 @@ VERSION="${MAKEMKV_VERSION:-latest}"
 DL_BASE="https://www.makemkv.com/download"
 MARKER="${INSTALL_DIR}/.installed-version"
 
+# Version-resolution failure modes, kept distinct so callers can tell an
+# upstream outage (nothing we can fix) from a page-format change (our scraping
+# logic is broken and needs updating). CI branches on these; see the
+# "Verify MakeMKV version detection" step in .github/workflows/docker.yml.
+EXIT_FETCH_FAILED=2
+EXIT_PARSE_FAILED=3
+
+# Resolves the latest MakeMKV version, or returns EXIT_FETCH_FAILED /
+# EXIT_PARSE_FAILED. curl's own error goes to stderr (-S), so the log still
+# shows why the fetch failed.
 resolve_latest_version() {
+    local page version
+
+    # Retry transient failures before giving up. --retry-all-errors is needed
+    # because makemkv.com sits behind Cloudflare, whose origin-unreachable
+    # codes (520-527) are not in curl's default retryable set.
+    if ! page="$(curl -fsSL --max-time 30 --retry 3 --retry-delay 5 --retry-all-errors "${DL_BASE}/")"; then
+        return "${EXIT_FETCH_FAILED}"
+    fi
+
     # The download page no longer lists Linux tarballs directly; scrape the
     # hash file link instead (e.g. makemkv-sha-1.18.3.txt) — same version
-    # format, present on every release.
-    curl -fsSL "${DL_BASE}/" \
+    # format, present on every release. A no-match grep exits non-zero, which
+    # is the parse-failure case rather than an error worth propagating.
+    version="$(printf '%s' "${page}" \
         | grep -oE 'makemkv-sha-[0-9]+\.[0-9]+\.[0-9]+\.txt' \
         | head -n1 \
-        | sed -E 's/makemkv-sha-([0-9.]+)\.txt/\1/'
+        | sed -E 's/makemkv-sha-([0-9.]+)\.txt/\1/')" || version=""
+
+    # Residual ambiguity, accepted: an outage that returns a maintenance page
+    # with HTTP 200 satisfies curl and lands here rather than in the fetch
+    # branch, so it reports as a parse failure. Sniffing for "looks like a
+    # maintenance page" is not worth the false negatives it would add to the
+    # format-change check, so the messages below name both possibilities.
+    if [ -z "${version}" ]; then
+        return "${EXIT_PARSE_FAILED}"
+    fi
+
+    printf '%s\n' "${version}"
 }
 
 # Detect-only mode: resolve latest version, print it, and exit. Used by CI to
 # verify the download page is still parseable without running the full compile.
+# Exits 2 if makemkv.com could not be reached, 3 if it was reached but no
+# version could be parsed out of the page.
 if [ "${MAKEMKV_DETECT_ONLY:-}" = "1" ]; then
-    DETECTED="$(resolve_latest_version || true)"
-    if [ -z "${DETECTED}" ]; then
-        echo "ERROR: could not resolve latest MakeMKV version — download page format may have changed" >&2
-        exit 1
-    fi
-    echo "${DETECTED}"
-    exit 0
+    DETECT_STATUS=0
+    DETECTED="$(resolve_latest_version)" || DETECT_STATUS=$?
+    case "${DETECT_STATUS}" in
+        0)
+            echo "${DETECTED}"
+            exit 0
+            ;;
+        "${EXIT_FETCH_FAILED}")
+            echo "ERROR: could not reach ${DL_BASE}/ to check the latest MakeMKV version." >&2
+            exit "${EXIT_FETCH_FAILED}"
+            ;;
+        "${EXIT_PARSE_FAILED}")
+            echo "ERROR: fetched ${DL_BASE}/ but found no version in it." >&2
+            echo "       The download page format has probably changed; makemkv.com serving an" >&2
+            echo "       error or maintenance page with a 200 status would look the same." >&2
+            exit "${EXIT_PARSE_FAILED}"
+            ;;
+        *)
+            echo "ERROR: version detection failed unexpectedly (status ${DETECT_STATUS})." >&2
+            exit 1
+            ;;
+    esac
 fi
 
 if [ "${VERSION}" = "latest" ]; then
-    VERSION="$(resolve_latest_version || true)"
-    if [ -z "${VERSION}" ]; then
-        echo "ERROR: could not resolve the latest MakeMKV version from ${DL_BASE}/" >&2
-        echo "       Set MAKEMKV_VERSION to a specific release (e.g. 1.18.1)." >&2
+    RESOLVE_STATUS=0
+    VERSION="$(resolve_latest_version)" || RESOLVE_STATUS=$?
+    if [ "${RESOLVE_STATUS}" -ne 0 ]; then
+        if [ "${RESOLVE_STATUS}" -eq "${EXIT_FETCH_FAILED}" ]; then
+            echo "ERROR: could not reach ${DL_BASE}/ to resolve the latest MakeMKV version." >&2
+            echo "       makemkv.com may be down; check your network and try again." >&2
+        else
+            echo "ERROR: fetched ${DL_BASE}/ but found no version in it." >&2
+            echo "       The download page format has probably changed; makemkv.com serving an" >&2
+            echo "       error or maintenance page with a 200 status would look the same." >&2
+        fi
+        echo "       Set MAKEMKV_VERSION to a specific release (e.g. 1.18.1) to skip detection." >&2
         exit 1
     fi
 fi
