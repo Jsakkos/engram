@@ -1118,7 +1118,14 @@ class TestLLMMatchEndpoint:
 
         r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
         assert r.status_code == 503
-        assert r.json() == {"suggestion": None, "reason": "matcher_unavailable"}
+        # detail/message are empty here: the matcher never reached a provider,
+        # so there is no classified cause to report.
+        assert r.json() == {
+            "suggestion": None,
+            "reason": "matcher_unavailable",
+            "detail": "",
+            "message": "",
+        }
 
     @pytest.mark.asyncio
     async def test_show_not_found_returns_200_reason(self, client, setup_db, monkeypatch):
@@ -1167,7 +1174,12 @@ class TestLLMMatchEndpoint:
 
         r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
         assert r.status_code == 503
-        assert r.json() == {"suggestion": None, "reason": "transcription_failed"}
+        assert r.json() == {
+            "suggestion": None,
+            "reason": "transcription_failed",
+            "detail": "",
+            "message": "",
+        }
 
     @pytest.mark.asyncio
     async def test_no_match_returns_200_reason(self, client, setup_db, monkeypatch):
@@ -1228,7 +1240,15 @@ class TestLLMMatchEndpoint:
 
         r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
         assert r.status_code == 503
-        assert r.json() == {"suggestion": None, "reason": "llm_error"}
+        # A provider failure DOES carry the classified cause through to the body:
+        # code -> detail, the composed sentence -> message. AIProviderError("boom")
+        # is constructed without a code, so it defaults to "unknown".
+        assert r.json() == {
+            "suggestion": None,
+            "reason": "llm_error",
+            "detail": "unknown",
+            "message": "boom",
+        }
 
     @pytest.mark.asyncio
     async def test_internal_error_returns_500(self, client, setup_db, monkeypatch):
@@ -1305,4 +1325,9 @@ class TestLLMMatchEndpoint:
 
         r = await client.post(f"/api/jobs/{job_id}/titles/{title_id}/llm-match")
         assert r.status_code == 503
-        assert r.json() == {"suggestion": None, "reason": "transcription_failed"}
+        assert r.json() == {
+            "suggestion": None,
+            "reason": "transcription_failed",
+            "detail": "",
+            "message": "",
+        }
