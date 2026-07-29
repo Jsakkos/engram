@@ -4,7 +4,7 @@ Common setup and runtime issues, and how to resolve them. If something here does
 
 ## FFmpeg not detected (Windows)
 
-Engram needs FFmpeg for episode matching (audio fingerprinting and the speech-recognition fallback). If the Config Wizard's **Tools** step shows *"FFmpeg not found"* even though you installed it, it's almost always because FFmpeg isn't on your `PATH` — **not** because of the version. Engram doesn't care which FFmpeg version you have; it only needs to be able to run it.
+Engram needs FFmpeg for episode matching (it extracts and decodes the audio that speech recognition transcribes). If the Config Wizard's **Tools** step shows *"FFmpeg not found"* even though you installed it, it's almost always because FFmpeg isn't on your `PATH` — **not** because of the version. Engram doesn't care which FFmpeg version you have; it only needs to be able to run it.
 
 Work through these in order:
 

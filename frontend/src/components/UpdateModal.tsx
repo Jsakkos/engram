@@ -7,18 +7,78 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowUp, ExternalLink, X } from "lucide-react";
+import { ArrowUp, ExternalLink, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import { toast } from "sonner";
 import { SvPanel, sv } from "../app/components/synapse";
 import { apiFetchVoid, ApiError } from "../api/client";
 import type { UpdateStatus } from "../types";
 
+// Tailwind's preflight strips heading sizes and weights, so markdown headings in the
+// release notes would otherwise render identically to body text. Release bodies are
+// long and section-heavy, so the headings have to be scannable.
+const headingBase: CSSProperties = {
+    fontFamily: sv.display,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    marginTop: 20,
+    marginBottom: 8,
+};
+
+const markdownComponents: Components = {
+    h1: ({ children }) => (
+        <h3
+            style={{
+                ...headingBase,
+                fontSize: 15,
+                letterSpacing: "0.16em",
+                color: sv.cyanHi,
+                borderBottom: `1px solid ${sv.line}`,
+                paddingBottom: 6,
+            }}
+        >
+            {children}
+        </h3>
+    ),
+    h2: ({ children }) => (
+        <h4
+            style={{
+                ...headingBase,
+                fontSize: 13,
+                letterSpacing: "0.16em",
+                color: sv.cyanHi,
+            }}
+        >
+            {children}
+        </h4>
+    ),
+    h3: ({ children }) => (
+        <h5
+            style={{
+                ...headingBase,
+                fontFamily: sv.mono,
+                fontSize: 11,
+                letterSpacing: "0.18em",
+                color: sv.cyan,
+                marginBottom: 4,
+            }}
+        >
+            {children}
+        </h5>
+    ),
+};
+
 interface UpdateModalProps {
     open: boolean;
     updateStatus: UpdateStatus | null;
     onClose: () => void;
-    onDismiss: () => void;
+    onDismiss?: () => void;
+    /**
+     * "update" (default): notes for an available update, with skip and restart actions.
+     * "whatsNew": notes for the version already running, read-only.
+     */
+    variant?: "update" | "whatsNew";
 }
 
 export default function UpdateModal({
@@ -26,8 +86,20 @@ export default function UpdateModal({
     updateStatus,
     onClose,
     onDismiss,
+    variant = "update",
 }: UpdateModalProps) {
     const [restarting, setRestarting] = useState(false);
+
+    const isWhatsNew = variant === "whatsNew";
+    const version = isWhatsNew ? updateStatus?.current_version : updateStatus?.latest_version;
+    const notes = isWhatsNew ? updateStatus?.current_release_notes : updateStatus?.release_notes;
+    const releaseUrl = isWhatsNew ? updateStatus?.current_release_url : updateStatus?.release_url;
+    // Both variants can be mounted (and open) at once, so the dialog's labelling id
+    // and test id must differ per variant or aria-labelledby resolves to whichever
+    // heading comes first in DOM order and getByTestId matches two elements.
+    const titleId = isWhatsNew ? "whats-new-modal-title" : "update-modal-title";
+    const testId = isWhatsNew ? "whats-new-modal" : "update-modal";
+    const HeaderIcon = isWhatsNew ? Sparkles : ArrowUp;
 
     useEffect(() => {
         if (!open) return;
@@ -67,7 +139,7 @@ export default function UpdateModal({
                 body: JSON.stringify({ version: updateStatus.latest_version }),
             });
             onClose();
-            onDismiss();
+            onDismiss?.();
         } catch {
             toast.error("Failed to save skip preference.");
         }
@@ -101,7 +173,7 @@ export default function UpdateModal({
                     exit={{ opacity: 0 }}
                     role="dialog"
                     aria-modal="true"
-                    aria-labelledby="update-modal-title"
+                    aria-labelledby={titleId}
                 >
                     <motion.div
                         className="absolute inset-0"
@@ -128,7 +200,7 @@ export default function UpdateModal({
                                 display: "flex",
                                 flexDirection: "column",
                             }}
-                            data-testid="update-modal"
+                            testid={testId}
                         >
                             {/* Header */}
                             <div
@@ -140,14 +212,16 @@ export default function UpdateModal({
                                     borderBottom: `1px solid ${sv.line}`,
                                 }}
                             >
-                                <ArrowUp
+                                {/* The whatsNew variant describes the version already
+                                    running, so an "update available" arrow would be wrong. */}
+                                <HeaderIcon
                                     size={20}
                                     color={sv.cyan}
                                     style={{ filter: `drop-shadow(0 0 6px ${sv.cyan}99)` }}
                                 />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <h2
-                                        id="update-modal-title"
+                                        id={titleId}
                                         style={{
                                             fontFamily: sv.display,
                                             fontWeight: 700,
@@ -158,7 +232,7 @@ export default function UpdateModal({
                                             margin: 0,
                                         }}
                                     >
-                                        What's new in {updateStatus?.latest_version ?? "…"}
+                                        What's new in {version ?? "…"}
                                     </h2>
                                 </div>
                                 <button
@@ -186,7 +260,7 @@ export default function UpdateModal({
                                     padding: "20px 24px",
                                 }}
                             >
-                                {updateStatus?.release_notes ? (
+                                {notes ? (
                                     <div
                                         style={{
                                             fontFamily: sv.mono,
@@ -195,7 +269,9 @@ export default function UpdateModal({
                                             lineHeight: 1.65,
                                         }}
                                     >
-                                        <ReactMarkdown>{updateStatus.release_notes}</ReactMarkdown>
+                                        <ReactMarkdown components={markdownComponents}>
+                                            {notes}
+                                        </ReactMarkdown>
                                     </div>
                                 ) : (
                                     <p
@@ -208,9 +284,9 @@ export default function UpdateModal({
                                         No release notes available.
                                     </p>
                                 )}
-                                {updateStatus?.release_url && (
+                                {releaseUrl && (
                                     <a
-                                        href={updateStatus.release_url}
+                                        href={releaseUrl}
                                         target="_blank"
                                         rel="noreferrer"
                                         style={{
@@ -243,47 +319,65 @@ export default function UpdateModal({
                                     gap: 12,
                                 }}
                             >
-                                <button
-                                    type="button"
-                                    onClick={handleSkip}
-                                    style={{
-                                        ...buttonBase,
-                                        color: sv.inkDim,
-                                        background: "transparent",
-                                        border: `1px solid ${sv.line}`,
-                                    }}
-                                >
-                                    Skip this version
-                                </button>
-
-                                {isFrozen ? (
+                                {isWhatsNew ? (
                                     <button
                                         type="button"
-                                        onClick={handleRestart}
-                                        disabled={restarting}
+                                        onClick={onClose}
+                                        data-testid="whats-new-close"
                                         style={{
                                             ...buttonBase,
-                                            color: sv.bg0,
-                                            background: restarting ? `${sv.cyan}99` : sv.cyan,
-                                            opacity: restarting ? 0.8 : 1,
-                                        }}
-                                    >
-                                        {restarting ? "Restarting…" : "Restart to update →"}
-                                    </button>
-                                ) : (
-                                    <a
-                                        href={updateStatus?.release_url ?? "#"}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        style={{
-                                            ...buttonBase,
+                                            marginLeft: "auto",
                                             color: sv.bg0,
                                             background: sv.cyan,
-                                            textDecoration: "none",
                                         }}
                                     >
-                                        Download from GitHub →
-                                    </a>
+                                        Got it
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleSkip}
+                                            style={{
+                                                ...buttonBase,
+                                                color: sv.inkDim,
+                                                background: "transparent",
+                                                border: `1px solid ${sv.line}`,
+                                            }}
+                                        >
+                                            Skip this version
+                                        </button>
+
+                                        {isFrozen ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleRestart}
+                                                disabled={restarting}
+                                                style={{
+                                                    ...buttonBase,
+                                                    color: sv.bg0,
+                                                    background: restarting ? `${sv.cyan}99` : sv.cyan,
+                                                    opacity: restarting ? 0.8 : 1,
+                                                }}
+                                            >
+                                                {restarting ? "Restarting…" : "Restart to update →"}
+                                            </button>
+                                        ) : (
+                                            <a
+                                                href={releaseUrl ?? "#"}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                style={{
+                                                    ...buttonBase,
+                                                    color: sv.bg0,
+                                                    background: sv.cyan,
+                                                    textDecoration: "none",
+                                                }}
+                                            >
+                                                Download from GitHub →
+                                            </a>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </SvPanel>

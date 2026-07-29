@@ -1001,9 +1001,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     <div className="wizard-step">
                         <h3 className="step-title">Data Sharing</h3>
                         <p className="step-description">
-                            Everything here is optional and governs data that leaves your machine. Nothing is on by
-                            default except local fingerprint extraction — and no filenames, paths, or personal
-                            information are ever sent.
+                            Everything here is optional and governs data that leaves your machine. Fingerprint
+                            contributions are on by default and ask for your consent before the first upload;
+                            TheDiscDB contributions are off until you turn them on. No filenames, paths, or
+                            personal information are ever sent.
                         </p>
 
                         {/* ── Fingerprint network ─────────────────────────────── */}
@@ -1233,7 +1234,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         <span className="checkbox-text">
                                             <strong>AI-Powered Episode Matching (TV)</strong>
                                             <span className="checkbox-hint">
-                                                When audio fingerprint matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
+                                                When episode matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
                                             </span>
                                         </span>
                                     </label>
@@ -1308,9 +1309,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                                 type="password"
                                                 value={config.discdbApiKey}
                                                 onChange={(e) => handleInputChange('discdbApiKey', e.target.value)}
-                                                placeholder="Enter API key for automatic submission"
+                                                placeholder="Optional"
                                             />
-                                            <small>Required for submitting directly to TheDiscDB. Leave empty for local-only export.</small>
+                                            <small>No API key is needed: TheDiscDB accepts contributions without an account. This field is only for contributors who have been issued a key.</small>
                                         </div>
 
                                         <div className="form-group">

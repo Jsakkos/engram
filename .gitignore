@@ -54,6 +54,7 @@ site/
 # Playwright
 test-results/
 playwright-report/
+frontend/e2e-storage-state.json
 e2e-screenshots/
 blob-report/
 .playwright-mcp/

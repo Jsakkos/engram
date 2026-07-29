@@ -197,6 +197,8 @@ export interface UpdateStatusMessage {
     latest_version?: string | null;
     release_notes?: string | null;
     release_url?: string | null;
+    current_release_notes?: string | null;
+    current_release_url?: string | null;
     download_progress?: number | null;
     error?: string | null;
     last_update_error?: string | null;
@@ -211,6 +213,9 @@ export interface UpdateStatus {
     latest_version: string | null;
     release_notes: string | null;
     release_url: string | null;
+    /** Notes for the version currently running (what's-new modal). */
+    current_release_notes: string | null;
+    current_release_url: string | null;
     download_progress: number | null;
     error: string | null;
     last_update_error: string | null;

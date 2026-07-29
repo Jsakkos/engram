@@ -300,6 +300,23 @@ export function FingerprintDisclosureModal({
                             and cannot be retroactively removed.
                         </p>
 
+                        {/* Full privacy disclosure */}
+                        <a
+                            href="https://jsakkos.github.io/engram/development/fingerprint-privacy/"
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                                fontFamily: sv.mono,
+                                fontSize: 11,
+                                letterSpacing: '0.1em',
+                                color: sv.cyanHi,
+                                textDecoration: 'none',
+                                textTransform: 'uppercase',
+                            }}
+                        >
+                            Read the full privacy disclosure
+                        </a>
+
                         <div style={{ height: 1, background: sv.line }} />
 
                         {/* Action Buttons */}

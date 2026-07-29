@@ -8,7 +8,8 @@ vi.mock("sonner", () => ({ toast: { success: (...a: unknown[]) => success(...a) 
 
 const status = (v: string | null): UpdateStatus => ({
     state: "up_to_date", current_version: "9.9.9", latest_version: null, release_notes: null,
-    release_url: null, download_progress: null, error: null, is_frozen: true,
+    release_url: null, current_release_notes: null, current_release_url: null,
+    download_progress: null, error: null, is_frozen: true,
     last_update_error: null, last_update_success_version: v,
 });
 
