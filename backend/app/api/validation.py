@@ -13,8 +13,8 @@ import requests
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.api.routes import require_localhost_or_lan
-from app.core.security import executable_basename_allowed
+from app.api.guards import require_localhost_or_lan
+from app.core.security import executable_basename_allowed, sanitize_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -713,10 +713,14 @@ async def validate_ai(
             timeout=10.0,
         )
     except AIProviderError as e:
-        logger.warning("AI validation failed for %s: %s", provider, e.code)
+        logger.warning("AI validation failed for %s: %s", sanitize_log_value(provider), e.code)
         return ValidationResponse(valid=False, error=str(e))
     except Exception as e:  # noqa: BLE001 — a validator must never 500
-        logger.warning("AI validation raised unexpectedly for %s", provider, exc_info=True)
+        logger.warning(
+            "AI validation raised unexpectedly for %s",
+            sanitize_log_value(provider),
+            exc_info=True,
+        )
         return ValidationResponse(valid=False, error=f"Validation failed: {e}")
 
     if not result:

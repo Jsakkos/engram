@@ -206,7 +206,7 @@ async def complete_json(
 
     model = model or DEFAULT_MODELS.get(provider)
     if not model:
-        logger.warning("Unknown AI provider: %s", provider)
+        logger.warning("Unknown AI provider: %s", sanitize_log_value(provider))
         return None
 
     if provider == "anthropic":
@@ -230,13 +230,18 @@ async def complete_json(
         def factory():
             return _call_gemini(prompt, api_key, model, max_tokens, schema, timeout)
     else:
-        logger.warning("Unsupported AI provider: %s", provider)
+        logger.warning("Unsupported AI provider: %s", sanitize_log_value(provider))
         return None
 
     try:
         result = await _with_429_retry(factory, provider=provider, retries=retries)
     except _TruncatedResponse:
-        logger.warning("AI provider %s truncated its response (token budget)", provider)
+        # `provider` comes from AppConfig.ai_provider, which the user sets through
+        # PUT /api/config, so it is untrusted input on every log line below.
+        logger.warning(
+            "AI provider %s truncated its response (token budget)",
+            sanitize_log_value(provider),
+        )
         if raise_on_error:
             raise AIProviderError(
                 _CAUSE_MESSAGES["response_truncated"].format(provider=provider),
@@ -245,11 +250,13 @@ async def complete_json(
         return None
     except httpx.HTTPError as e:
         code, message = classify_provider_error(provider, e)
+        # str(e) embeds the request URL, which is built from `model` (also
+        # user-settable config), so it is sanitized alongside provider and body.
         logger.warning(
             "AI provider %s failed (%s): %s | body=%s",
-            provider,
+            sanitize_log_value(provider),
             code,
-            e,
+            sanitize_log_value(str(e)),
             sanitize_log_value(detail_from(e)),
             exc_info=True,
         )
@@ -257,7 +264,12 @@ async def complete_json(
             raise AIProviderError(message, code=code, detail=detail_from(e)) from e
         return None
     except Exception as e:
-        logger.warning("AI provider %s unexpected error: %s", provider, e, exc_info=True)
+        logger.warning(
+            "AI provider %s unexpected error: %s",
+            sanitize_log_value(provider),
+            sanitize_log_value(str(e)),
+            exc_info=True,
+        )
         if raise_on_error:
             # Deliberate: let unexpected (non-transport) errors propagate unwrapped so
             # callers classify them as internal errors, not retryable provider errors.
