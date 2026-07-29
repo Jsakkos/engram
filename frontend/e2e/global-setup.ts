@@ -77,7 +77,17 @@ async function seedWhatsNewKey() {
     try {
         const statusRes = await fetch(`${API_BASE}/api/updates/status`);
         if (statusRes.ok) {
-            currentVersion = (await statusRes.json()).current_version ?? '';
+            const reported = (await statusRes.json()).current_version;
+            // Validate before this reaches the file. The value is a version
+            // string from our own localhost backend, but it is still a response
+            // body flowing into a write, so constrain it to the shape a version
+            // can actually take rather than trusting it. This also turns a
+            // malformed response into a loud warning instead of a junk seed.
+            if (typeof reported === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/.test(reported)) {
+                currentVersion = reported;
+            } else if (reported !== undefined) {
+                console.warn(`Ignoring malformed current_version: ${JSON.stringify(reported)}`);
+            }
         }
     } catch {
         // Handled by the empty-version warning below.
@@ -85,8 +95,8 @@ async function seedWhatsNewKey() {
 
     if (!currentVersion) {
         console.warn(
-            'Could not read current_version from /api/updates/status. The what\'s-new ' +
-                'modal may open over the UI and block clicks.',
+            'Could not read a usable current_version from /api/updates/status. The ' +
+                "what's-new modal may open over the UI and block clicks.",
         );
     }
 
