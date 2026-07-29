@@ -580,7 +580,7 @@ requires-dist = [
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=1.0.6" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "nvidia-cudnn-cu12", extras = ["nvidia-cublas-cu12"], marker = "extra == 'gpu'", specifier = ">=9.19.0.56" },
-    { name = "opensubtitlescom", specifier = ">=0.1.0" },
+    { name = "opensubtitlescom", specifier = ">=0.1.5" },
     { name = "pandas", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic-settings", specifier = ">=2.1.0" },
