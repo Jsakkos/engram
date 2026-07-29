@@ -9,65 +9,127 @@ import type { CSSProperties } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowUp, ExternalLink, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import type { Components } from "react-markdown";
 import { toast } from "sonner";
 import { SvPanel, sv } from "../app/components/synapse";
 import { apiFetchVoid, ApiError } from "../api/client";
 import type { UpdateStatus } from "../types";
 
-// Tailwind's preflight strips heading sizes and weights, so markdown headings in the
-// release notes would otherwise render identically to body text. Release bodies are
-// long and section-heavy, so the headings have to be scannable.
-const headingBase: CSSProperties = {
-    fontFamily: sv.display,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    marginTop: 20,
-    marginBottom: 8,
-};
+// Tailwind's preflight zeroes margins on p/ul/li and strips heading sizes, list
+// markers and paragraph rhythm, so raw markdown release notes render as one
+// undifferentiated wall of text. A scoped stylesheet is used instead of a
+// per-element component map because the rules that do the real work here are
+// structural selectors (:first-of-type for the highlights lede, li > strong for
+// the entry headline, ::before for markers) that inline styles cannot express.
+//
+// Changelog convention (see CLAUDE.md) is "**headline sentence.** explanation",
+// so `li > strong:first-child` is promoted to its own line: every bullet becomes
+// a title/body pair rather than a paragraph of uniformly-bold mono.
+const PROSE_CLASS = "um-prose";
 
-const markdownComponents: Components = {
-    h1: ({ children }) => (
-        <h3
-            style={{
-                ...headingBase,
-                fontSize: 15,
-                letterSpacing: "0.16em",
-                color: sv.cyanHi,
-                borderBottom: `1px solid ${sv.line}`,
-                paddingBottom: 6,
-            }}
-        >
-            {children}
-        </h3>
-    ),
-    h2: ({ children }) => (
-        <h4
-            style={{
-                ...headingBase,
-                fontSize: 13,
-                letterSpacing: "0.16em",
-                color: sv.cyanHi,
-            }}
-        >
-            {children}
-        </h4>
-    ),
-    h3: ({ children }) => (
-        <h5
-            style={{
-                ...headingBase,
-                fontFamily: sv.mono,
-                fontSize: 11,
-                letterSpacing: "0.18em",
-                color: sv.cyan,
-                marginBottom: 4,
-            }}
-        >
-            {children}
-        </h5>
-    ),
-};
+const proseCss = `
+.${PROSE_CLASS} {
+    font-family: ${sv.sans};
+    font-size: 13.5px;
+    line-height: 1.7;
+    /* Body prose is the primary content here, so inkDim (the app's secondary
+       ink) reads as disabled at this size. Sit between ink and inkDim: bright
+       enough to read at length, dim enough that <strong> at full ink still
+       steps forward. */
+    color: rgba(230, 236, 245, 0.78);
+    /* Cap the measure. The panel is wider than comfortable reading length,
+       and long unbroken lines are half of why this read as a wall. */
+    max-width: 68ch;
+}
+.${PROSE_CLASS} > *:first-child { margin-top: 0; }
+.${PROSE_CLASS} > *:last-child { margin-bottom: 0; }
+
+/* Release bodies open with an italic "_Highlights: …_" line. Treat it as a
+   lede: a bracketed summary panel rather than a stray italic paragraph. */
+.${PROSE_CLASS} > p:first-of-type {
+    font-style: normal;
+    color: ${sv.ink};
+    background: ${sv.cyan}0d;
+    border-left: 2px solid ${sv.cyan};
+    padding: 12px 14px;
+    margin: 0 0 22px;
+}
+.${PROSE_CLASS} > p:first-of-type em { font-style: normal; }
+
+.${PROSE_CLASS} p { margin: 0 0 14px; }
+
+/* Section rules ("Added" / "Fixed"): mono + letterspacing is the Synapse
+   label voice, and the hairline extends them across the column so they read
+   as dividers when scanning. */
+.${PROSE_CLASS} h1,
+.${PROSE_CLASS} h2,
+.${PROSE_CLASS} h3,
+.${PROSE_CLASS} h4 {
+    font-family: ${sv.mono};
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: ${sv.cyan};
+    font-size: 11px;
+    line-height: 1;
+    margin: 30px 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid ${sv.line};
+}
+.${PROSE_CLASS} h1 { font-size: 12px; color: ${sv.cyanHi}; }
+
+.${PROSE_CLASS} ul,
+.${PROSE_CLASS} ol { margin: 0 0 14px; padding: 0; list-style: none; }
+
+/* 18px between entries is the "not smashed together" fix; each bullet is a
+   multi-line block, so it needs more separation than its own line-height. */
+.${PROSE_CLASS} li {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 18px;
+}
+.${PROSE_CLASS} li:last-child { margin-bottom: 0; }
+.${PROSE_CLASS} li::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 0.62em;
+    width: 6px;
+    height: 6px;
+    background: ${sv.cyan};
+    box-shadow: 0 0 6px ${sv.cyan}99;
+}
+
+/* The emphasis fix: bold at full ink on a dim body is a real figure/ground
+   step, where bolder-mono-on-ink was not. */
+.${PROSE_CLASS} strong {
+    font-weight: 600;
+    color: ${sv.ink};
+}
+.${PROSE_CLASS} li > strong:first-child {
+    display: block;
+    color: ${sv.cyanHi};
+    margin-bottom: 3px;
+}
+.${PROSE_CLASS} em { color: ${sv.ink}; }
+
+.${PROSE_CLASS} code {
+    font-family: ${sv.mono};
+    font-size: 0.86em;
+    color: ${sv.cyanHi};
+    background: ${sv.cyan}14;
+    padding: 1px 5px;
+}
+.${PROSE_CLASS} a {
+    color: ${sv.cyanHi};
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.${PROSE_CLASS} hr {
+    border: 0;
+    border-top: 1px solid ${sv.line};
+    margin: 22px 0;
+}
+`;
 
 interface UpdateModalProps {
     open: boolean;
@@ -261,18 +323,14 @@ export default function UpdateModal({
                                 }}
                             >
                                 {notes ? (
-                                    <div
-                                        style={{
-                                            fontFamily: sv.mono,
-                                            fontSize: 13,
-                                            color: sv.ink,
-                                            lineHeight: 1.65,
-                                        }}
-                                    >
-                                        <ReactMarkdown components={markdownComponents}>
-                                            {notes}
-                                        </ReactMarkdown>
-                                    </div>
+                                    <>
+                                        {/* Outside the prose wrapper so it does not
+                                            occupy the :first-child slot. */}
+                                        <style>{proseCss}</style>
+                                        <div className={PROSE_CLASS}>
+                                            <ReactMarkdown>{notes}</ReactMarkdown>
+                                        </div>
+                                    </>
                                 ) : (
                                     <p
                                         style={{
