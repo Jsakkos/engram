@@ -25,7 +25,12 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.api.guards import is_loopback, require_localhost, require_localhost_or_lan
+# Network-origin gates live in app/api/guards.py so validation.py can depend on them
+# without importing this module (which imports validation.py back inside function
+# bodies, forming an import cycle). Imported here rather than re-exported by alias:
+# both names are used directly below, and tests key dependency_overrides on these
+# exact objects via app.api.routes.
+from app.api.guards import require_localhost, require_localhost_or_lan
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.errors import AIProviderError
@@ -72,13 +77,6 @@ def require_debug() -> None:
     """FastAPI dependency that blocks an endpoint unless debug mode is enabled."""
     if not settings.debug:
         raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
-
-
-# Network-origin gates live in app/api/guards.py so validation.py can depend on
-# them without importing this module (which imports validation.py back, creating
-# an import cycle). Re-exported here: many call sites and tests reference them as
-# app.api.routes.require_localhost, including dependency_overrides keys.
-_is_loopback = is_loopback
 
 
 # Request/Response Models
