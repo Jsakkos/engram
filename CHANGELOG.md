@@ -12,8 +12,6 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - **Settings no longer implies you need a TheDiscDB API key to contribute.** The API key field was labelled as required for submitting directly to TheDiscDB, with an empty field meaning local-only export. That was never true: TheDiscDB accepts contributions openly and Engram submits fine without a key. The field is now marked optional. The Data Sharing step also claimed that nothing was enabled by default, which understated fingerprint contributions (on by default, and gated behind the consent dialog shown before the first upload); it now says what is actually on.
-### Fixed
-
 - **A brief makemkv.com outage no longer fails the Docker container's first-run MakeMKV install.** Looking up the latest MakeMKV version now retries transient network and Cloudflare errors before giving up, and when it does give up it says whether the site was unreachable or its download page changed format, instead of reporting the second cause for both. (#554)
 
 ## [0.27.0] - 2026-07-24
