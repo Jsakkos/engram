@@ -43,6 +43,8 @@ function toUpdateStatus(raw: Omit<UpdateStatusMessage, 'type'>): UpdateStatus {
         latest_version: raw.latest_version ?? null,
         release_notes: raw.release_notes ?? null,
         release_url: raw.release_url ?? null,
+        current_release_notes: raw.current_release_notes ?? null,
+        current_release_url: raw.current_release_url ?? null,
         download_progress: raw.download_progress ?? null,
         error: raw.error ?? null,
         last_update_error: raw.last_update_error ?? null,

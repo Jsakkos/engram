@@ -232,6 +232,8 @@ class EventBroadcaster:
         latest_version: str | None = None,
         release_notes: str | None = None,
         release_url: str | None = None,
+        current_release_notes: str | None = None,
+        current_release_url: str | None = None,
         error: str | None = None,
         last_update_error: str | None = None,
         last_update_success_version: str | None = None,
@@ -258,6 +260,10 @@ class EventBroadcaster:
             data["release_notes"] = release_notes
         if release_url is not None:
             data["release_url"] = release_url
+        if current_release_notes is not None:
+            data["current_release_notes"] = current_release_notes
+        if current_release_url is not None:
+            data["current_release_url"] = current_release_url
         if error is not None:
             data["error"] = error
         if last_update_error is not None:

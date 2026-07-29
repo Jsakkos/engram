@@ -56,9 +56,9 @@ Each module maps to a stage in the disc processing pipeline.
 | **Sentinel** | `sentinel.py` | Drive monitor. Polls optical drives on Windows using ctypes/kernel32. Fires async callbacks on disc insert/remove events. |
 | **Analyst** | `analyst.py` | Disc classification. Heuristic-based TV vs Movie detection using cluster analysis of title durations. Outputs `DiscAnalysisResult` with content type, confidence score, and whether review is needed. |
 | **Extractor** | `extractor.py` | MakeMKV CLI wrapper. Async subprocess management for `makemkvcon` scanning and ripping. Emits `RipProgress` callbacks. Tracks processes per job for multi-drive cancel isolation. |
-| **Curator** | `curator.py` | Episode matching via audio fingerprinting. Classifies matches into high-confidence (auto-organize) and needs-review buckets. |
+| **Curator** | `curator.py` | Episode matching: transcribes title audio with speech recognition and compares the transcript against reference subtitles. Classifies matches into high-confidence (auto-organize) and needs-review buckets. |
 | **Organizer** | `organizer.py` | File organization. Moves files from staging to the media library with naming conventions: `Movies/Name (Year)/Name (Year).mkv` and `TV/Show/Season XX/Show - SXXEXX.mkv`. |
-| **DiscDB Classifier** | `discdb_classifier.py` | TheDiscDB integration. Identifies discs via content hash fingerprinting (MD5 of concatenated BDMV/STREAM file sizes). Provides title-to-episode mappings. |
+| **DiscDB Classifier** | `discdb_classifier.py` | TheDiscDB integration. Identifies discs via a content hash (MD5 of concatenated BDMV/STREAM file sizes). Provides title-to-episode mappings. |
 | **TMDB Classifier** | `tmdb_classifier.py` | TMDB-based content type classification. Uses name similarity and popularity ranking to provide strong TV vs Movie signals beyond the heuristic Analyst. |
 | **Errors** | `errors.py` | Custom exception hierarchy (`EngramError` base, with `MakeMKVError`, `MatchingError`, `ConfigurationError`, `OrganizationError`, `SubtitleError`, `DatabaseError`). Includes `@handle_errors` decorator. |
 | **Logging** | `logging.py` | Centralized logging configuration. |

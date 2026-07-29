@@ -488,6 +488,33 @@ describe("useJobManagement hook integration", () => {
     expect(result.current.updateStatus?.is_frozen).toBe(true);
     expect(result.current.updateStatus?.latest_version).toBe("9.9.9");
   });
+
+  it("coalesces an omitted current_release_notes/current_release_url to null, not undefined", async () => {
+    // The backend's WS/REST serializers omit keys whose value is None rather than
+    // sending null — toUpdateStatus must still coalesce the missing key to null so
+    // downstream code can rely on strict `=== null` checks instead of `== null`.
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.includes("/api/updates/status"))
+        return Promise.resolve(
+          okJson({
+            state: "up_to_date",
+            current_version: __APP_VERSION__,
+            // current_release_notes / current_release_url intentionally omitted.
+          }),
+        );
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await waitFor(() => {
+      expect(result.current.updateStatus?.state).toBe("up_to_date");
+    });
+    expect(result.current.updateStatus?.current_release_notes).toBeNull();
+    expect(result.current.updateStatus?.current_release_url).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

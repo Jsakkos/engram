@@ -13,6 +13,8 @@ function status(overrides: Partial<UpdateStatus>): UpdateStatus {
     latest_version: "0.13.0",
     release_notes: null,
     release_url: "https://example.com",
+    current_release_notes: null,
+    current_release_url: null,
     download_progress: null,
     error: null,
     last_update_error: null,
@@ -24,7 +26,8 @@ function status(overrides: Partial<UpdateStatus>): UpdateStatus {
 
 const baseFailureTest: UpdateStatus = {
     state: "idle", current_version: "9.9.9", latest_version: null, release_notes: null,
-    release_url: "https://example/r", download_progress: null, error: null, is_frozen: true,
+    release_url: "https://example/r", current_release_notes: null, current_release_url: null,
+    download_progress: null, error: null, is_frozen: true,
     last_update_error: null, last_update_success_version: null,
 };
 

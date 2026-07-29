@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - [MakeMKV](https://www.makemkv.com/) with a valid license key
-- [FFmpeg](https://ffmpeg.org/download.html) for episode matching (audio fingerprinting) — see [Installing FFmpeg](#installing-ffmpeg)
+- [FFmpeg](https://ffmpeg.org/download.html) for episode matching (audio extraction and transcription) — see [Installing FFmpeg](#installing-ffmpeg)
 - A [TMDB Read Access Token](https://www.themoviedb.org/settings/api) (v4 auth) for media metadata and poster art
 - If running from source: **Python 3.11+** with [uv](https://docs.astral.sh/uv/), and **Node.js 24**
 
@@ -35,7 +35,7 @@ sudo dnf install ffmpeg eject
 
 ## Installing FFmpeg
 
-Engram uses FFmpeg for episode matching — audio fingerprinting and the speech-recognition fallback both decode audio with it. On first launch Engram auto-detects FFmpeg on your `PATH` and in common install locations; if it can't find it, install it as below and restart Engram.
+Engram uses FFmpeg for episode matching: it extracts and decodes the audio that speech recognition transcribes. On first launch Engram auto-detects FFmpeg on your `PATH` and in common install locations; if it can't find it, install it as below and restart Engram.
 
 !!! note "The version doesn't matter"
     Engram only needs to be able to run FFmpeg — any recent build works. A "not detected" result almost always means FFmpeg isn't on your `PATH`, not that the version is wrong.

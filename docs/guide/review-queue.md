@@ -6,7 +6,7 @@ The Review Queue is Engram's Human-in-the-Loop interface. It appears when the sy
 
 A job enters the `REVIEW_NEEDED` state when any of the following occur:
 
-- **Low-confidence matches** -- the audio fingerprinting or subtitle matching engine returned results below the auto-match threshold.
+- **Low-confidence matches** -- the episode matching engine, which compares a transcript of the title's audio against reference subtitles, returned results below the auto-match threshold.
 - **Ambiguous content type** -- the disc analysis could not confidently determine whether the disc is TV or movie content.
 - **Multiple feature-length titles** -- a movie disc has more than one title that could be the main feature (e.g., Theatrical, Extended, and Director's Cut versions on the same disc).
 - **Unreadable disc label** -- the volume label is generic or unreadable, triggering a name prompt modal on the dashboard before the review queue.

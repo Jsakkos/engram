@@ -9,11 +9,16 @@ interface RenderTopBarOptions {
     onSettingsClick?: () => void;
     onImportClick?: () => void;
     onManualClick?: () => void;
+    onVersionClick?: () => void;
 }
 
 function renderTopBar(navItems = buildNavItems({}), options: RenderTopBarOptions = {}) {
-    const { onSettingsClick = () => {}, onImportClick = () => {}, onManualClick = () => {} } =
-        options;
+    const {
+        onSettingsClick = () => {},
+        onImportClick = () => {},
+        onManualClick = () => {},
+        onVersionClick,
+    } = options;
     return render(
         <MemoryRouter>
             <SvTopBar
@@ -23,6 +28,7 @@ function renderTopBar(navItems = buildNavItems({}), options: RenderTopBarOptions
                 onSettingsClick={onSettingsClick}
                 onImportClick={onImportClick}
                 onManualClick={onManualClick}
+                onVersionClick={onVersionClick}
             />
         </MemoryRouter>,
     );
@@ -69,5 +75,21 @@ describe('SvTopBar buttons', () => {
         fireEvent.click(screen.getByRole('button', { name: /manual disc/i }));
 
         expect(onManualClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires onVersionClick when the version string is pressed', () => {
+        const onVersionClick = vi.fn();
+        renderTopBar(buildNavItems({}), { onVersionClick });
+
+        fireEvent.click(screen.getByTestId('sv-topbar-version'));
+
+        expect(onVersionClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders the version as plain text when onVersionClick is omitted', () => {
+        renderTopBar();
+
+        expect(screen.queryByTestId('sv-topbar-version')).not.toBeInTheDocument();
+        expect(screen.getByText(/v0\.0\.0-test/)).toBeInTheDocument();
     });
 });

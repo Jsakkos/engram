@@ -1117,6 +1117,75 @@ async def test_broadcast_update_status_carries_marker_fields():
     assert payload["last_update_success_version"] == "9.9.9"
 
 
+def test_get_status_carries_current_release_fields():
+    """REST seed must expose the running version's notes."""
+    checker = UpdateChecker()
+    checker.current_release_notes = "## Highlights"
+    checker.current_release_url = "https://example.com/tag/v1.2.3"
+
+    status = checker.get_status()
+
+    assert status["current_release_notes"] == "## Highlights"
+    assert status["current_release_url"] == "https://example.com/tag/v1.2.3"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_carries_current_release_fields():
+    """WS push must expose the same fields as the REST seed (drift regression)."""
+    ws = _FakeWS()
+    eb = EventBroadcaster(ws)
+
+    await eb.broadcast_update_status(
+        state="up_to_date",
+        current_release_notes="## Highlights",
+        current_release_url="https://example.com/tag/v1.2.3",
+    )
+
+    payload = ws.sent[-1]
+    assert payload["current_release_notes"] == "## Highlights"
+    assert payload["current_release_url"] == "https://example.com/tag/v1.2.3"
+
+
+@pytest.mark.asyncio
+async def test_get_status_and_broadcast_agree_on_non_none_fields():
+    """Anti-drift invariant: every non-None key from get_status() must also
+    appear in the WebSocket payload produced from that same state.
+
+    This is the test that would have caught the historical is_frozen bug
+    (dropped from broadcast_update_status while present in get_status) and
+    will catch the next field that gets added to one serialiser and not
+    the other.
+    """
+    checker = UpdateChecker()
+    checker.state = UpdateStatus.READY
+    checker.latest_version = "9.9.9"
+    checker.release_notes = "## Release notes"
+    checker.release_url = "https://example.com/tag/v9.9.9"
+    checker.current_release_notes = "## Highlights"
+    checker.current_release_url = "https://example.com/tag/v1.2.3"
+    checker.error = "boom"
+    checker.last_update_error = "update boom"
+    checker.last_update_success_version = "1.2.3"
+
+    ws = _FakeWS()
+    checker.set_broadcaster(EventBroadcaster(ws))
+
+    await checker._broadcast()
+
+    status = checker.get_status()
+    payload = ws.sent[-1]
+
+    # download_progress is only populated by get_status() while state ==
+    # DOWNLOADING (it's None here since state == READY), and broadcast_update_status
+    # never carries it at all — it's a REST-only polling field, not pushed live.
+    # It falls out naturally via the "value is not None" filter below.
+    for key, value in status.items():
+        if value is None:
+            continue
+        assert key in payload, f"{key!r} present in get_status() but missing from broadcast"
+        assert payload[key] == value, f"{key!r} disagrees between get_status() and broadcast"
+
+
 # ---------------------------------------------------------------------------
 # Task 8: End-to-end Windows swap via the real _spawn_detached_helper
 # ---------------------------------------------------------------------------
@@ -1228,6 +1297,187 @@ def test_windows_swap_succeeds_end_to_end(tmp_path):
         if parent.poll() is None:
             parent.terminate()
         subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
+
+
+class TestCurrentReleaseNotes:
+    """Notes for the version already running, used by the what's-new modal."""
+
+    def _mock_client(self, response):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=response)
+        return mock_client
+
+    async def test_fetches_notes_for_the_running_version(self):
+        """The tag-specific endpoint is queried, and body/html_url are stored."""
+        checker = UpdateChecker()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "tag_name": f"v{checker._current_version}",
+            "html_url": "https://github.com/Jsakkos/engram/releases/tag/v1.2.3",
+            "body": "## Highlights\n- Community data",
+        }
+        mock_client = self._mock_client(mock_response)
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            await checker._fetch_current_release_notes()
+
+        requested_url = mock_client.get.call_args[0][0]
+        assert f"/releases/tags/v{checker._current_version}" in requested_url
+        assert checker.current_release_notes == "## Highlights\n- Community data"
+        assert checker.current_release_url == (
+            "https://github.com/Jsakkos/engram/releases/tag/v1.2.3"
+        )
+
+    async def test_missing_tag_leaves_fields_none(self):
+        """A dev version with no GitHub release must not raise or set anything."""
+        import httpx as _httpx
+
+        checker = UpdateChecker()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock(
+            side_effect=_httpx.HTTPStatusError("404", request=MagicMock(), response=MagicMock())
+        )
+        mock_client = self._mock_client(mock_response)
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            await checker._fetch_current_release_notes()
+
+        assert checker.current_release_notes is None
+        assert checker.current_release_url is None
+
+    async def test_network_failure_leaves_fields_none(self):
+        """Offline installs degrade silently."""
+        import httpx as _httpx
+
+        checker = UpdateChecker()
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(side_effect=_httpx.ConnectError("timeout"))
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            await checker._fetch_current_release_notes()
+
+        assert checker.current_release_notes is None
+
+    async def test_second_call_does_not_refetch(self):
+        """Notes are immutable for a given build; one call per process is enough."""
+        checker = UpdateChecker()
+        checker._current_release_fetched = True
+
+        mock_client = self._mock_client(MagicMock())
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            await checker._fetch_current_release_notes()
+
+        mock_client.get.assert_not_called()
+
+    async def test_up_to_date_stores_current_release_from_latest_payload(self):
+        """Fix: when /releases/latest IS the running version, _check() has already
+        fetched exactly the release the what's-new modal needs — store its body/
+        html_url directly instead of discarding them for a later tag-specific refetch."""
+        checker = UpdateChecker()
+        release = {
+            "tag_name": f"v{checker._current_version}",
+            "html_url": "https://github.com/Jsakkos/engram/releases/tag/v1.2.3",
+            "body": "## Highlights\n- Community data",
+        }
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = release
+        mock_client = self._mock_client(mock_response)
+
+        with (
+            patch("app.core.updater.httpx.AsyncClient", return_value=mock_client),
+            patch.object(checker, "_broadcast", AsyncMock()),
+        ):
+            await checker._check(skipped_version=None)
+
+        assert checker.state == UpdateStatus.UP_TO_DATE
+        assert checker.current_release_notes == "## Highlights\n- Community data"
+        assert checker.current_release_url == (
+            "https://github.com/Jsakkos/engram/releases/tag/v1.2.3"
+        )
+
+    async def test_dev_build_ahead_of_latest_does_not_store_the_older_release(self):
+        """A build ahead of latest must fall through to its own tag lookup."""
+        checker = UpdateChecker()
+        checker._current_version = "9.9.9"
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "tag_name": "v0.27.0",
+            "html_url": "https://example.com/tag/v0.27.0",
+            "body": "OLD",
+        }
+        mock_client = self._mock_client(mock_response)
+
+        with patch("app.core.updater.httpx.AsyncClient", return_value=mock_client):
+            with patch.object(checker, "_broadcast", AsyncMock()):
+                await checker._check(skipped_version=None)
+
+        assert checker.state == UpdateStatus.UP_TO_DATE
+        assert checker.current_release_notes is None
+        assert checker._current_release_fetched is False  # tag-specific path still runs
+
+    async def test_check_stored_release_prevents_refetch(self):
+        """Once _check() has stored the running version's release, a subsequent
+        _fetch_current_release_notes() call makes no HTTP request at all."""
+        checker = UpdateChecker()
+        release = {
+            "tag_name": f"v{checker._current_version}",
+            "html_url": "https://github.com/Jsakkos/engram/releases/tag/v1.2.3",
+            "body": "## Highlights\n- Community data",
+        }
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = release
+        mock_client = self._mock_client(mock_response)
+
+        with (
+            patch("app.core.updater.httpx.AsyncClient", return_value=mock_client),
+            patch.object(checker, "_broadcast", AsyncMock()),
+        ):
+            await checker._check(skipped_version=None)
+
+            mock_client.get.reset_mock()
+            await checker._fetch_current_release_notes()
+
+        mock_client.get.assert_not_called()
+
+    async def test_start_populates_notes_and_broadcasts(self):
+        """start() wires _fetch_current_release_notes() into the startup flow, and
+        newly-populated notes trigger a broadcast even with no update available."""
+        checker = UpdateChecker()
+
+        async def _fake_fetch():
+            checker.current_release_notes = "## What's new"
+
+        checker._broadcaster = MagicMock()
+        checker._broadcaster.broadcast_update_status = AsyncMock()
+
+        with (
+            patch.object(checker, "_consume_update_result_marker", MagicMock()),
+            patch.object(checker, "_prune_staging", MagicMock()),
+            patch.object(checker, "_load_skipped_version", AsyncMock(return_value=None)),
+            patch.object(checker, "_check", AsyncMock()),
+            patch.object(
+                checker, "_fetch_current_release_notes", AsyncMock(side_effect=_fake_fetch)
+            ),
+        ):
+            await checker.start()
+
+        assert checker.current_release_notes == "## What's new"
+        checker._broadcaster.broadcast_update_status.assert_awaited()
 
 
 @windows_only
