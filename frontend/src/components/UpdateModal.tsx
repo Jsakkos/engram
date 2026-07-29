@@ -22,9 +22,15 @@ import type { UpdateStatus } from "../types";
 // the entry headline, ::before for markers) that inline styles cannot express.
 //
 // Changelog convention (see CLAUDE.md) is "**headline sentence.** explanation",
-// so `li > strong:first-child` is promoted to its own line: every bullet becomes
-// a title/body pair rather than a paragraph of uniformly-bold mono.
-const PROSE_CLASS = "um-prose";
+// so the leading <strong> is promoted to its own line: every bullet becomes a
+// title/body pair rather than a paragraph of uniformly-bold mono.
+//
+// The class name is deliberately specific rather than something like "prose".
+// This is a global class injected via a raw <style> tag, and both the `update`
+// and `whatsNew` variants can be mounted at once, so the name has to be one no
+// other component would plausibly reach for. (The duplicate <style> tag that
+// double-mounting produces is a no-op: the rules are identical and idempotent.)
+const PROSE_CLASS = "engram-release-notes-prose";
 
 const proseCss = `
 .${PROSE_CLASS} {
@@ -88,6 +94,9 @@ const proseCss = `
     margin-bottom: 18px;
 }
 .${PROSE_CLASS} li:last-child { margin-bottom: 0; }
+/* Loose lists wrap each item's content in <p>, whose 14px bottom margin would
+   otherwise stack on top of the 18px inter-entry gap. */
+.${PROSE_CLASS} li > p:last-child { margin-bottom: 0; }
 .${PROSE_CLASS} li::before {
     content: "";
     position: absolute;
@@ -105,7 +114,17 @@ const proseCss = `
     font-weight: 600;
     color: ${sv.ink};
 }
-.${PROSE_CLASS} li > strong:first-child {
+/* Both selectors are required, because remark's output shape depends on list
+   "tightness", not on our authoring convention. A tight list (no blank line
+   between any two bullets) yields "li > strong"; a single stray blank line
+   anywhere makes the WHOLE list loose and every item's content gets wrapped,
+   yielding "li > p > strong". Matching only the first would silently revert
+   every entry to unstyled bold-in-a-paragraph, with no error to notice, the
+   next time someone hand-edits CHANGELOG.md with a blank line between bullets.
+   Nothing in extract_changelog.py or CI enforces tightness, so the stylesheet
+   absorbs it instead. */
+.${PROSE_CLASS} li > strong:first-child,
+.${PROSE_CLASS} li > p:first-child > strong:first-child {
     display: block;
     color: ${sv.cyanHi};
     margin-bottom: 3px;
