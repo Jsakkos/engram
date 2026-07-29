@@ -33,6 +33,10 @@ export default defineConfig({
     use: {
         baseURL: E2E_VITE_URL,
         trace: 'on-first-retry',
+        // Written by globalSetup. Seeds the "what's new" dedupe key so the
+        // once-per-version modal does not open over the dashboard and swallow
+        // every click. See seedWhatsNewKey() in e2e/global-setup.ts.
+        storageState: path.resolve(__dirname, 'e2e-storage-state.json'),
         // Settle Framer springs, CSS keyframes, and the rip canvas for stable
         // screenshots. The app honors prefers-reduced-motion (theme.css media
         // query + Framer useReducedMotion + SvRipAnimation canvas hook).
