@@ -7,8 +7,26 @@ across the application.
 import inspect
 import logging
 from functools import wraps
+from typing import Literal
 
 logger = logging.getLogger(__name__)
+
+# The closed set of causes `ai_client.classify_provider_error` can produce.
+# Defined here (not in ai_client.py) because AIProviderError.code is typed
+# against it and ai_client.py already imports from this module — importing
+# in the other direction would be circular.
+ProviderErrorCode = Literal[
+    "bad_key",
+    "no_credits",
+    "rate_limited",
+    "model_unavailable",
+    "bad_request",
+    "network",
+    "timeout",
+    "response_truncated",
+    "malformed_response",
+    "unknown",
+]
 
 
 # Custom Exception Hierarchy
@@ -81,7 +99,39 @@ class AIProviderError(EngramError):
     confident" (which stays a plain ``None``/no-match result).
     """
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: ProviderErrorCode = "unknown",
+        detail: str = "",
+    ) -> None:
+        """``code`` is a stable machine-readable cause (see
+        ``ai_client.classify_provider_error``); ``detail`` is the provider's own
+        truncated explanation, kept for logs. Both default so existing
+        single-argument call sites are unaffected.
+
+        ``detail`` holds the provider's response body VERBATIM and is deliberately
+        left unsanitized, because it is structured data rather than a log line.
+        A provider body is attacker-adjacent (a compromised provider or an
+        intercepting proxy can embed CRLF to forge log entries), so any caller
+        that writes ``detail`` into a log message must pass it through
+        ``app.core.security.sanitize_log_value`` first, the way ``complete_json``
+        already does. Do not send it to the client either; the UI is given the
+        ``code`` and the composed human message, never the raw body.
+
+        The default deliberately reuses ``"unknown"`` rather than introducing a
+        separate "never classified" sentinel: ``classify_provider_error`` already
+        returns ``"unknown"`` for its own genuinely-indeterminate verdict (e.g. an
+        HTTP 500 with no recognizable body), and in both cases there is nothing
+        more specific to tell the user, so a UI branching on ``.code`` renders the
+        same generic message either way. Splitting them would add a state
+        (``"unset"``) with no distinct UI treatment, and would also break the
+        established default in ``test_errors.py::test_defaults_keep_existing_call_sites_working``.
+        """
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
 
 
 # Error Handling Decorator

@@ -705,3 +705,39 @@ class TestManualSubtitleImport:
             json={"files": [{"filename": "x.srt", "content": self.VALID_SRT}]},
         )
         assert response.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# LLM Match Endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestLLMMatchEndpoint:
+    """The 503 body must carry the classified provider cause and human message,
+    not just the bare ``reason`` string, so the Inspector can render it verbatim
+    instead of the raw ApiError JSON."""
+
+    async def test_llm_error_503_carries_detail_and_message(self, client):
+        from unittest.mock import AsyncMock, patch
+
+        from app.api.routes import LLMMatchOutcome
+
+        job = await _seed_job()
+        titles = await _seed_titles(job.id, count=1)
+
+        outcome = LLMMatchOutcome.failed(
+            "llm_error",
+            detail="no_credits",
+            message="This account has no API credits.",
+        )
+        with patch(
+            "app.api.routes._run_llm_match_for_title",
+            new=AsyncMock(return_value=outcome),
+        ):
+            response = await client.post(f"/api/jobs/{job.id}/titles/{titles[0].id}/llm-match")
+
+        assert response.status_code == 503
+        body = response.json()
+        assert body["reason"] == "llm_error"
+        assert body["detail"] == "no_credits"
+        assert body["message"] == "This account has no API credits."

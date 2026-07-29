@@ -26,6 +26,13 @@ def _mock_httpx(response_json: dict, status: int = 200):
     return client
 
 
+def _status_error_with_body(status: int, body: str):
+    from httpx import HTTPStatusError, Request, Response
+
+    req = Request("POST", "http://x")
+    return HTTPStatusError("err", request=req, response=Response(status, request=req, text=body))
+
+
 class TestCompleteJsonAnthropic:
     @pytest.mark.asyncio
     async def test_anthropic_success(self):
@@ -372,3 +379,444 @@ class TestCompleteJsonRaiseOnError:
                 )
         # A non-transport error must NOT be coerced into AIProviderError.
         assert not issubclass(RuntimeError, AIProviderError)
+
+
+class TestClassifyProviderError:
+    def _status_error(self, status: int, body: str):
+        from httpx import HTTPStatusError, Request, Response
+
+        req = Request("POST", "http://x")
+        return HTTPStatusError(
+            "err", request=req, response=Response(status, request=req, text=body)
+        )
+
+    @pytest.mark.parametrize(
+        "provider,status,body,expected",
+        [
+            ("openai", 429, '{"error":{"code":"insufficient_quota"}}', "no_credits"),
+            ("openai", 429, '{"error":{"code":"rate_limit_exceeded"}}', "rate_limited"),
+            ("openai", 401, '{"error":{"code":"invalid_api_key"}}', "bad_key"),
+            ("openai", 404, '{"error":{"code":"model_not_found"}}', "model_unavailable"),
+            ("openrouter", 402, '{"error":{"message":"Insufficient credits"}}', "no_credits"),
+            ("anthropic", 401, '{"error":{"type":"authentication_error"}}', "bad_key"),
+            ("anthropic", 429, '{"error":{"type":"rate_limit_error"}}', "rate_limited"),
+            ("gemini", 429, '{"error":{"status":"RESOURCE_EXHAUSTED"}}', "rate_limited"),
+            # Bare INVALID_ARGUMENT with no key-related message is Gemini's catch-all
+            # for validation failures (bad prompt, bad schema, bad model name, ...),
+            # not evidence of a bad key.
+            ("gemini", 400, '{"error":{"status":"INVALID_ARGUMENT"}}', "bad_request"),
+            (
+                "gemini",
+                400,
+                '{"error":{"status":"INVALID_ARGUMENT",'
+                '"message":"API key not valid. Please pass a valid API key."}}',
+                "bad_key",
+            ),
+            # Regression for PR #344: a schema-union 400 was misclassified as bad_key
+            # because it also carries status INVALID_ARGUMENT. It must stay bad_request.
+            (
+                "gemini",
+                400,
+                '{"error":{"status":"INVALID_ARGUMENT",'
+                '"message":"Proto field is not repeating, cannot start list."}}',
+                "bad_request",
+            ),
+            ("gemini", 403, '{"error":{"status":"PERMISSION_DENIED"}}', "model_unavailable"),
+            ("openai", 500, '{"error":{"message":"oops"}}', "unknown"),
+        ],
+    )
+    def test_http_statuses(self, provider, status, body, expected):
+        from app.core.ai_client import classify_provider_error
+
+        code, message = classify_provider_error(provider, self._status_error(status, body))
+        assert code == expected
+        assert message  # never empty; the UI renders it verbatim
+
+    def test_connect_error_is_network(self):
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        code, _ = classify_provider_error("openai", httpx.ConnectError("no route"))
+        assert code == "network"
+
+    def test_timeout_is_timeout(self):
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        code, _ = classify_provider_error("openai", httpx.ReadTimeout("slow"))
+        assert code == "timeout"
+
+    def test_message_never_echoes_body_content(self):
+        from app.core.ai_client import classify_provider_error
+
+        huge = '{"error":{"message":"' + ("x" * 9000) + '"}}'
+        code, message = classify_provider_error("openai", self._status_error(429, huge))
+        assert "x" * 9000 not in message
+
+    @pytest.mark.parametrize(
+        "provider,label",
+        [
+            ("openai", "OpenAI"),
+            ("anthropic", "Anthropic"),
+            ("openrouter", "OpenRouter"),
+            ("gemini", "Gemini"),
+        ],
+    )
+    def test_message_uses_the_display_label_not_the_slug(self, provider, label):
+        """These sentences are read by users, so the lowercase internal slug
+        must not leak into them ("OpenAI accepted the key", not "openai")."""
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error(
+            provider, self._status_error(429, '{"error":{"code":"insufficient_quota"}}')
+        )
+        assert label in message
+        assert provider not in message
+
+    def test_unknown_provider_falls_back_to_its_own_name(self):
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error("hal9000", self._status_error(500, "{}"))
+        assert "hal9000" in message
+
+
+class TestDetailFrom:
+    def _status_error(self, status: int, body: str):
+        from httpx import HTTPStatusError, Request, Response
+
+        req = Request("POST", "http://x")
+        return HTTPStatusError(
+            "err", request=req, response=Response(status, request=req, text=body)
+        )
+
+    def test_http_status_error_body_is_capped_at_2048(self):
+        from app.core.ai_client import detail_from
+
+        huge = '{"error":{"message":"' + ("x" * 9000) + '"}}'
+        detail = detail_from(self._status_error(429, huge))
+        assert len(detail) == 2048
+        assert detail == huge[:2048]
+
+    def test_non_http_status_error_falls_back_to_str_and_is_capped(self):
+        import httpx
+
+        from app.core.ai_client import detail_from
+
+        exc = httpx.ConnectError("no route" * 500)
+        detail = detail_from(exc)
+        assert detail == str(exc)[:2048]
+        assert len(detail) <= 2048
+
+
+class TestCompleteJsonErrorCodes:
+    @pytest.mark.asyncio
+    async def test_429_quota_raises_no_credits(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({}, status=429)
+        mock.post.return_value.raise_for_status.side_effect = _status_error_with_body(
+            429, '{"error":{"code":"insufficient_quota"}}'
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="openai",
+                    api_key="k",
+                    raise_on_error=True,
+                    retries=0,
+                )
+        assert exc_info.value.code == "no_credits"
+        assert "credits" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_no_credits_is_not_retried(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({}, status=429)
+        mock.post.return_value.raise_for_status.side_effect = _status_error_with_body(
+            429, '{"error":{"code":"insufficient_quota"}}'
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError):
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="openai",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert mock.post.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_rate_limited_is_still_retried(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({}, status=429)
+        mock.post.return_value.raise_for_status.side_effect = _status_error_with_body(
+            429, '{"error":{"code":"rate_limit_exceeded"}}'
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with patch("app.core.ai_client.asyncio.sleep", new=AsyncMock()):
+                with pytest.raises(AIProviderError) as exc_info:
+                    await complete_json(
+                        prompt="x",
+                        schema=None,
+                        provider="openai",
+                        api_key="k",
+                        raise_on_error=True,
+                        retries=2,
+                    )
+        assert exc_info.value.code == "rate_limited"
+        assert mock.post.await_count == 3  # initial + 2 retries
+
+    @pytest.mark.asyncio
+    async def test_timeout_param_reaches_the_client(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"choices": [{"message": {"content": '{"ok": true}'}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock) as ctor:
+            await complete_json(
+                prompt="x", schema=None, provider="openai", api_key="k", timeout=10.0
+            )
+        assert ctor.call_args.kwargs["timeout"] == 10.0
+
+
+class TestNullContent:
+    """A provider that sends an explicit JSON null for its text field must produce
+    a clean empty result, not an AttributeError.
+
+    ``.get(key, "")`` returns None when the key is PRESENT with a null value, so
+    the default never applies. OpenAI does this on a refusal.
+
+    Since Task 9 (surfacing truncated/malformed responses), the AttributeError
+    concern is verified differently under ``raise_on_error=True``: null content
+    is indistinguishable from any other unparseable body, so it now raises the
+    typed ``AIProviderError(code="malformed_response")`` rather than either
+    silently returning None or blowing up with an AttributeError. The plain
+    ``None`` contract is preserved for the default (``raise_on_error=False``)
+    path, which ``curator._maybe_add_llm_suggestion`` and
+    ``ai_identifier.identify_from_label`` rely on.
+    """
+
+    @pytest.mark.asyncio
+    async def test_openai_null_content_raises_malformed_when_raise_on_error(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({"choices": [{"message": {"content": None}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="openai",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert exc_info.value.code == "malformed_response"
+
+    @pytest.mark.asyncio
+    async def test_openai_null_content_returns_none_by_default(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"choices": [{"message": {"content": None}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x",
+                schema=None,
+                provider="openai",
+                api_key="k",
+            )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_anthropic_null_text_raises_malformed_when_raise_on_error(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({"content": [{"text": None}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="anthropic",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert exc_info.value.code == "malformed_response"
+
+    @pytest.mark.asyncio
+    async def test_anthropic_null_text_returns_none_by_default(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"content": [{"text": None}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x",
+                schema=None,
+                provider="anthropic",
+                api_key="k",
+            )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_gemini_null_text_raises_malformed_when_raise_on_error(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({"candidates": [{"content": {"parts": [{"text": None}]}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="gemini",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert exc_info.value.code == "malformed_response"
+
+    @pytest.mark.asyncio
+    async def test_gemini_null_text_returns_none_by_default(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"candidates": [{"content": {"parts": [{"text": None}]}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x",
+                schema=None,
+                provider="gemini",
+                api_key="k",
+            )
+        assert result is None
+
+    def test_parse_json_text_tolerates_none(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text(None) is None
+        assert _parse_json_text("") is None
+        assert _parse_json_text("   ") is None
+
+
+class TestTruncatedAndMalformed:
+    @pytest.mark.asyncio
+    async def test_openai_finish_reason_length_raises_truncated(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx(
+            {
+                "choices": [
+                    {"finish_reason": "length", "message": {"content": '{"episode": 3, "confid'}}
+                ]
+            }
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="openai",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert exc_info.value.code == "response_truncated"
+
+    @pytest.mark.asyncio
+    async def test_anthropic_max_tokens_raises_truncated(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx(
+            {"stop_reason": "max_tokens", "content": [{"text": '{"episode": 3, "conf'}]}
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="anthropic",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert exc_info.value.code == "response_truncated"
+
+    @pytest.mark.asyncio
+    async def test_gemini_max_tokens_raises_truncated(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx(
+            {
+                "candidates": [
+                    {
+                        "finishReason": "MAX_TOKENS",
+                        "content": {"parts": [{"text": '{"episode": 3, "conf'}]},
+                    }
+                ]
+            }
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="gemini",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert exc_info.value.code == "response_truncated"
+
+    @pytest.mark.asyncio
+    async def test_malformed_raises_when_raise_on_error(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx(
+            {"choices": [{"finish_reason": "stop", "message": {"content": "I don't know"}}]}
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc_info:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="openai",
+                    api_key="k",
+                    raise_on_error=True,
+                )
+        assert exc_info.value.code == "malformed_response"
+
+    @pytest.mark.asyncio
+    async def test_malformed_still_returns_none_by_default(self):
+        """curator._maybe_add_llm_suggestion relies on the None contract."""
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(
+            {"choices": [{"finish_reason": "stop", "message": {"content": "I don't know"}}]}
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(prompt="x", schema=None, provider="openai", api_key="k")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_truncated_still_returns_none_by_default(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(
+            {
+                "choices": [
+                    {"finish_reason": "length", "message": {"content": '{"episode": 3, "confid'}}
+                ]
+            }
+        )
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(prompt="x", schema=None, provider="openai", api_key="k")
+        assert result is None

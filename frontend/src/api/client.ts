@@ -79,9 +79,13 @@ export async function apiFetchBlob(input: RequestInfo | URL, init?: RequestInit)
  *   - `"show_not_found"` — the show could not be resolved on TMDB.
  *   - `"no_match"` — the model ran but produced no confident episode.
  * - **503** — `runLLMMatch` THROWS `ApiError`; retryable operational failures.
- *   `ApiError.body` carries the same `{ suggestion: null, reason }` JSON, where
- *   `reason` is `"matcher_unavailable"`, `"transcription_failed"`, or `"llm_error"`
- *   (the LLM provider call itself failed — rate-limit/credits/auth/5xx/network).
+ *   `ApiError.body` carries `{ suggestion: null, reason, detail, message }`, where
+ *   `reason` is `"matcher_unavailable"`, `"transcription_failed"`, or `"llm_error"`.
+ *   For `"llm_error"`, `detail` is the classified provider cause (`"no_credits"`,
+ *   `"bad_key"`, `"rate_limited"`, `"model_unavailable"`, `"response_truncated"`,
+ *   `"malformed_response"`, `"network"`, `"timeout"`, `"unknown"`) and `message`
+ *   is a ready-to-render sentence. Use `llmErrorToFeedback` rather than
+ *   `ApiError.message`, which is the raw body.
  * - **500** — `runLLMMatch` THROWS `ApiError`; unexpected server error,
  *   `reason: "internal_error"` (also in `ApiError.body`).
  */

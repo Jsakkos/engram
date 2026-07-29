@@ -15,7 +15,7 @@ import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
-import { llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
+import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
 import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
@@ -179,6 +179,7 @@ function ReviewQueue() {
     const [llmMatchingId, setLlmMatchingId] = useState<number | null>(null);
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
+    const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
 
     // Bulk multiselect — ids checked for bulk actions (independent of the
     // single inspected title). `lastBulkClickRef` anchors shift-click ranges.
@@ -249,13 +250,19 @@ function ReviewQueue() {
         });
     }, [jobId, addMessageListener]);
 
-    // Fetch config once on mount to know whether AI matching is enabled.
+    // Fetch config once on mount to know whether AI matching is usable. Both
+    // flags gate the "Try AI match" button: enabling the feature without a key
+    // makes every click burn a full transcription before failing a guard.
     useEffect(() => {
         fetch('/api/config')
             .then((r) => r.ok ? r.json() : null)
             .then((data) => {
                 if (data?.ai_episode_matching_enabled) {
                     setAiEpisodeMatchingEnabled(true);
+                }
+                // "***" is the redacted stand-in for a stored key; "" means unset.
+                if (data?.ai_api_key === '***') {
+                    setAiKeyConfigured(true);
                 }
             })
             .catch(() => {/* non-critical */});
@@ -410,9 +417,9 @@ function ReviewQueue() {
     };
 
     // Run the LLM matcher for a single title, then refresh so the persisted
-    // llm_suggestion surfaces in the Inspector. The endpoint always returns 200,
-    // so a "silent" outcome (no_suggestion / internal_error) is reported via
-    // inline Inspector feedback rather than a thrown error. Pending + feedback
+    // llm_suggestion surfaces in the Inspector. Outcomes arrive two ways: a 200
+    // with a discriminating `reason` (mapped by llmResultToFeedback), or a
+    // thrown ApiError for the 503 retryable failures and 500. Pending + feedback
     // are keyed by title id so they follow the selected title.
     const handleTryLLMMatch = async (titleId: number) => {
         if (!jobId) return;
@@ -428,13 +435,7 @@ function ReviewQueue() {
             }
         } catch (err) {
             console.error('LLM match failed', err);
-            setLlmFeedback((prev) => ({
-                ...prev,
-                [titleId]: {
-                    tone: 'error',
-                    text: err instanceof Error ? err.message : 'AI match failed.',
-                },
-            }));
+            setLlmFeedback((prev) => ({ ...prev, [titleId]: llmErrorToFeedback(err) }));
         } finally {
             // Only clear if this title is still the in-flight one (a fast click on
             // another title must not clear the wrong spinner).
@@ -1219,6 +1220,7 @@ function ReviewQueue() {
                                 titleIndexById={titleIndexById}
                                 isRematching={isRematching}
                                 aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
+                                aiKeyConfigured={aiKeyConfigured}
                                 llmFeedback={llmFeedback[selectedTitle.id] ?? null}
                                 isLlmMatching={llmMatchingId === selectedTitle.id}
                                 onAssign={(code) => handleEpisodeChange(selectedTitle.id, code)}

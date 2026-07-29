@@ -27,6 +27,7 @@ function renderInspector(props: {
     llmFeedback?: LLMFeedback | null;
     isLlmMatching?: boolean;
     aiEpisodeMatchingEnabled?: boolean;
+    aiKeyConfigured?: boolean;
     season?: number;
 } = {}) {
     return render(
@@ -43,6 +44,7 @@ function renderInspector(props: {
             titleIndexById={{ 1: 1 }}
             isRematching={false}
             aiEpisodeMatchingEnabled={props.aiEpisodeMatchingEnabled ?? true}
+            aiKeyConfigured={props.aiKeyConfigured ?? true}
             llmFeedback={props.llmFeedback ?? null}
             isLlmMatching={props.isLlmMatching ?? false}
             onAssign={vi.fn()}
@@ -75,6 +77,18 @@ describe('Inspector — AI match feedback', () => {
     it('shows the default Try AI match label when idle', () => {
         renderInspector({ isLlmMatching: false });
         expect(screen.getByRole('button', { name: /try ai match/i })).toBeInTheDocument();
+    });
+
+    it('disables the button when no AI key is configured', () => {
+        renderInspector({ aiKeyConfigured: false });
+        const btn = screen.getByRole('button', { name: /try ai match/i });
+        expect(btn).toBeDisabled();
+        expect(btn).toHaveAttribute('title', expect.stringMatching(/no ai api key/i));
+    });
+
+    it('enables the button when matching is on and a key is set', () => {
+        renderInspector({ aiKeyConfigured: true, isLlmMatching: false });
+        expect(screen.getByRole('button', { name: /try ai match/i })).toBeEnabled();
     });
 
     it('hides the feedback notice when a suggestion is present', () => {
