@@ -22,6 +22,13 @@ MARKER="${INSTALL_DIR}/.installed-version"
 # "Verify MakeMKV version detection" step in .github/workflows/docker.yml.
 EXIT_FETCH_FAILED=2
 EXIT_PARSE_FAILED=3
+# Tarball download failure, a later and separate stage: the version resolved
+# fine, but fetching its archive failed even after retries. Kept out of
+# EXIT_FETCH_FAILED so a consumer can tell "never got started" from "got a
+# version, then lost the site mid-download". Nothing branches on it yet;
+# without it the script leaks curl's own status (22 for any HTTP >= 400), which
+# is exactly the opaque numbering the codes above exist to replace.
+EXIT_DOWNLOAD_FAILED=4
 
 # Resolves the latest MakeMKV version, or returns EXIT_FETCH_FAILED /
 # EXIT_PARSE_FAILED. curl's own error goes to stderr (-S), so the log still
@@ -121,7 +128,26 @@ cd "${WORK}"
 # forum release thread (https://www.makemkv.com/forum/viewtopic.php?t=1053).
 for part in oss bin; do
     echo "    downloading makemkv-${part}-${VERSION}.tar.gz"
-    curl -fSL -o "makemkv-${part}.tar.gz" "${DL_BASE}/makemkv-${part}-${VERSION}.tar.gz"
+    # Same retry treatment as the version lookup above, and for the same reason:
+    # --retry-all-errors so Cloudflare's 520-527 origin codes get retried rather
+    # than treated as final. This request is the longer and heavier of the two
+    # against that same host, so it is if anything more exposed to a transient
+    # 5xx, not less. --max-time applies per attempt, and is 300s rather than the
+    # 30s used for the version lookup because that fetch is a small HTML page
+    # while these are multi-megabyte archives that may come over a slow link.
+    #
+    # This only covers *transient* failures. A sustained outage still fails
+    # here, just after three attempts instead of one; that is the intended
+    # limit, not a gap to widen.
+    if ! curl -fSL --max-time 300 --retry 3 --retry-delay 5 --retry-all-errors \
+        -o "makemkv-${part}.tar.gz" \
+        "${DL_BASE}/makemkv-${part}-${VERSION}.tar.gz"; then
+        echo "ERROR: could not download makemkv-${part}-${VERSION}.tar.gz after retries." >&2
+        echo "       Either makemkv.com is unreachable, or version ${VERSION} is no longer" >&2
+        echo "       published (MakeMKV removes old releases). curl's error above" >&2
+        echo "       distinguishes the two: a 5xx is an outage, a 404 is a stale version." >&2
+        exit "${EXIT_DOWNLOAD_FAILED}"
+    fi
     tar xzf "makemkv-${part}.tar.gz"
     # Fail clearly if the archive didn't expand to the expected directory rather
     # than cd'ing into a missing/unexpected path later.
