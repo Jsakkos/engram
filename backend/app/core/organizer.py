@@ -5,9 +5,11 @@ Moves ripped files from staging to the library with proper naming conventions:
 - TV: Library/TV/Show Name/Season XX/Show Name - SXXEXX.mkv
 """
 
+import contextlib
 import logging
 import re
 import shutil
+import uuid
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -248,6 +250,45 @@ def resolve_conflict(dest_file: Path, conflict_resolution: str) -> tuple[Path | 
         "error_code": "FILE_EXISTS",
         "existing_path": str(dest_file),
     }
+
+
+def check_library_writable(library_path: Path | str | None, *, create: bool = True) -> str | None:
+    """Return a human-readable reason ``library_path`` is unusable, or None.
+
+    Probes the root with a touch/unlink so a permissions or mount problem is
+    reported BEFORE a job enters ORGANIZING (#563). Docker users hit this
+    constantly via PUID/volume mismatches, and the failure was previously
+    invisible until after the rip.
+
+    ``create=False`` makes the check non-destructive: a path that does not
+    exist yet is accepted rather than created. Use it for settings-time
+    validation, where creating directories as a side effect of *validating*
+    would be surprising, and where a not-yet-mounted share must not be
+    rejected. The organize path (which is about to create the tree anyway)
+    uses the default.
+    """
+    if not library_path or str(library_path).strip() in ("", "."):
+        return "Path is not configured. Set it in Settings."
+
+    root = Path(library_path).expanduser()
+    if not create and not root.exists():
+        return None
+
+    # Unique probe name per call: two jobs organizing into the same library root
+    # concurrently would otherwise unlink each other's probe, and the resulting
+    # FileNotFoundError would report a perfectly writable path as broken.
+    probe = root / f".engram-write-test-{uuid.uuid4().hex}"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        probe.touch()
+    except OSError as e:
+        return f"{root} is not writable: {e}"
+    finally:
+        # Never leave the probe behind, and never fail the check on cleanup:
+        # the write already proved what we were asking.
+        with contextlib.suppress(OSError):
+            probe.unlink()
+    return None
 
 
 def find_main_movie_file(staging_dir: Path) -> Path | None:

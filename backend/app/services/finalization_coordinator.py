@@ -14,6 +14,7 @@ from pathlib import Path
 from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
+from app.core.organizer import check_library_writable
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -298,6 +299,57 @@ def _merge_match_details(existing: str | None, updates: dict) -> str:
             merged = {}
     merged.update(updates)
     return json.dumps(merged)
+
+
+def _organize_failure_details(existing: str | None, error: object) -> str:
+    """Record an organize failure on a title so the UI can render the cause.
+
+    Mirrors the FILE_EXISTS shape the Inspector already understands, but with
+    an ``organize_failed`` code. Without this a permissions error left
+    match_details untouched and the track looked like an ordinary unmatched
+    one (#563).
+    """
+    return _merge_match_details(
+        existing,
+        {"error": "organize_failed", "message": str(error or "unknown error")},
+    )
+
+
+def _first_detail_message(match_details: str | None) -> str:
+    """Pull the human-readable message out of a match_details JSON blob."""
+    if not match_details:
+        return "unknown error"
+    try:
+        parsed = json.loads(match_details)
+    except (json.JSONDecodeError, TypeError):
+        return "unknown error"
+    if isinstance(parsed, dict):
+        return str(parsed.get("message") or "unknown error")
+    return "unknown error"
+
+
+def _summarize_organize_failures(organize_errors: list[str], missing_files: list[str]) -> str:
+    """Build the user-facing reason a TV organize sweep produced nothing.
+
+    An unwritable library and a staging directory that vanished are different
+    problems with different fixes, so they get different messages. Extra
+    failures are counted rather than dropped, so "+N more" tells the user to
+    check the log instead of implying a single isolated fault. The count spans
+    BOTH buckets: a sweep with 2 organize errors and 1 missing file reports
+    "+2 more", not "+1 more".
+    """
+    total = len(organize_errors) + len(missing_files)
+    if not total:
+        return "no files were available to organize"
+
+    if organize_errors:
+        detail = organize_errors[0]
+    else:
+        detail = f"source file missing from staging: {missing_files[0]}"
+
+    if total > 1:
+        detail = f"{detail} (+{total - 1} more)"
+    return detail
 
 
 class FinalizationCoordinator:
@@ -1100,7 +1152,11 @@ class FinalizationCoordinator:
                     "organized_to": None,
                     "episode_ordering": None,
                     "episode_group_id": None,
-                    "match_details": None,
+                    "organize_failed": True,
+                    "match_details": _organize_failure_details(
+                        cap["match_details"],
+                        f"source file missing from staging: {cap['output_filename']}",
+                    ),
                 }
                 if self._note_activity:
                     self._note_activity(job_id)
@@ -1162,7 +1218,8 @@ class FinalizationCoordinator:
                 "organized_to": None,
                 "episode_ordering": None,
                 "episode_group_id": None,
-                "match_details": None,  # only set on FILE_EXISTS
+                "organize_failed": False,
+                "match_details": None,  # set on FILE_EXISTS / organize failure
             }
 
             if org_result["success"]:
@@ -1199,8 +1256,15 @@ class FinalizationCoordinator:
                 )
                 logger.warning(f"Organization conflict for Title {tid}: {org_result['error']}")
             else:
+                # Record WHY, the same way FILE_EXISTS does. Previously the
+                # track landed in REVIEW with untouched match_details, so the
+                # job reason read "needs manual episode assignment" for what was
+                # really a permissions or disk error (#563).
+                err = str(org_result.get("error") or "unknown error")
                 result["state"] = TitleState.REVIEW
-                logger.error(f"Organize failed for Title {tid}: {org_result['error']}")
+                result["organize_failed"] = True
+                result["match_details"] = _organize_failure_details(cap["match_details"], err)
+                logger.error(f"Organize failed for Title {tid}: {err}")
 
             results[tid] = result
 
@@ -1257,11 +1321,18 @@ class FinalizationCoordinator:
 
             if has_review:
                 review_count = sum(1 for t in titles if t.state == TitleState.REVIEW)
-                await self._state_machine.transition_to_review(
-                    job,
-                    session,
-                    reason=f"{review_count} title(s) need manual episode assignment",
-                )
+                # Name the organize failure instead of blaming episode
+                # assignment: the two need completely different user actions
+                # (fix a path/permission vs. pick an episode) (#563).
+                organize_failed = [res for res in results.values() if res.get("organize_failed")]
+                if organize_failed:
+                    reason = (
+                        f"{len(organize_failed)} title(s) failed to organize: "
+                        f"{_first_detail_message(organize_failed[0]['match_details'])}"
+                    )
+                else:
+                    reason = f"{review_count} title(s) need manual episode assignment"
+                await self._state_machine.transition_to_review(job, session, reason=reason)
             elif has_completed:
                 job.progress_percent = 100.0
                 from app.services.config_service import get_config as get_db_config
@@ -1506,6 +1577,22 @@ class FinalizationCoordinator:
             await session.commit()
             return
 
+        # Preflight the destination before entering ORGANIZING: an unwritable
+        # library is a configuration problem, and saying so up front beats
+        # failing once per title with the same errno (#563).
+        _preflight_root = _library_path_for_job(job, "tv")
+        if _preflight_root is None:
+            from app.services.config_service import get_config_sync
+
+            _preflight_root = get_config_sync().library_tv_path
+        unwritable = await asyncio.to_thread(check_library_writable, _preflight_root)
+        if unwritable:
+            logger.error(f"Job {job_id}: library preflight failed - {unwritable}")
+            await self._state_machine.transition_to_failed(
+                job, session, error_message=f"Cannot organize into the TV library: {unwritable}"
+            )
+            return
+
         job.state = JobState.ORGANIZING
         session.add(job)
         await session.commit()
@@ -1526,6 +1613,8 @@ class FinalizationCoordinator:
 
         success_count = 0
         conflict_count = 0
+        organize_errors: list[str] = []
+        missing_files: list[str] = []
 
         extra_index = 1
         for disc_title in resolved_titles:
@@ -1602,7 +1691,15 @@ class FinalizationCoordinator:
                         )
                         logger.warning(f"Organization conflict for TV: {org_result['error']}")
                     else:
-                        logger.error(f"Failed to organize: {org_result['error']}")
+                        err = str(org_result.get("error") or "unknown error")
+                        organize_errors.append(err)
+                        disc_title.match_details = _organize_failure_details(
+                            disc_title.match_details, err
+                        )
+                        # Flag the title too: left at MATCHED it looks organized,
+                        # and nothing downstream can tell its file never moved.
+                        disc_title.state = TitleState.REVIEW
+                        logger.error(f"Failed to organize title {disc_title.id}: {err}")
 
                     session.add(disc_title)
                     await session.commit()
@@ -1619,21 +1716,40 @@ class FinalizationCoordinator:
                         match_details=disc_title.match_details,
                     )
                 else:
+                    missing_files.append(source_file.name)
                     logger.warning(f"Source file not found: {source_file}")
 
+        failure_total = len(organize_errors) + len(missing_files)
         if conflict_count > 0:
             await self._state_machine.transition_to_review(
                 job,
                 session,
                 reason=f"{conflict_count} files already exist in library",
             )
+        elif failure_total > 0 and success_count > 0:
+            # Partial success is NOT completion: some files are still sitting in
+            # staging. Park the disc in review naming the real cause, instead of
+            # reporting COMPLETED over a file that never moved.
+            await self._state_machine.transition_to_review(
+                job,
+                session,
+                reason=(
+                    f"{failure_total} title(s) failed to organize: "
+                    f"{_summarize_organize_failures(organize_errors, missing_files)}"
+                ),
+            )
         elif success_count > 0:
             await self._complete_tv_job(session, job)
         else:
+            # Carry the real cause: this used to be a hardcoded string, leaving
+            # the user with "Failed to organize files" and no errno (#563).
             await self._state_machine.transition_to_failed(
                 job,
                 session,
-                error_message="Failed to organize files",
+                error_message=(
+                    "Failed to organize files: "
+                    f"{_summarize_organize_failures(organize_errors, missing_files)}"
+                ),
             )
 
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
@@ -1719,6 +1835,7 @@ class FinalizationCoordinator:
 
             success_count = 0
             conflict_count = 0
+            failure_count = 0
             extra_index = 1
 
             for disc_title in matched_titles:
@@ -1794,8 +1911,15 @@ class FinalizationCoordinator:
                     )
                     logger.warning(f"Organization conflict for TV: {org_result['error']}")
                 else:
-                    logger.error(f"Failed to organize: {org_result['error']}")
-                    continue
+                    # Persist the cause before moving on. A bare `continue` left
+                    # the track looking like an ordinary unmatched one (#563).
+                    err = str(org_result.get("error") or "unknown error")
+                    failure_count += 1
+                    disc_title.match_details = _organize_failure_details(
+                        disc_title.match_details, err
+                    )
+                    disc_title.state = TitleState.REVIEW
+                    logger.error(f"Failed to organize title {disc_title.id}: {err}")
 
                 session.add(disc_title)
                 await session.commit()
@@ -1824,7 +1948,10 @@ class FinalizationCoordinator:
             )
             unresolved = unresolved_result.scalars().all()
 
-            if not unresolved and conflict_count == 0:
+            # A title whose move failed still has a matched_episode, so the
+            # "unresolved" query above cannot see it. Without failure_count the
+            # job would complete while its files sat in staging (#563).
+            if not unresolved and conflict_count == 0 and failure_count == 0:
                 await self._complete_tv_job(session, job)
             else:
                 await session.commit()

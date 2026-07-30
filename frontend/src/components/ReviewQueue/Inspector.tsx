@@ -79,6 +79,10 @@ export function Inspector({
 }) {
     const details = parseMatchDetails(title);
     const fileExists = details.error === 'file_exists';
+    // A failed file move (permissions, full disk, vanished staging) is NOT an
+    // episode-assignment problem. Surface the real cause instead of leaving
+    // the track looking like an ordinary unmatched one (#563).
+    const organizeFailed = details.error === 'organize_failed';
     const llmSuggestion: LLMSuggestion | null = details.llm_suggestion ?? null;
     // In-flight = the live WebSocket title state (durable, lasts the whole match)
     // OR the parent's optimistic isRematching (covers the gap before the first WS
@@ -99,6 +103,8 @@ export function Inspector({
 
     const stateBadge = fileExists ? (
         <SvBadge state="warn" dot>File exists</SvBadge>
+    ) : organizeFailed ? (
+        <SvBadge state="warn" dot>Save failed</SvBadge>
     ) : !selection ? (
         <SvBadge state="review" dot>Needs review</SvBadge>
     ) : selection === 'extra' ? (
@@ -126,9 +132,11 @@ export function Inspector({
             </div>
 
             <div style={{ padding: 16 }}>
-                {fileExists && details.message && (
+                {(fileExists || organizeFailed) && details.message && (
                     <div style={{ marginBottom: 14 }}>
-                        <SvNotice tone="warn">{details.message}</SvNotice>
+                        <SvNotice tone="warn">
+                            {organizeFailed ? `Could not move this file: ${details.message}` : details.message}
+                        </SvNotice>
                     </div>
                 )}
 

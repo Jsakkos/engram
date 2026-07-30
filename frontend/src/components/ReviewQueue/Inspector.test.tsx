@@ -119,3 +119,40 @@ describe('Inspector — manual dropdown season (#370)', () => {
         expect(screen.getByRole('option', { name: 'S01E01' })).toBeInTheDocument();
     });
 });
+
+describe('Inspector: organize failure (#563)', () => {
+    const permissionError = "[Errno 13] Permission denied: '/library/tv'";
+
+    it('shows the real cause when a file could not be moved', () => {
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({
+                    error: 'organize_failed',
+                    message: permissionError,
+                }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes(permissionError)),
+        ).toBeInTheDocument();
+    });
+
+    it('badges the track as a save failure, not as needing review', () => {
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({
+                    error: 'organize_failed',
+                    message: permissionError,
+                }),
+            }),
+        });
+        expect(screen.getByText('Save failed')).toBeInTheDocument();
+        expect(screen.queryByText('Needs review')).not.toBeInTheDocument();
+    });
+
+    it('leaves an ordinary unmatched track alone', () => {
+        renderInspector({ title: makeTitle() });
+        expect(screen.queryByText('Save failed')).not.toBeInTheDocument();
+        expect(screen.getByText('Needs review')).toBeInTheDocument();
+    });
+});

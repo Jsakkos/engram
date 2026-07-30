@@ -66,7 +66,11 @@ export function TitleList({
                 // state (persists for the real match duration — unlike the parent's
                 // ephemeral isRematching, which clears the instant the POST returns).
                 const isMatching = title.state === 'matching';
-                const fileExists = parseMatchDetails(title).error === 'file_exists';
+                const detailsError = parseMatchDetails(title).error;
+                const fileExists = detailsError === 'file_exists';
+                // Flag a failed file move in the compact list too, so the user
+                // does not have to click into every track to find it (#563).
+                const organizeFailed = detailsError === 'organize_failed';
                 const accent = inConflict ? sv.red : needsReview ? sv.yellow : sv.line;
                 const checked = selectedIds.has(title.id);
 
@@ -148,6 +152,11 @@ export function TitleList({
                             {fileExists && (
                                 <SvBadge size="sm" state="warn" dot>
                                     file exists
+                                </SvBadge>
+                            )}
+                            {organizeFailed && (
+                                <SvBadge size="sm" state="warn" dot>
+                                    save failed
                                 </SvBadge>
                             )}
                             {isMatching ? (
