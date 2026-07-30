@@ -1725,15 +1725,24 @@ async def update_config(config: ConfigUpdate) -> dict:
     # surfaced as an opaque organize failure after a full rip: the exact
     # trap Docker users fall into with PUID/volume mismatches.
     from app.core.organizer import check_library_writable
+    from app.services.config_service import get_config as get_current_config
 
+    # Only validate a path the user actually CHANGED. ConfigWizard PUTs the full
+    # config object on every save, so validating unconditionally would let a
+    # transiently unreachable library (NAS reboot, externally changed perms)
+    # block saving any unrelated setting until the path was fixed.
+    #
     # create=False: only an EXISTING but unwritable path is rejected. Validating
     # must not create directories as a side effect, and a path on a share that
     # is not mounted yet is not an error to save.
-    for field in ("library_movies_path", "library_tv_path", "staging_path"):
-        if update_data.get(field):
-            reason = await asyncio.to_thread(
-                check_library_writable, update_data[field], create=False
-            )
+    _path_fields = ("library_movies_path", "library_tv_path", "staging_path")
+    if any(update_data.get(f) for f in _path_fields):
+        _current = await get_current_config()
+        for field in _path_fields:
+            new_value = update_data.get(field)
+            if not new_value or new_value == getattr(_current, field, None):
+                continue
+            reason = await asyncio.to_thread(check_library_writable, new_value, create=False)
             if reason:
                 raise HTTPException(status_code=422, detail=f"{field}: {reason}")
 

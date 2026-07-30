@@ -2019,7 +2019,10 @@ class JobManager:
 
     async def process_matched_titles(self, job_id: int) -> dict:
         """Process all matched titles for a job."""
-        return await self._finalization.process_matched_titles(job_id)
+        # Route-driven organize sweep: bind the job so its lines land in the
+        # diagnostics bundle rather than being tagged job=- (see apply_review, #563).
+        with job_log_context(job_id):
+            return await self._finalization.process_matched_titles(job_id)
 
     async def advance_job(self, job_id: int) -> str:
         """Manually advance a job to the next state. Returns new state."""

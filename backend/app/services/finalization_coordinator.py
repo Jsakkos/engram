@@ -334,21 +334,22 @@ def _summarize_organize_failures(organize_errors: list[str], missing_files: list
     An unwritable library and a staging directory that vanished are different
     problems with different fixes, so they get different messages. Extra
     failures are counted rather than dropped, so "+N more" tells the user to
-    check the log instead of implying a single isolated fault.
+    check the log instead of implying a single isolated fault. The count spans
+    BOTH buckets: a sweep with 2 organize errors and 1 missing file reports
+    "+2 more", not "+1 more".
     """
+    total = len(organize_errors) + len(missing_files)
+    if not total:
+        return "no files were available to organize"
+
     if organize_errors:
         detail = organize_errors[0]
-        if len(organize_errors) > 1:
-            detail = f"{detail} (+{len(organize_errors) - 1} more)"
-        return detail
-
-    if missing_files:
+    else:
         detail = f"source file missing from staging: {missing_files[0]}"
-        if len(missing_files) > 1:
-            detail = f"{detail} (+{len(missing_files) - 1} more)"
-        return detail
 
-    return "no files were available to organize"
+    if total > 1:
+        detail = f"{detail} (+{total - 1} more)"
+    return detail
 
 
 class FinalizationCoordinator:
@@ -1695,6 +1696,9 @@ class FinalizationCoordinator:
                         disc_title.match_details = _organize_failure_details(
                             disc_title.match_details, err
                         )
+                        # Flag the title too: left at MATCHED it looks organized,
+                        # and nothing downstream can tell its file never moved.
+                        disc_title.state = TitleState.REVIEW
                         logger.error(f"Failed to organize title {disc_title.id}: {err}")
 
                     session.add(disc_title)
@@ -1715,11 +1719,24 @@ class FinalizationCoordinator:
                     missing_files.append(source_file.name)
                     logger.warning(f"Source file not found: {source_file}")
 
+        failure_total = len(organize_errors) + len(missing_files)
         if conflict_count > 0:
             await self._state_machine.transition_to_review(
                 job,
                 session,
                 reason=f"{conflict_count} files already exist in library",
+            )
+        elif failure_total > 0 and success_count > 0:
+            # Partial success is NOT completion: some files are still sitting in
+            # staging. Park the disc in review naming the real cause, instead of
+            # reporting COMPLETED over a file that never moved.
+            await self._state_machine.transition_to_review(
+                job,
+                session,
+                reason=(
+                    f"{failure_total} title(s) failed to organize: "
+                    f"{_summarize_organize_failures(organize_errors, missing_files)}"
+                ),
             )
         elif success_count > 0:
             await self._complete_tv_job(session, job)

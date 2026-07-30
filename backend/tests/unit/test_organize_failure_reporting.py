@@ -197,6 +197,71 @@ class TestReviewSaveSurfacesOrganizeError:
         assert PERMISSION_ERROR in job.error_message
         assert "+2 more" in job.error_message
 
+    async def test_mixed_failure_kinds_are_all_counted(self, tmp_path, failing_organize):
+        """Review feedback: the "+N more" count covered only one bucket, so a
+        sweep with 2 organize errors and 1 missing file implied 2 failures."""
+        present = []
+        for i in range(2):
+            f = tmp_path / f"show_t0{i}.mkv"
+            f.write_text("")
+            present.append(f)
+        entries = [(i, None, str(f), TitleState.REVIEW) for i, f in enumerate(present)]
+        entries.append((2, None, str(tmp_path / "gone_t02.mkv"), TitleState.REVIEW))
+        job_id = await _seed(entries, staging=str(tmp_path), state=JobState.REVIEW_NEEDED)
+        _, titles = await _load(job_id)
+
+        await _make_coord().apply_review_batch(
+            job_id,
+            [{"title_id": titles[i].id, "episode_code": f"S01E0{i + 1}"} for i in range(3)],
+        )
+
+        job, _ = await _load(job_id)
+        # 3 failures total: 2 organize errors + 1 missing file.
+        assert "+2 more" in job.error_message
+
+    async def test_partial_success_does_not_complete_the_job(self, tmp_path, failing_organize):
+        """Review feedback: one title organizing and another failing hit the
+        success_count>0 branch and COMPLETED the job with a file left in
+        staging. Same bug already fixed for process_matched_titles."""
+        import app.core.organizer as org
+
+        ok = tmp_path / "show_t00.mkv"
+        bad = tmp_path / "show_t01.mkv"
+        ok.write_text("")
+        bad.write_text("")
+
+        results = iter(
+            [
+                {"success": True, "final_path": str(tmp_path / "lib" / "ep1.mkv"), "error": None},
+                {"success": False, "final_path": None, "error": PERMISSION_ERROR},
+            ]
+        )
+        monkey = Mock(side_effect=lambda *a, **k: next(results))
+        org.tv_organizer.organize = monkey
+
+        job_id = await _seed(
+            [
+                (0, None, str(ok), TitleState.REVIEW),
+                (1, None, str(bad), TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            state=JobState.REVIEW_NEEDED,
+        )
+        _, titles = await _load(job_id)
+
+        await _make_coord().apply_review_batch(
+            job_id,
+            [
+                {"title_id": titles[0].id, "episode_code": "S01E01"},
+                {"title_id": titles[1].id, "episode_code": "S01E02"},
+            ],
+        )
+
+        job, titles = await _load(job_id)
+        assert job.state != JobState.COMPLETED
+        # The failed title must be flagged, not left sitting in MATCHED.
+        assert titles[1].state == TitleState.REVIEW
+
 
 @pytest.mark.unit
 class TestAutoFinalizeSurfacesOrganizeError:
@@ -274,6 +339,20 @@ class TestLibraryWritablePreflight:
 
         assert check_library_writable(root, create=False) is None
         assert not root.exists()
+
+    def test_concurrent_probes_do_not_report_a_false_failure(self, tmp_path):
+        """Review feedback: a fixed probe filename let two jobs organizing into
+        the same library root unlink each other's probe, turning a writable path
+        into a reported failure."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        from app.core.organizer import check_library_writable
+
+        root = tmp_path / "shared_library"
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            reasons = list(pool.map(lambda _: check_library_writable(root), range(64)))
+
+        assert all(r is None for r in reasons), [r for r in reasons if r]
 
     def test_create_false_still_rejects_an_existing_unwritable_root(self, tmp_path):
         """The reported bug's shape: the path EXISTS but cannot be written."""
@@ -354,6 +433,29 @@ class TestConfigSaveRejectsUnwritableLibrary:
         assert r.status_code == 422
         assert "library_tv_path" in r.json()["detail"]
 
+    async def test_an_unchanged_path_does_not_block_unrelated_settings(self, client, tmp_path):
+        """Review feedback: ConfigWizard PUTs the FULL config on every save, so
+        validating every path on every save meant a transiently unreachable NAS
+        blocked saving any setting at all. Only a CHANGED path is validated."""
+        good = tmp_path / "tv"
+        good.mkdir()
+        assert (
+            await client.put("/api/config", json={"library_tv_path": str(good)})
+        ).status_code == 200
+
+        # The stored path goes bad underneath us (NAS reboot, perms changed).
+        good.rmdir()
+        blocker = tmp_path / "tv"
+        blocker.write_text("")
+
+        # An unrelated toggle, resubmitting the same (now-broken) stored path.
+        r = await client.put(
+            "/api/config",
+            json={"library_tv_path": str(blocker), "max_concurrent_matches": 4},
+        )
+
+        assert r.status_code == 200
+
     async def test_a_path_that_does_not_exist_yet_is_accepted(self, client, tmp_path):
         """Saving a path before its share is mounted must not be blocked.
 
@@ -406,6 +508,23 @@ class TestReviewSaveIsJobTagged:
         monkeypatch.setattr(jm.job_manager._prewarmer, "cancel_for_job", lambda jid: None)
 
         await jm.job_manager.apply_review_batch(42, [{"title_id": 1, "episode_code": "S01E01"}])
+
+        assert seen == [42]
+
+    async def test_process_matched_titles_binds_job_log_context(self, monkeypatch):
+        """Review feedback: POST /jobs/{id}/process-matched reaches the same
+        organize sweep from an API handler and was still logging job=-."""
+        jm = importlib.import_module("app.services.job_manager")
+
+        seen, probe = self._capture_job_id()
+
+        async def _fake(job_id):
+            probe()
+            return {}
+
+        monkeypatch.setattr(jm.job_manager._finalization, "process_matched_titles", _fake)
+
+        await jm.job_manager.process_matched_titles(42)
 
         assert seen == [42]
 
