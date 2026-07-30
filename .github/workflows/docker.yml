@@ -56,7 +56,7 @@ jobs:
           echo "::error::Dispatch with --ref <tag> (e.g. gh workflow run docker.yml --ref v1.2.3) so semver tags are computed correctly."
           exit 1
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
 
       - uses: docker/setup-buildx-action@v4
 
