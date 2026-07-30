@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release notes are readable now.** The "What's new" and update modals rendered their release notes as one unbroken block: paragraphs ran together with no spacing, bullet lists lost their markers, and bold text was almost indistinguishable from the surrounding prose, so there was no way to tell where one entry ended and the next began. Entries are now laid out as a headline plus its explanation, sections are separated by labelled rules, and the highlights summary reads as a proper lede. (#564)
+
 ## [0.28.0] - 2026-07-29
 
 _Highlights: contribute disc metadata to two shared identification networks (TheDiscDB and the Engram acoustic fingerprint network), a What's New summary after you update, and a Test Connection button for your AI provider — plus much clearer error messages when AI episode matching fails._
