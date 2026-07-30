@@ -4,11 +4,14 @@
  */
 
 import { IcoMovie, IcoTv, IcoDisc } from "../icons";
-import type { MediaType } from "../DiscCard";
+import type { DiscState, MediaType } from "../DiscCard";
 import { sv } from "../synapse";
 
 interface MediaTypeBadgeProps {
     mediaType: MediaType;
+    /** Job state. An unknown content type only reads as "ANALYZING" while the
+     *  pipeline is actually running — see UNSETTLED_STATES. */
+    state?: DiscState;
 }
 
 interface Variant {
@@ -18,14 +21,38 @@ interface Variant {
     pulse?: boolean;
 }
 
+/**
+ * States in which the content type is still being worked out. Anything else —
+ * error, completed, review_needed, idle — has settled: nothing is analyzing,
+ * so an unknown type is a *result*, not a work-in-progress (#552). Without
+ * this gate a job that failed during identification pulsed "ANALYZING"
+ * forever, right next to its own red ERROR badge.
+ */
+const UNSETTLED_STATES: ReadonlySet<DiscState> = new Set<DiscState>([
+    "scanning",
+    "archiving_iso",
+    "ripping",
+    "matching",
+    "organizing",
+    "processing",
+]);
+
 const VARIANTS: Record<MediaType, Variant> = {
     movie:   { Icon: IcoMovie, label: "MOVIE",     color: sv.magenta },
     tv:      { Icon: IcoTv,    label: "TV",        color: sv.cyan    },
     unknown: { Icon: IcoDisc,  label: "ANALYZING", color: sv.amber, pulse: true },
 };
 
-export function MediaTypeBadge({ mediaType }: MediaTypeBadgeProps) {
-    const v = VARIANTS[mediaType];
+/** Settled-but-unknown: a plain, static label with no "still working" signal. */
+const UNKNOWN_SETTLED: Variant = {
+    Icon: IcoDisc,
+    label: "UNKNOWN",
+    color: sv.inkDim,
+};
+
+export function MediaTypeBadge({ mediaType, state }: MediaTypeBadgeProps) {
+    const settled = state !== undefined && !UNSETTLED_STATES.has(state);
+    const v = mediaType === "unknown" && settled ? UNKNOWN_SETTLED : VARIANTS[mediaType];
     const { Icon } = v;
 
     return (

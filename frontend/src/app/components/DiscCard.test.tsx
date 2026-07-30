@@ -327,3 +327,42 @@ describe('DiscCard — manual identity provenance', () => {
     expect(screen.getByRole('button', { name: /wrong title/i })).toBeInTheDocument();
   });
 });
+
+describe('DiscCard — media-type badge vs job state (#552)', () => {
+  it('does not claim "ANALYZING" on a job that failed before classification', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({
+          mediaType: 'unknown',
+          state: 'error',
+          needsReview: false,
+          identityReview: false,
+        })}
+      />,
+    );
+
+    const badge = screen.getByTestId('sv-mediatype-unknown');
+    expect(badge).not.toHaveTextContent('ANALYZING');
+    expect(badge).toHaveTextContent('UNKNOWN');
+  });
+
+  it('does not claim "ANALYZING" on a completed job with no content type', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({ mediaType: 'unknown', state: 'completed', needsReview: false })}
+      />,
+    );
+
+    expect(screen.getByTestId('sv-mediatype-unknown')).not.toHaveTextContent('ANALYZING');
+  });
+
+  it('still pulses "ANALYZING" while the disc is actually being scanned', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({ mediaType: 'unknown', state: 'scanning', needsReview: false })}
+      />,
+    );
+
+    expect(screen.getByTestId('sv-mediatype-unknown')).toHaveTextContent('ANALYZING');
+  });
+});

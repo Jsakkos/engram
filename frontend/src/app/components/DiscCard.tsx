@@ -349,7 +349,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
 
               {/* Media type badge anchored top-left */}
               <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2 }}>
-                <MediaTypeBadge mediaType={disc.mediaType} />
+                <MediaTypeBadge mediaType={disc.mediaType} state={disc.state} />
               </div>
 
               {/* Source badge — folder icon for watch-folder-imported jobs */}
