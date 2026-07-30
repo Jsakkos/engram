@@ -110,3 +110,69 @@ describe("UpdateModal whatsNew variant", () => {
         expect(screen.queryByText("View on GitHub")).not.toBeInTheDocument();
     });
 });
+
+// The release-notes styling is a stylesheet rather than a component map, so the
+// usual rendering assertions do not cover it: a rule can stop matching without
+// anything throwing and without tsc noticing, leaving the notes silently
+// unstyled. That is exactly how the loose-list case below was missed.
+describe("UpdateModal release-notes styling", () => {
+    const renderNotes = (notes: string) => {
+        const { container } = render(
+            <UpdateModal
+                open
+                variant="whatsNew"
+                updateStatus={{ ...base, current_release_notes: notes }}
+                onClose={() => {}}
+            />,
+        );
+        return container;
+    };
+
+    // A tight list (no blank line between bullets) and a loose one (any blank
+    // line) produce different DOM from remark, and the changelog is hand-edited,
+    // so both shapes have to survive. Loose is the shape that silently broke.
+    const TIGHT = "### Added\n\n- **Headline one.** Body one.\n- **Headline two.** Body two.\n";
+    const LOOSE = "### Added\n\n- **Headline one.** Body one.\n\n- **Headline two.** Body two.\n";
+
+    it("promotes the leading strong in a tight list", () => {
+        const container = renderNotes(TIGHT);
+        const items = container.querySelectorAll("li");
+
+        expect(items).toHaveLength(2);
+        // Guards the assumption, so this test fails loudly rather than silently
+        // passing for the wrong reason if remark's output shape ever changes.
+        expect(container.querySelector("li > p")).toBeNull();
+        items.forEach((li) => {
+            const headline = li.querySelector(":scope > strong:first-child");
+            expect(headline).not.toBeNull();
+            expect(getComputedStyle(headline!).display).toBe("block");
+        });
+    });
+
+    it("promotes the leading strong in a loose list", () => {
+        const container = renderNotes(LOOSE);
+        const items = container.querySelectorAll("li");
+
+        expect(items).toHaveLength(2);
+        expect(container.querySelector("li > p")).not.toBeNull();
+        items.forEach((li) => {
+            const headline = li.querySelector(":scope > p:first-child > strong:first-child");
+            expect(headline).not.toBeNull();
+            expect(getComputedStyle(headline!).display).toBe("block");
+        });
+    });
+
+    it("emits a stylesheet covering both list shapes and reaching its last rule", () => {
+        const container = renderNotes(TIGHT);
+        const css = container.querySelector("style")?.textContent ?? "";
+
+        expect(css).toContain("li > strong:first-child");
+        expect(css).toContain("li > p:first-child > strong:first-child");
+
+        // Pin the stylesheet's last rule. The selectors above all sit early in the
+        // template, so they would survive rules being lost off the end. (A stray
+        // backtick in a comment truncates the literal, but tsc catches that one as
+        // a syntax error; this guards the quieter ways the tail can go missing.)
+        expect(css.trimEnd()).toMatch(/margin: 22px 0;\s*}$/);
+    });
+});
