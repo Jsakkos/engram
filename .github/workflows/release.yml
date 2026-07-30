@@ -27,7 +27,7 @@ jobs:
     name: Build Windows Executable
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Build frontend
       - uses: actions/setup-node@v6
@@ -173,7 +173,7 @@ jobs:
     name: Build Linux Executable
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Build frontend
       - uses: actions/setup-node@v6
@@ -317,7 +317,7 @@ jobs:
     # so GPU on Jetson is an opt-in on-device step (see docs/development/jetson.md).
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Build frontend
       - uses: actions/setup-node@v6
@@ -457,7 +457,7 @@ jobs:
     name: Build Linux Executable (x64, headless/server)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -587,7 +587,7 @@ jobs:
     name: Build Linux Executable (arm64, headless/server)
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -724,7 +724,7 @@ jobs:
             arch: arm64
             file_arch: arm64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Build frontend
       - uses: actions/setup-node@v6
@@ -863,7 +863,7 @@ jobs:
     needs: [build-windows, build-linux, build-linux-arm64, build-macos, build-linux-headless, build-linux-arm64-headless]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Need CHANGELOG.md for the release body and full tag history so the
           # "Full Changelog" compare link can resolve the previous tag.
