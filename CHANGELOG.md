@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed disc no longer claims it is still analyzing.** When a job died during identification, typically because the disc was ejected mid-scan or the container could not read the drive, its card showed a pulsing amber "Analyzing" chip on the poster for good, sitting right beside its own red "Error" badge. The chip was driven by the content type alone, and a job that never got past identification never gets one. Cards that have finished, failed, or are waiting on you now show a plain "Unknown" instead, and the pulse is reserved for discs that really are being worked on. (#566)
+
 ## [0.28.1] - 2026-07-30
 
 _Highlights: TV discs that fail to organize now say why, release notes render readably in the update modal, and the MakeMKV install retries a transient Cloudflare error partway through the download, not just at the version check._
@@ -11,7 +15,6 @@ _Highlights: TV discs that fail to organize now say why, release notes render re
 ### Fixed
 
 - **A MakeMKV install can no longer fail partway through a large download.** The Docker container's first-run MakeMKV install already retried a transient Cloudflare or network error during the version lookup; it now retries the much larger source download that follows too, which is the longer request against the same server and so the more exposed of the two. If it still gives up, it reports whether the site was unreachable or the requested MakeMKV version is simply no longer published. (#559)
-- **A failed disc no longer claims it is still analyzing.** When a job died during identification, typically because the disc was ejected mid-scan or the container could not read the drive, its card showed a pulsing amber "Analyzing" chip on the poster for good, sitting right beside its own red "Error" badge. The chip was driven by the content type alone, and a job that never got past identification never gets one. Cards that have finished, failed, or are waiting on you now show a plain "Unknown" instead, and the pulse is reserved for discs that really are being worked on. (#566)
 - **Release notes are readable now.** The "What's new" and update modals rendered their release notes as one unbroken block: paragraphs ran together with no spacing, bullet lists lost their markers, and bold text was almost indistinguishable from the surrounding prose, so there was no way to tell where one entry ended and the next began. Entries are now laid out as a headline plus its explanation, sections are separated by labelled rules, and the highlights summary reads as a proper lede. (#564)
 - **A TV disc that can't be filed now tells you why.** Saving a review when Engram could not write to your TV library failed the job with a bare "Failed to organize files": no error code, no path, and nothing useful in the logs or the diagnostic bundle. The underlying reason (`Permission denied`, a full disk, a staging file that had gone missing) was read and then thrown away, and because the save ran outside the job's logging context, even the traceback was filtered out of the bundle. The real cause now reaches the job error, the affected track shows it in the review inspector, and the log lines are attributed to the job so they appear in bug reports. Movie discs already reported these errors properly; TV discs now match. Engram also checks the library folder is writable *before* it starts filing, and Settings rejects a library or staging path it cannot write to, so a permissions problem surfaces when you save it rather than after a full rip. (#563)
 
