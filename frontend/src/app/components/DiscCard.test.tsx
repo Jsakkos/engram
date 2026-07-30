@@ -365,4 +365,17 @@ describe('DiscCard — media-type badge vs job state (#552)', () => {
 
     expect(screen.getByTestId('sv-mediatype-unknown')).toHaveTextContent('ANALYZING');
   });
+
+  // archiving_iso is the state that distinguishes ACTIVE_PIPELINE_STATES from
+  // ActionButtons' deliberately narrower ACTIVE_STATES. Pin it so a future
+  // "consolidation" of those two lists can't silently change this badge.
+  it('still pulses "ANALYZING" while archiving to ISO', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({ mediaType: 'unknown', state: 'archiving_iso', needsReview: false })}
+      />,
+    );
+
+    expect(screen.getByTestId('sv-mediatype-unknown')).toHaveTextContent('ANALYZING');
+  });
 });
