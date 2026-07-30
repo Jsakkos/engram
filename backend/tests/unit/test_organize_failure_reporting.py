@@ -24,11 +24,18 @@ import pytest
 from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
+from app.core.organizer import check_library_writable
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.finalization_coordinator import FinalizationCoordinator
 from app.services.job_state_machine import JobStateMachine
 from tests.unit.conftest import _unit_session_factory
+
+# Module handles for monkeypatching come from importlib, never `import X as y`:
+# CodeQL flags a module imported with both `import X` and `from X import Y`, and
+# for app.services.* the package __init__ re-exports shadow the submodule name.
+organizer_module = importlib.import_module("app.core.organizer")
+finalization_module = importlib.import_module("app.services.finalization_coordinator")
 
 PERMISSION_ERROR = "[Errno 13] Permission denied: '/library/tv'"
 
@@ -49,13 +56,11 @@ def _patch_session_and_ws(monkeypatch):
 @pytest.fixture
 def failing_organize(monkeypatch):
     """Stub every TV organize entry point to a hard (non-FILE_EXISTS) failure."""
-    import app.core.organizer as org
-
     result = {"success": False, "final_path": None, "error": PERMISSION_ERROR}
     m = Mock(return_value=result)
-    monkeypatch.setattr(org.tv_organizer, "organize", m)
-    monkeypatch.setattr(org, "organize_tv_episode", Mock(return_value=result))
-    monkeypatch.setattr(org, "organize_tv_extras", Mock(return_value=result))
+    monkeypatch.setattr(organizer_module.tv_organizer, "organize", m)
+    monkeypatch.setattr(organizer_module, "organize_tv_episode", Mock(return_value=result))
+    monkeypatch.setattr(organizer_module, "organize_tv_extras", Mock(return_value=result))
     return m
 
 
@@ -219,12 +224,12 @@ class TestReviewSaveSurfacesOrganizeError:
         # 3 failures total: 2 organize errors + 1 missing file.
         assert "+2 more" in job.error_message
 
-    async def test_partial_success_does_not_complete_the_job(self, tmp_path, failing_organize):
+    async def test_partial_success_does_not_complete_the_job(
+        self, tmp_path, monkeypatch, failing_organize
+    ):
         """Review feedback: one title organizing and another failing hit the
         success_count>0 branch and COMPLETED the job with a file left in
         staging. Same bug already fixed for process_matched_titles."""
-        import app.core.organizer as org
-
         ok = tmp_path / "show_t00.mkv"
         bad = tmp_path / "show_t01.mkv"
         ok.write_text("")
@@ -236,8 +241,13 @@ class TestReviewSaveSurfacesOrganizeError:
                 {"success": False, "final_path": None, "error": PERMISSION_ERROR},
             ]
         )
-        monkey = Mock(side_effect=lambda *a, **k: next(results))
-        org.tv_organizer.organize = monkey
+        # monkeypatch, not direct assignment: a raw assignment here leaks the
+        # stub into every later test in the session.
+        monkeypatch.setattr(
+            organizer_module.tv_organizer,
+            "organize",
+            Mock(side_effect=lambda *a, **k: next(results)),
+        )
 
         job_id = await _seed(
             [
@@ -315,13 +325,9 @@ class TestLibraryWritablePreflight:
     told at settings-save time instead of after a 40-minute rip."""
 
     def test_returns_none_for_a_writable_root(self, tmp_path):
-        from app.core.organizer import check_library_writable
-
         assert check_library_writable(tmp_path / "tv") is None
 
     def test_reports_the_os_error_for_an_unusable_root(self, tmp_path):
-        from app.core.organizer import check_library_writable
-
         # A file where a directory must be: an OSError on every platform.
         blocker = tmp_path / "not_a_dir"
         blocker.write_text("")
@@ -333,7 +339,6 @@ class TestLibraryWritablePreflight:
 
     def test_create_false_does_not_create_the_root(self, tmp_path):
         """Validating a path must never be the thing that creates it."""
-        from app.core.organizer import check_library_writable
 
         root = tmp_path / "not_yet"
 
@@ -346,8 +351,6 @@ class TestLibraryWritablePreflight:
         into a reported failure."""
         from concurrent.futures import ThreadPoolExecutor
 
-        from app.core.organizer import check_library_writable
-
         root = tmp_path / "shared_library"
         with ThreadPoolExecutor(max_workers=8) as pool:
             reasons = list(pool.map(lambda _: check_library_writable(root), range(64)))
@@ -356,7 +359,6 @@ class TestLibraryWritablePreflight:
 
     def test_create_false_still_rejects_an_existing_unwritable_root(self, tmp_path):
         """The reported bug's shape: the path EXISTS but cannot be written."""
-        from app.core.organizer import check_library_writable
 
         blocker = tmp_path / "not_a_dir"
         blocker.write_text("")
@@ -367,8 +369,6 @@ class TestLibraryWritablePreflight:
         assert "not writable" in reason
 
     def test_blank_path_is_reported_as_unconfigured(self):
-        from app.core.organizer import check_library_writable
-
         reason = check_library_writable("")
         assert reason is not None
         assert "not configured" in reason.lower()
@@ -378,10 +378,10 @@ class TestLibraryWritablePreflight:
     ):
         """An unwritable library must fail the job with the preflight reason
         rather than running the whole sweep and reporting a per-title error."""
-        import app.services.finalization_coordinator as fc
-
         monkeypatch.setattr(
-            fc, "check_library_writable", lambda p: "Library path /library/tv is not writable: boom"
+            finalization_module,
+            "check_library_writable",
+            lambda p: "Library path /library/tv is not writable: boom",
         )
         f0 = tmp_path / "show_t00.mkv"
         f0.write_text("")
