@@ -1720,6 +1720,23 @@ async def update_config(config: ConfigUpdate) -> dict:
             if error:
                 raise HTTPException(status_code=400, detail=f"{field}: {error}")
 
+    # Validate library paths are actually writable before persisting (#563).
+    # A path Engram cannot write to used to be accepted silently and only
+    # surfaced as an opaque organize failure after a full rip: the exact
+    # trap Docker users fall into with PUID/volume mismatches.
+    from app.core.organizer import check_library_writable
+
+    # create=False: only an EXISTING but unwritable path is rejected. Validating
+    # must not create directories as a side effect, and a path on a share that
+    # is not mounted yet is not an error to save.
+    for field in ("library_movies_path", "library_tv_path", "staging_path"):
+        if update_data.get(field):
+            reason = await asyncio.to_thread(
+                check_library_writable, update_data[field], create=False
+            )
+            if reason:
+                raise HTTPException(status_code=422, detail=f"{field}: {reason}")
+
     # Validate extras_policy
     if "extras_policy" in update_data:
         if update_data["extras_policy"] not in ("keep", "skip", "ask"):

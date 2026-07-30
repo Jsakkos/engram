@@ -250,6 +250,38 @@ def resolve_conflict(dest_file: Path, conflict_resolution: str) -> tuple[Path | 
     }
 
 
+def check_library_writable(library_path: "Path | str | None", *, create: bool = True) -> str | None:
+    """Return a human-readable reason ``library_path`` is unusable, or None.
+
+    Probes the root with a touch/unlink so a permissions or mount problem is
+    reported BEFORE a job enters ORGANIZING (#563). Docker users hit this
+    constantly via PUID/volume mismatches, and the failure was previously
+    invisible until after the rip.
+
+    ``create=False`` makes the check non-destructive: a path that does not
+    exist yet is accepted rather than created. Use it for settings-time
+    validation, where creating directories as a side effect of *validating*
+    would be surprising, and where a not-yet-mounted share must not be
+    rejected. The organize path (which is about to create the tree anyway)
+    uses the default.
+    """
+    if not library_path or str(library_path).strip() in ("", "."):
+        return "Path is not configured. Set it in Settings."
+
+    root = Path(library_path).expanduser()
+    if not create and not root.exists():
+        return None
+
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        probe = root / ".engram-write-test"
+        probe.touch()
+        probe.unlink()
+    except OSError as e:
+        return f"{root} is not writable: {e}"
+    return None
+
+
 def find_main_movie_file(staging_dir: Path) -> Path | None:
     """Find the main movie file (largest MKV) in a staging directory."""
     mkv_files = list(staging_dir.glob("*.mkv"))

@@ -29,7 +29,7 @@ from app.core.extractor import (
     compute_content_hash,
     title_index_from_filename,
 )
-from app.core.log_context import with_job_log_context
+from app.core.log_context import job_log_context, with_job_log_context
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
@@ -1749,7 +1749,12 @@ class JobManager:
         # ffmpeg/ffprobe don't hold the file open when the rename runs. The
         # in-flight thread finishes its current chunk (~60s) before yielding.
         self._prewarmer.cancel_for_job(job_id)
-        await self._finalization.apply_review(job_id, title_id, episode_code, edition)
+        # Bind the job into the logging context: this runs straight off an API
+        # handler, so without it every line the organize sweep emits (including
+        # organizer.py's traceback) is tagged job=- and the diagnostics bundle's
+        # "| job=<id> |" grep drops it (#563).
+        with job_log_context(job_id):
+            await self._finalization.apply_review(job_id, title_id, episode_code, edition)
 
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
         """Apply several review decisions for a job in one atomic pass."""
@@ -1757,7 +1762,8 @@ class JobManager:
         # ffmpeg/ffprobe don't hold the file open when the rename runs. The
         # in-flight thread finishes its current chunk (~60s) before yielding.
         self._prewarmer.cancel_for_job(job_id)
-        await self._finalization.apply_review_batch(job_id, decisions)
+        with job_log_context(job_id):  # see apply_review (#563)
+            await self._finalization.apply_review_batch(job_id, decisions)
 
     async def reassign_episode(
         self,
