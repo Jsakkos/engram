@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-07-30
+
+_Highlights: a failed disc no longer claims it is still analyzing._
+
 ### Fixed
 
 - **A failed disc no longer claims it is still analyzing.** When a job died during identification, typically because the disc was ejected mid-scan or the container could not read the drive, its card showed a pulsing amber "Analyzing" chip on the poster for good, sitting right beside its own red "Error" badge. The chip was driven by the content type alone, and a job that never got past identification never gets one. Cards that have finished, failed, or are waiting on you now show a plain "Unknown" instead, and the pulse is reserved for discs that really are being worked on. (#566)
