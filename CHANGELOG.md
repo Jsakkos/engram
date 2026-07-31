@@ -4,7 +4,7 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
-## [0.28.2] - 2026-07-30
+## [0.28.2] - 2026-07-31
 
 _Highlights: a failed disc no longer claims it is still analyzing._
 
