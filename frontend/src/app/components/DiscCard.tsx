@@ -9,6 +9,7 @@ import { MediaTypeBadge } from "./DiscCard/MediaTypeBadge";
 import { DiscMetadata } from "./DiscCard/DiscMetadata";
 import { ActionButtons } from "./DiscCard/ActionButtons";
 import { Bug } from "lucide-react";
+import { isActivePipelineState } from "./discState";
 import { useElapsedTime } from "../hooks/useElapsedTime";
 import { sv, SvPanel, SvLabel, SvDiscInsert, SvProgressBar, type DiscInsertPhase } from "./synapse";
 import { formatEta } from "../../utils/formatting";
@@ -322,7 +323,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
               />
 
               {/* Active-state spinning disc overlay */}
-              {["scanning", "archiving_iso", "ripping", "matching", "organizing", "processing"].includes(disc.state) && (
+              {isActivePipelineState(disc.state) && (
                 <CoverOverlay>
                   <motion.div
                     animate={{ rotate: 360 }}
@@ -349,7 +350,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
 
               {/* Media type badge anchored top-left */}
               <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2 }}>
-                <MediaTypeBadge mediaType={disc.mediaType} />
+                <MediaTypeBadge mediaType={disc.mediaType} state={disc.state} />
               </div>
 
               {/* Source badge — folder icon for watch-folder-imported jobs */}

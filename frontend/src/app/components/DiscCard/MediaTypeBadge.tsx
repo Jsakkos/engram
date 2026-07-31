@@ -4,11 +4,16 @@
  */
 
 import { IcoMovie, IcoTv, IcoDisc } from "../icons";
-import type { MediaType } from "../DiscCard";
+import type { DiscState, MediaType } from "../DiscCard";
+import { isActivePipelineState } from "../discState";
 import { sv } from "../synapse";
 
 interface MediaTypeBadgeProps {
     mediaType: MediaType;
+    /** Job state. An unknown content type only reads as "ANALYZING" while the
+     *  pipeline is actually running — see ACTIVE_PIPELINE_STATES. On a settled
+     *  job an unknown type is a *result*, not a work-in-progress (#552). */
+    state?: DiscState;
 }
 
 interface Variant {
@@ -24,8 +29,16 @@ const VARIANTS: Record<MediaType, Variant> = {
     unknown: { Icon: IcoDisc,  label: "ANALYZING", color: sv.amber, pulse: true },
 };
 
-export function MediaTypeBadge({ mediaType }: MediaTypeBadgeProps) {
-    const v = VARIANTS[mediaType];
+/** Settled-but-unknown: a plain, static label with no "still working" signal. */
+const UNKNOWN_SETTLED: Variant = {
+    Icon: IcoDisc,
+    label: "UNKNOWN",
+    color: sv.inkDim,
+};
+
+export function MediaTypeBadge({ mediaType, state }: MediaTypeBadgeProps) {
+    const settled = state !== undefined && !isActivePipelineState(state);
+    const v = mediaType === "unknown" && settled ? UNKNOWN_SETTLED : VARIANTS[mediaType];
     const { Icon } = v;
 
     return (

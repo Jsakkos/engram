@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed disc no longer claims it is still analyzing.** When a job died during identification, typically because the disc was ejected mid-scan or the container could not read the drive, its card showed a pulsing amber "Analyzing" chip on the poster for good, sitting right beside its own red "Error" badge. The chip was driven by the content type alone, and a job that never got past identification never gets one. Cards that have finished, failed, or are waiting on you now show a plain "Unknown" instead, and the pulse is reserved for discs that really are being worked on. (#566)
+
 ## [0.28.1] - 2026-07-30
 
 _Highlights: TV discs that fail to organize now say why, release notes render readably in the update modal, and the MakeMKV install retries a transient Cloudflare error partway through the download, not just at the version check._

@@ -38,6 +38,34 @@ export const DISC_STATE_CONFIG: Record<DiscState, StateConfig> = {
 };
 
 /**
+ * States in which the pipeline is actively working on the disc. Everything
+ * else — idle, review_needed, completed, error — has settled: the job is
+ * either finished or waiting on a human, so nothing is in flight.
+ *
+ * Drives every "is this job still moving?" affordance: the spinning-disc cover
+ * overlay and the media-type badge's pulsing ANALYZING variant. Keep them on
+ * this one list — when they drifted, a job that failed during identification
+ * pulsed "ANALYZING" forever next to its own ERROR badge (#552).
+ *
+ * NOT the same as ActionButtons' ACTIVE_STATES / CANCELABLE_STATES. Those look
+ * similar but answer a different question ("is this action safe here?") and are
+ * deliberately narrower — force-advance and cancel both exclude archiving_iso.
+ */
+export const ACTIVE_PIPELINE_STATES: ReadonlySet<DiscState> = new Set<DiscState>([
+  "scanning",
+  "archiving_iso",
+  "ripping",
+  "matching",
+  "organizing",
+  "processing",
+]);
+
+/** True while the pipeline is still working on this disc. See ACTIVE_PIPELINE_STATES. */
+export function isActivePipelineState(state: DiscState): boolean {
+  return ACTIVE_PIPELINE_STATES.has(state);
+}
+
+/**
  * Human-readable label for a pipeline state ("review_needed" → "REVIEW NEEDED").
  * Reuses the badge config so list views and badges can never disagree.
  */
