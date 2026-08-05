@@ -195,9 +195,10 @@ Out of the box, organized files follow these patterns:
 - **Movies**: `Movies/Name (Year)/Name (Year).mkv`
 - **TV Shows**: `TV/Show/Season XX/Show - SXXEXX.mkv`
 
-Every part of both patterns is configurable under **Settings → Organization**. Formats are
-Python format strings, and any placeholder that turns out to be empty takes its surrounding
-group with it, so a movie with no known year is filed as `Blade Runner`, never `Blade Runner ()`.
+Both patterns are configurable under **Settings → Preferences → Naming & extras**. (The season
+and episode formats appear once you set Naming Convention to Custom.) Formats are Python format
+strings, and any placeholder that turns out to be empty takes its surrounding group with it, so
+a movie with no known year is filed as `Blade Runner`, never `Blade Runner ()`.
 
 #### Movie naming
 

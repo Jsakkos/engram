@@ -304,6 +304,33 @@ class TestMovieNamingParity:
         assert r["main_file"].parent.name == "Blade Runner (1982)"
         assert r["main_file"].name == "Blade Runner (1982) {edition-Final Cut}.mkv"
 
+    def test_blank_folder_format_never_yields_a_bare_extension(self, tmp_path):
+        """A cleared folder format must not file the movie as ".mkv".
+
+        Blank passes validation and is persistable, and the filename format
+        inherits it, so both levels could collapse at once.
+        """
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_format="", naming_movie_file_format=""):
+            r = organize_movie(staging, "Blade Runner", year=1982, library_path=tmp_path / "movies")
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner"
+        assert r["main_file"].name == "Blade Runner.mkv"
+
+    def test_blank_folder_format_with_edition_keeps_the_title(self, tmp_path):
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_format="", naming_movie_file_format=""):
+            r = organize_movie(
+                staging,
+                "Blade Runner",
+                year=1982,
+                library_path=tmp_path / "movies",
+                edition="Final Cut",
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].name.startswith("Blade Runner")
+        assert r["main_file"].name != "{edition-Final Cut}.mkv"
+
     def test_custom_folder_format_propagates_to_the_filename(self, tmp_path):
         """A blank file format inherits the folder format, so the two cannot disagree."""
         staging = self._staged(tmp_path)

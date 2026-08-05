@@ -557,6 +557,9 @@ class TestRunRippingSessionScoping:
             j.tmdb_year = 2010
             j.tmdb_id = 27205
             j.tmdb_name = "Inception"
+            # The title actually organized is detected_title, so it must match
+            # tmdb_name for this to count as a canonical TMDB name.
+            j.detected_title = "Inception"
             await session.commit()
 
         out_file = rip_env / "movie.mkv"
@@ -576,6 +579,36 @@ class TestRunRippingSessionScoping:
         assert captured["year"] == 2010
         assert captured["tmdb_id"] == 27205
         assert captured["already_clean"] is True
+
+    async def test_uncorroborated_title_is_still_normalized(self, rip_env, monkeypatch):
+        """already_clean must test the title in use, not merely "a tmdb_name exists".
+
+        An uncorroborated job keeps its disc-derived title while carrying a
+        tmdb_name for a different film. Skipping normalization there would file
+        the movie as "Inception 4K" instead of "Inception" (#576).
+        """
+        job, _title = await _seed(
+            content_type=ContentType.MOVIE, staging=str(rip_env), is_selected=True
+        )
+        async with _unit_session_factory() as session:
+            j = await session.get(DiscJob, job.id)
+            j.tmdb_name = "Totally Different Film"
+            j.detected_title = "Inception 4K"
+            await session.commit()
+
+        out_file = rip_env / "movie.mkv"
+        captured = {}
+
+        def fake_organize(output_dir, volume_label, detected_title, year=None, **kwargs):
+            captured["already_clean"] = kwargs.get("already_clean")
+            return {"success": True, "main_file": out_file}
+
+        monkeypatch.setattr(jm_mod.movie_organizer, "organize", fake_organize)
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[out_file]))
+
+        await job_manager._run_ripping(job.id)
+
+        assert captured["already_clean"] is False
 
     async def test_rip_failure_fails_job(self, rip_env, monkeypatch):
         job, _title = await _seed(

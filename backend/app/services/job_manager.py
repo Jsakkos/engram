@@ -2986,7 +2986,13 @@ class JobManager:
             # runs after it closes, so `job` is no longer usable there.
             _tmdb_year = job.tmdb_year
             _tmdb_id = job.tmdb_id
-            _already_clean = bool(job.tmdb_name)
+            # Skip clean_movie_name only when the title being passed IS the
+            # canonical TMDB title (see the same guard in apply_review).
+            _already_clean = bool(job.tmdb_name) and detected_title == job.tmdb_name
+            # An edition chosen in review before the title had been ripped is
+            # persisted on the title; this path is where that rip finishes, so it
+            # has to carry the edition through or the choice is silently dropped.
+            _edition = ripped_titles[0].edition if ripped_titles else None
             await session.commit()
 
         await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
@@ -2998,6 +3004,7 @@ class JobManager:
             detected_title,
             _tmdb_year,
             tmdb_id=_tmdb_id,
+            edition=_edition,
             already_clean=_already_clean,
         )
 

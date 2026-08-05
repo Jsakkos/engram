@@ -1712,9 +1712,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 placeholder="{title} ({year})"
                             />
                             <span className="form-hint">
-                                Placeholders: {'{title}'}, {'{year}'}, {'{tmdb_id}'}. Default{' '}
-                                &quot;{'{title} ({year})'}&quot; keeps your current folders. To pin the
-                                exact movie for your media server, use Plex{' '}
+                                Placeholders: {'{title}'}, {'{year}'}, {'{tmdb_id}'}. Newly ripped
+                                movies are filed as {'{title} ({year})'}; use {'{title}'} on its own
+                                for the older bare-name layout. Existing folders are never moved. To
+                                pin the exact movie for your media server, use Plex{' '}
                                 &quot;{'{title} ({year}) {{tmdb-{tmdb_id}}}'}&quot; or Jellyfin{' '}
                                 &quot;{'{title} ({year}) [tmdbid-{tmdb_id}]'}&quot;.
                             </span>

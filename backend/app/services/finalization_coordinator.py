@@ -1453,7 +1453,12 @@ class FinalizationCoordinator:
                         # Read job fields while the session is open.
                         _tmdb_year = job.tmdb_year
                         _tmdb_id = job.tmdb_id
-                        _already_clean = bool(job.tmdb_name)
+                        # Skip clean_movie_name only when the title being passed IS
+                        # the canonical TMDB title. Testing `tmdb_name` alone is a
+                        # proxy that fails both ways: an uncorroborated job carries a
+                        # tmdb_name that is NOT the title in use, and re-identify used
+                        # to leave tmdb_name unset on a title it had just resolved.
+                        _already_clean = bool(job.tmdb_name) and final_title == job.tmdb_name
 
                         _lib_path = _library_path_for_job(job, "movie")
                         if _lib_path:

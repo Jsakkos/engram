@@ -469,14 +469,22 @@ def organize_movie(
     # format propagating to the file instead of the two silently disagreeing.
     file_fmt = (getattr(cfg, "naming_movie_file_format", "") or "").strip()
     if not file_fmt:
-        file_fmt = cfg.naming_movie_format
+        # Inherit the folder format. Fall back to the bare title when that is
+        # itself blank, so a cleared folder format cannot leave the filename with
+        # nothing but an edition tag ("{edition-Final Cut}.mkv").
+        file_fmt = (cfg.naming_movie_format or "").strip() or "{title}"
         # Plex reads the edition tag off the FILE, so an inherited format still
         # earns the tag when there is an edition. Appended only when one exists,
         # so a no-edition movie stays byte-identical to its folder name.
         if edition:
             file_fmt = file_fmt + " {{edition-{edition}}}"
     file_stem = format_movie_filename(file_fmt, clean_name, year, tmdb_id, edition)
-    file_name = f"{file_stem}.mkv"
+    # `format_movie_filename` has no blank-format guard of its own because blank
+    # means "inherit", which is resolved above. But the INHERITED format can itself
+    # be blank (a user who cleared naming_movie_format), which would otherwise file
+    # the movie as a bare ".mkv". Fall back to the folder name, which has its own
+    # guard and degrades to the bare title.
+    file_name = f"{file_stem or folder_name}.mkv"
 
     # Create destination directory
     dest_dir = library_path / folder_name

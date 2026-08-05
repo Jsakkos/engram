@@ -1452,6 +1452,13 @@ class IdentificationCoordinator:
                             job.tmdb_id = _signal.tmdb_id
                             if _signal.tmdb_name:
                                 job.detected_title = _signal.tmdb_name
+                                # Record the provenance too, not just the value.
+                                # The organizer skips its volume-label normalizer
+                                # only when the title in use IS the TMDB title, so
+                                # leaving this unset re-corrupted the canonical name
+                                # (Spider-Man -> Spider Man) on the very path a user
+                                # takes to correct a bad identification (#576).
+                                job.tmdb_name = _signal.tmdb_name
                     else:
                         job.tmdb_degraded_reason = TMDB_DEGRADED_NOT_CONFIGURED
                 except TmdbAuthError as e:
