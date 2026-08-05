@@ -125,7 +125,20 @@ def format_movie_filename(
     the folder. Empty groups are stripped, so a movie with no edition renders
     byte-identically to the bare folder format and pre-#576 libraries are
     untouched.
+
+    Unlike ``format_movie_folder``, a blank ``fmt`` is intentionally NOT
+    special-cased here: an empty movie filename format means "reuse the folder
+    format", and that fallback is applied at the call site rather than in this
+    formatter.
     """
+    # `edition` is free text from the review queue and gets embedded inside a
+    # literal "{edition-...}" tag, so it needs shielding the other placeholders
+    # (numeric ids, titles) do not:
+    #   - braces would break out of the tag ("Weird}Name" -> "{edition-Weird}Name}")
+    #   - a trailing hyphen makes _strip_empty_name_groups see "{edition-Cut-}" as
+    #     an EMPTY tag and delete the whole thing, losing the edition silently
+    if edition:
+        edition = edition.replace("{", "").replace("}", "").strip().rstrip("-").strip()
     try:
         result = fmt.format_map(
             {

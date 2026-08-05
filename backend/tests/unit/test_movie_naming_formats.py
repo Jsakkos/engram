@@ -115,6 +115,21 @@ class TestFormatMovieFilename:
             "Blade Runner (1982)"
         )
 
+    def test_edition_ending_in_hyphen_is_not_swallowed(self):
+        """A trailing hyphen used to make the empty-tag regex eat the whole tag."""
+        result = format_movie_filename(self.DEFAULT, "Blade Runner", 1982, edition="Cut-")
+        assert result == "Blade Runner (1982) {edition-Cut}"
+
+    def test_edition_braces_cannot_break_the_tag(self):
+        result = format_movie_filename(self.DEFAULT, "Blade Runner", 1982, edition="Weird}Name")
+        assert result == "Blade Runner (1982) {edition-WeirdName}"
+        assert result.count("{") == result.count("}")
+
+    def test_edition_of_only_punctuation_strips_the_tag(self):
+        assert format_movie_filename(self.DEFAULT, "Blade Runner", 1982, edition="}{") == (
+            "Blade Runner (1982)"
+        )
+
 
 class TestMovieFilePlaceholderValidation:
     def test_edition_allowed_on_file_format_only(self):
