@@ -381,6 +381,10 @@ def organize_movie(
     library_path: Path | None = None,
     move_extras: bool = True,
     conflict_resolution: str = "ask",
+    *,
+    tmdb_id: str | int | None = None,
+    edition: str | None = None,
+    already_clean: bool = False,
 ) -> dict:
     """Organize a ripped movie into the library.
 
@@ -391,6 +395,15 @@ def organize_movie(
         library_path: Override for library path (defaults to settings)
         move_extras: Whether to move extra content as well
         conflict_resolution: How to handle file conflicts: "ask", "overwrite", "rename", "skip"
+        tmdb_id: TMDB movie id, used only when the configured folder/filename
+            format includes ``{tmdb_id}``.
+        edition: Edition label (e.g. "Final Cut"). Rendered via the ``{edition}``
+            placeholder in the FILENAME format; Plex reads the tag off the file.
+            Passed as a real argument rather than concatenated into ``movie_name``
+            so ``clean_movie_name`` cannot flatten it (#576).
+        already_clean: True when ``movie_name`` is a canonical TMDB title that must
+            not be run through ``clean_movie_name`` (which is built for volume
+            labels and would turn "Spider-Man" into "Spider Man").
 
     Returns:
         dict with 'success', 'main_file', 'extras', 'extras_mapping', 'error' keys
@@ -442,13 +455,21 @@ def organize_movie(
                 "error": "No MKV files found in staging directory",
             }
 
-    # Clean and sanitize the movie name
-    clean_name = clean_movie_name(movie_name)
+    # Clean the movie name unless the caller says it is already canonical.
+    # clean_movie_name is built for volume labels (THE_SOCIAL_NETWORK) and would
+    # corrupt a TMDB title (Spider-Man -> Spider Man, Se7en -> Se7En).
+    clean_name = movie_name if already_clean else clean_movie_name(movie_name)
 
-    # Load naming format from config
+    # Load naming formats from config
     cfg = get_config_sync()
-    folder_name = format_movie_folder(cfg.naming_movie_format, clean_name, year)
-    file_name = f"{folder_name}.mkv"
+    folder_name = format_movie_folder(cfg.naming_movie_format, clean_name, year, tmdb_id)
+    # A blank filename format means "reuse the folder format", which is exactly
+    # the pre-#576 behavior (the folder name was used verbatim as the filename).
+    file_fmt = (getattr(cfg, "naming_movie_file_format", "") or "").strip()
+    file_stem = format_movie_filename(
+        file_fmt or cfg.naming_movie_format, clean_name, year, tmdb_id, edition
+    )
+    file_name = f"{file_stem}.mkv"
 
     # Create destination directory
     dest_dir = library_path / folder_name
@@ -536,13 +557,24 @@ class MovieOrganizer:
         volume_label: str,
         detected_name: str | None = None,
         year: int | None = None,
+        *,
+        tmdb_id: str | int | None = None,
+        edition: str | None = None,
+        already_clean: bool = False,
     ) -> dict:
         """Organize a movie from staging to library.
 
         Uses detected_name if provided, otherwise falls back to volume_label.
         """
         movie_name = detected_name or volume_label
-        return organize_movie(staging_dir, movie_name, year)
+        return organize_movie(
+            staging_dir,
+            movie_name,
+            year,
+            tmdb_id=tmdb_id,
+            edition=edition,
+            already_clean=already_clean,
+        )
 
 
 movie_organizer = MovieOrganizer()
