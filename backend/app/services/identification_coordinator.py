@@ -187,6 +187,45 @@ def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
     return None
 
 
+def _resolve_movie_year(tmdb_id: int | None, signal=None) -> int | None:
+    """Release year for a movie, for library-folder disambiguation.
+
+    Mirrors ``_resolve_show_year`` but reads the MOVIE endpoint. No-network fast
+    path: the search signal already carries the year. Universal fallback: cached
+    TMDB movie details. Returns None when unknown, and the organizer then degrades
+    to a year-less folder. Sync (blocking on the fallback), so call it via
+    ``asyncio.to_thread``.
+    """
+    # Falsy guard (not ``is None``) so a 0/empty id short-circuits instead of
+    # making a pointless fetch_movie_details(0) call.
+    if not tmdb_id:
+        return None
+    signal_year = getattr(signal, "year", None) if signal else None
+    if signal_year:
+        return signal_year
+    from app.matcher.tmdb_client import fetch_movie_details
+
+    details = fetch_movie_details(tmdb_id)
+    if details:
+        rd = (details.get("release_date") or "")[:4]
+        if rd.isdigit():
+            return int(rd)
+    return None
+
+
+def _resolve_year(content_type, tmdb_id: int | None, signal=None) -> int | None:
+    """Content-type-aware year resolution.
+
+    Movies previously fell through to ``_resolve_show_year``, which queries
+    ``/tv/{id}`` with a MOVIE id: that silently returns either nothing or an
+    unrelated show's first-air year. Every ``job.tmdb_year`` assignment goes
+    through this dispatcher so the two can never diverge again (#576).
+    """
+    if content_type == ContentType.MOVIE:
+        return _resolve_movie_year(tmdb_id, signal)
+    return _resolve_show_year(tmdb_id, signal)
+
+
 def _resolve_tmdb_display_name(tmdb_id: int, content_type: ContentType) -> str | None:
     """Best-effort display name for a tmdb_id (the disc network returns only an id).
 
