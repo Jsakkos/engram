@@ -1442,8 +1442,18 @@ class FinalizationCoordinator:
                                 )
 
                         final_title = job.detected_title or job.volume_label
-                        if edition and edition.lower() not in final_title.lower():
-                            final_title = f"{final_title} {{edition-{edition}}}"
+                        # Edition is a real argument now. Concatenating
+                        # "{edition-X}" into the title let clean_movie_name flatten
+                        # it to "{Edition X}", which Plex cannot parse (#576). It is
+                        # suppressed when the title already spells the edition out,
+                        # preserving the previous behavior.
+                        _edition = title.edition
+                        if _edition and _edition.lower() in final_title.lower():
+                            _edition = None
+                        # Read job fields while the session is open.
+                        _tmdb_year = job.tmdb_year
+                        _tmdb_id = job.tmdb_id
+                        _already_clean = bool(job.tmdb_name)
 
                         _lib_path = _library_path_for_job(job, "movie")
                         if _lib_path:
@@ -1451,8 +1461,11 @@ class FinalizationCoordinator:
                                 organize_movie,
                                 source_file,
                                 final_title,
-                                None,  # year
+                                _tmdb_year,
                                 _lib_path,
+                                tmdb_id=_tmdb_id,
+                                edition=_edition,
+                                already_clean=_already_clean,
                             )
                         else:
                             org_result = await asyncio.to_thread(
@@ -1460,6 +1473,10 @@ class FinalizationCoordinator:
                                 source_file,
                                 job.volume_label,
                                 final_title,
+                                _tmdb_year,
+                                tmdb_id=_tmdb_id,
+                                edition=_edition,
+                                already_clean=_already_clean,
                             )
 
                         if org_result["success"]:
