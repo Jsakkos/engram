@@ -415,7 +415,7 @@ class IdentificationCoordinator:
                 job.tmdb_name = analysis.tmdb_name
                 job.candidates_json = _candidates_json_from_signal(tmdb_signal)
                 job.tmdb_year = await asyncio.to_thread(
-                    _resolve_show_year, analysis.tmdb_id, tmdb_signal
+                    _resolve_year, analysis.content_type, analysis.tmdb_id, tmdb_signal
                 )
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
@@ -926,10 +926,12 @@ class IdentificationCoordinator:
             job.tmdb_name = signal.tmdb_name
             job.candidates_json = _candidates_json_from_signal(signal)
             try:
-                job.tmdb_year = await asyncio.to_thread(_resolve_show_year, signal.tmdb_id, signal)
+                job.tmdb_year = await asyncio.to_thread(
+                    _resolve_year, job.content_type, signal.tmdb_id, signal
+                )
             except Exception as e:
                 logger.warning(
-                    f"Job {job.id}: could not resolve show year for tmdb_id={signal.tmdb_id}: {e}",
+                    f"Job {job.id}: could not resolve year for tmdb_id={signal.tmdb_id}: {e}",
                     exc_info=True,
                 )
                 job.tmdb_year = None
@@ -1009,7 +1011,7 @@ class IdentificationCoordinator:
                 _signal = getattr(analysis, "_tmdb_signal", None)
                 job.candidates_json = _candidates_json_from_signal(_signal)
                 job.tmdb_year = await asyncio.to_thread(
-                    _resolve_show_year, analysis.tmdb_id, _signal
+                    _resolve_year, analysis.content_type, analysis.tmdb_id, _signal
                 )
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
@@ -1472,7 +1474,7 @@ class IdentificationCoordinator:
             # (cache-miss + offline) lookup fails — so a transient TMDB outage
             # can't blank a good year, but a stale year isn't carried across an
             # identity change to a different show.
-            _year = await asyncio.to_thread(_resolve_show_year, job.tmdb_id, _signal)
+            _year = await asyncio.to_thread(_resolve_year, job.content_type, job.tmdb_id, _signal)
             if _year is None and job.tmdb_id == _old_tmdb_id:
                 _year = _old_year
             job.tmdb_year = _year
