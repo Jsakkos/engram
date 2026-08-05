@@ -190,10 +190,59 @@ Disable `auto_eject_enabled` if you want to keep the disc in the drive after rip
 
 ### Naming Conventions
 
-Organized files follow these naming patterns:
+Out of the box, organized files follow these patterns:
 
 - **Movies**: `Movies/Name (Year)/Name (Year).mkv`
 - **TV Shows**: `TV/Show/Season XX/Show - SXXEXX.mkv`
+
+Every part of both patterns is configurable under **Settings → Organization**. Formats are
+Python format strings, and any placeholder that turns out to be empty takes its surrounding
+group with it, so a movie with no known year is filed as `Blade Runner`, never `Blade Runner ()`.
+
+#### Movie naming
+
+| Setting | Default | Placeholders |
+|---------|---------|--------------|
+| Movie Folder Format | `{title} ({year})` | `{title}`, `{year}`, `{tmdb_id}` |
+| Movie Filename Format | blank | `{title}`, `{year}`, `{tmdb_id}`, `{edition}` |
+
+Leaving the filename format blank means "reuse the folder format", so customizing the folder
+carries through to the file and the two cannot drift apart:
+
+```
+Folder format "{title} - {year}", filename blank
+  -> Movies/Blade Runner - 1982/Blade Runner - 1982.mkv
+```
+
+When a movie has an edition (chosen in the review queue), Engram appends the Plex
+`{edition-...}` tag to the inherited filename, because Plex reads the edition off the file
+rather than the folder:
+
+```
+Movies/Blade Runner (1982)/Blade Runner (1982) {edition-Final Cut}.mkv
+```
+
+Setting an explicit filename format takes full control and turns off both the inheritance and
+the automatic edition tag.
+
+#### TV naming
+
+| Setting | Default | Placeholders |
+|---------|---------|--------------|
+| Show Folder Format | `{show}` | `{show}`, `{year}`, `{tmdb_id}` |
+| Season Folder Format | `Season {season:02d}` | `{season}` |
+| Episode Filename Format | `{show} - S{season:02d}E{episode:02d}` | `{show}`, `{season}`, `{episode}`, `{year}`, `{tmdb_id}` |
+
+#### Letting same-name titles coexist
+
+Two different shows or movies can share a name (Frasier 1993 and Frasier 2023). Adding the id
+tag your media server expects keeps them in separate folders and stops the server from merging
+them:
+
+- **Plex**: `{title} ({year}) {{tmdb-{tmdb_id}}}` (or `{show} ...` for TV)
+- **Jellyfin**: `{title} ({year}) [tmdbid-{tmdb_id}]`
+
+The doubled braces in the Plex form are how a literal `{` is written in a format string.
 
 ## Configuration Flow
 
