@@ -1,0 +1,61 @@
+"""Unit tests for the movie naming formatters (issue #576).
+
+Pure-function tests: no database, no filesystem. The organize-level
+behavior is covered in tests/pipeline/test_organization_paths.py.
+"""
+
+from app.core.organizer import (
+    ALLOWED_MOVIE_PLACEHOLDERS,
+    format_movie_folder,
+    validate_naming_format,
+)
+
+
+class TestFormatMovieFolder:
+    def test_default_format_with_year(self):
+        assert (
+            format_movie_folder("{title} ({year})", "Blade Runner", 1982) == "Blade Runner (1982)"
+        )
+
+    def test_default_format_without_year_strips_empty_parens(self):
+        assert format_movie_folder("{title} ({year})", "Blade Runner", None) == "Blade Runner"
+
+    def test_plex_tmdb_tag(self):
+        result = format_movie_folder(
+            "{title} ({year}) {{tmdb-{tmdb_id}}}", "Blade Runner", 1982, tmdb_id=78
+        )
+        assert result == "Blade Runner (1982) {tmdb-78}"
+
+    def test_jellyfin_tmdb_tag(self):
+        result = format_movie_folder(
+            "{title} ({year}) [tmdbid-{tmdb_id}]", "Blade Runner", 1982, tmdb_id=78
+        )
+        assert result == "Blade Runner (1982) [tmdbid-78]"
+
+    def test_missing_tmdb_id_strips_empty_tag(self):
+        result = format_movie_folder(
+            "{title} ({year}) {{tmdb-{tmdb_id}}}", "Blade Runner", 1982, tmdb_id=None
+        )
+        assert result == "Blade Runner (1982)"
+
+    def test_unknown_placeholder_falls_back_safely(self):
+        result = format_movie_folder("{title} {nonsense}", "Blade Runner", 1982)
+        assert result == "Blade Runner (1982)"
+
+
+class TestMoviePlaceholderValidation:
+    def test_tmdb_id_is_now_allowed(self):
+        assert (
+            validate_naming_format(
+                "{title} ({year}) {{tmdb-{tmdb_id}}}", ALLOWED_MOVIE_PLACEHOLDERS
+            )
+            is None
+        )
+
+    def test_unknown_placeholder_rejected(self):
+        error = validate_naming_format("{title} {director}", ALLOWED_MOVIE_PLACEHOLDERS)
+        assert error is not None
+        assert "director" in error
+
+    def test_path_traversal_rejected(self):
+        assert validate_naming_format("../{title}", ALLOWED_MOVIE_PLACEHOLDERS) is not None

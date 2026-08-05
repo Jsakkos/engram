@@ -25,7 +25,9 @@ ALLOWED_TV_PLACEHOLDERS = {
 ALLOWED_TV_SHOW_PLACEHOLDERS = {"show", "year", "tmdb_id"}
 # Episode *filename* format — widened so the year can opt into the filename too.
 ALLOWED_EPISODE_PLACEHOLDERS = {"show", "season", "episode", "year", "tmdb_id"}
-ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year"}
+# Movie *folder* format. Mirrors ALLOWED_TV_SHOW_PLACEHOLDERS so movies can carry
+# the same Plex "{tmdb-NNNN}" / Jellyfin "[tmdbid-NNNN]" disambiguation tags (#576).
+ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year", "tmdb_id"}
 
 
 def format_season_folder(fmt: str, season: int) -> str:
@@ -76,15 +78,29 @@ def format_episode_filename(
     return sanitize_filename(result)
 
 
-def format_movie_folder(fmt: str, title: str, year: int | None) -> str:
-    """Format a movie folder name from a config format string."""
+def format_movie_folder(
+    fmt: str, title: str, year: int | None, tmdb_id: str | int | None = None
+) -> str:
+    """Format a movie folder name from a config format string.
+
+    Mirrors ``format_tv_show_folder``: ``{tmdb_id}`` lets same-name movies coexist
+    (Plex ``{tmdb-NNNN}`` / Jellyfin ``[tmdbid-NNNN]``). Empty groups are stripped
+    when year/id are missing, so a stable id tag never degrades to ``Blade Runner
+    {tmdb-}``. ``format_map`` (not ``format(**...)``) keeps an unknown placeholder
+    raising KeyError into the safe fallback while avoiding CodeQL's
+    missing-named-argument false positive (see ``format_season_folder``).
+    """
     try:
-        result = fmt.format_map({"title": title, "year": year or ""})
+        result = fmt.format_map(
+            {
+                "title": title,
+                "year": year if year is not None else "",
+                "tmdb_id": tmdb_id if tmdb_id is not None else "",
+            }
+        )
     except (KeyError, ValueError, IndexError):
         result = f"{title} ({year})" if year else title
-    # Clean up trailing empty parens if year is None
-    result = re.sub(r"\s*\(\s*\)\s*$", "", result).strip()
-    return sanitize_filename(result)
+    return sanitize_filename(_strip_empty_name_groups(result))
 
 
 def _strip_empty_name_groups(name: str) -> str:
