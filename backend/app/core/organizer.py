@@ -28,6 +28,9 @@ ALLOWED_EPISODE_PLACEHOLDERS = {"show", "season", "episode", "year", "tmdb_id"}
 # Movie *folder* format. Mirrors ALLOWED_TV_SHOW_PLACEHOLDERS so movies can carry
 # the same Plex "{tmdb-NNNN}" / Jellyfin "[tmdbid-NNNN]" disambiguation tags (#576).
 ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year", "tmdb_id"}
+# Movie *filename* format. Adds {edition} because Plex reads the edition tag off
+# the FILE, not the folder (#576).
+ALLOWED_MOVIE_FILE_PLACEHOLDERS = {"title", "year", "tmdb_id", "edition"}
 
 
 def format_season_folder(fmt: str, season: int) -> str:
@@ -101,6 +104,35 @@ def format_movie_folder(
                 "title": title,
                 "year": year if year is not None else "",
                 "tmdb_id": tmdb_id if tmdb_id is not None else "",
+            }
+        )
+    except (KeyError, ValueError, IndexError):
+        result = f"{title} ({year})" if year else title
+    return sanitize_filename(_strip_empty_name_groups(result))
+
+
+def format_movie_filename(
+    fmt: str,
+    title: str,
+    year: int | None,
+    tmdb_id: str | int | None = None,
+    edition: str | None = None,
+) -> str:
+    """Format a movie filename (no extension) from a config format string.
+
+    Mirrors ``format_movie_folder`` but adds ``{edition}`` for Plex's
+    ``{edition-Director's Cut}`` convention, which belongs on the file rather than
+    the folder. Empty groups are stripped, so a movie with no edition renders
+    byte-identically to the bare folder format and pre-#576 libraries are
+    untouched.
+    """
+    try:
+        result = fmt.format_map(
+            {
+                "title": title,
+                "year": year if year is not None else "",
+                "tmdb_id": tmdb_id if tmdb_id is not None else "",
+                "edition": edition if edition is not None else "",
             }
         )
     except (KeyError, ValueError, IndexError):
