@@ -610,6 +610,35 @@ class TestRunRippingSessionScoping:
 
         assert captured["already_clean"] is False
 
+    async def test_edition_chosen_before_rip_survives_to_organize(self, rip_env, monkeypatch):
+        """An edition picked in review before the title existed must not be lost.
+
+        Choosing an edition for a title that still has to be ripped persists it on
+        the title and re-enters ripping; this path is where that rip finishes, so
+        it has to carry the edition through to the organizer (#576).
+        """
+        job, title = await _seed(
+            content_type=ContentType.MOVIE, staging=str(rip_env), is_selected=True
+        )
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title.id)
+            t.edition = "Final Cut"
+            await session.commit()
+
+        out_file = rip_env / "movie.mkv"
+        captured = {}
+
+        def fake_organize(output_dir, volume_label, detected_title, year=None, **kwargs):
+            captured["edition"] = kwargs.get("edition")
+            return {"success": True, "main_file": out_file}
+
+        monkeypatch.setattr(jm_mod.movie_organizer, "organize", fake_organize)
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[out_file]))
+
+        await job_manager._run_ripping(job.id)
+
+        assert captured["edition"] == "Final Cut"
+
     async def test_rip_failure_fails_job(self, rip_env, monkeypatch):
         job, _title = await _seed(
             content_type=ContentType.TV, staging=str(rip_env), is_selected=True
