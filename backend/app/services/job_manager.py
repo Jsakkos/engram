@@ -2982,6 +2982,11 @@ class JobManager:
             # release the session before the blocking organize so no DB
             # connection is held across it (mirrors the rip itself).
             job.state = JobState.ORGANIZING
+            # Read identity while the session is still open; the organize below
+            # runs after it closes, so `job` is no longer usable there.
+            _tmdb_year = job.tmdb_year
+            _tmdb_id = job.tmdb_id
+            _already_clean = bool(job.tmdb_name)
             await session.commit()
 
         await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
@@ -2991,6 +2996,9 @@ class JobManager:
             output_dir,
             volume_label,
             detected_title,
+            _tmdb_year,
+            tmdb_id=_tmdb_id,
+            already_clean=_already_clean,
         )
 
         async with async_session() as session:
