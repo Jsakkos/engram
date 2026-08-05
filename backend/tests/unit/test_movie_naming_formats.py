@@ -42,6 +42,17 @@ class TestFormatMovieFolder:
         result = format_movie_folder("{title} {nonsense}", "Blade Runner", 1982)
         assert result == "Blade Runner (1982)"
 
+    def test_no_year_with_tmdb_id_leaves_no_stray_parens(self):
+        """The empty-group helper must strip mid-string parens, not just trailing ones."""
+        result = format_movie_folder(
+            "{title} ({year}) {{tmdb-{tmdb_id}}}", "Blade Runner", None, tmdb_id=78
+        )
+        assert result == "Blade Runner {tmdb-78}"
+
+    def test_blank_format_falls_back_to_bare_title(self):
+        assert format_movie_folder("", "Blade Runner", 1982) == "Blade Runner"
+        assert format_movie_folder("   ", "Blade Runner", 1982) == "Blade Runner"
+
 
 class TestMoviePlaceholderValidation:
     def test_tmdb_id_is_now_allowed(self):

@@ -88,8 +88,13 @@ def format_movie_folder(
     when year/id are missing, so a stable id tag never degrades to ``Blade Runner
     {tmdb-}``. ``format_map`` (not ``format(**...)``) keeps an unknown placeholder
     raising KeyError into the safe fallback while avoiding CodeQL's
-    missing-named-argument false positive (see ``format_season_folder``).
+    missing-named-argument false positive (see ``format_season_folder``). A falsy
+    or whitespace-only ``fmt`` falls back to the bare title, matching
+    ``format_tv_show_folder``.
     """
+    fmt = (fmt or "").strip()
+    if not fmt:
+        return sanitize_filename(title)
     try:
         result = fmt.format_map(
             {
