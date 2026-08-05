@@ -463,12 +463,19 @@ def organize_movie(
     # Load naming formats from config
     cfg = get_config_sync()
     folder_name = format_movie_folder(cfg.naming_movie_format, clean_name, year, tmdb_id)
-    # A blank filename format means "reuse the folder format", which is exactly
-    # the pre-#576 behavior (the folder name was used verbatim as the filename).
+    # A blank filename format (the default) means "reuse the folder format", which
+    # is exactly the pre-#576 behavior: the folder name was used verbatim as the
+    # filename. Inheriting rather than hardcoding a shape keeps a customized folder
+    # format propagating to the file instead of the two silently disagreeing.
     file_fmt = (getattr(cfg, "naming_movie_file_format", "") or "").strip()
-    file_stem = format_movie_filename(
-        file_fmt or cfg.naming_movie_format, clean_name, year, tmdb_id, edition
-    )
+    if not file_fmt:
+        file_fmt = cfg.naming_movie_format
+        # Plex reads the edition tag off the FILE, so an inherited format still
+        # earns the tag when there is an edition. Appended only when one exists,
+        # so a no-edition movie stays byte-identical to its folder name.
+        if edition:
+            file_fmt = file_fmt + " {{edition-{edition}}}"
+    file_stem = format_movie_filename(file_fmt, clean_name, year, tmdb_id, edition)
     file_name = f"{file_stem}.mkv"
 
     # Create destination directory

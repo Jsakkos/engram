@@ -304,6 +304,48 @@ class TestMovieNamingParity:
         assert r["main_file"].parent.name == "Blade Runner (1982)"
         assert r["main_file"].name == "Blade Runner (1982) {edition-Final Cut}.mkv"
 
+    def test_custom_folder_format_propagates_to_the_filename(self, tmp_path):
+        """A blank file format inherits the folder format, so the two cannot disagree."""
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_format="{title} - {year}"):
+            r = organize_movie(staging, "Blade Runner", year=1982, library_path=tmp_path / "movies")
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner - 1982"
+        assert r["main_file"].name == "Blade Runner - 1982.mkv"
+
+    def test_custom_folder_format_still_earns_the_edition_tag(self, tmp_path):
+        """Inheriting must not cost the Plex edition tag, which belongs on the file."""
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_format="{title} - {year}"):
+            r = organize_movie(
+                staging,
+                "Blade Runner",
+                year=1982,
+                library_path=tmp_path / "movies",
+                edition="Final Cut",
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner - 1982"
+        assert r["main_file"].name == "Blade Runner - 1982 {edition-Final Cut}.mkv"
+
+    def test_explicit_file_format_overrides_inheritance(self, tmp_path):
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(
+            naming_movie_format="{title} ({year}) {{tmdb-{tmdb_id}}}",
+            naming_movie_file_format="{title}",
+        ):
+            r = organize_movie(
+                staging,
+                "Blade Runner",
+                year=1982,
+                library_path=tmp_path / "movies",
+                tmdb_id=78,
+                edition="Final Cut",
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner (1982) {tmdb-78}"
+        assert r["main_file"].name == "Blade Runner.mkv"
+
     def test_tmdb_id_tag_in_folder(self, tmp_path):
         staging = self._staged(tmp_path)
         plex = "{title} ({year}) {{tmdb-{tmdb_id}}}"

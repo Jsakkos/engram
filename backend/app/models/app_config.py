@@ -138,15 +138,12 @@ class AppConfig(SQLModel, table=True):
     naming_season_format: str = "Season {season:02d}"
     naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"
     naming_movie_format: str = "{title} ({year})"
-    # Movie *filename* format (#576). Default carries the Plex edition tag; with
-    # empty-group stripping a movie with no edition renders exactly like the
-    # folder format, so existing libraries are untouched. server_default ensures
-    # EXISTING DBs get this literal (not the _add_missing_columns String fallback
-    # of ''). A blank value means "reuse naming_movie_format".
-    naming_movie_file_format: str = Field(
-        default="{title} ({year}) {{edition-{edition}}}",
-        sa_column_kwargs={"server_default": text("'{title} ({year}) {{edition-{edition}}}'")},
-    )
+    # Movie *filename* format (#576). Default "" means "reuse naming_movie_format",
+    # so customizing the folder format propagates to the filename instead of the
+    # two silently disagreeing. When an edition exists, organize_movie appends the
+    # Plex "{edition-...}" tag to the inherited format, since Plex reads that tag
+    # off the FILE. Set an explicit format to take full control of the filename.
+    naming_movie_file_format: str = ""
     # Show *folder* format. Default "{show}" == today's bare-name behavior so
     # existing libraries are untouched. server_default ensures EXISTING DBs get
     # "{show}" (not the _add_missing_columns String fallback of '') when the
