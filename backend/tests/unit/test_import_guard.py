@@ -47,6 +47,10 @@ class TestUnitKey:
         assert "Seinfeld" not in key
         assert len(key) == 16
 
+    def test_ignores_a_trailing_separator(self):
+        """The DB stores str(Path(...)), so the key must not fork on path spelling."""
+        assert unit_key_for("/media/rips/Show/") == unit_key_for("/media/rips/Show")
+
 
 class TestClassifyStagingPath:
     async def test_unknown_path_is_unblocked(self):
@@ -97,3 +101,20 @@ class TestClassifyStagingPath:
             block, ids = await classify_staging_path(session, path)
         assert block is ImportBlock.IN_FLIGHT
         assert ids == [live]
+
+    async def test_a_job_at_another_path_does_not_block(self):
+        """Blocks are scoped to one path: a job elsewhere must not leak into this one."""
+        await _insert_job(r"X:\rips\Sopranos", JobState.COMPLETED)
+        async with jm_mod.async_session() as session:
+            block, ids = await classify_staging_path(session, r"X:\rips\Deadwood")
+        assert block is None
+        assert ids == []
+
+    async def test_two_in_flight_blockers_are_returned_in_ascending_order(self):
+        path = r"X:\rips\Multi"
+        first = await _insert_job(path, JobState.IDENTIFYING)
+        second = await _insert_job(path, JobState.RIPPING)
+        async with jm_mod.async_session() as session:
+            block, ids = await classify_staging_path(session, path)
+        assert block is ImportBlock.IN_FLIGHT
+        assert ids == sorted([first, second])

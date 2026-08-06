@@ -9,15 +9,9 @@ finished one:
   explicit user re-import overrides it;
 * FAILED never blocks.
 
-This replaced a ``state != FAILED`` guard inherited from the import *watch
-folder* that PR #463 removed. A poller fires unbidden and forever, so it needs a
-permanent memory of every path it has handled. A human pressing Import has
-already stated intent, so the same rule became an override of that intent, and
-left users renaming folders to escape it (issue #571).
-
 Deliberately NOT a copy of the disc-side guard in ``job_manager._on_disc_inserted``,
 which lets REVIEW_NEEDED through: a disc in review has been ejected and the drive
-is free, whereas an import in review still holds its files.
+is free, whereas an import in review still holds its files (issue #571).
 """
 
 from __future__ import annotations
@@ -25,6 +19,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select as sa_select
@@ -41,11 +36,10 @@ class ImportBlock(StrEnum):
 
 @dataclass(frozen=True)
 class StagingJobResult:
-    """Outcome of a create-job-from-staging attempt.
+    """Return type of ``create_job_from_staging``.
 
-    Replaces a bare ``int`` with a ``-1`` sentinel. The sentinel could encode
-    "it didn't happen" but had nowhere to put *why*, so the reason was discarded
-    at the API boundary and the caller could only reconstruct a count.
+    Lives here rather than in ``job_manager`` so ``routes.py`` can name it
+    without importing job-manager internals.
     """
 
     job_id: int | None = None
@@ -61,11 +55,15 @@ def unit_key_for(dedup_path: str) -> str:
     the opacity of the wire contract enforceable rather than merely documented;
     and absolute filesystem paths stay out of a value the UI round-trips.
 
+    The key is derived from the *normalized* path (``str(Path(dedup_path))``),
+    the same form the DB stores it in (see ``job_manager.py:785``), so it matches
+    regardless of trailing separators.
+
     Pure function of the path, so no server-side state is needed: the forced
     second call re-scans, re-derives a key per unit, and matches the incoming
     ``force_keys`` against those.
     """
-    return hashlib.sha256(str(dedup_path).encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(str(Path(dedup_path)).encode("utf-8")).hexdigest()[:16]
 
 
 async def classify_staging_path(
@@ -75,9 +73,12 @@ async def classify_staging_path(
 
     Returns the block tier and the ids of the jobs responsible for it, or
     ``(None, [])`` when the path is free. In-flight beats completed: a path with
-    both a finished and a live job is owned by the live one.
+    both a finished and a live job is owned by the live one. Ids within a tier
+    are returned in ascending order.
     """
-    result = await session.execute(sa_select(DiscJob).where(DiscJob.staging_path == staging_path))
+    result = await session.execute(
+        sa_select(DiscJob).where(DiscJob.staging_path == staging_path).order_by(DiscJob.id)
+    )
     jobs = list(result.scalars().all())
 
     in_flight = [j.id for j in jobs if j.state not in TERMINAL_JOB_STATES]
