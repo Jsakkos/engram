@@ -17,6 +17,7 @@ docs/superpowers/specs/2026-08-04-import-reimport-recovery-design.md.
 
 import asyncio
 import importlib
+import logging
 from unittest.mock import AsyncMock
 
 import pytest
@@ -74,10 +75,16 @@ class TestCreateJobFromStagingOwnership:
             staging_path=path, volume_label="SEINFELD", drive_id="import"
         )
 
-        assert result.job_id is not None, "FAILED job wrongly blocked re-import"
-        assert result.job_id != failed_id
-        assert result.block is None
-        await _drain(result.job_id)
+        try:
+            assert result.job_id is not None, "FAILED job wrongly blocked re-import"
+            assert result.job_id != failed_id
+            assert result.block is None
+        finally:
+            # Drain in finally: an earlier assert failure must not leave the
+            # background task holding a StaticPool session past teardown (see
+            # tests/unit/conftest.py on why that wedges every later test).
+            if result.job_id is not None:
+                await _drain(result.job_id)
 
     async def test_active_job_hard_blocks_reimport(self, stub_pipeline):
         """A non-terminal (in-flight) job for the path must still be deduped."""
@@ -127,10 +134,53 @@ class TestCreateJobFromStagingOwnership:
             staging_path=path, volume_label="SOPRANOS", drive_id="import", force=True
         )
 
-        assert result.job_id is not None, "force must override a completed import"
-        assert result.job_id != old_id
-        assert result.block is None
-        await _drain(result.job_id)
+        try:
+            assert result.job_id is not None, "force must override a completed import"
+            assert result.job_id != old_id
+            assert result.block is None
+        finally:
+            if result.job_id is not None:
+                await _drain(result.job_id)
+
+    async def test_force_override_logs_the_superseded_job(self, stub_pipeline, caplog):
+        """A forced override must leave a trace naming the job it superseded.
+
+        Without this, the diagnostic bundle (which greps job=<id> lines) shows a
+        fresh job with no link to the COMPLETED job it replaced, and a user who
+        force-reimported over a mistaken import has no record of which prior job
+        (and therefore which library files) it was meant to correct.
+        """
+        path = r"X:\media\rips\Wire"
+        old_id = await _insert_job(path, JobState.COMPLETED)
+
+        with caplog.at_level(logging.INFO, logger="app.services.job_manager"):
+            result = await job_manager.create_job_from_staging(
+                staging_path=path, volume_label="THE_WIRE", drive_id="import", force=True
+            )
+
+        try:
+            assert result.job_id is not None
+            assert any(
+                "forced" in r.message.lower() and str(old_id) in r.message for r in caplog.records
+            ), f"no log line names superseded job {old_id}: {[r.message for r in caplog.records]}"
+        finally:
+            if result.job_id is not None:
+                await _drain(result.job_id)
+
+    async def test_concurrent_calls_for_one_path_create_a_single_job(self, stub_pipeline):
+        """The per-path lock makes check-then-insert atomic; a double-click must not double-import."""
+        path = r"X:\media\rips\Concurrent"
+        r1, r2 = await asyncio.gather(
+            job_manager.create_job_from_staging(staging_path=path, drive_id="import"),
+            job_manager.create_job_from_staging(staging_path=path, drive_id="import"),
+        )
+        created = [r for r in (r1, r2) if r.job_id is not None]
+        try:
+            assert len(created) == 1
+            assert {r.block for r in (r1, r2)} == {None, ImportBlock.IN_FLIGHT}
+        finally:
+            if created:
+                await _drain(created[0].job_id)
 
     async def test_force_never_overrides_an_in_flight_job(self, stub_pipeline):
         """The hard tier is not forceable: a second job would race the first."""

@@ -811,10 +811,9 @@ class JobManager:
                 # why this is not the old `state != FAILED` rule, and why it is not
                 # a copy of the disc-side guard either.
                 block, blocking_ids = await classify_staging_path(session, str(staging_dir))
-                if force and block is ImportBlock.ALREADY_IMPORTED:
-                    block = None
-                if block is not None:
-                    safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
+                forced = force and block is ImportBlock.ALREADY_IMPORTED
+                safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
+                if block is not None and not forced:
                     logger.info(
                         "Import blocked for staging path %s (%s, blocking jobs %s)",
                         safe_path,
@@ -822,6 +821,12 @@ class JobManager:
                         blocking_ids,
                     )
                     return StagingJobResult(block=block, blocking_job_ids=tuple(blocking_ids))
+                if forced:
+                    logger.info(
+                        "Import forced over completed job(s) %s for staging path %s",
+                        blocking_ids,
+                        safe_path,
+                    )
 
                 job = DiscJob(
                     drive_id=drive_id,
