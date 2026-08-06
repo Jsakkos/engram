@@ -173,7 +173,10 @@ class TestStagingImportEndpoint:
             detected_season=None,
         )
 
-    async def test_blocked_staging_reports_the_reason(self, client: AsyncClient, tmp_path):
+    @pytest.mark.parametrize("block", [ImportBlock.ALREADY_IMPORTED, ImportBlock.IN_FLIGHT])
+    async def test_blocked_staging_reports_the_reason(
+        self, client: AsyncClient, tmp_path, block: ImportBlock
+    ):
         """A blocked path must not report success with an impossible job id."""
         staging_dir = tmp_path / "ALREADY_DONE"
         staging_dir.mkdir()
@@ -182,9 +185,7 @@ class TestStagingImportEndpoint:
         with patch(
             "app.services.job_manager.job_manager.create_job_from_staging",
             new_callable=AsyncMock,
-            return_value=StagingJobResult(
-                block=ImportBlock.ALREADY_IMPORTED, blocking_job_ids=(7,)
-            ),
+            return_value=StagingJobResult(block=block, blocking_job_ids=(7,)),
         ):
             resp = await client.post("/api/staging/import", json={"staging_path": str(staging_dir)})
 
@@ -192,5 +193,6 @@ class TestStagingImportEndpoint:
         data = resp.json()
         assert data["status"] == "blocked"
         assert data["job_id"] is None
-        assert data["reason"] == "already_imported"
+        assert data["reason"] == block.value
         assert data["blocking_job_ids"] == [7]
+        assert data["titles_count"] == 1
