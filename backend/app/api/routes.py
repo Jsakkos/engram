@@ -2807,6 +2807,10 @@ class ImportPathRequest(BaseModel):
 class ImportStartRequest(BaseModel):
     path: str
     destination_mode: str = "library"
+    # Unit keys the user explicitly confirmed re-importing. Scoped rather than a
+    # blanket `force: bool` so a unit that became blocked between the two calls
+    # cannot be forced by a confirmation the user gave about a different unit.
+    force_keys: list[str] = []
 
 
 @router.get("/import/browse", dependencies=[Depends(require_localhost_or_lan)])
@@ -2910,6 +2914,7 @@ async def import_start(req: ImportStartRequest) -> dict:
     """
     from app.core import import_scanner
     from app.services import config_service
+    from app.services.import_guard import unit_key_for
     from app.services.job_manager import job_manager
 
     if req.destination_mode not in ("library", "in_place"):
@@ -2926,17 +2931,22 @@ async def import_start(req: ImportStartRequest) -> dict:
         raise HTTPException(status_code=400, detail="No MKV files found to import")
 
     root_str = str(scan.root)
+    force_keys = set(req.force_keys)
     job_ids: list[int] = []
+    blocked: list[dict] = []
     for unit in scan.units:
         files = [str(f) for f in unit.files]
         staging = str(Path(files[0]).parent) if len(files) == 1 else os.path.commonpath(files)
+        # The key must be derived from the dedup path, never scan.root and never
+        # the pre-resolve() req.path, or force_keys will not round-trip.
+        key = unit_key_for(staging)
         manifest = {
             "root": root_str,
             "files": files,
             "picked_is_show": scan.picked_is_show,
             "picked_is_season": scan.picked_is_season,
         }
-        jid = await job_manager.create_job_from_staging(
+        result = await job_manager.create_job_from_staging(
             staging_path=staging,
             content_type="tv" if unit.season is not None else "unknown",
             detected_title=unit.show_name,
@@ -2944,34 +2954,37 @@ async def import_start(req: ImportStartRequest) -> dict:
             destination_mode=req.destination_mode,
             drive_id="import",
             import_manifest=manifest,
+            force=key in force_keys,
         )
-        if jid != -1:
-            job_ids.append(jid)
+        if result.job_id is not None:
+            job_ids.append(result.job_id)
+        else:
+            blocked.append(
+                {
+                    "unit_key": key,
+                    "show_name": unit.show_name,
+                    "season": unit.season,
+                    "display_path": staging,
+                    "reason": result.block.value,
+                    "job_ids": list(result.blocking_job_ids),
+                }
+            )
 
-    skipped = len(scan.units) - len(job_ids)
     # Persist the path/destination as next-time defaults even when everything was
-    # a dedup no-op, so the modal still reopens where the user last browsed.
+    # blocked, so the modal still reopens where the user last browsed.
     await config_service.update_config(
         import_watch_path=req.path, import_destination_mode=req.destination_mode
     )
     logger.info(
-        "Import start: %s -> %d job(s) created, %d skipped",
+        "Import start: %s -> %d job(s) created, %d blocked",
         sanitize_log_value(req.path),
         len(job_ids),
-        skipped,
+        len(blocked),
     )
-    # Every unit already had an active or completed job for its folder. Tell the
-    # caller (409) instead of returning a silent empty list with 200 — the
-    # DB-backed dedup persists across restarts, so this is a real "nothing to do".
-    if not job_ids and skipped:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"All {skipped} import job(s) for this folder already exist "
-                "(active or completed); nothing new was started."
-            ),
-        )
-    return {"job_ids": job_ids, "skipped": skipped}
+    # No 409: a conflict is a normal outcome carrying its own remedy (force_keys),
+    # and a non-2xx alongside partial success would invite a blind client retry
+    # that double-starts the units that succeeded.
+    return {"job_ids": job_ids, "blocked": blocked}
 
 
 class StagingImportRequest(BaseModel):
