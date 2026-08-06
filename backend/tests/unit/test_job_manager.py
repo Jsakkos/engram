@@ -639,6 +639,56 @@ class TestRunRippingSessionScoping:
 
         assert captured["edition"] == "Final Cut"
 
+    async def test_edition_read_from_the_selected_title_not_db_order(self, rip_env, monkeypatch):
+        """On a multi-cut disc the edition must come from the title being organized.
+
+        `_resolve_multi_title_movie` picks the feature by mutating `is_selected` in
+        place and returns False to fall through to the single-title organize, so the
+        list still holds every ripped title and index 0 is just DB order (#576).
+        """
+        job, first = await _seed(
+            content_type=ContentType.MOVIE,
+            staging=str(rip_env),
+            is_selected=True,
+            title_index=0,
+        )
+        async with _unit_session_factory() as session:
+            # Both titles are selected at query time, so both survive the filter.
+            # The one carrying the edition is NOT first in DB order.
+            feature = DiscTitle(
+                job_id=job.id,
+                title_index=1,
+                duration_seconds=1380,
+                state=TitleState.RIPPING,
+                is_selected=True,
+                edition="Final Cut",
+            )
+            session.add(feature)
+            await session.commit()
+
+        out_file = rip_env / "movie.mkv"
+        captured = {}
+
+        def fake_organize(output_dir, volume_label, detected_title, year=None, **kwargs):
+            captured["edition"] = kwargs.get("edition")
+            return {"success": True, "main_file": out_file}
+
+        async def fake_resolve(job_arg, job_id_arg, titles, session_arg):
+            """Narrow the selection the way the real helper does: mutate in place,
+            then return False so the caller falls through to the organize below."""
+            for t in titles:
+                t.is_selected = t.title_index == 1
+                t.is_extra = t.title_index != 1
+            return False
+
+        monkeypatch.setattr(jm_mod.movie_organizer, "organize", fake_organize)
+        monkeypatch.setattr(job_manager, "_resolve_multi_title_movie", fake_resolve)
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[out_file]))
+
+        await job_manager._run_ripping(job.id)
+
+        assert captured["edition"] == "Final Cut"
+
     async def test_rip_failure_fails_job(self, rip_env, monkeypatch):
         job, _title = await _seed(
             content_type=ContentType.TV, staging=str(rip_env), is_selected=True
