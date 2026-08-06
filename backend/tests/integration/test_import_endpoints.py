@@ -240,6 +240,8 @@ async def test_start_reports_partial_conflicts_without_silent_skips(client, tmp_
     assert len(body["blocked"]) == 2, "the finished seasons must be reported, not skipped"
     assert {b["season"] for b in body["blocked"]} == {1, 2}
     assert all(b["reason"] == "already_imported" for b in body["blocked"])
+    assert len({b["display_path"] for b in body["blocked"]}) == 2
+    assert all(b["show_name"] == "Seinfeld" for b in body["blocked"])
 
 
 async def test_start_force_keys_are_scoped_to_the_units_given(client, tmp_path: Path):

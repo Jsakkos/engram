@@ -50,6 +50,7 @@ from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
 from app.services.identity_prompts import BLOCKING_KINDS
+from app.services.import_guard import ImportBlock
 
 logger = logging.getLogger(__name__)
 
@@ -2813,6 +2814,26 @@ class ImportStartRequest(BaseModel):
     force_keys: list[str] = []
 
 
+class BlockedImportUnit(BaseModel):
+    """One (show, season) unit that import/start refused to start.
+
+    `unit_key` is opaque: the client echoes it back in `force_keys` and must not
+    parse it. `display_path` is for rendering only, never for identity.
+    """
+
+    unit_key: str
+    show_name: str | None
+    season: int | None
+    display_path: str
+    reason: ImportBlock
+    job_ids: list[int]
+
+
+class ImportStartResponse(BaseModel):
+    job_ids: list[int]
+    blocked: list[BlockedImportUnit]
+
+
 @router.get("/import/browse", dependencies=[Depends(require_localhost_or_lan)])
 async def import_browse(path: str = "") -> dict:
     """Read-only directory listing for the manual-import picker.
@@ -2905,8 +2926,12 @@ async def import_preview(req: ImportPathRequest) -> dict:
     }
 
 
-@router.post("/import/start", dependencies=[Depends(require_localhost_or_lan)])
-async def import_start(req: ImportStartRequest) -> dict:
+@router.post(
+    "/import/start",
+    dependencies=[Depends(require_localhost_or_lan)],
+    response_model=ImportStartResponse,
+)
+async def import_start(req: ImportStartRequest) -> ImportStartResponse:
     """Create one import job per (show, season) unit from a chosen path.
 
     Each job gets an explicit file manifest, so nested Disc/ files import
@@ -2932,14 +2957,21 @@ async def import_start(req: ImportStartRequest) -> dict:
 
     root_str = str(scan.root)
     force_keys = set(req.force_keys)
+    seen_keys: set[str] = set()
     job_ids: list[int] = []
-    blocked: list[dict] = []
+    blocked: list[BlockedImportUnit] = []
     for unit in scan.units:
         files = [str(f) for f in unit.files]
+        # The dedup path (and therefore unit_key) is the single file's parent, or
+        # the files' common ancestor for multi-file units. This now backs a
+        # cross-request wire contract (force_keys round-tripping), so a unit that
+        # gains or drops files between the preview and the start call shifts to a
+        # different path and therefore a different key.
         staging = str(Path(files[0]).parent) if len(files) == 1 else os.path.commonpath(files)
         # The key must be derived from the dedup path, never scan.root and never
         # the pre-resolve() req.path, or force_keys will not round-trip.
         key = unit_key_for(staging)
+        seen_keys.add(key)
         manifest = {
             "root": root_str,
             "files": files,
@@ -2960,14 +2992,14 @@ async def import_start(req: ImportStartRequest) -> dict:
             job_ids.append(result.job_id)
         else:
             blocked.append(
-                {
-                    "unit_key": key,
-                    "show_name": unit.show_name,
-                    "season": unit.season,
-                    "display_path": staging,
-                    "reason": result.block.value,
-                    "job_ids": list(result.blocking_job_ids),
-                }
+                BlockedImportUnit(
+                    unit_key=key,
+                    show_name=unit.show_name,
+                    season=unit.season,
+                    display_path=staging,
+                    reason=result.block,
+                    job_ids=list(result.blocking_job_ids),
+                )
             )
 
     # Persist the path/destination as next-time defaults even when everything was
@@ -2975,16 +3007,23 @@ async def import_start(req: ImportStartRequest) -> dict:
     await config_service.update_config(
         import_watch_path=req.path, import_destination_mode=req.destination_mode
     )
+    # A confirmed key that never matched a unit this scan produced (e.g. the unit
+    # disappeared from disk between the confirmation call and this one) is a
+    # silent no-op otherwise: it lands in neither job_ids nor blocked. Log-only,
+    # by design — there is no UI surface that would consume a response field for
+    # it, see PR review on #571.
+    unused_force_keys = force_keys - seen_keys
     logger.info(
-        "Import start: %s -> %d job(s) created, %d blocked",
+        "Import start: %s -> %d job(s) created, %d blocked%s",
         sanitize_log_value(req.path),
         len(job_ids),
         len(blocked),
+        f", {len(unused_force_keys)} force_keys unused" if unused_force_keys else "",
     )
     # No 409: a conflict is a normal outcome carrying its own remedy (force_keys),
     # and a non-2xx alongside partial success would invite a blind client retry
     # that double-starts the units that succeeded.
-    return {"job_ids": job_ids, "blocked": blocked}
+    return ImportStartResponse(job_ids=job_ids, blocked=blocked)
 
 
 class StagingImportRequest(BaseModel):
