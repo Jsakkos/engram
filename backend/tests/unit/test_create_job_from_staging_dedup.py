@@ -179,8 +179,13 @@ class TestCreateJobFromStagingOwnership:
             assert len(created) == 1
             assert {r.block for r in (r1, r2)} == {None, ImportBlock.IN_FLIGHT}
         finally:
-            if created:
-                await _drain(created[0].job_id)
+            # Drain every created result, not just the first: if the lock is
+            # ever broken, `created` has two entries and an undrained second
+            # task would leak a StaticPool session past teardown, cascading
+            # into unrelated later tests right when this one goes red.
+            for r in created:
+                if r.job_id is not None:
+                    await _drain(r.job_id)
 
     async def test_force_never_overrides_an_in_flight_job(self, stub_pipeline):
         """The hard tier is not forceable: a second job would race the first."""

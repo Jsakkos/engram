@@ -850,16 +850,16 @@ class JobManager:
                 await session.refresh(job)
 
                 job_id = job.id
-                safe_path = str(staging_path).replace("\n", "").replace("\r", "")
+                safe_created_path = str(staging_path).replace("\n", "").replace("\r", "")
                 safe_label = str(volume_label).replace("\n", "").replace("\r", "")
                 # destination_mode is user-supplied via POST /api/import/start; strip
-                # CR/LF so it can't forge log lines (matches safe_path/safe_label).
+                # CR/LF so it can't forge log lines (matches safe_created_path/safe_label).
                 safe_dest = str(destination_mode).replace("\n", "").replace("\r", "")
                 logger.info(
                     "Created %s job %s from %s (label: %s, destination: %s)",
                     "import" if drive_id == "import" else "staging",
                     job_id,
-                    safe_path,
+                    safe_created_path,
                     safe_label,
                     safe_dest,
                 )
