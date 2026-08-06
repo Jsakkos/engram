@@ -257,3 +257,165 @@ class TestTVSameNameCoexistence:
         assert r["success"]
         assert r["final_path"].parent.parent.name == "Frasier"
         assert r["final_path"].name == "Frasier - S01E01.mkv"
+
+
+@pytest.mark.pipeline
+class TestMovieNamingParity:
+    """Movie folder/filename formats, edition tags, and canonical-title handling (#576)."""
+
+    @staticmethod
+    def _patch_cfg(**over):
+        from unittest.mock import patch
+
+        from app.models.app_config import AppConfig
+
+        return patch(
+            "app.services.config_service.get_config_sync",
+            return_value=AppConfig(**over),
+        )
+
+    @staticmethod
+    def _staged(tmp_path, name="t00.mkv"):
+        staging = tmp_path / "staging"
+        staging.mkdir(parents=True, exist_ok=True)
+        (staging / name).write_bytes(b"x" * 1024)
+        return staging
+
+    def test_default_no_edition_matches_pre_feature_layout(self, tmp_path):
+        """Guard: the common case must not move relative to the old behavior."""
+        staging = self._staged(tmp_path)
+        with self._patch_cfg():
+            r = organize_movie(staging, "Blade Runner", year=1982, library_path=tmp_path / "movies")
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner (1982)"
+        assert r["main_file"].name == "Blade Runner (1982).mkv"
+
+    def test_edition_lands_on_the_file_unmangled(self, tmp_path):
+        staging = self._staged(tmp_path)
+        with self._patch_cfg():
+            r = organize_movie(
+                staging,
+                "Blade Runner",
+                year=1982,
+                library_path=tmp_path / "movies",
+                edition="Final Cut",
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner (1982)"
+        assert r["main_file"].name == "Blade Runner (1982) {edition-Final Cut}.mkv"
+
+    def test_blank_folder_format_never_yields_a_bare_extension(self, tmp_path):
+        """A cleared folder format must not file the movie as ".mkv".
+
+        Blank passes validation and is persistable, and the filename format
+        inherits it, so both levels could collapse at once.
+        """
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_format="", naming_movie_file_format=""):
+            r = organize_movie(staging, "Blade Runner", year=1982, library_path=tmp_path / "movies")
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner"
+        assert r["main_file"].name == "Blade Runner.mkv"
+
+    def test_blank_folder_format_with_edition_keeps_the_title(self, tmp_path):
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_format="", naming_movie_file_format=""):
+            r = organize_movie(
+                staging,
+                "Blade Runner",
+                year=1982,
+                library_path=tmp_path / "movies",
+                edition="Final Cut",
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].name.startswith("Blade Runner")
+        assert r["main_file"].name != "{edition-Final Cut}.mkv"
+
+    def test_custom_folder_format_propagates_to_the_filename(self, tmp_path):
+        """A blank file format inherits the folder format, so the two cannot disagree."""
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_format="{title} - {year}"):
+            r = organize_movie(staging, "Blade Runner", year=1982, library_path=tmp_path / "movies")
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner - 1982"
+        assert r["main_file"].name == "Blade Runner - 1982.mkv"
+
+    def test_custom_folder_format_still_earns_the_edition_tag(self, tmp_path):
+        """Inheriting must not cost the Plex edition tag, which belongs on the file."""
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_format="{title} - {year}"):
+            r = organize_movie(
+                staging,
+                "Blade Runner",
+                year=1982,
+                library_path=tmp_path / "movies",
+                edition="Final Cut",
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner - 1982"
+        assert r["main_file"].name == "Blade Runner - 1982 {edition-Final Cut}.mkv"
+
+    def test_explicit_file_format_overrides_inheritance(self, tmp_path):
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(
+            naming_movie_format="{title} ({year}) {{tmdb-{tmdb_id}}}",
+            naming_movie_file_format="{title}",
+        ):
+            r = organize_movie(
+                staging,
+                "Blade Runner",
+                year=1982,
+                library_path=tmp_path / "movies",
+                tmdb_id=78,
+                edition="Final Cut",
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner (1982) {tmdb-78}"
+        assert r["main_file"].name == "Blade Runner.mkv"
+
+    def test_tmdb_id_tag_in_folder(self, tmp_path):
+        staging = self._staged(tmp_path)
+        plex = "{title} ({year}) {{tmdb-{tmdb_id}}}"
+        with self._patch_cfg(naming_movie_format=plex):
+            r = organize_movie(
+                staging,
+                "Blade Runner",
+                year=1982,
+                library_path=tmp_path / "movies",
+                tmdb_id=78,
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "Blade Runner (1982) {tmdb-78}"
+
+    def test_blank_file_format_inherits_folder_format(self, tmp_path):
+        staging = self._staged(tmp_path)
+        with self._patch_cfg(naming_movie_file_format=""):
+            r = organize_movie(staging, "Blade Runner", year=1982, library_path=tmp_path / "movies")
+        assert r["success"], r.get("error")
+        assert r["main_file"].name == "Blade Runner (1982).mkv"
+
+    def test_canonical_tmdb_title_is_not_normalized(self, tmp_path):
+        """Regression: clean_movie_name used to turn Spider-Man into Spider Man."""
+        staging = self._staged(tmp_path)
+        with self._patch_cfg():
+            r = organize_movie(
+                staging,
+                "Spider-Man: No Way Home",
+                year=2021,
+                library_path=tmp_path / "movies",
+                already_clean=True,
+            )
+        assert r["success"], r.get("error")
+        # The colon is stripped by sanitize_filename (invalid on Windows); the
+        # hyphen and the capitalization must survive.
+        assert r["main_file"].parent.name.startswith("Spider-Man")
+        assert "Spider Man" not in r["main_file"].parent.name
+
+    def test_volume_label_still_normalized_by_default(self, tmp_path):
+        staging = self._staged(tmp_path)
+        with self._patch_cfg():
+            r = organize_movie(
+                staging, "THE_SOCIAL_NETWORK", year=2010, library_path=tmp_path / "movies"
+            )
+        assert r["success"], r.get("error")
+        assert r["main_file"].parent.name == "The Social Network (2010)"

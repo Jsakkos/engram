@@ -544,6 +544,151 @@ class TestRunRippingSessionScoping:
         assert refreshed.state == JobState.COMPLETED
         assert refreshed.final_path == str(out_file)
 
+    async def test_movie_single_title_organize_receives_tmdb_identity(self, rip_env, monkeypatch):
+        """Auto (unattended) organize path must thread tmdb_year/tmdb_id/
+        already_clean into movie_organizer.organize, mirroring the REVIEW path
+        (#576 task 8). Without this wiring a movie that never hits review still
+        gets no {year}/{tmdb_id} in its folder name."""
+        job, _title = await _seed(
+            content_type=ContentType.MOVIE, staging=str(rip_env), is_selected=True
+        )
+        async with _unit_session_factory() as session:
+            j = await session.get(DiscJob, job.id)
+            j.tmdb_year = 2010
+            j.tmdb_id = 27205
+            j.tmdb_name = "Inception"
+            # The title actually organized is detected_title, so it must match
+            # tmdb_name for this to count as a canonical TMDB name.
+            j.detected_title = "Inception"
+            await session.commit()
+
+        out_file = rip_env / "movie.mkv"
+        captured = {}
+
+        def fake_organize(output_dir, volume_label, detected_title, year=None, **kwargs):
+            captured["year"] = year
+            captured["tmdb_id"] = kwargs.get("tmdb_id")
+            captured["already_clean"] = kwargs.get("already_clean")
+            return {"success": True, "main_file": out_file}
+
+        monkeypatch.setattr(jm_mod.movie_organizer, "organize", fake_organize)
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[out_file]))
+
+        await job_manager._run_ripping(job.id)
+
+        assert captured["year"] == 2010
+        assert captured["tmdb_id"] == 27205
+        assert captured["already_clean"] is True
+
+    async def test_uncorroborated_title_is_still_normalized(self, rip_env, monkeypatch):
+        """already_clean must test the title in use, not merely "a tmdb_name exists".
+
+        An uncorroborated job keeps its disc-derived title while carrying a
+        tmdb_name for a different film. Skipping normalization there would file
+        the movie as "Inception 4K" instead of "Inception" (#576).
+        """
+        job, _title = await _seed(
+            content_type=ContentType.MOVIE, staging=str(rip_env), is_selected=True
+        )
+        async with _unit_session_factory() as session:
+            j = await session.get(DiscJob, job.id)
+            j.tmdb_name = "Totally Different Film"
+            j.detected_title = "Inception 4K"
+            await session.commit()
+
+        out_file = rip_env / "movie.mkv"
+        captured = {}
+
+        def fake_organize(output_dir, volume_label, detected_title, year=None, **kwargs):
+            captured["already_clean"] = kwargs.get("already_clean")
+            return {"success": True, "main_file": out_file}
+
+        monkeypatch.setattr(jm_mod.movie_organizer, "organize", fake_organize)
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[out_file]))
+
+        await job_manager._run_ripping(job.id)
+
+        assert captured["already_clean"] is False
+
+    async def test_edition_chosen_before_rip_survives_to_organize(self, rip_env, monkeypatch):
+        """An edition picked in review before the title existed must not be lost.
+
+        Choosing an edition for a title that still has to be ripped persists it on
+        the title and re-enters ripping; this path is where that rip finishes, so
+        it has to carry the edition through to the organizer (#576).
+        """
+        job, title = await _seed(
+            content_type=ContentType.MOVIE, staging=str(rip_env), is_selected=True
+        )
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title.id)
+            t.edition = "Final Cut"
+            await session.commit()
+
+        out_file = rip_env / "movie.mkv"
+        captured = {}
+
+        def fake_organize(output_dir, volume_label, detected_title, year=None, **kwargs):
+            captured["edition"] = kwargs.get("edition")
+            return {"success": True, "main_file": out_file}
+
+        monkeypatch.setattr(jm_mod.movie_organizer, "organize", fake_organize)
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[out_file]))
+
+        await job_manager._run_ripping(job.id)
+
+        assert captured["edition"] == "Final Cut"
+
+    async def test_edition_read_from_the_selected_title_not_db_order(self, rip_env, monkeypatch):
+        """On a multi-cut disc the edition must come from the title being organized.
+
+        `_resolve_multi_title_movie` picks the feature by mutating `is_selected` in
+        place and returns False to fall through to the single-title organize, so the
+        list still holds every ripped title and index 0 is just DB order (#576).
+        """
+        job, first = await _seed(
+            content_type=ContentType.MOVIE,
+            staging=str(rip_env),
+            is_selected=True,
+            title_index=0,
+        )
+        async with _unit_session_factory() as session:
+            # Both titles are selected at query time, so both survive the filter.
+            # The one carrying the edition is NOT first in DB order.
+            feature = DiscTitle(
+                job_id=job.id,
+                title_index=1,
+                duration_seconds=1380,
+                state=TitleState.RIPPING,
+                is_selected=True,
+                edition="Final Cut",
+            )
+            session.add(feature)
+            await session.commit()
+
+        out_file = rip_env / "movie.mkv"
+        captured = {}
+
+        def fake_organize(output_dir, volume_label, detected_title, year=None, **kwargs):
+            captured["edition"] = kwargs.get("edition")
+            return {"success": True, "main_file": out_file}
+
+        async def fake_resolve(job_arg, job_id_arg, titles, session_arg):
+            """Narrow the selection the way the real helper does: mutate in place,
+            then return False so the caller falls through to the organize below."""
+            for t in titles:
+                t.is_selected = t.title_index == 1
+                t.is_extra = t.title_index != 1
+            return False
+
+        monkeypatch.setattr(jm_mod.movie_organizer, "organize", fake_organize)
+        monkeypatch.setattr(job_manager, "_resolve_multi_title_movie", fake_resolve)
+        _mock_rip(monkeypatch, RipResult(success=True, output_files=[out_file]))
+
+        await job_manager._run_ripping(job.id)
+
+        assert captured["edition"] == "Final Cut"
+
     async def test_rip_failure_fails_job(self, rip_env, monkeypatch):
         job, _title = await _seed(
             content_type=ContentType.TV, staging=str(rip_env), is_selected=True
@@ -768,7 +913,7 @@ class TestRunRippingIdentityConvergence:
         out_file = rip_env / "movie.mkv"
         organize_calls = []
 
-        def fake_organize(output_dir, volume_label, detected_title):
+        def fake_organize(output_dir, volume_label, detected_title, *args, **kwargs):
             organize_calls.append(detected_title)
             return {"success": True, "main_file": out_file}
 

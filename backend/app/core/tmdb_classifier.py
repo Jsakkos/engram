@@ -112,6 +112,7 @@ class TmdbSignal:
         "confidence",
         "tmdb_id",
         "tmdb_name",
+        "year",
         "ambiguous_identity",
         "candidates",
         "all_candidates",
@@ -123,6 +124,7 @@ class TmdbSignal:
         confidence: float,
         tmdb_id: int | None = None,
         tmdb_name: str | None = None,
+        year: int | None = None,
         ambiguous_identity: bool = False,
         candidates: list[dict] | None = None,
         all_candidates: list[dict] | None = None,
@@ -131,6 +133,10 @@ class TmdbSignal:
         self.confidence = confidence
         self.tmdb_id = tmdb_id
         self.tmdb_name = tmdb_name
+        # Release year for movies (a show's first-air year is resolved separately
+        # from same-name candidates). Captured here so the organizer's {year}
+        # placeholder needs no extra network call (#576).
+        self.year = year
         self.ambiguous_identity = ambiguous_identity
         # `candidates`: same-name twins that tripped the materiality gate (a
         # proactive, identify-time review prompt). `all_candidates`: EVERY
@@ -144,7 +150,8 @@ class TmdbSignal:
         return (
             f"TmdbSignal(content_type={self.content_type.value}, "
             f"confidence={self.confidence:.0%}, tmdb_id={self.tmdb_id}, "
-            f"tmdb_name={self.tmdb_name!r}, ambiguous_identity={self.ambiguous_identity}, "
+            f"tmdb_name={self.tmdb_name!r}, year={self.year}, "
+            f"ambiguous_identity={self.ambiguous_identity}, "
             f"candidates={self.candidates!r}, all_candidates={self.all_candidates!r})"
         )
 
@@ -423,10 +430,15 @@ def _make_movie_signal(result: dict, ambiguous: bool = False) -> TmdbSignal:
     popularity = result.get("popularity", 0)
     confidence = _confidence_from_popularity(popularity, ambiguous)
     name = result.get("title", result.get("original_title", ""))
+    # The search payload already carries release_date, so capturing the year here
+    # costs nothing and spares the organizer a /movie/{id} round trip (#576).
+    raw_year = (result.get("release_date") or "")[:4]
+    year = int(raw_year) if raw_year.isdigit() else None
     logger.info(f"TMDB: Movie match '{name}' (id={result['id']}, popularity={popularity:.1f})")
     return TmdbSignal(
         content_type=ContentType.MOVIE,
         confidence=confidence,
         tmdb_id=result["id"],
         tmdb_name=name,
+        year=year,
     )

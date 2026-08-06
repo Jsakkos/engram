@@ -144,6 +144,139 @@ async def test_movie_edition_review_workflow(
 @pytest.mark.asyncio
 @patch("app.services.finalization_coordinator.async_session")
 @patch("app.services.job_manager.async_session")
+async def test_movie_edition_reaches_organizer(
+    mock_async_session, mock_fc_session, session, mock_db_session_factory, tmp_path
+):
+    """apply_review must forward movie identity to the organizer as arguments (#576).
+
+    The edition used to be concatenated into the title, where clean_movie_name
+    flattened "{edition-Final Cut}" into "{Edition Final Cut}". Nothing asserted
+    the wiring itself, so a revert would have been invisible. This locks down all
+    four values the review path threads through.
+    """
+    mock_async_session.side_effect = mock_db_session_factory
+    mock_fc_session.side_effect = mock_db_session_factory
+
+    staging_dir = tmp_path / "staging_wiring"
+    staging_dir.mkdir()
+    title_path = staging_dir / "title_01.mkv"
+    title_path.touch()
+
+    # tmdb_name set => the title is canonical and must NOT be re-normalized
+    # (otherwise "Blade Runner" survives but e.g. "Spider-Man" loses its hyphen).
+    job = DiscJob(
+        drive_id="TEST_DRIVE_WIRING",
+        volume_label="BLADE_RUNNER",
+        content_type=ContentType.MOVIE,
+        state=JobState.REVIEW_NEEDED,
+        detected_title="Blade Runner",
+        tmdb_id=78,
+        tmdb_name="Blade Runner",
+        tmdb_year=1982,
+        staging_path=str(staging_dir),
+    )
+    session.add(job)
+    await session.commit()
+    await session.refresh(job)
+
+    title1 = DiscTitle(
+        job_id=job.id,
+        title_index=1,
+        duration_seconds=7020,
+        output_filename=str(title_path),
+        state=TitleState.COMPLETED,
+    )
+    session.add(title1)
+    await session.commit()
+
+    with patch("app.core.organizer.movie_organizer.organize") as mock_organize:
+        mock_organize.return_value = {
+            "success": True,
+            "main_file": "/library/movies/Blade Runner (1982)/"
+            "Blade Runner (1982) {edition-Final Cut}.mkv",
+        }
+
+        job_manager = JobManager()
+        await job_manager.apply_review(job_id=job.id, title_id=title1.id, edition="Final Cut")
+
+    mock_organize.assert_called_once()
+    args, kwargs = mock_organize.call_args
+
+    # destination_mode is not "in_place", so this is the MovieOrganizer.organize
+    # branch: (staging_dir, volume_label, detected_name, year).
+    assert str(args[0]) == str(title_path)
+    assert args[2] == "Blade Runner"
+    # The year used to be hardcoded None; it must be the job's tmdb_year.
+    assert args[3] == 1982
+
+    assert kwargs["edition"] == "Final Cut"
+    assert kwargs["tmdb_id"] == 78
+    assert kwargs["already_clean"] is True
+
+
+@pytest.mark.asyncio
+@patch("app.services.finalization_coordinator.async_session")
+@patch("app.services.job_manager.async_session")
+async def test_movie_edition_suppressed_when_title_already_says_it(
+    mock_async_session, mock_fc_session, session, mock_db_session_factory, tmp_path
+):
+    """A title that already spells the edition out must not get it appended again."""
+    mock_async_session.side_effect = mock_db_session_factory
+    mock_fc_session.side_effect = mock_db_session_factory
+
+    staging_dir = tmp_path / "staging_suppress"
+    staging_dir.mkdir()
+    title_path = staging_dir / "title_01.mkv"
+    title_path.touch()
+
+    job = DiscJob(
+        drive_id="TEST_DRIVE_SUPPRESS",
+        volume_label="BLADE_RUNNER_FINAL_CUT",
+        content_type=ContentType.MOVIE,
+        state=JobState.REVIEW_NEEDED,
+        detected_title="Blade Runner Final Cut",
+        staging_path=str(staging_dir),
+    )
+    session.add(job)
+    await session.commit()
+    await session.refresh(job)
+
+    title1 = DiscTitle(
+        job_id=job.id,
+        title_index=1,
+        duration_seconds=7020,
+        output_filename=str(title_path),
+        state=TitleState.COMPLETED,
+    )
+    session.add(title1)
+    await session.commit()
+
+    with patch("app.core.organizer.movie_organizer.organize") as mock_organize:
+        mock_organize.return_value = {
+            "success": True,
+            "main_file": "/library/movies/Blade Runner Final Cut.mkv",
+        }
+
+        job_manager = JobManager()
+        await job_manager.apply_review(job_id=job.id, title_id=title1.id, edition="Final Cut")
+
+    mock_organize.assert_called_once()
+    args, kwargs = mock_organize.call_args
+
+    # The decision is still recorded on the title...
+    await session.refresh(title1)
+    assert title1.edition == "Final Cut"
+    # ...but it is not passed to the organizer, so the filename does not read
+    # "Blade Runner Final Cut {edition-Final Cut}.mkv".
+    assert kwargs["edition"] is None
+    assert args[2] == "Blade Runner Final Cut"
+    # No TMDB identity on this job: nothing to skip normalization for.
+    assert kwargs["already_clean"] is False
+
+
+@pytest.mark.asyncio
+@patch("app.services.finalization_coordinator.async_session")
+@patch("app.services.job_manager.async_session")
 async def test_movie_edition_skip_workflow(
     mock_async_session, mock_fc_session, session, mock_db_session_factory
 ):

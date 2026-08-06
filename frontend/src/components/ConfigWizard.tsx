@@ -96,6 +96,21 @@ const NAMING_PRESETS: NamingPreset[] = [
     { id: 'minimal', seasonFormat: 'S{season:02d}', episodeFormat: '{show} - S{season:02d}E{episode:02d}' },
 ];
 
+/**
+ * Naive placeholder substitution for the movie naming preview hint (same spirit as
+ * the TV preview's .replace() chain). Doubled braces are unescaped last so the Plex
+ * "{{tmdb-{tmdb_id}}}" form previews as "{tmdb-78}".
+ */
+function renderMovieNamePreview(format: string): string {
+    return format
+        .replace(/\{title\}/g, 'Blade Runner')
+        .replace(/\{year\}/g, '1982')
+        .replace(/\{tmdb_id\}/g, '78')
+        .replace(/\{edition\}/g, 'Final Cut')
+        .replace(/\{\{/g, '{')
+        .replace(/\}\}/g, '}');
+}
+
 function SavedKeyBadge({ saved, text }: { saved: boolean; text: string }) {
     if (!saved) {
         return null;
@@ -128,6 +143,7 @@ interface ConfigData {
     namingSeasonFormat: string;
     namingEpisodeFormat: string;
     namingMovieFormat: string;
+    namingMovieFileFormat: string;
     namingTvShowFormat: string;
     discdbEnabled: boolean;
     enableFingerprintContributions: boolean;
@@ -208,6 +224,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         namingSeasonFormat: 'Season {season:02d}',
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
+        namingMovieFileFormat: '',
         namingTvShowFormat: '{show}',
         discdbEnabled: true,
         enableFingerprintContributions: true,
@@ -324,6 +341,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
+                    // ?? not ||: an empty filename format is meaningful ("reuse the folder format").
+                    namingMovieFileFormat: data.naming_movie_file_format ?? '',
                     namingTvShowFormat: data.naming_tv_show_format || '{show}',
                     discdbEnabled: data.discdb_enabled ?? true,
                     enableFingerprintContributions: data.enable_fingerprint_contributions ?? true,
@@ -509,6 +528,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     naming_season_format: config.namingSeasonFormat,
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
+                    naming_movie_file_format: config.namingMovieFileFormat,
                     naming_tv_show_format: config.namingTvShowFormat,
                     discdb_enabled: config.discdbEnabled,
                     enable_fingerprint_contributions: config.enableFingerprintContributions,
@@ -1681,6 +1701,48 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 </div>
                             </>
                         )}
+
+                        <div className="form-group">
+                            <label htmlFor="namingMovieFormat">Movie Folder Format</label>
+                            <input
+                                id="namingMovieFormat"
+                                type="text"
+                                value={config.namingMovieFormat}
+                                onChange={(e) => handleInputChange('namingMovieFormat', e.target.value)}
+                                placeholder="{title} ({year})"
+                            />
+                            <span className="form-hint">
+                                Placeholders: {'{title}'}, {'{year}'}, {'{tmdb_id}'}. Newly ripped
+                                movies are filed as {'{title} ({year})'}; use {'{title}'} on its own
+                                for the older bare-name layout. Existing folders are never moved. To
+                                pin the exact movie for your media server, use Plex{' '}
+                                &quot;{'{title} ({year}) {{tmdb-{tmdb_id}}}'}&quot; or Jellyfin{' '}
+                                &quot;{'{title} ({year}) [tmdbid-{tmdb_id}]'}&quot;.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="namingMovieFileFormat">Movie Filename Format</label>
+                            <input
+                                id="namingMovieFileFormat"
+                                type="text"
+                                value={config.namingMovieFileFormat}
+                                onChange={(e) => handleInputChange('namingMovieFileFormat', e.target.value)}
+                                placeholder="Same as folder"
+                            />
+                            <span className="form-hint">
+                                Placeholders: {'{title}'}, {'{year}'}, {'{tmdb_id}'}, {'{edition}'}.
+                                Leave blank to reuse the folder format above; when a movie has an
+                                edition, the Plex &quot;{'{edition-...}'}&quot; tag is appended to the
+                                filename automatically (Plex reads the edition off the file, not the
+                                folder). Setting a format here takes full control and turns off both
+                                the inheritance and the automatic edition tag.
+                            </span>
+                            <span className="form-hint">
+                                Preview: Movies/{renderMovieNamePreview(config.namingMovieFormat)}/
+                                {renderMovieNamePreview(config.namingMovieFileFormat || config.namingMovieFormat)}.mkv
+                            </span>
+                        </div>
 
                             </div>
                         </details>

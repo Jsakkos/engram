@@ -473,7 +473,7 @@ class TestResumeMoviePostRip:
         out_file = tmp_path / "Inception (2010).mkv"
         organize_calls = []
 
-        def fake_organize(output_dir, volume_label, detected_title):
+        def fake_organize(output_dir, volume_label, detected_title, *args, **kwargs):
             organize_calls.append((Path(output_dir), volume_label, detected_title))
             return {"success": True, "main_file": out_file}
 
