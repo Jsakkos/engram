@@ -3056,7 +3056,7 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
     if not mkv_files:
         raise HTTPException(status_code=404, detail=f"No MKV files found in {request.staging_path}")
 
-    job_id = await job_manager.create_job_from_staging(
+    result = await job_manager.create_job_from_staging(
         staging_path=str(staging_dir),
         volume_label=request.volume_label,
         content_type=request.content_type,
@@ -3064,7 +3064,18 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
         detected_season=request.detected_season,
     )
 
-    return {"status": "created", "job_id": job_id, "titles_count": len(mkv_files)}
+    if result.job_id is None:
+        # Never report "created" with a sentinel id: the caller has to be able to
+        # tell a real job from a refused one.
+        return {
+            "status": "blocked",
+            "job_id": None,
+            "reason": result.block.value,
+            "blocking_job_ids": list(result.blocking_job_ids),
+            "titles_count": len(mkv_files),
+        }
+
+    return {"status": "created", "job_id": result.job_id, "titles_count": len(mkv_files)}
 
 
 @router.get("/staging/orphaned")
