@@ -1,4 +1,4 @@
-"""Ownership rules for manual-import staging paths.
+"""Ownership rules for manual-import staging paths (issue #571).
 
 A staging path is *owned* by an in-flight job and merely *recorded* by a
 finished one:
@@ -11,7 +11,7 @@ finished one:
 
 Deliberately NOT a copy of the disc-side guard in ``job_manager._on_disc_inserted``,
 which lets REVIEW_NEEDED through: a disc in review has been ejected and the drive
-is free, whereas an import in review still holds its files (issue #571).
+is free, whereas an import in review still holds its files.
 """
 
 from __future__ import annotations
@@ -56,8 +56,8 @@ def unit_key_for(dedup_path: str) -> str:
     and absolute filesystem paths stay out of a value the UI round-trips.
 
     The key is derived from the *normalized* path (``str(Path(dedup_path))``),
-    the same form the DB stores it in (see ``job_manager.py:785``), so it matches
-    regardless of trailing separators.
+    the same form the DB stores it in (see ``JobManager.create_job_from_staging``),
+    so it matches regardless of trailing separators.
 
     Pure function of the path, so no server-side state is needed: the forced
     second call re-scans, re-derives a key per unit, and matches the incoming

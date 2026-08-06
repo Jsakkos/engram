@@ -1,11 +1,18 @@
-"""Unit tests for the dedup guard in JobManager.create_job_from_staging.
+"""Unit tests for the ownership guard in JobManager.create_job_from_staging.
 
-The import watch folder re-detects the same directory on every poll and on
-every server restart. A prior *terminal-failed* job for that path must NOT
-permanently block re-import (regression: jobs left FAILED by a cancel or a
-server-restart recovery silently wedged the watch folder). A still-active or
-review-pending job for the path must still be deduped so a polling watcher
-cannot spawn duplicate jobs.
+A staging path can be re-submitted at any time (a manual re-import, a retry after
+a mistake, a server restart). Ownership, not history, decides whether that is
+allowed:
+
+* an in-flight job hard-blocks, so two jobs can never race over the same files;
+* a COMPLETED job soft-blocks, and an explicit ``force=True`` re-import overrides it;
+* a FAILED job never blocks (regression guard: jobs left FAILED by a cancel or a
+  restart recovery once silently wedged re-import).
+
+The soft tier replaced an unconditional block on every non-FAILED state, which
+was inherited from the polled watch folder PR #463 removed and left users renaming
+folders to escape it (issue #571). See
+docs/superpowers/specs/2026-08-04-import-reimport-recovery-design.md.
 """
 
 import asyncio
@@ -15,6 +22,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.models import DiscJob, JobState
+from app.services.import_guard import ImportBlock
 
 # app.services.job_manager is name-shadowed by the singleton in the package
 # __init__, so `from app.services import job_manager` yields the instance, not
@@ -56,56 +64,83 @@ async def _drain(job_id: int) -> None:
     await asyncio.gather(task)
 
 
-class TestCreateJobFromStagingDedup:
+class TestCreateJobFromStagingOwnership:
     async def test_failed_job_does_not_block_reimport(self, stub_pipeline):
         """A FAILED job for the path must not prevent a fresh import job."""
         path = r"X:\media\rips\Seinfeld"
         failed_id = await _insert_job(path, JobState.FAILED)
 
-        new_id = await job_manager.create_job_from_staging(
+        result = await job_manager.create_job_from_staging(
             staging_path=path, volume_label="SEINFELD", drive_id="import"
         )
 
-        assert new_id != -1, "FAILED job wrongly blocked re-import"
-        assert new_id != failed_id
-        await _drain(new_id)
+        assert result.job_id is not None, "FAILED job wrongly blocked re-import"
+        assert result.job_id != failed_id
+        assert result.block is None
+        await _drain(result.job_id)
 
-    async def test_active_job_still_blocks_reimport(self, stub_pipeline):
+    async def test_active_job_hard_blocks_reimport(self, stub_pipeline):
         """A non-terminal (in-flight) job for the path must still be deduped."""
         path = r"X:\media\rips\True Detective\Season 1"
-        await _insert_job(path, JobState.IDENTIFYING)
+        jid = await _insert_job(path, JobState.IDENTIFYING)
 
         result = await job_manager.create_job_from_staging(
             staging_path=path, volume_label="SEASON_1", drive_id="import"
         )
 
-        assert result == -1, "active job should still dedup to prevent duplicates"
+        assert result.job_id is None, "active job should still dedup to prevent duplicates"
+        assert result.block is ImportBlock.IN_FLIGHT
+        assert result.blocking_job_ids == (jid,)
 
-    async def test_review_needed_job_still_blocks_reimport(self, stub_pipeline):
-        """A REVIEW_NEEDED job must still dedup (files remain in the watch folder)."""
+    async def test_review_needed_job_hard_blocks_reimport(self, stub_pipeline):
+        """A REVIEW_NEEDED job still owns its files: they remain on disk."""
         path = r"X:\media\rips\Deadwood"
-        await _insert_job(path, JobState.REVIEW_NEEDED)
+        jid = await _insert_job(path, JobState.REVIEW_NEEDED)
 
         result = await job_manager.create_job_from_staging(
             staging_path=path, volume_label="DEADWOOD", drive_id="import"
         )
 
-        assert result == -1, "review-pending job should still dedup"
+        assert result.job_id is None, "review-pending job should still dedup"
+        assert result.block is ImportBlock.IN_FLIGHT
+        assert result.blocking_job_ids == (jid,)
 
-    async def test_completed_job_still_blocks_reimport(self, stub_pipeline):
-        """A COMPLETED job must still dedup.
-
-        Unlike the disc path (which excludes COMPLETED), a watch folder is polled
-        continuously, so a completed import must not re-spawn a duplicate job while
-        its files still sit in the watch folder. This is a deliberate policy — the
-        guard blocks every state except FAILED — and this test pins it so a future
-        change that mirrors the disc filter can't silently regress it.
-        """
+    async def test_completed_job_soft_blocks_reimport(self, stub_pipeline):
+        """A COMPLETED job blocks by default, and names itself so the UI can offer force."""
         path = r"X:\media\rips\Sopranos"
-        await _insert_job(path, JobState.COMPLETED)
+        jid = await _insert_job(path, JobState.COMPLETED)
 
         result = await job_manager.create_job_from_staging(
             staging_path=path, volume_label="SOPRANOS", drive_id="import"
         )
 
-        assert result == -1, "completed import should still dedup"
+        assert result.job_id is None
+        assert result.block is ImportBlock.ALREADY_IMPORTED
+        assert result.blocking_job_ids == (jid,)
+
+    async def test_force_overrides_a_completed_job(self, stub_pipeline):
+        """force=True re-imports a finished path: the fix for issue #571."""
+        path = r"X:\media\rips\Sopranos"
+        old_id = await _insert_job(path, JobState.COMPLETED)
+
+        result = await job_manager.create_job_from_staging(
+            staging_path=path, volume_label="SOPRANOS", drive_id="import", force=True
+        )
+
+        assert result.job_id is not None, "force must override a completed import"
+        assert result.job_id != old_id
+        assert result.block is None
+        await _drain(result.job_id)
+
+    async def test_force_never_overrides_an_in_flight_job(self, stub_pipeline):
+        """The hard tier is not forceable: a second job would race the first."""
+        path = r"X:\media\rips\True Detective\Season 1"
+        jid = await _insert_job(path, JobState.RIPPING)
+
+        result = await job_manager.create_job_from_staging(
+            staging_path=path, volume_label="SEASON_1", drive_id="import", force=True
+        )
+
+        assert result.job_id is None, "force must not defeat an in-flight job"
+        assert result.block is ImportBlock.IN_FLIGHT
+        assert result.blocking_job_ids == (jid,)
