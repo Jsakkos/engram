@@ -95,6 +95,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
     setSelected(path);
     setPreview(null);
     setError(null);
+    setConflict(null);
     try {
       const result = await previewImport(path);
       if (seq !== chooseSeq.current) return; // a newer selection superseded this one
@@ -622,12 +623,21 @@ function ConflictPanel({
     </div>
   );
 
-  const row = (key: string, text: string) => (
-    <div
-      key={key}
-      style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim, padding: "2px 0" }}
-    >
-      {text}
+  const row = (b: BlockedUnit, text: string) => (
+    <div key={b.unit_key} style={{ padding: "2px 0" }}>
+      <div style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>{text}</div>
+      <div
+        style={{
+          fontFamily: sv.mono,
+          fontSize: 9,
+          color: sv.inkFaint,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {b.display_path}
+      </div>
     </div>
   );
 
@@ -650,14 +660,14 @@ function ConflictPanel({
       {hard.length > 0 && (
         <>
           {heading("ALREADY PROCESSING")}
-          {hard.map((b) => row(b.unit_key, `${label(b)} (job ${b.job_ids.join(", ")})`))}
+          {hard.map((b) => row(b, `${label(b)} (job ${b.job_ids.join(", ")})`))}
         </>
       )}
 
       {soft.length > 0 && (
         <>
           {heading("PREVIOUSLY IMPORTED")}
-          {soft.map((b) => row(b.unit_key, label(b)))}
+          {soft.map((b) => row(b, label(b)))}
           <button
             onClick={onForce}
             disabled={busy}

@@ -221,7 +221,11 @@ describe("ImportModal", () => {
       ],
     });
 
-    fireEvent.click(screen.getByTestId("import-force-btn"));
+    const forceBtn = screen.getByTestId("import-force-btn");
+    fireEvent.click(forceBtn);
+
+    // Disabled the moment the re-send is in flight, so a fast second click can't double-submit.
+    expect(forceBtn).toBeDisabled();
 
     // Only the already_imported unit is forced; the in_flight one is never forceable.
     await waitFor(() =>
@@ -239,6 +243,8 @@ describe("ImportModal", () => {
       blocked: [blockedUnit({ reason: "in_flight", job_ids: [9] })],
     });
     expect(screen.getByText(/already processing/i)).toBeInTheDocument();
+    // The owning job id must stay visible: it's the only way to find the live job.
+    expect(screen.getByText(/job 9/i)).toBeInTheDocument();
     expect(screen.queryByTestId("import-force-btn")).not.toBeInTheDocument();
   });
 
@@ -252,5 +258,34 @@ describe("ImportModal", () => {
     vi.mocked(client.startImport).mockResolvedValueOnce({ job_ids: [12], blocked: [] });
     fireEvent.click(screen.getByTestId("import-force-btn"));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("clears the stale conflict panel when the user switches to a different folder", async () => {
+    await startAndExpectConflict({ job_ids: [], blocked: [blockedUnit()] });
+
+    // Switch selection to a different folder before acting on the old panel.
+    fireEvent.change(screen.getByTestId("import-path-input"), {
+      target: { value: "/media/Other Show" },
+    });
+    fireEvent.submit(screen.getByTestId("import-path-form"));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("import-conflict-panel")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("identifies an unnamed unit by its display_path instead of a bare 'Unknown'", async () => {
+    await startAndExpectConflict({
+      job_ids: [],
+      blocked: [
+        blockedUnit({
+          unit_key: "key-unknown",
+          show_name: null,
+          season: null,
+          display_path: "/media/Unsorted Movie Folder",
+        }),
+      ],
+    });
+    expect(screen.getByText("/media/Unsorted Movie Folder")).toBeInTheDocument();
   });
 });
