@@ -383,6 +383,7 @@ export interface BlockedUnit {
   job_ids: number[];
 }
 
+/** Result of {@link startImport}: jobs created plus any units it refused. */
 export interface ImportStartResult {
   job_ids: number[];
   blocked: BlockedUnit[];
@@ -395,6 +396,13 @@ export interface ImportStartResult {
  * failing the whole call. Re-send with those units' `unit_key` values in
  * `forceKeys` to re-import ones whose prior job has completed; `in_flight`
  * blocks are never forceable.
+ *
+ * `unit_key` values are only valid when re-sent with the SAME `path`: the
+ * server regenerates keys by re-scanning that root and re-deriving each
+ * unit's dedup path. A key sent against a different path matches nothing and
+ * is silently discarded, i.e. the unit appears in neither `job_ids` nor
+ * `blocked`. Re-browsing to a different path invalidates any keys collected
+ * so far.
  */
 export async function startImport(
   path: string,

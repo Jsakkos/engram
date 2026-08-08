@@ -48,4 +48,25 @@ describe("import client", () => {
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(body.force_keys).toEqual(["abc123"]);
   });
+
+  it("startImport surfaces blocked units with their server field names", async () => {
+    const fetchMock = mockJson({
+      job_ids: [],
+      blocked: [
+        {
+          unit_key: "k1",
+          show_name: "Seinfeld",
+          season: 1,
+          display_path: "/x/Season 1",
+          reason: "already_imported",
+          job_ids: [7],
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await startImport("/x", "library");
+    expect(res.blocked[0].unit_key).toBe("k1");
+    expect(res.blocked[0].reason).toBe("already_imported");
+    expect(res.blocked[0].job_ids).toEqual([7]);
+  });
 });
