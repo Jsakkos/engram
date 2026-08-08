@@ -214,7 +214,7 @@ function MainDashboard() {
   }, [isConnected]);
 
   // Disc filtering and transformation
-  const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
+  const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount, failedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
 
   // Browser notifications for job state changes
   useNotifications(jobs);
@@ -416,11 +416,11 @@ function MainDashboard() {
             </button>
           </div>
 
-          {completedCount > 0 && (
+          {completedCount + failedCount > 0 && (
             <button
               onClick={clearCompleted}
               data-testid="sv-clear-btn"
-              title="Clear Completed"
+              title="Clear Finished"
               style={{
                 ...svButtonBase,
                 padding: "6px 12px",

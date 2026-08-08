@@ -251,17 +251,24 @@ export function useJobManagement(devMode: boolean = false) {
 
     async function clearCompleted() {
         try {
-            const completedJobs = jobs.filter(j => j.state === 'completed');
+            // Both terminal states. DELETE /api/jobs/{id} already accepts COMPLETED
+            // and FAILED; only this filter was narrower, which left failed jobs with
+            // no dismissal affordance anywhere in the UI.
+            // NOTE: raw Job state, so 'failed'. The 'error' rename happens in the
+            // Disc adapter, which this hook does not use.
+            const finishedJobs = jobs.filter(
+                j => j.state === 'completed' || j.state === 'failed',
+            );
             await Promise.all(
-                completedJobs.map(job =>
+                finishedJobs.map(job =>
                     apiFetchVoid(`/api/jobs/${job.id}`, { method: 'DELETE' }),
                 ),
             );
             // Refresh jobs
             await fetchJobsAndTitles();
         } catch (error) {
-            console.error('Failed to clear completed jobs:', error);
-            toast.error('Failed to clear completed jobs. Please try again.');
+            console.error('Failed to clear finished jobs:', error);
+            toast.error('Failed to clear finished jobs. Please try again.');
         }
     }
 
