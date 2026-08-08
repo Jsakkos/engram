@@ -4,11 +4,6 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
-### Fixed
-
-- Re-importing a folder that was already imported no longer fails with an unactionable conflict. A finished import now warns and offers "Re-import Anyway" instead of blocking permanently, so correcting a mistaken season or show no longer requires renaming the source folder, as long as the source files are still there; a completed library-mode import moves its files out of staging, so those need to be put back first (#571)
-- Importing a folder where only some seasons were previously imported no longer closes the dialog and silently skips them; every skipped unit is now listed with the reason (#571)
-- Failed jobs can now be dismissed from the dashboard. The clear action covers both finished states rather than completed jobs only (#571)
 ### Added
 
 - **Movie naming is configurable now, the same way TV naming already was.** Settings → Preferences → Naming & extras gains a **Movie Folder Format** and a **Movie Filename Format**, with `{title}`, `{year}`, `{tmdb_id}`, and, on the filename, `{edition}`. Two same-titled movies can finally sit side by side by adding the id tag your media server expects, Plex `{title} ({year}) {{tmdb-{tmdb_id}}}` or Jellyfin `{title} ({year}) [tmdbid-{tmdb_id}]`, exactly as TV shows could. Leave the filename format blank and it reuses your folder format, so customizing one carries through to the other instead of the two quietly drifting apart. (#576, thanks @DrAquafreshhh!)
@@ -19,6 +14,9 @@ All notable changes to Engram will be documented in this file.
 - **Plex edition tags were mangled.** Choosing an edition in the review queue wrote `{Edition Final Cut}` instead of `{edition-Final Cut}`, which Plex cannot read, because the tag was pasted into the movie title and then run through the disc-label cleaner. Editions are now handled separately and land on the filename, where Plex looks for them: `Blade Runner (1982) {edition-Final Cut}.mkv`. (#576)
 - **Movie titles from TMDB were being garbled.** The cleaner that turns a disc label like `THE_SOCIAL_NETWORK` into `The Social Network` was also being applied to titles TMDB had already returned correctly, so `Spider-Man: No Way Home` was filed as `Spider Man No Way Home`, `WALL-E` as `Wall E`, and `Se7en` as `Se7En`. Titles that come from TMDB now keep their own punctuation and capitalization, apart from the handful of characters no filesystem allows. This also applies when you correct a movie's identity from the review queue, which previously re-garbled the title you had just fixed. (#576)
 - **Movie discs were looked up against the TV catalog.** When working out a release year, Engram sent movie TMDB ids to the TV endpoint, which returns either nothing or an unrelated series that happens to share the number. Year lookups now follow the disc's content type. (#576)
+- Re-importing a folder that was already imported no longer fails with an unactionable conflict. A finished import now warns and offers "Re-import Anyway" instead of blocking permanently, so correcting a mistaken season or show no longer requires renaming the source folder, as long as the source files are still there; a completed library-mode import moves its files out of staging, so those need to be put back first (#571)
+- Importing a folder where only some seasons were previously imported no longer closes the dialog and silently skips them; every skipped unit is now listed with the reason (#571)
+- Failed jobs can now be dismissed from the dashboard. The clear action covers both finished states rather than completed jobs only (#571)
 
 ## [0.28.2] - 2026-07-31
 
