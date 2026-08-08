@@ -27,7 +27,7 @@ beforeEach(() => {
     total_bytes: 100,
     truncated: false,
   });
-  vi.spyOn(client, "startImport").mockResolvedValue({ job_ids: [1] });
+  vi.spyOn(client, "startImport").mockResolvedValue({ job_ids: [1], blocked: [] });
 });
 
 describe("ImportModal", () => {
@@ -44,7 +44,7 @@ describe("ImportModal", () => {
     await waitFor(() => expect(client.previewImport).toHaveBeenCalledWith("/media/King of Queens"));
     const startBtn = await screen.findByTestId("import-start-btn");
     fireEvent.click(startBtn);
-    await waitFor(() => expect(client.startImport).toHaveBeenCalledWith("/media/King of Queens", "library"));
+    await waitFor(() => expect(client.startImport).toHaveBeenCalledWith("/media/King of Queens", "library", []));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
@@ -183,5 +183,74 @@ describe("ImportModal", () => {
 
     await waitFor(() => expect(screen.getByText("King of Queens")).toBeInTheDocument());
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+  });
+
+  const blockedUnit = (over: Partial<client.BlockedUnit> = {}): client.BlockedUnit => ({
+    unit_key: "key-s1",
+    show_name: "King of Queens",
+    season: 1,
+    display_path: "/media/King of Queens/Season 1",
+    reason: "already_imported",
+    job_ids: [7],
+    ...over,
+  });
+
+  async function startAndExpectConflict(result: client.ImportStartResult) {
+    vi.mocked(client.startImport).mockResolvedValueOnce(result);
+    const onClose = vi.fn();
+    render(<ImportModal onClose={onClose} defaultPath="/media" defaultDestinationMode="library" />);
+    await waitFor(() => screen.getByText("King of Queens"));
+    fireEvent.click(screen.getByText("King of Queens"));
+    fireEvent.click(await screen.findByTestId("import-start-btn"));
+    await waitFor(() => expect(screen.getByTestId("import-conflict-panel")).toBeInTheDocument());
+    return onClose;
+  }
+
+  it("keeps the modal open and reports blocked units instead of closing silently", async () => {
+    const onClose = await startAndExpectConflict({ job_ids: [], blocked: [blockedUnit()] });
+    expect(screen.getByText(/previously imported/i)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("re-imports only the soft-blocked units when Re-import Anyway is pressed", async () => {
+    await startAndExpectConflict({
+      job_ids: [],
+      blocked: [
+        blockedUnit(),
+        blockedUnit({ unit_key: "key-s2", season: 2, reason: "in_flight", job_ids: [9] }),
+      ],
+    });
+
+    fireEvent.click(screen.getByTestId("import-force-btn"));
+
+    // Only the already_imported unit is forced; the in_flight one is never forceable.
+    await waitFor(() =>
+      expect(client.startImport).toHaveBeenLastCalledWith(
+        "/media/King of Queens",
+        "library",
+        ["key-s1"],
+      ),
+    );
+  });
+
+  it("offers no force action when every block is in flight", async () => {
+    await startAndExpectConflict({
+      job_ids: [],
+      blocked: [blockedUnit({ reason: "in_flight", job_ids: [9] })],
+    });
+    expect(screen.getByText(/already processing/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("import-force-btn")).not.toBeInTheDocument();
+  });
+
+  it("reports how many units started when only some were blocked", async () => {
+    await startAndExpectConflict({ job_ids: [11], blocked: [blockedUnit()] });
+    expect(screen.getByText(/started 1 of 2/i)).toBeInTheDocument();
+  });
+
+  it("closes once a forced re-import succeeds", async () => {
+    const onClose = await startAndExpectConflict({ job_ids: [], blocked: [blockedUnit()] });
+    vi.mocked(client.startImport).mockResolvedValueOnce({ job_ids: [12], blocked: [] });
+    fireEvent.click(screen.getByTestId("import-force-btn"));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 });

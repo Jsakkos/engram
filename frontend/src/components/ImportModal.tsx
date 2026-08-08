@@ -8,7 +8,9 @@ import {
   browseDir,
   previewImport,
   startImport,
+  type BlockedUnit,
   type BrowseEntry,
+  type ImportStartResult,
   type PreviewResult,
 } from "../api/client";
 
@@ -28,6 +30,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const [destMode, setDestMode] = useState<"library" | "in_place">(defaultDestinationMode);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // Set when a start attempt came back with blocked units. Holds the modal open
+  // so the user can act on them instead of the modal closing on a silent skip.
+  const [conflict, setConflict] = useState<ImportStartResult | null>(null);
   const [pathInput, setPathInput] = useState(defaultPath || "");
   const [landmark, setLandmark] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -115,18 +120,41 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
     [pathInput, navigate, choose],
   );
 
-  const onStart = useCallback(async () => {
-    if (!selected || !preview || preview.total_jobs === 0) return;
-    setStarting(true);
-    setError(null);
-    try {
-      await startImport(selected, destMode);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed to start");
-      setStarting(false);
-    }
-  }, [selected, preview, destMode, onClose]);
+  const runImport = useCallback(
+    async (forceKeys: string[]) => {
+      if (!selected) return;
+      setStarting(true);
+      setError(null);
+      try {
+        const res = await startImport(selected, destMode, forceKeys);
+        if (res.blocked.length === 0) {
+          onClose();
+          return;
+        }
+        setConflict(res);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Import failed to start");
+      } finally {
+        setStarting(false);
+      }
+    },
+    [selected, destMode, onClose],
+  );
+
+  const onStart = useCallback(() => {
+    if (!preview || preview.total_jobs === 0) return;
+    setConflict(null);
+    void runImport([]);
+  }, [preview, runImport]);
+
+  // Only already_imported units are forceable. in_flight blocks are excluded here
+  // and have no button, because a second job would race the live one.
+  const onForce = useCallback(() => {
+    const keys = (conflict?.blocked ?? [])
+      .filter((b) => b.reason === "already_imported")
+      .map((b) => b.unit_key);
+    if (keys.length > 0) void runImport(keys);
+  }, [conflict, runImport]);
 
   const seasonsByShow = (p: PreviewResult) => {
     const map = new Map<string, typeof p.units>();
@@ -378,6 +406,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                   <Notice text="This folder is very large; only part of it was scanned." />
                 )}
                 {error && <Notice text={error} tone="error" />}
+                {conflict && (
+                  <ConflictPanel result={conflict} onForce={onForce} busy={starting} />
+                )}
               </div>
 
               {/* Destination */}
@@ -548,6 +579,106 @@ function Notice({ text, tone = "warn" }: { text: string; tone?: "warn" | "error"
     >
       <IcoError size={14} color={color} style={{ flexShrink: 0, marginTop: 1 }} />
       <span style={{ fontFamily: sv.mono, fontSize: 10, color, lineHeight: 1.5 }}>{text}</span>
+    </div>
+  );
+}
+
+/**
+ * Blocked-unit report shown in place of closing the modal.
+ *
+ * Deliberately an inline panel rather than a nested modal: a dismissed modal in
+ * this app can leave a stuck opacity-0 overlay that swallows clicks under
+ * automation, and nesting one here would put that hazard directly in the path of
+ * this feature's E2E test.
+ */
+function ConflictPanel({
+  result,
+  onForce,
+  busy,
+}: {
+  result: ImportStartResult;
+  onForce: () => void;
+  busy: boolean;
+}) {
+  const soft = result.blocked.filter((b) => b.reason === "already_imported");
+  const hard = result.blocked.filter((b) => b.reason === "in_flight");
+  const total = result.job_ids.length + result.blocked.length;
+
+  const label = (b: BlockedUnit) =>
+    `${b.show_name ?? "Unknown"}${b.season != null ? ` · Season ${b.season}` : ""}`;
+
+  const heading = (text: string) => (
+    <div
+      style={{
+        fontFamily: sv.mono,
+        fontSize: 9,
+        letterSpacing: "0.15em",
+        color: sv.inkFaint,
+        marginTop: 8,
+        marginBottom: 4,
+      }}
+    >
+      {text}
+    </div>
+  );
+
+  const row = (key: string, text: string) => (
+    <div
+      key={key}
+      style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim, padding: "2px 0" }}
+    >
+      {text}
+    </div>
+  );
+
+  return (
+    <div
+      data-testid="import-conflict-panel"
+      style={{
+        marginTop: 10,
+        padding: "10px 12px",
+        border: `1px solid ${sv.yellow}4d`,
+        background: `${sv.yellow}14`,
+      }}
+    >
+      {result.job_ids.length > 0 && (
+        <div style={{ fontFamily: sv.mono, fontSize: 11, color: sv.yellow }}>
+          Started {result.job_ids.length} of {total}.
+        </div>
+      )}
+
+      {hard.length > 0 && (
+        <>
+          {heading("ALREADY PROCESSING")}
+          {hard.map((b) => row(b.unit_key, `${label(b)} (job ${b.job_ids.join(", ")})`))}
+        </>
+      )}
+
+      {soft.length > 0 && (
+        <>
+          {heading("PREVIOUSLY IMPORTED")}
+          {soft.map((b) => row(b.unit_key, label(b)))}
+          <button
+            onClick={onForce}
+            disabled={busy}
+            data-testid="import-force-btn"
+            style={{
+              marginTop: 8,
+              fontFamily: sv.mono,
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.1em",
+              padding: "6px 12px",
+              border: `1px solid ${sv.yellow}`,
+              background: "transparent",
+              color: sv.yellow,
+              cursor: busy ? "not-allowed" : "pointer",
+            }}
+          >
+            RE-IMPORT ANYWAY
+          </button>
+        </>
+      )}
     </div>
   );
 }
