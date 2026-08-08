@@ -9,7 +9,7 @@ import type {
   SubtitleEvent,
   WebSocketMessage,
   FingerprintDisclosureRequiredMessage,
-} from "../../types";
+} from "../../../types";
 
 // ---------------------------------------------------------------------------
 // Mocks for the hook-level integration tests below.
@@ -25,7 +25,7 @@ vi.mock("sonner", () => ({
 let capturedOnOpen: (() => void) | undefined;
 let capturedListener: ((msg: WebSocketMessage) => void) | undefined;
 
-vi.mock("../useWebSocket", () => ({
+vi.mock("../../../hooks/useWebSocket", () => ({
   useWebSocket: (
     _url: string,
     options?: { onOpen?: () => void },
@@ -45,7 +45,7 @@ vi.mock("../useWebSocket", () => ({
 }));
 
 // Imported after the mocks so the hook picks up the mocked useWebSocket.
-import { useJobManagement } from "../../app/hooks/useJobManagement";
+import { useJobManagement } from "../useJobManagement";
 
 /**
  * Tests for the job management logic extracted from useJobManagement.
