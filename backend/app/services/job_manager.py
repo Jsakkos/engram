@@ -177,7 +177,8 @@ class JobManager:
         # Per staging-path lock guarding create_job_from_staging's check->insert,
         # mirroring _drive_locks for the disc path. create_job_from_staging is
         # reachable from the manual import endpoints (POST /api/import/start and
-        # POST /api/staging/import) and simulation, so concurrent calls for the
+        # POST /api/staging/import) only — /api/simulate/insert-disc-from-staging
+        # builds its own job rather than calling it — so concurrent calls for the
         # same path must not both pass the dedup guard.
         self._staging_locks: dict[str, asyncio.Lock] = {}
         self._last_job_created_at: dict[str, float] = {}

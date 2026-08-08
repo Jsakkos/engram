@@ -3043,6 +3043,11 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
     Creates a real job that skips the ripping phase and proceeds
     directly to identification, matching, and organization.
     Available in all modes (no DEBUG required).
+
+    A blocked import (``{"status": "blocked", "reason": "already_imported", ...}``)
+    cannot be forced through this endpoint; there is no ``force`` parameter here.
+    Per-unit ``force_keys`` overrides are only available on
+    ``POST /api/import/start``.
     """
     from app.services.job_manager import job_manager
 
