@@ -37,6 +37,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const [landmark, setLandmark] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const cwdRef = useRef<string | null>(null);
+  // Job ids started by this modal session (across possibly multiple
+  // runImport calls on the same folder). An in_flight block whose job_ids are
+  // all in this set is a job we ourselves just started, not a real conflict.
+  const startedJobIds = useRef<Set<number>>(new Set());
   // Monotonic request tokens so a slow earlier click can't overwrite the state
   // of a later one (navigate and choose fire together per directory click).
   const navSeq = useRef(0);
@@ -96,6 +100,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
     setPreview(null);
     setError(null);
     setConflict(null);
+    startedJobIds.current = new Set();
     try {
       const result = await previewImport(path);
       if (seq !== chooseSeq.current) return; // a newer selection superseded this one
@@ -128,11 +133,20 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
       setError(null);
       try {
         const res = await startImport(selected, destMode, forceKeys);
-        if (res.blocked.length === 0) {
+        for (const id of res.job_ids) startedJobIds.current.add(id);
+        // A block is only a genuine conflict if it isn't fully covered by jobs
+        // this session already started: a rescan during a forced re-import can
+        // reclassify a job we just kicked off (still IDENTIFYING) as in_flight,
+        // reporting our own success back to us as a conflict.
+        const unresolved = res.blocked.filter(
+          (b) =>
+            !(b.reason === "in_flight" && b.job_ids.every((id) => startedJobIds.current.has(id))),
+        );
+        if (unresolved.length === 0) {
           onClose();
           return;
         }
-        setConflict(res);
+        setConflict({ ...res, blocked: unresolved });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Import failed to start");
       } finally {

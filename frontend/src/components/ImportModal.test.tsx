@@ -274,6 +274,31 @@ describe("ImportModal", () => {
     );
   });
 
+  it("closes instead of reporting a conflict when a forced re-import's own newly-started jobs come back reclassified as in_flight", async () => {
+    // First call: one unit starts (job 11), two soft-blocked as already_imported.
+    const onClose = await startAndExpectConflict({
+      job_ids: [11],
+      blocked: [blockedUnit({ unit_key: "key-s1" }), blockedUnit({ unit_key: "key-s2", season: 2 })],
+    });
+
+    // User forces the two soft blocks. The server rescans all three units;
+    // job 11 (already started) is mid-flight and reclassifies as in_flight.
+    vi.mocked(client.startImport).mockResolvedValueOnce({
+      job_ids: [21, 22],
+      blocked: [
+        blockedUnit({
+          unit_key: "key-s3",
+          season: 3,
+          reason: "in_flight",
+          job_ids: [11],
+        }),
+      ],
+    });
+    fireEvent.click(screen.getByTestId("import-force-btn"));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
   it("identifies an unnamed unit by its display_path instead of a bare 'Unknown'", async () => {
     await startAndExpectConflict({
       job_ids: [],
