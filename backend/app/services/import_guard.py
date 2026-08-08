@@ -46,6 +46,13 @@ class StagingJobResult:
     block: ImportBlock | None = None
     blocking_job_ids: tuple[int, ...] = ()
 
+    def __post_init__(self) -> None:
+        if (self.job_id is None) == (self.block is None):
+            raise ValueError(
+                "StagingJobResult requires exactly one of job_id/block to be set, "
+                f"got job_id={self.job_id!r} block={self.block!r}"
+            )
+
 
 def unit_key_for(dedup_path: str) -> str:
     """Return the stable, opaque key identifying an import unit.

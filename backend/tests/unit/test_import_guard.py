@@ -7,9 +7,12 @@ API round-trips through the client.
 
 import importlib
 
+import pytest
+
 from app.models import DiscJob, JobState
 from app.services.import_guard import (
     ImportBlock,
+    StagingJobResult,
     classify_staging_path,
     unit_key_for,
 )
@@ -118,3 +121,15 @@ class TestClassifyStagingPath:
             block, ids = await classify_staging_path(session, path)
         assert block is ImportBlock.IN_FLIGHT
         assert ids == sorted([first, second])
+
+
+class TestStagingJobResultInvariant:
+    """Structural enforcement: exactly one of job_id/block must be set."""
+
+    def test_neither_set_raises(self):
+        with pytest.raises(ValueError):
+            StagingJobResult()
+
+    def test_both_set_raises(self):
+        with pytest.raises(ValueError):
+            StagingJobResult(job_id=1, block=ImportBlock.IN_FLIGHT)
