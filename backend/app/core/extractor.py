@@ -55,6 +55,10 @@ ZERO_OUTPUT_STALL_LIMIT = 2
 # production behaviour is unchanged at 5 s.
 STALL_POLL_INTERVAL = 5.0
 
+# Seconds between output-directory polls in the rip reader loop. A module
+# constant so tests can shorten it; production behaviour is unchanged at 3 s.
+FS_POLL_INTERVAL = 3.0
+
 
 def _to_drive_spec(drive: str) -> str:
     """Normalize a drive identifier into a MakeMKV drive spec.
@@ -193,7 +197,6 @@ def _build_rip_commands(
 def should_abort_all_pass(
     opened_native: int,
     disc_title_map: dict[int, int] | None,
-    seen_native: set[int],
     skipped_indices: set[int],
 ) -> bool:
     """Whether a full-disc 'all' pass should stop at the title just opened.
@@ -201,7 +204,7 @@ def should_abort_all_pass(
     True only when BOTH hold:
 
     * the title MakeMKV just opened is user-skipped, and
-    * every title it has not opened yet is skipped too.
+    * every title still ahead of it is user-skipped too.
 
     That is exactly the case where stopping costs nothing: the previous title
     finished, the file just created is still a stub, and no wanted title
@@ -211,19 +214,28 @@ def should_abort_all_pass(
     threw away the rip in flight — which is why skipping a *later* track used
     to stop the *current* one.
 
+    "Still ahead" is ``native > opened_native``: MakeMKV saves titles in
+    ascending disc-native order, the same sequential-write assumption the
+    completion detector already makes. Ordering is deliberate rather than
+    tracking which titles have been seen — ``makemkvcon mkv <disc> all``
+    applies MakeMKV's own selection profile, so a short title the scan
+    recorded may never be written at all. A seen-set rule would leave such a
+    title outstanding forever and the abort could never fire; with ordering,
+    only a filtered title *above* the current one suppresses it, and
+    suppressing is fail-safe (the pass simply runs to the end).
+
     ``opened_native`` is MakeMKV's disc-native title number, parsed from the
     output filename. ``disc_title_map`` maps that number to the scan-order
     ``DiscTitle.title_index`` the skip set is keyed on; the two diverge on some
-    discs (issue #517). ``seen_native`` is every native number opened so far,
-    including ``opened_native``. An absent or empty map means the caller could
-    not tell us what is on the disc, so we never abort.
+    discs (issue #517). An absent or empty map means the caller could not tell
+    us what is on the disc, so we never abort.
     """
     if not disc_title_map:
         return False
     opened = disc_title_map.get(opened_native)
     if opened is None or opened not in skipped_indices:
         return False
-    remaining = {scan for native, scan in disc_title_map.items() if native not in seen_native}
+    remaining = {scan for native, scan in disc_title_map.items() if native > opened_native}
     return remaining <= skipped_indices
 
 
@@ -368,17 +380,25 @@ class TitleCompletionDetector:
     def files_incomplete_at_abort(self, sizes: dict[str, int]) -> list[str]:
         """Files to delete when the rip process was killed mid-pass.
 
-        Used only on an abort (e.g. a skip that terminates the full-disc "all"
-        pass): the ``force`` promotion path is unsafe here because the process
-        did not exit naturally, so the file MakeMKV was actively writing is
-        genuinely truncated. MakeMKV writes titles sequentially, so at a kill at
-        most one file is partial: the one whose size **grew since the last poll**
-        (or a zero-byte stub, or one never polled at all). A title that already
-        finished has a size equal to its last-polled value — even if its
-        "a later title started growing" completion gate never fired because it
-        was the most recent title when the kill landed — and MUST be preserved
-        rather than needlessly re-ripped. ``_completed`` and pre-existing
-        (``_ignored``) files are always preserved.
+        Used on an abort — a stall, or a skip that stopped a full-disc "all"
+        pass at a title boundary. The ``force`` promotion path is unsafe here
+        because the process did not exit naturally, so any file MakeMKV still
+        had open is truncated. MakeMKV writes titles sequentially, so at a kill
+        at most one file is partial: the one whose size **grew since the last
+        poll** (or a zero-byte stub, or one never polled at all).
+
+        "Since the last poll" is what couples this to the caller: the answer is
+        only correct while the recorded sizes are current. ``_boundary_abort_stub``
+        is therefore evaluated immediately after a completion poll and nowhere
+        else — at a boundary the just-created file is then provably a stub while
+        the title that just finished still matches its last-polled size. Called
+        against a reading up to ``FS_POLL_INTERVAL`` seconds stale, this would
+        condemn the finished title along with the stub. A title
+        that already finished has a size equal to its last-polled value — even
+        if its "a later title started growing" completion gate never fired
+        because it was the most recent title when the kill landed — and MUST be
+        preserved rather than needlessly re-ripped. ``_completed`` and
+        pre-existing (``_ignored``) files are always preserved.
 
         Reading ``_active`` instead would be wrong: it is the most-recently-grown
         file and is never cleared, so between one title finishing and the next
@@ -680,6 +700,7 @@ class MakeMKVExtractor:
         log_dir: Path | None = None,
         *,
         job_id: int = 0,
+        disc_title_map: dict[int, int] | None = None,
     ) -> RipResult:
         """Rip selected titles from a disc.
 
@@ -693,6 +714,12 @@ class MakeMKVExtractor:
             title_error_callback: Optional callback when a title fails (e.g., stall
                 detected). Called with (command_idx, error_reason).
             log_dir: Optional directory for saving MakeMKV rip logs
+            disc_title_map: ``{native title number: DiscTitle.title_index}`` for
+                every title a full-disc 'all' pass will produce. Used only in
+                all-pass mode, to decide at a title boundary whether the user's
+                skips have left no wanted title on the disc (see
+                ``should_abort_all_pass``). Ignored when ``title_indices`` is
+                given — a per-title pass drops skipped indices command-by-command.
 
         Returns:
             RipResult with success status and output files
@@ -714,6 +741,7 @@ class MakeMKVExtractor:
                 title_error_callback=title_error_callback,
                 log_dir=log_dir,
                 job_id=job_id,
+                disc_title_map=disc_title_map,
             )
 
     async def _rip_titles_unlocked(
@@ -727,6 +755,7 @@ class MakeMKVExtractor:
         log_dir: Path | None = None,
         *,
         job_id: int = 0,
+        disc_title_map: dict[int, int] | None = None,
     ) -> RipResult:
         """Internal rip implementation (caller must hold drive lock)."""
         self._cancelled_jobs.discard(job_id)
@@ -774,11 +803,16 @@ class MakeMKVExtractor:
         # run_rip_with_streaming) because the RipResult returns below also read it.
         region_mismatch = [False]
 
-        # Set by the reader loop when a skip lands during a full-disc "all" pass
-        # (which cannot drop one title from its single MakeMKV invocation). The
-        # RipResult returns below read it, so — like region_mismatch — it lives
-        # out here rather than inside run_rip_with_streaming.
+        # Set by the reader loop when a full-disc "all" pass is stopped at a title
+        # boundary because every remaining title is user-skipped. The RipResult
+        # returns below read it, so — like region_mismatch — it lives out here
+        # rather than inside run_rip_with_streaming.
         aborted_for_skip = [False]
+
+        # Disc-native title numbers whose output file has already appeared. A
+        # number entering this set means MakeMKV just opened that title, which
+        # is the only title boundary the 'all' pass exposes.
+        seen_native: set[int] = set()
 
         def _stall_reason() -> str:
             """The most specific reason we can give for a stall."""
@@ -828,6 +862,47 @@ class MakeMKVExtractor:
                         _fire_title_complete(fname, current_sizes[fname], ordinal)
                 except OSError as e:
                     logger.exception(f"Error checking for completed files: {e}")
+
+        def _boundary_abort_stub() -> str | None:
+            """Name of a just-opened stub the full-disc pass should stop on.
+
+            The FILESYSTEM is the reliable title-boundary signal. MakeMKV's
+            robot-mode stdout carries no "file created" line on real discs (zero
+            of 187 recorded rip logs contain one), so ``_extract_created_mkv``
+            never fires in production and cannot drive this decision.
+
+            **Call this only immediately after a completion poll.** The abort
+            path deletes partial output via ``files_incomplete_at_abort``, which
+            infers "was still growing" from the detector's last recorded size.
+            At any other moment that reading is up to ``FS_POLL_INTERVAL``
+            seconds stale, and the title that had just *finished* would be
+            condemned along with the stub — a milder form of the very bug this
+            boundary rule exists to fix.
+
+            Returns the stub's filename when the pass should stop, else None.
+            """
+            if not disc_title_map:
+                return None
+            skipped = self._skipped_indices.get(job_id, set())
+            if not skipped:
+                return None
+
+            with _fs_lock:
+                names = [p.name for p in output_dir.glob("*.mkv")]
+
+            newest: tuple[int, str] | None = None
+            for name in names:
+                native = title_index_from_filename(name)
+                if native is None or native in seen_native:
+                    continue
+                seen_native.add(native)
+                if newest is None or native > newest[0]:
+                    newest = (native, name)
+
+            if newest is None:
+                return None
+            native, name = newest
+            return name if should_abort_all_pass(native, disc_title_map, skipped) else None
 
         def run_rip_with_streaming() -> tuple[int, str, set[int]]:
             """Run ripping commands in sequence."""
@@ -973,24 +1048,6 @@ class MakeMKVExtractor:
                             process.terminate()
                             break
 
-                        # All-pass skip (issue #538): a single "mkv … all"
-                        # invocation cannot be told to drop one title, so a skip
-                        # requested mid-pass is honored by aborting here. The
-                        # titles finished before the abort are kept; the caller
-                        # re-rips the remaining not-skipped titles per-title,
-                        # where the live skip-set IS consulted. (Per-title
-                        # commands carry a real title_index and skip themselves
-                        # before starting, so this only fires for the all-pass.)
-                        if title_index is None and self._skipped_indices.get(job_id):
-                            logger.info(
-                                f"Skip requested during full-disc 'all' pass "
-                                f"(job {job_id}); aborting to re-rip the remaining "
-                                f"titles individually"
-                            )
-                            aborted_for_skip[0] = True
-                            process.terminate()
-                            break
-
                         line = line.strip()
                         if not line:
                             continue
@@ -1033,9 +1090,26 @@ class MakeMKVExtractor:
 
                         # Also check filesystem periodically from the thread
                         now = time.monotonic()
-                        if now - last_fs_check >= 3.0:
+                        if now - last_fs_check >= FS_POLL_INTERVAL:
                             _check_for_completed_files()
                             last_fs_check = now
+
+                            # Title boundary, all-pass only. Evaluated here and
+                            # nowhere else so the detector's sizes are fresh —
+                            # see _boundary_abort_stub. A per-title pass drops
+                            # skipped indices before starting each command and
+                            # must never take this path.
+                            if title_index is None:
+                                stub = _boundary_abort_stub()
+                                if stub is not None:
+                                    logger.info(
+                                        f"Job {job_id}: every remaining title is "
+                                        f"user-skipped; stopping the full-disc pass "
+                                        f"at {stub}"
+                                    )
+                                    aborted_for_skip[0] = True
+                                    process.terminate()
+                                    break
 
                     # End of process loop
                     process.wait()

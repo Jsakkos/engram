@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -133,37 +134,45 @@ class TestFilesIncompleteAtAbort:
 @pytest.mark.unit
 class TestShouldAbortAllPass:
     """A full-disc 'all' pass may only be interrupted when stopping costs
-    nothing: MakeMKV just opened a title the user skipped, and every title it
-    has not opened yet is skipped too."""
+    nothing: MakeMKV just opened a title the user skipped, and every title
+    still ahead of it is skipped too."""
 
     def test_no_abort_when_the_opened_title_is_wanted(self):
         # native -> scan index. User skipped scan index 3; MakeMKV opened 2.
         m = {1: 1, 2: 2, 3: 3}
-        assert should_abort_all_pass(2, m, {1, 2}, {3}) is False
+        assert should_abort_all_pass(2, m, {3}) is False
 
     def test_no_abort_when_a_wanted_title_still_lies_ahead(self):
         # The opened title IS skipped, but title 3 is still wanted. Killing the
         # process here would cost a full disc re-open to rip title 3 alone, and
         # would throw away whatever title 2 had written.
         m = {1: 1, 2: 2, 3: 3}
-        assert should_abort_all_pass(2, m, {1, 2}, {2}) is False
+        assert should_abort_all_pass(2, m, {2}) is False
 
     def test_aborts_when_the_opened_title_and_every_later_one_are_skipped(self):
         m = {1: 1, 2: 2, 3: 3}
-        assert should_abort_all_pass(2, m, {1, 2}, {2, 3}) is True
+        assert should_abort_all_pass(2, m, {2, 3}) is True
 
     def test_aborts_on_the_last_title_when_it_is_skipped(self):
         # The simplest instance of the rule, and the one the real caller hits
-        # when the user skips the final track: MakeMKV opened the last title on
-        # the disc, so `remaining` is empty and the subset check is vacuous.
+        # when the user skips the final track: nothing is ahead, so `remaining`
+        # is empty and the subset check is vacuous.
         m = {1: 1, 2: 2, 3: 3}
-        assert should_abort_all_pass(3, m, {1, 2, 3}, {3}) is True
+        assert should_abort_all_pass(3, m, {3}) is True
+
+    def test_an_earlier_wanted_title_does_not_block_the_abort(self):
+        # Title 1 is wanted but already behind us -- it has been ripped, or
+        # MakeMKV's selection profile filtered it out. Either way it must not
+        # suppress an abort at title 2. This is why the rule is ordering-based
+        # rather than seen-set based.
+        m = {1: 1, 2: 2, 3: 3}
+        assert should_abort_all_pass(2, m, {2, 3}) is True
 
     def test_never_aborts_without_a_disc_title_map(self):
         # No map means the caller could not tell us what is on the disc, so we
         # cannot know whether a wanted title lies ahead. Fail safe: keep ripping.
-        assert should_abort_all_pass(2, None, {2}, {2}) is False
-        assert should_abort_all_pass(2, {}, {2}, {2}) is False
+        assert should_abort_all_pass(2, None, {2}) is False
+        assert should_abort_all_pass(2, {}, {2}) is False
 
     def test_maps_native_numbering_to_the_scan_index_the_skip_set_uses(self):
         # Issue #517: MakeMKV's native title numbers can diverge from scan
@@ -171,76 +180,227 @@ class TestShouldAbortAllPass:
         # while the opened title is parsed from the output FILENAME (native).
         m = {0: 1, 1: 2, 2: 3}  # native -> scan
         # Skipped scan indices {2, 3}; MakeMKV opened native 1 (== scan 2).
-        assert should_abort_all_pass(1, m, {0, 1}, {2, 3}) is True
+        assert should_abort_all_pass(1, m, {2, 3}) is True
         # Same disc, only scan 2 skipped -> scan 3 is still wanted.
-        assert should_abort_all_pass(1, m, {0, 1}, {2}) is False
+        assert should_abort_all_pass(1, m, {2}) is False
 
     def test_unknown_native_number_never_aborts(self):
         # A filename whose _tNN does not correspond to any scanned title.
         m = {1: 1, 2: 2}
-        assert should_abort_all_pass(97, m, {1, 97}, {1, 2}) is False
+        assert should_abort_all_pass(97, m, {1, 2}) is False
+
+
+# Poll cadence the boundary tests run the reader loop at, in place of the
+# production FS_POLL_INTERVAL of 3 s.
+_TEST_POLL = 0.05
+
+
+class _RippingProc:
+    """A makemkvcon stub that writes real output files as it 'rips'.
+
+    Each step sleeps, applies its filesystem effect, then returns one robot-mode
+    line -- so the reader loop's ``FS_POLL_INTERVAL`` check runs *between* steps,
+    against state the step has already written. Giving the step that OPENS a
+    title a sleep longer than the poll interval therefore guarantees the poll
+    lands while that title is still a zero-byte stub and its predecessor is at
+    its final size: exactly the title boundary the production code detects.
+
+    Once ``terminate()`` lands, stdout hits EOF and nothing further is written,
+    mirroring a killed process.
+    """
+
+    def __init__(self, steps: list[tuple[float, tuple[Path, int] | None, str]]):
+        self.returncode = None
+        self.stdout = self
+        self.stderr = None
+        self.terminated = False
+        self._steps = list(steps)
+
+    # --- stdout half ---
+    def readline(self) -> str:
+        if self.terminated or not self._steps:
+            return ""  # EOF
+        delay, effect, line = self._steps.pop(0)
+        time.sleep(delay)
+        if effect is not None:
+            path, size = effect
+            path.write_bytes(b"\0" * size)
+        return line + "\n"
+
+    # --- process half ---
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+        self.returncode = 1
+
+    def wait(self, timeout=None):
+        if self.returncode is None:
+            self.returncode = 0  # natural completion
+        return self.returncode
+
+
+def _rip_steps(
+    output_dir: Path, natives: list[int], *, final_size: int = 4096
+) -> list[tuple[float, tuple[Path, int] | None, str]]:
+    """Steps for a sequential 'all' pass over *natives*, in disc order.
+
+    Lines are the ones real MakeMKV rip logs actually contain (PRGC/PRGV);
+    notably there is no "file created" line, because no real log has one.
+    """
+    steps: list[tuple[float, tuple[Path, int] | None, str]] = []
+    for native in natives:
+        path = output_dir / f"TEST_t{native:02d}.mkv"
+        # Opening the next title IS the boundary. Sleep past the poll interval
+        # first so the reader loop polls with this stub still at zero bytes.
+        steps.append((_TEST_POLL * 3, (path, 0), 'PRGC:5017,0,"Saving to MKV file"'))
+        for quarter in (1, 2, 3, 4):
+            steps.append(
+                (0.005, (path, final_size * quarter // 4), f"PRGV:{quarter * 16384},65536,65536")
+            )
+        steps.append((0.005, None, 'PRGC:5057,0,"Analyzing seamless segments"'))
+    return steps
 
 
 @pytest.mark.unit
 class TestAllPassSkipAbort:
-    """A full-disc 'all' pass cannot drop one title from a running makemkvcon,
-    so a skip requested during the pass must abort it — the caller then re-rips
-    the remaining not-skipped titles individually (issue #538)."""
+    """A skip during a full-disc 'all' pass is honored at TITLE BOUNDARIES only:
+    a new ``*_tNN.mkv`` appears in the output dir, and the pass stops there when
+    that title and every later one are skipped. A skip that lands mid-title must
+    never interrupt the title being written."""
 
-    async def test_all_pass_aborts_when_a_title_is_skipped(self, tmp_path):
-        procs: list[_FakeProc] = []
+    async def test_does_not_abort_mid_title_when_a_later_track_is_skipped(self, tmp_path):
+        # The exact user-reported regression: while title 1 is being written the
+        # user skips title 2, which has not been ripped yet. The pass MUST run
+        # on -- title 1's rip is not thrown away, and title 2 is dropped later by
+        # the caller once MakeMKV finishes writing it. The old rule terminated
+        # makemkvcon on the very next stdout line.
+        procs: list[_RippingProc] = []
 
         def _fake_popen(cmd, **kwargs):
-            proc = _FakeProc(["PRGV:1,2,65536", "PRGV:3,4,65536", "PRGV:5,6,65536"])
+            proc = _RippingProc(_rip_steps(tmp_path, [1, 2, 3]))
             procs.append(proc)
             return proc
 
         ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
-        # User skipped a title while the single 'all' pass is running.
-        ex.skip_title_index(11, 2)
+        ex.skip_title_index(21, 2)
 
-        with patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen):
+        with (
+            patch("app.core.extractor.FS_POLL_INTERVAL", _TEST_POLL),
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+        ):
             result = await ex.rip_titles(
                 "/dev/sr0",
                 tmp_path,
                 title_indices=None,  # full-disc 'all' pass
-                stall_timeout=0,  # no stall watchdog for this test
-                job_id=11,
+                stall_timeout=0,
+                job_id=21,
+                disc_title_map={1: 1, 2: 2, 3: 3},
             )
 
-        assert result.aborted_for_skip is True
-        # The pass is aborted, not failed — already-ripped titles are kept and
-        # the caller re-rips the rest per-title.
-        assert result.success is True
-        assert procs and procs[0].terminated is True
+        assert result.aborted_for_skip is False
+        assert procs and procs[0].terminated is False
+        # Every title on the disc was written, including the skipped one.
+        assert {p.name for p in tmp_path.glob("*.mkv")} == {
+            "TEST_t01.mkv",
+            "TEST_t02.mkv",
+            "TEST_t03.mkv",
+        }
 
-    async def test_all_pass_abort_deletes_incomplete_output(self, tmp_path):
-        # A partial file the interrupted title was mid-write on must be removed
-        # so it is never handed to matching (it is re-ripped per-title instead).
-        partial = tmp_path / "title_t00.mkv"
-        partial.write_bytes(b"x" * 4096)
+    async def test_aborts_at_the_boundary_when_every_remaining_title_is_skipped(self, tmp_path):
+        # Title 1 finished; MakeMKV opens title 2. Both 2 and 3 are skipped, so
+        # no wanted title is left and stopping costs nothing.
+        procs: list[_RippingProc] = []
 
         def _fake_popen(cmd, **kwargs):
-            return _FakeProc(["PRGV:1,2,65536", "PRGV:3,4,65536"])
+            proc = _RippingProc(_rip_steps(tmp_path, [1, 2, 3]))
+            procs.append(proc)
+            return proc
 
         ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
-        ex.skip_title_index(12, 5)
+        ex.skip_title_index(22, 2)
+        ex.skip_title_index(22, 3)
 
-        with patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen):
+        with (
+            patch("app.core.extractor.FS_POLL_INTERVAL", _TEST_POLL),
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+        ):
             result = await ex.rip_titles(
                 "/dev/sr0",
                 tmp_path,
                 title_indices=None,
                 stall_timeout=0,
-                job_id=12,
+                job_id=22,
+                disc_title_map={1: 1, 2: 2, 3: 3},
             )
 
         assert result.aborted_for_skip is True
-        assert not partial.exists()
+        assert result.success is True
+        assert procs and procs[0].terminated is True
+        # Title 3 was never opened -- the pass stopped one title early.
+        assert not (tmp_path / "TEST_t03.mkv").exists()
+
+    async def test_boundary_abort_preserves_the_finished_title_and_deletes_the_stub(self, tmp_path):
+        # The point of evaluating the boundary immediately after a completion
+        # poll. The abort deletes "anything that grew since the last poll", so a
+        # stale reading would condemn title 1 -- which had just finished -- along
+        # with title 2's stub. Both halves are asserted here: the finished title
+        # survives intact, the stub is gone.
+        def _fake_popen(cmd, **kwargs):
+            return _RippingProc(_rip_steps(tmp_path, [1, 2, 3], final_size=8192))
+
+        ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+        ex.skip_title_index(23, 2)
+        ex.skip_title_index(23, 3)
+
+        with (
+            patch("app.core.extractor.FS_POLL_INTERVAL", _TEST_POLL),
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+        ):
+            result = await ex.rip_titles(
+                "/dev/sr0",
+                tmp_path,
+                title_indices=None,
+                stall_timeout=0,
+                job_id=23,
+                disc_title_map={1: 1, 2: 2, 3: 3},
+            )
+
+        assert result.aborted_for_skip is True
+        finished = tmp_path / "TEST_t01.mkv"
+        assert finished.exists(), "the title that finished before the abort was deleted"
+        assert finished.stat().st_size == 8192, "the finished title was truncated"
+        assert not (tmp_path / "TEST_t02.mkv").exists(), "the just-opened stub was kept"
+
+    async def test_no_abort_without_a_disc_title_map(self, tmp_path):
+        # Fail-safe: an all-pass whose caller did not supply the disc contents
+        # can never conclude that nothing is left, so it always runs to the end.
+        procs: list[_RippingProc] = []
+
+        def _fake_popen(cmd, **kwargs):
+            proc = _RippingProc(_rip_steps(tmp_path, [1, 2, 3]))
+            procs.append(proc)
+            return proc
+
+        ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+        ex.skip_title_index(24, 2)
+        ex.skip_title_index(24, 3)
+
+        with (
+            patch("app.core.extractor.FS_POLL_INTERVAL", _TEST_POLL),
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+        ):
+            result = await ex.rip_titles(
+                "/dev/sr0", tmp_path, title_indices=None, stall_timeout=0, job_id=24
+            )
+
+        assert result.aborted_for_skip is False
+        assert procs and procs[0].terminated is False
 
     async def test_per_title_pass_is_not_aborted_by_skip_set(self, tmp_path):
         # In per-title mode the loop already drops skipped indices command-by-
-        # command, so it must NOT take the all-pass abort path.
+        # command, so it must NOT take the all-pass boundary path.
         def _fake_popen(cmd, **kwargs):
             return _FakeProc(["PRGV:1,2,65536"])
 
