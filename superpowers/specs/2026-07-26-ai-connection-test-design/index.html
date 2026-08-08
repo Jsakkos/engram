@@ -1,0 +1,1965 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-07-26-ai-connection-test-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>AI connection test + provider error detail - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ai-connection-test-provider-error-detail" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              AI connection test + provider error detail
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Problem">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#this-is-not-a-regression" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        This is not a regression
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-actually-broken-the-diagnosis-is-impossible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is actually broken: the diagnosis is impossible
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-more-likely-cause-a-second-silent-failure-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The more likely cause: a second, silent failure channel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-classify_provider_error-in-ai_clientpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. classify_provider_error in ai_client.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-complete_json-gains-retries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. complete_json gains retries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-post-apivalidateai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. POST /api/validate/ai
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-the-real-matcher-reports-the-same-causes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The real matcher reports the same causes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Frontend
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-honest-reasons-in-the-inspector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Honest reasons in the Inspector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-adapter-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Adapter hardening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="ai-connection-test-provider-error-detail">AI connection test + provider error detail</h1>
+<p>Date: 2026-07-26
+Status: Approved, ready for implementation planning</p>
+<h2 id="problem">Problem</h2>
+<p>A user reported that LLM episode matching does not work for them, including with a
+paid OpenAI account. The dashboard showed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Request failed (503 Service Unavailable): {&quot;suggestion&quot;:null,&quot;reason&quot;:&quot;llm_error&quot;}
+</code></pre></div>
+<p>and the backend log showed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>app.core.errors.AIProviderError: gemini request failed: Client error &#39;429 Too Many
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>Requests&#39; for url &#39;https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent&#39;
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>POST /api/jobs/182/titles/1436/llm-match HTTP/1.1&quot; 503
+</code></pre></div>
+<h3 id="this-is-not-a-regression">This is not a regression</h3>
+<p><code>git log v0.24.0..HEAD</code> over the entire LLM-match call chain (<code>ai_client.py</code>,
+<code>llm_episode_matcher.py</code>, <code>curator.py</code>, <code>tmdb_client.py</code>, <code>ripping_helpers.py</code>,
+<code>app_config.py</code>, <code>config_service.py</code>, <code>ReviewQueue.tsx</code>, <code>Inspector.tsx</code>,
+<code>client.ts</code>) shows the only touching commits are #533, #525, #508 and #501, none
+of which affect AI matching. The two files that matter last changed in
+<code>eeb36be5</code> on 2026-06-06, shipped in v0.16.3. The 24 unit tests in
+<code>test_ai_client.py</code> and <code>test_llm_episode_matcher.py</code> pass.</p>
+<p>The log line above is itself proof the pipeline works: transcription completed,
+TMDB synopses were fetched, the prompt was built, and the HTTP request reached
+the provider. The provider refused it.</p>
+<h3 id="what-is-actually-broken-the-diagnosis-is-impossible">What is actually broken: the diagnosis is impossible</h3>
+<p>Provider failure information is destroyed at three layers.</p>
+<ol>
+<li><strong>The response body is discarded.</strong> <code>resp.raise_for_status()</code> raises
+   <code>httpx.HTTPStatusError</code>, whose string carries status and URL but not the body.
+   <code>ai_client.py:113</code> logs that bare exception. The body is the only thing that
+   distinguishes OpenAI's <code>rate_limit_exceeded</code> (transient) from
+   <code>insufficient_quota</code> (permanent, no credits).</li>
+<li><strong>Every failure collapses to one reason.</strong> <code>AIProviderError</code> becomes
+   <code>LLMMatchOutcome.failed("llm_error")</code> at <code>routes.py:4339</code>. Bad key, no
+   credits, throttling, model not enabled, DNS failure and timeout are
+   indistinguishable.</li>
+<li><strong>The UI renders the raw error.</strong> <code>ReviewQueue.tsx:429</code> catches the 503 and
+   shows <code>ApiError.message</code>, which is <code>Request failed (503 ...): {body}</code>
+   (<code>client.ts:16</code>). The comment at <code>ReviewQueue.tsx:413</code> still claims the
+   endpoint always returns 200, which stopped being true when #350 added the 503
+   contract; the frontend was never updated to map those reasons.</li>
+</ol>
+<h3 id="the-more-likely-cause-a-second-silent-failure-channel">The more likely cause: a second, silent failure channel</h3>
+<p>The <code>llm_error</code> path above is only the visible half. There is a second channel
+that produces no error at all, and it fits the report better.</p>
+<p><code>llmFeedback.ts:26</code> collapses <strong>every</strong> non-<code>internal_error</code> reason into a single
+sentence:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">tone</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;warn&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">text</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;No confident AI match found.&#39;</span><span class="w"> </span><span class="p">};</span>
+</code></pre></div>
+<p>That branch is reached by <code>ai_disabled</code>, <code>not_configured</code>, <code>no_show</code>,
+<code>no_season</code>, <code>show_not_found</code> and <code>no_match</code> alike. So a user whose AI key is
+not set clicks "Try AI match", waits through a full Whisper transcription, and
+is told the AI ran and found nothing. It never ran. The differentiated 200
+reasons that #350 built on the backend are discarded by the frontend, which was
+never updated to consume them; the same oversight left the stale
+"endpoint always returns 200" comment at <code>ReviewQueue.tsx:413</code> and a test at
+<code>llmFeedback.test.ts:23</code> still asserting against <code>no_suggestion</code>, a reason the
+backend no longer emits.</p>
+<p>Combined with the nesting bug in #546, this reproduces the user's report exactly
+and without any provider fault: the API key field is hidden unless AI disc
+identification is enabled, so the key is never set, so every attempt returns
+<code>not_configured</code>, so the UI says "No confident AI match found" forever. Buying a
+paid OpenAI account would not change that message.</p>
+<p>Two provider-response shapes reach the same dead end, both confirmed by probing
+<code>complete_json</code> with a mocked transport:</p>
+<ul>
+<li><strong>Truncated JSON</strong> (what OpenAI returns when <code>finish_reason == "length"</code>)
+  fails <code>json.loads</code>, and <code>_parse_json_text</code> returns <code>None</code>. <code>complete_json</code>
+  returns <code>None</code> <em>even when <code>raise_on_error=True</code></em>, so it becomes <code>no_match</code>
+  and a 200. <code>_call_openai_compatible</code> never inspects <code>finish_reason</code>, which
+  OpenAI's own documentation says to check before parsing.</li>
+<li><strong><code>"content": null</code></strong>, which OpenAI sends on a refusal, hits
+  <code>.get("content", "")</code> returning <code>None</code> rather than <code>""</code>, so
+  <code>_parse_json_text(None)</code> raises <code>AttributeError</code>. That is not an
+  <code>AIProviderError</code>, so <code>raise_on_error</code> re-raises it unwrapped, the
+  <code>except AIProviderError</code> in <code>_run_llm_match_for_title</code> misses it, and the
+  endpoint's bare <code>except Exception</code> turns it into a 500 <code>internal_error</code>. The
+  same <code>.get(key, "")</code>-returns-<code>None</code> pattern exists in the Anthropic
+  (<code>content[0].get("text", "")</code>) and Gemini (<code>parts[0].get("text", "")</code>)
+  adapters.</li>
+</ul>
+<p>Two further findings:</p>
+<ul>
+<li><code>_with_429_retry</code> (<code>ai_client.py:38</code>) retries every 429 three times with
+  backoff. OpenAI returns 429 for <code>insufficient_quota</code>, which never resolves, so
+  a credit-less key costs four requests and roughly seven seconds of backoff
+  before reporting the same opaque error.</li>
+<li>A credential problem is only discovered <em>after</em> 1 to 3 minutes of Whisper
+  transcription, because <code>_run_llm_match_for_title</code> transcribes before it ever
+  contacts the provider. There is no cheap pre-flight check anywhere in the app.</li>
+</ul>
+<h2 id="goals">Goals</h2>
+<ol>
+<li>Let a user verify AI provider credentials in one click, before spending a
+   transcription run, and get a specific reason when they do not work.</li>
+<li>Make every AI provider failure, including those during real matching, report
+   a specific cause rather than <code>llm_error</code>.</li>
+<li>Never tell a user "No confident AI match found" when the matcher did not run.
+   This is the highest-priority item of the three: it is the failure mode most
+   likely to be behind the report, the fix is frontend-only, and it is what makes
+   users conclude the feature is broken when it is merely unconfigured.</li>
+</ol>
+<h2 id="non-goals">Non-goals</h2>
+<p>Filed as separate follow-up issues, deliberately out of this bundle:</p>
+<ul>
+<li>Un-nesting the AI provider dropdown, key field and "AI-Powered Episode
+  Matching (TV)" toggle from <code>{config.aiIdentificationEnabled &amp;&amp; ...}</code> at
+  <code>ConfigWizard.tsx:1135</code>, which currently makes episode matching
+  unconfigurable unless disc identification is also enabled.</li>
+<li>Clearing the "Key saved" badge when the user switches provider, so a stale
+  key from a previous provider cannot be silently reused.</li>
+</ul>
+<h2 id="design">Design</h2>
+<h3 id="1-classify_provider_error-in-ai_clientpy">1. <code>classify_provider_error</code> in <code>ai_client.py</code></h3>
+<p>A single function shared by both features:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">classify_provider_error</span><span class="p">(</span><span class="n">provider</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">exc</span><span class="p">:</span> <span class="ne">Exception</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Return (code, human_message) for an httpx failure.&quot;&quot;&quot;</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+<th>Typical trigger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bad_key</code></td>
+<td>Provider rejected the credential</td>
+<td>401, or Gemini 400 <code>INVALID_ARGUMENT</code> on the key</td>
+</tr>
+<tr>
+<td><code>no_credits</code></td>
+<td>Key is valid, account cannot pay</td>
+<td>OpenAI 429 <code>insufficient_quota</code>, OpenRouter 402</td>
+</tr>
+<tr>
+<td><code>rate_limited</code></td>
+<td>Transient throttling, retry helps</td>
+<td>OpenAI 429 <code>rate_limit_exceeded</code>, Gemini 429 <code>RESOURCE_EXHAUSTED</code></td>
+</tr>
+<tr>
+<td><code>model_unavailable</code></td>
+<td>Key lacks access to the default model</td>
+<td>404 <code>model_not_found</code>, 403 <code>PERMISSION_DENIED</code></td>
+</tr>
+<tr>
+<td><code>bad_request</code></td>
+<td>Request shape rejected</td>
+<td>400 that is not a credential problem</td>
+</tr>
+<tr>
+<td><code>network</code></td>
+<td>Could not reach the provider</td>
+<td><code>httpx.ConnectError</code></td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>No response in time</td>
+<td><code>httpx.TimeoutException</code></td>
+</tr>
+<tr>
+<td><code>unknown</code></td>
+<td>Anything else</td>
+<td>5xx, unparseable body</td>
+</tr>
+</tbody>
+</table>
+<p>The function reads <code>exc.response.text</code> where present, caps it (2 KB) and never
+echoes it verbatim to the UI; the human message is composed by Engram. The
+provider-specific identifiers above are the expected shapes and <strong>must be
+confirmed against captured live error bodies during implementation</strong>, per the
+project's fixture-fidelity rule. Note that OpenRouter signals exhausted credit
+with HTTP 402 rather than OpenAI's 429, so the two cannot share a status-only
+branch.</p>
+<p><code>AIProviderError</code> gains <code>code: str</code> and <code>detail: str</code> attributes so the
+classification survives the trip up the stack. Existing constructor calls keep
+working; both fields default.</p>
+<h3 id="2-complete_json-gains-retries">2. <code>complete_json</code> gains <code>retries</code></h3>
+<p>Add <code>retries: int = MAX_RETRIES</code> and thread it into <code>_with_429_retry</code>. The test
+endpoint passes <code>retries=0</code> so a dead key fails in one request instead of
+absorbing the backoff ladder.</p>
+<p>Independently, <code>_with_429_retry</code> stops retrying when <code>classify_provider_error</code>
+returns <code>no_credits</code>: a permanently exhausted quota does not recover within the
+retry window, and the current behaviour only adds latency to a guaranteed
+failure.</p>
+<h3 id="3-post-apivalidateai">3. <code>POST /api/validate/ai</code></h3>
+<p>Lives in <code>backend/app/api/validation.py</code> beside the existing validators, reuses
+the existing <code>ValidationResponse</code> model, and is gated by
+<code>require_localhost_or_lan</code>. The gate matters here in a way it does not for the
+other validators: this endpoint spends the user's money, so it must not be
+reachable from a LAN peer unless the user has explicitly opted in via
+<code>allow_lan_access</code>.</p>
+<p>Request:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;provider&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;openai&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;api_key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sk-...&quot;</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p><code>api_key</code> is optional. When omitted or blank, the endpoint falls back to the key
+stored in config. This is the primary support case: the user already saved a key,
+it does not work, and they do not have it available to re-paste. The stored key
+is never returned in the response.</p>
+<p>The check calls the same entry point the matcher uses:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">await</span> <span class="n">complete_json</span><span class="p">(</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">prompt</span><span class="o">=</span><span class="s1">&#39;Reply with {&quot;ok&quot;: true} and nothing else.&#39;</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">schema</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span> <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;ok&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;boolean&quot;</span><span class="p">}}},</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">provider</span><span class="o">=</span><span class="n">provider</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">api_key</span><span class="o">=</span><span class="n">api_key</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">max_tokens</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">retries</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">raise_on_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">)</span>
+</code></pre></div>
+<p>Routing through <code>complete_json</code> rather than a bespoke HTTP call is the point of
+the design. A separate auth ping would validate a different request shape than
+the matcher sends (different endpoint, no <code>response_format</code> or <code>responseSchema</code>,
+possibly a different model) and could therefore pass while real matching fails.
+Reusing the entry point means the test can only drift if the matcher drifts with
+it. Cost is a fraction of a cent per click.</p>
+<p>Timeout for the test is 10 seconds rather than the module's 30, since a healthy
+provider answers a 16-token completion well inside that and a user waiting on a
+button should not sit for half a minute. This requires a second new parameter on
+<code>complete_json</code>, <code>timeout: float = _TIMEOUT_SECONDS</code>, threaded through to each
+<code>_call_*</code> adapter's <code>httpx.AsyncClient(timeout=...)</code>. <code>_TIMEOUT_SECONDS</code> stays
+the default, so no existing call site changes behaviour.</p>
+<p>Responses:</p>
+<ul>
+<li>Success: <code>{"valid": true, "version": "gpt-4o-mini"}</code>. Surfacing the model that
+  answered tells the user which model Engram defaults to for their provider.</li>
+<li>Failure: <code>{"valid": false, "error": "&lt;human message from the classifier&gt;"}</code>,
+  for example: <em>"OpenAI accepted the key but the account has no API credits. A
+  ChatGPT Plus subscription does not include API usage."</em></li>
+</ul>
+<h3 id="4-the-real-matcher-reports-the-same-causes">4. The real matcher reports the same causes</h3>
+<p><code>_run_llm_match_for_title</code> (<code>routes.py:4339</code>) catches <code>AIProviderError</code> and
+includes its <code>code</code> in the 503 body alongside the existing
+<code>reason: "llm_error"</code>, keeping the current contract additive:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">{</span><span class="nt">&quot;suggestion&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;llm_error&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;detail&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;no_credits&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w"> </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;OpenAI accepted the key but the account has no API credits.&quot;</span><span class="p">}</span>
+</code></pre></div>
+<p><code>llmResultToFeedback</code> in <code>ReviewQueue.tsx</code> grows a 503 branch that renders
+<code>message</code> in the Inspector instead of the raw <code>ApiError.message</code>. The stale
+"endpoint always returns 200" comment at <code>ReviewQueue.tsx:413</code> is corrected. The
+<code>LLMMatchResult</code> doc block in <code>client.ts</code> is updated to document the new fields.</p>
+<p>This half is what makes the bundle worth shipping together: without it, the test
+button explains a failure at configuration time while mid-rip and post-rip
+failures stay unreadable, and the two paths would describe the same underlying
+problem in two different vocabularies.</p>
+<h3 id="5-frontend">5. Frontend</h3>
+<p><code>frontend/src/utils/aiValidation.ts</code> mirrors <code>tmdbValidation.ts</code>, including its
+deliberate three-way split between <code>valid</code> (provider accepted), <code>invalid</code> (the
+check ran and the provider rejected) and <code>error</code> (the check could not run, so
+nothing was learned about the key). It fixes one wart in the TMDB original: when
+the field is empty and a key is saved, it omits <code>api_key</code> so the backend tests
+the stored key, rather than posting an empty string that always fails.</p>
+<p>A <strong>Test Connection</strong> button sits beside the AI key field in <code>ConfigWizard.tsx</code>,
+matching the TMDB "Test Token" button's <code>idle | testing | valid | invalid |
+error</code> states and its enable rule (<code>!testing &amp;&amp; (keyEntered || savedKeys.ai)</code>).</p>
+<p>Client-side pre-flight: <code>AI_KEY_PLACEHOLDERS</code> already encodes each provider's key
+prefix (<code>sk-ant-</code>, <code>sk-</code>, <code>sk-or-</code>, <code>AIzaSy</code>). When the entered key does not match
+the selected provider's prefix, the button reports the mismatch without spending
+a request. This is a hint, not a gate: an unrecognised prefix warns but still
+allows the test, since provider key formats change.</p>
+<h3 id="6-honest-reasons-in-the-inspector">6. Honest reasons in the Inspector</h3>
+<p><code>llmFeedback.ts</code> maps each backend reason to its own sentence instead of
+funnelling all of them into "No confident AI match found". The reason strings
+already exist and are already documented in <code>client.ts:69-81</code>; only the frontend
+mapping is missing.</p>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>Tone</th>
+<th>Message</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ai_disabled</code></td>
+<td>warn</td>
+<td>AI episode matching is turned off. Enable it in Settings.</td>
+</tr>
+<tr>
+<td><code>not_configured</code></td>
+<td>warn</td>
+<td>No AI API key is set. Add one in Settings, then use Test Connection.</td>
+</tr>
+<tr>
+<td><code>no_show</code></td>
+<td>warn</td>
+<td>This job has no detected show title, so there is nothing to match against.</td>
+</tr>
+<tr>
+<td><code>no_season</code></td>
+<td>warn</td>
+<td>This job has no detected season, so there is nothing to match against.</td>
+</tr>
+<tr>
+<td><code>show_not_found</code></td>
+<td>warn</td>
+<td>The show could not be found on TMDB.</td>
+</tr>
+<tr>
+<td><code>no_match</code></td>
+<td>warn</td>
+<td>No confident AI match found.</td>
+</tr>
+<tr>
+<td><code>internal_error</code></td>
+<td>error</td>
+<td>AI match failed. Check the server log.</td>
+</tr>
+</tbody>
+</table>
+<p>Only <code>no_match</code> keeps the current wording, because it is the only reason for
+which that wording is true.</p>
+<p>The two guard cases (<code>ai_disabled</code>, <code>not_configured</code>) are also the cheapest to
+detect, and the endpoint returns them before doing any work. The "Try AI match"
+button should be disabled with an explanatory tooltip when config says AI
+matching is unusable, so the user is not invited to spend a transcription run on
+a request that cannot succeed. <code>ReviewQueue.tsx</code> already fetches config for
+<code>aiEpisodeMatchingEnabled</code> and needs the key-present flag too. No new field is
+required: <code>GET /api/config</code> already returns <code>ai_api_key</code> as <code>"***"</code> when set and
+<code>""</code> when not (<code>routes.py:1647</code>), which is exactly how <code>ConfigWizard.tsx:296</code>
+derives its own <code>savedKeys.ai</code>. Adding an <code>ai_api_key_set</code> boolean would mean a
+new field to keep in three-way sync across <code>AppConfig</code>, <code>ConfigUpdate</code> and
+<code>ConfigResponse</code> for information the response already carries.</p>
+<p>The stale comment at <code>ReviewQueue.tsx:413</code> and the <code>no_suggestion</code> case in
+<code>llmFeedback.test.ts:23</code> are corrected as part of this.</p>
+<h3 id="7-adapter-hardening">7. Adapter hardening</h3>
+<p>Both silent-failure shapes get closed in <code>ai_client.py</code>:</p>
+<ul>
+<li><strong>Check <code>finish_reason</code> before parsing.</strong> When it is <code>length</code>, raise
+  <code>AIProviderError</code> with code <code>response_truncated</code> rather than handing truncated
+  text to <code>_parse_json_text</code>. The user then learns the response was cut off
+  instead of being told there was no match.</li>
+<li><strong>Treat a null content field as empty.</strong> Replace <code>.get("content", "")</code> with
+  <code>.get("content") or ""</code> in all three adapters (<code>_call_openai_compatible</code>,
+  <code>_call_anthropic</code>, <code>_call_gemini</code>), so a provider refusal produces a clean
+  "empty response" outcome rather than an <code>AttributeError</code> that escapes
+  <code>raise_on_error</code> and surfaces as a 500.</li>
+<li><strong>Distinguish "unparseable" from "no match."</strong> When <code>_parse_json_text</code> fails,
+  <code>complete_json</code> currently returns <code>None</code>, which the matcher cannot tell apart
+  from a legitimate no-match. Under <code>raise_on_error=True</code> it should raise
+  <code>AIProviderError</code> with code <code>malformed_response</code> instead. The default
+  (<code>raise_on_error=False</code>) keeps returning <code>None</code>, so the in-pipeline fallback in
+  <code>curator._maybe_add_llm_suggestion</code> is unaffected.</li>
+</ul>
+<h3 id="8-testing">8. Testing</h3>
+<p>Backend unit:</p>
+<ul>
+<li><code>classify_provider_error</code> against captured verbatim 4xx bodies from all four
+  providers, one case per code in the table.</li>
+<li><code>complete_json(retries=0)</code> issues exactly one request on a 429.</li>
+<li><code>_with_429_retry</code> does not retry when the classifier returns <code>no_credits</code>.</li>
+<li>A <code>finish_reason: "length"</code> response raises <code>response_truncated</code>, not <code>None</code>.</li>
+<li>A <code>"content": null</code> response returns cleanly rather than raising
+  <code>AttributeError</code>, for all three adapters.</li>
+<li>Unparseable JSON raises <code>malformed_response</code> under <code>raise_on_error=True</code> and
+  still returns <code>None</code> under the default, so <code>curator._maybe_add_llm_suggestion</code>
+  keeps its current behaviour.</li>
+</ul>
+<p>Backend route:</p>
+<ul>
+<li><code>/api/validate/ai</code> with <code>complete_json</code> mocked: success, each failure code,
+  stored-key fallback when <code>api_key</code> is omitted, empty-provider rejection, and
+  LAN rejection when <code>allow_lan_access</code> is off.</li>
+<li><code>llm-match</code> 503 body carries <code>detail</code> and <code>message</code>.</li>
+</ul>
+<p>Frontend:</p>
+<ul>
+<li>vitest for <code>aiValidation.ts</code> covering valid, invalid, network failure,
+  non-JSON response and the omitted-key path.</li>
+<li>vitest for the button's state transitions and the prefix-mismatch hint.</li>
+<li>vitest for <code>llmResultToFeedback</code>: one case per row of the reason table, plus
+  the 503 branch. The existing <code>no_suggestion</code> case is replaced with <code>no_match</code>.</li>
+<li>vitest that the "Try AI match" button is disabled when AI matching is off or
+  no key is set.</li>
+</ul>
+<h2 id="open-questions">Open questions</h2>
+<p>None. Provider error-body shapes are stated as expected values above and are to
+be verified against live captures during implementation, which is a build step
+rather than a design decision.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
