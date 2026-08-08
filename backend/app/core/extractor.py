@@ -190,6 +190,43 @@ def _build_rip_commands(
     return [(idx, [*base, str(idx), output_dir]) for idx in title_indices]
 
 
+def should_abort_all_pass(
+    opened_native: int,
+    disc_title_map: dict[int, int] | None,
+    seen_native: set[int],
+    skipped_indices: set[int],
+) -> bool:
+    """Whether a full-disc 'all' pass should stop at the title just opened.
+
+    True only when BOTH hold:
+
+    * the title MakeMKV just opened is user-skipped, and
+    * every title it has not opened yet is skipped too.
+
+    That is exactly the case where stopping costs nothing: the previous title
+    finished, the file just created is still a stub, and no wanted title
+    remains on the disc. Any other skip is honored by letting the pass run to
+    the end and deleting the skipped title's file once MakeMKV finishes it
+    (``job_manager._on_title_ripped``). Killing the process mid-title instead
+    threw away the rip in flight — which is why skipping a *later* track used
+    to stop the *current* one.
+
+    ``opened_native`` is MakeMKV's disc-native title number, parsed from the
+    output filename. ``disc_title_map`` maps that number to the scan-order
+    ``DiscTitle.title_index`` the skip set is keyed on; the two diverge on some
+    discs (issue #517). ``seen_native`` is every native number opened so far,
+    including ``opened_native``. An absent or empty map means the caller could
+    not tell us what is on the disc, so we never abort.
+    """
+    if not disc_title_map:
+        return False
+    opened = disc_title_map.get(opened_native)
+    if opened is None or opened not in skipped_indices:
+        return False
+    remaining = {scan for native, scan in disc_title_map.items() if native not in seen_native}
+    return remaining <= skipped_indices
+
+
 def _safe_callback(cb: Callable, *args, label: str) -> None:
     """Invoke a user-supplied callback, logging (but not raising) any exception.
 

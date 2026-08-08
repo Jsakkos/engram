@@ -8,6 +8,7 @@ from app.core.extractor import (
     RipResult,
     TitleCompletionDetector,
     _build_rip_commands,
+    should_abort_all_pass,
 )
 
 
@@ -127,6 +128,57 @@ class TestFilesIncompleteAtAbort:
             {"t00.mkv": 1000, "pre_existing.mkv": 2000, "t01.mkv": 9999}
         )
         assert set(doomed) == {"t01.mkv"}  # completed + ignored preserved
+
+
+@pytest.mark.unit
+class TestShouldAbortAllPass:
+    """A full-disc 'all' pass may only be interrupted when stopping costs
+    nothing: MakeMKV just opened a title the user skipped, and every title it
+    has not opened yet is skipped too."""
+
+    def test_no_abort_when_the_opened_title_is_wanted(self):
+        # native -> scan index. User skipped scan index 3; MakeMKV opened 2.
+        m = {1: 1, 2: 2, 3: 3}
+        assert should_abort_all_pass(2, m, {1, 2}, {3}) is False
+
+    def test_no_abort_when_a_wanted_title_still_lies_ahead(self):
+        # The opened title IS skipped, but title 3 is still wanted. Killing the
+        # process here would cost a full disc re-open to rip title 3 alone, and
+        # would throw away whatever title 2 had written.
+        m = {1: 1, 2: 2, 3: 3}
+        assert should_abort_all_pass(2, m, {1, 2}, {2}) is False
+
+    def test_aborts_when_the_opened_title_and_every_later_one_are_skipped(self):
+        m = {1: 1, 2: 2, 3: 3}
+        assert should_abort_all_pass(2, m, {1, 2}, {2, 3}) is True
+
+    def test_aborts_on_the_last_title_when_it_is_skipped(self):
+        # The simplest instance of the rule, and the one the real caller hits
+        # when the user skips the final track: MakeMKV opened the last title on
+        # the disc, so `remaining` is empty and the subset check is vacuous.
+        m = {1: 1, 2: 2, 3: 3}
+        assert should_abort_all_pass(3, m, {1, 2, 3}, {3}) is True
+
+    def test_never_aborts_without_a_disc_title_map(self):
+        # No map means the caller could not tell us what is on the disc, so we
+        # cannot know whether a wanted title lies ahead. Fail safe: keep ripping.
+        assert should_abort_all_pass(2, None, {2}, {2}) is False
+        assert should_abort_all_pass(2, {}, {2}, {2}) is False
+
+    def test_maps_native_numbering_to_the_scan_index_the_skip_set_uses(self):
+        # Issue #517: MakeMKV's native title numbers can diverge from scan
+        # order. The skip set is keyed on DiscTitle.title_index (scan order),
+        # while the opened title is parsed from the output FILENAME (native).
+        m = {0: 1, 1: 2, 2: 3}  # native -> scan
+        # Skipped scan indices {2, 3}; MakeMKV opened native 1 (== scan 2).
+        assert should_abort_all_pass(1, m, {0, 1}, {2, 3}) is True
+        # Same disc, only scan 2 skipped -> scan 3 is still wanted.
+        assert should_abort_all_pass(1, m, {0, 1}, {2}) is False
+
+    def test_unknown_native_number_never_aborts(self):
+        # A filename whose _tNN does not correspond to any scanned title.
+        m = {1: 1, 2: 2}
+        assert should_abort_all_pass(97, m, {1, 97}, {1, 2}) is False
 
 
 @pytest.mark.unit
