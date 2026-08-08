@@ -461,9 +461,10 @@ describe("useJobManagement hook integration", () => {
     window.location = realLocation;
   });
 
-  it("clearCompleted deletes both completed and failed jobs", async () => {
-    // Regression guard for the bug where clearCompleted only filtered on
-    // 'completed', leaving failed jobs with no dismissal path anywhere in the UI.
+  it("clearFinished deletes both completed and failed jobs", async () => {
+    // Regression guard for the bug where clearFinished (then named
+    // clearCompleted) only filtered on 'completed', leaving failed jobs with no
+    // dismissal path anywhere in the UI.
     const completedJob = makeJob(1, { state: "completed" });
     const failedJob = makeJob(2, { state: "failed" });
     const rippingJob = makeJob(3, { state: "ripping" });
@@ -490,7 +491,7 @@ describe("useJobManagement hook integration", () => {
     });
 
     await act(async () => {
-      await result.current.clearCompleted();
+      await result.current.clearFinished();
     });
 
     expect(deleteCalls).toEqual(

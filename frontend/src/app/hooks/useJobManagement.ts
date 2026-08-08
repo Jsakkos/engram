@@ -249,7 +249,7 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
-    async function clearCompleted() {
+    async function clearFinished() {
         try {
             // Both terminal states. DELETE /api/jobs/{id} already accepts COMPLETED
             // and FAILED; only this filter was narrower, which left failed jobs with
@@ -464,7 +464,7 @@ export function useJobManagement(devMode: boolean = false) {
         armedDrives,
         cancelJob,
         advanceJob,
-        clearCompleted,
+        clearFinished,
         setJobName,
         reIdentifyJob,
         disclosure,

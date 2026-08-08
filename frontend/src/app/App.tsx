@@ -168,7 +168,7 @@ function MainDashboard() {
   }, [showImport]);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, clearCompleted, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, clearFinished, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   useUpdateSuccessToast(updateStatus);
   const whatsNew = useWhatsNewModal(updateStatus, setupComplete);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
@@ -418,7 +418,7 @@ function MainDashboard() {
 
           {completedCount + failedCount > 0 && (
             <button
-              onClick={clearCompleted}
+              onClick={clearFinished}
               data-testid="sv-clear-btn"
               title="Clear Finished"
               style={{

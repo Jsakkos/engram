@@ -40,7 +40,7 @@ function mockJobs(jobs: Job[]) {
         armedDrives: {},
         cancelJob: vi.fn(),
         advanceJob: vi.fn(),
-        clearCompleted: vi.fn(),
+        clearFinished: vi.fn(),
         setJobName: vi.fn(),
         reIdentifyJob: vi.fn(),
         disclosure: null,
@@ -424,5 +424,28 @@ describe('App — background effects preference', () => {
 
         await screen.findByTestId('sv-atmosphere');
         expect(screen.queryByTestId('sv-rip-animation')).not.toBeInTheDocument();
+    });
+});
+
+describe('App — clear-finished button gate', () => {
+    it('renders the clear button for a dashboard holding only a failed job', async () => {
+        // Regression guard for the bug where a dashboard with zero completed jobs
+        // (only failed ones) rendered no clear button at all, leaving failed jobs
+        // permanently undismissable. Uses the real useDiscFilters (only
+        // useJobManagement is mocked in this file), so this exercises the actual
+        // completedCount + failedCount gate in App.tsx end to end.
+        mockJobs([makeJob({ id: 1, state: 'failed' })]);
+        renderApp();
+
+        expect(await screen.findByTestId('sv-clear-btn')).toBeInTheDocument();
+    });
+
+    it('does not render the clear button when there are no finished jobs', async () => {
+        mockJobs([makeJob({ id: 1, state: 'ripping' })]);
+        renderApp();
+
+        // Let the dashboard settle before asserting an absence.
+        await screen.findByText('DISC');
+        expect(screen.queryByTestId('sv-clear-btn')).not.toBeInTheDocument();
     });
 });
