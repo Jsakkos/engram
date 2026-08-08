@@ -31,12 +31,21 @@ describe("import client", () => {
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
   });
 
-  it("startImport posts path and destination", async () => {
-    const fetchMock = mockJson({ job_ids: [1, 2] });
+  it("startImport posts path, destination, and force keys", async () => {
+    const fetchMock = mockJson({ job_ids: [1, 2], blocked: [] });
     vi.stubGlobal("fetch", fetchMock);
     const res = await startImport("/x", "library");
     expect(res.job_ids).toEqual([1, 2]);
+    expect(res.blocked).toEqual([]);
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-    expect(body).toEqual({ path: "/x", destination_mode: "library" });
+    expect(body).toEqual({ path: "/x", destination_mode: "library", force_keys: [] });
+  });
+
+  it("startImport forwards explicit force keys", async () => {
+    const fetchMock = mockJson({ job_ids: [3], blocked: [] });
+    vi.stubGlobal("fetch", fetchMock);
+    await startImport("/x", "library", ["abc123"]);
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.force_keys).toEqual(["abc123"]);
   });
 });
