@@ -27,6 +27,67 @@ Two contributing defects, also fixed:
 
 ---
 
+## CORRECTION (2026-08-08, during execution of Task 2)
+
+Code review of the first Task 2 attempt found two Critical defects in the mechanism this plan
+originally specified. Both were independently confirmed by measurement, so the boundary
+DETECTION method below is superseded. The approach (stop only at a title boundary, only when
+nothing wanted remains) is unchanged.
+
+**1. The chosen boundary signal does not exist in real MakeMKV output.** The plan keyed the
+boundary off `_extract_created_mkv`, which requires the literal substring `created` plus a
+quoted `.mkv` path. Across the 187 real `~/.engram/logs/makemkv/*/rip.log` files on this
+machine, **zero** contain `created`; only 4 mention `.mkv` at all, and those are
+`MSG:5003 "Failed to save title ..."` errors. The one log with an `MSG:5014,0,1,"file
+TEST_t01.mkv"` line is a synthetic fixture, and it lacks `created` too. So
+`_extract_created_mkv` effectively never fires in production and cannot drive the abort.
+
+(This does not contradict the diagnosis of the reported bug: the #539 abort it replaces keyed
+off `self._skipped_indices.get(job_id)` on every stdout line, which does fire.)
+
+What MakeMKV 1.18.x actually emits per title is a `PRGC:5057,<n>` / `PRGC:5017,<n>` pair whose
+second field is a per-title ordinal (0..N-1, one pair per saved title). That ordinal indexes
+MakeMKV's own save order, not `DiscTitle.title_index`, so it is not directly usable as an
+identity either.
+
+**2. At a boundary, `files_incomplete_at_abort` deletes the title that just FINISHED.** It
+infers "was still growing" from the last polled size, and the completion poll runs on a 3s
+cadence. A boundary is precisely the moment that reading is stale, so the finished title reads
+as `size > prev` and is condemned. Verified by execution:
+
+```
+poll({t01: 900}); poll({t01: 1000}); seed(t02)          # boundary, _known stale
+files_incomplete_at_abort({t01: 1050, t02: 0}) -> ['t01.mkv', 't02.mkv']   # WRONG
+poll({t01: 900}); poll({t01: 1050, t02: 0})              # poll AT the boundary
+files_incomplete_at_abort({t01: 1050, t02: 0}) -> ['t02.mkv']              # correct
+```
+
+That is a milder form of the very symptom this work exists to fix.
+
+**Corrected design: detect the boundary from the FILESYSTEM, evaluated immediately after a
+completion poll.** A new `*_tNN.mkv` appearing in the staging dir is the boundary, and it is a
+version- and locale-independent signal that the extractor already gathers. Evaluating right
+after `_check_for_completed_files()` makes `_known` current by construction, which fixes defect
+2 for free.
+
+Two consequential follow-ons:
+
+- `should_abort_all_pass` drops its `seen_native` parameter and computes `remaining` as
+  `{scan for native, scan in disc_title_map.items() if native > opened_native}`. MakeMKV saves
+  titles in ascending native order (the module already relies on sequential writing). Ordering
+  is also more robust than set membership here: `makemkvcon mkv <disc> all` applies MakeMKV's
+  own selection profile, so a short title the scan saw may never be written at all. Under the
+  membership rule such a title stays in `remaining` forever and the abort can never fire; under
+  the ordering rule only filtered titles *above* the current one block it, and blocking is
+  fail-safe (the rip simply runs to the end).
+- The reader loop's hardcoded `3.0` poll cadence becomes a module constant `FS_POLL_INTERVAL`
+  so tests can shorten it, mirroring the existing `STALL_POLL_INTERVAL`.
+
+Tasks 1 and 2 below are superseded by this correction. Tasks 3-9 are unaffected except that
+Task 3 still supplies `disc_title_map` exactly as written.
+
+---
+
 ## File Structure
 
 **Backend (modify):**
