@@ -301,6 +301,7 @@ class ConfigResponse(BaseModel):
     naming_season_format: str
     naming_episode_format: str
     naming_movie_format: str
+    naming_movie_file_format: str
     naming_tv_show_format: str
     # Episode ordering (#200) — global default output ordering
     episode_ordering_preference: str
@@ -390,6 +391,7 @@ class ConfigUpdate(BaseModel):
     naming_season_format: str | None = None
     naming_episode_format: str | None = None
     naming_movie_format: str | None = None
+    naming_movie_file_format: str | None = None
     naming_tv_show_format: str | None = None
     # Episode ordering (#200) — global default output ordering
     episode_ordering_preference: str | None = None
@@ -1570,6 +1572,7 @@ async def get_config() -> ConfigResponse:
         naming_season_format=config.naming_season_format,
         naming_episode_format=config.naming_episode_format,
         naming_movie_format=config.naming_movie_format,
+        naming_movie_file_format=config.naming_movie_file_format,
         naming_tv_show_format=config.naming_tv_show_format,
         # Episode ordering (#200)
         episode_ordering_preference=config.episode_ordering_preference,
@@ -1703,6 +1706,7 @@ async def update_config(config: ConfigUpdate) -> dict:
     # Validate naming format strings before persisting
     from app.core.organizer import (
         ALLOWED_EPISODE_PLACEHOLDERS,
+        ALLOWED_MOVIE_FILE_PLACEHOLDERS,
         ALLOWED_MOVIE_PLACEHOLDERS,
         ALLOWED_TV_PLACEHOLDERS,
         ALLOWED_TV_SHOW_PLACEHOLDERS,
@@ -1713,6 +1717,7 @@ async def update_config(config: ConfigUpdate) -> dict:
         ("naming_season_format", ALLOWED_TV_PLACEHOLDERS),
         ("naming_episode_format", ALLOWED_EPISODE_PLACEHOLDERS),
         ("naming_movie_format", ALLOWED_MOVIE_PLACEHOLDERS),
+        ("naming_movie_file_format", ALLOWED_MOVIE_FILE_PLACEHOLDERS),
         ("naming_tv_show_format", ALLOWED_TV_SHOW_PLACEHOLDERS),
     ]
     for field, allowed in format_checks:

@@ -2997,6 +2997,25 @@ class JobManager:
             # release the session before the blocking organize so no DB
             # connection is held across it (mirrors the rip itself).
             job.state = JobState.ORGANIZING
+            # Read identity while the session is still open; the organize below
+            # runs after it closes, so `job` is no longer usable there.
+            _tmdb_year = job.tmdb_year
+            _tmdb_id = job.tmdb_id
+            # Skip clean_movie_name only when the title being passed IS the
+            # canonical TMDB title (see the same guard in apply_review).
+            _already_clean = bool(job.tmdb_name) and detected_title == job.tmdb_name
+            # An edition chosen in review before the title had been ripped is
+            # persisted on the title; this path is where that rip finishes, so it
+            # has to carry the edition through or the choice is silently dropped.
+            # Read it off the title actually being organized. `ripped_titles` was
+            # filtered by is_selected at query time, but on a multi-cut disc
+            # `_resolve_multi_title_movie` narrows the selection by mutating
+            # is_selected in place and then returns False to fall through here, so
+            # the list can still hold deselected entries and index 0 is just DB order.
+            _selected = next((t for t in ripped_titles if t.is_selected), None)
+            if _selected is None and ripped_titles:
+                _selected = ripped_titles[0]
+            _edition = _selected.edition if _selected else None
             await session.commit()
 
         await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
@@ -3006,6 +3025,10 @@ class JobManager:
             output_dir,
             volume_label,
             detected_title,
+            _tmdb_year,
+            tmdb_id=_tmdb_id,
+            edition=_edition,
+            already_clean=_already_clean,
         )
 
         async with async_session() as session:

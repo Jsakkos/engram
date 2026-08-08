@@ -187,6 +187,45 @@ def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
     return None
 
 
+def _resolve_movie_year(tmdb_id: int | None, signal=None) -> int | None:
+    """Release year for a movie, for library-folder disambiguation.
+
+    Mirrors ``_resolve_show_year`` but reads the MOVIE endpoint. No-network fast
+    path: the search signal already carries the year. Universal fallback: cached
+    TMDB movie details. Returns None when unknown, and the organizer then degrades
+    to a year-less folder. Sync (blocking on the fallback), so call it via
+    ``asyncio.to_thread``.
+    """
+    # Falsy guard (not ``is None``) so a 0/empty id short-circuits instead of
+    # making a pointless fetch_movie_details(0) call.
+    if not tmdb_id:
+        return None
+    signal_year = getattr(signal, "year", None) if signal else None
+    if signal_year:
+        return signal_year
+    from app.matcher.tmdb_client import fetch_movie_details
+
+    details = fetch_movie_details(tmdb_id)
+    if details:
+        rd = (details.get("release_date") or "")[:4]
+        if rd.isdigit():
+            return int(rd)
+    return None
+
+
+def _resolve_year(content_type, tmdb_id: int | None, signal=None) -> int | None:
+    """Content-type-aware year resolution.
+
+    Movies previously fell through to ``_resolve_show_year``, which queries
+    ``/tv/{id}`` with a MOVIE id: that silently returns either nothing or an
+    unrelated show's first-air year. Every ``job.tmdb_year`` assignment goes
+    through this dispatcher so the two can never diverge again (#576).
+    """
+    if content_type == ContentType.MOVIE:
+        return _resolve_movie_year(tmdb_id, signal)
+    return _resolve_show_year(tmdb_id, signal)
+
+
 def _resolve_tmdb_display_name(tmdb_id: int, content_type: ContentType) -> str | None:
     """Best-effort display name for a tmdb_id (the disc network returns only an id).
 
@@ -376,7 +415,7 @@ class IdentificationCoordinator:
                 job.tmdb_name = analysis.tmdb_name
                 job.candidates_json = _candidates_json_from_signal(tmdb_signal)
                 job.tmdb_year = await asyncio.to_thread(
-                    _resolve_show_year, analysis.tmdb_id, tmdb_signal
+                    _resolve_year, analysis.content_type, analysis.tmdb_id, tmdb_signal
                 )
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
@@ -887,10 +926,12 @@ class IdentificationCoordinator:
             job.tmdb_name = signal.tmdb_name
             job.candidates_json = _candidates_json_from_signal(signal)
             try:
-                job.tmdb_year = await asyncio.to_thread(_resolve_show_year, signal.tmdb_id, signal)
+                job.tmdb_year = await asyncio.to_thread(
+                    _resolve_year, job.content_type, signal.tmdb_id, signal
+                )
             except Exception as e:
                 logger.warning(
-                    f"Job {job.id}: could not resolve show year for tmdb_id={signal.tmdb_id}: {e}",
+                    f"Job {job.id}: could not resolve year for tmdb_id={signal.tmdb_id}: {e}",
                     exc_info=True,
                 )
                 job.tmdb_year = None
@@ -970,7 +1011,7 @@ class IdentificationCoordinator:
                 _signal = getattr(analysis, "_tmdb_signal", None)
                 job.candidates_json = _candidates_json_from_signal(_signal)
                 job.tmdb_year = await asyncio.to_thread(
-                    _resolve_show_year, analysis.tmdb_id, _signal
+                    _resolve_year, analysis.content_type, analysis.tmdb_id, _signal
                 )
                 job.is_ambiguous_movie = analysis.is_ambiguous_movie
                 if analysis.play_all_title_indices:
@@ -1411,6 +1452,13 @@ class IdentificationCoordinator:
                             job.tmdb_id = _signal.tmdb_id
                             if _signal.tmdb_name:
                                 job.detected_title = _signal.tmdb_name
+                                # Record the provenance too, not just the value.
+                                # The organizer skips its volume-label normalizer
+                                # only when the title in use IS the TMDB title, so
+                                # leaving this unset re-corrupted the canonical name
+                                # (Spider-Man -> Spider Man) on the very path a user
+                                # takes to correct a bad identification (#576).
+                                job.tmdb_name = _signal.tmdb_name
                     else:
                         job.tmdb_degraded_reason = TMDB_DEGRADED_NOT_CONFIGURED
                 except TmdbAuthError as e:
@@ -1433,7 +1481,7 @@ class IdentificationCoordinator:
             # (cache-miss + offline) lookup fails — so a transient TMDB outage
             # can't blank a good year, but a stale year isn't carried across an
             # identity change to a different show.
-            _year = await asyncio.to_thread(_resolve_show_year, job.tmdb_id, _signal)
+            _year = await asyncio.to_thread(_resolve_year, job.content_type, job.tmdb_id, _signal)
             if _year is None and job.tmdb_id == _old_tmdb_id:
                 _year = _old_year
             job.tmdb_year = _year

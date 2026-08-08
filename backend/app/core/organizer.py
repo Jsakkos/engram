@@ -25,7 +25,12 @@ ALLOWED_TV_PLACEHOLDERS = {
 ALLOWED_TV_SHOW_PLACEHOLDERS = {"show", "year", "tmdb_id"}
 # Episode *filename* format — widened so the year can opt into the filename too.
 ALLOWED_EPISODE_PLACEHOLDERS = {"show", "season", "episode", "year", "tmdb_id"}
-ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year"}
+# Movie *folder* format. Mirrors ALLOWED_TV_SHOW_PLACEHOLDERS so movies can carry
+# the same Plex "{tmdb-NNNN}" / Jellyfin "[tmdbid-NNNN]" disambiguation tags (#576).
+ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year", "tmdb_id"}
+# Movie *filename* format. Adds {edition} because Plex reads the edition tag off
+# the FILE, not the folder (#576).
+ALLOWED_MOVIE_FILE_PLACEHOLDERS = {"title", "year", "tmdb_id", "edition"}
 
 
 def format_season_folder(fmt: str, season: int) -> str:
@@ -76,15 +81,76 @@ def format_episode_filename(
     return sanitize_filename(result)
 
 
-def format_movie_folder(fmt: str, title: str, year: int | None) -> str:
-    """Format a movie folder name from a config format string."""
+def format_movie_folder(
+    fmt: str, title: str, year: int | None, tmdb_id: str | int | None = None
+) -> str:
+    """Format a movie folder name from a config format string.
+
+    Mirrors ``format_tv_show_folder``: ``{tmdb_id}`` lets same-name movies coexist
+    (Plex ``{tmdb-NNNN}`` / Jellyfin ``[tmdbid-NNNN]``). Empty groups are stripped
+    when year/id are missing, so a stable id tag never degrades to ``Blade Runner
+    {tmdb-}``. ``format_map`` (not ``format(**...)``) keeps an unknown placeholder
+    raising KeyError into the safe fallback while avoiding CodeQL's
+    missing-named-argument false positive (see ``format_season_folder``). A falsy
+    or whitespace-only ``fmt`` falls back to the bare title, matching
+    ``format_tv_show_folder``.
+    """
+    fmt = (fmt or "").strip()
+    if not fmt:
+        return sanitize_filename(title)
     try:
-        result = fmt.format_map({"title": title, "year": year or ""})
+        result = fmt.format_map(
+            {
+                "title": title,
+                "year": year if year is not None else "",
+                "tmdb_id": tmdb_id if tmdb_id is not None else "",
+            }
+        )
     except (KeyError, ValueError, IndexError):
         result = f"{title} ({year})" if year else title
-    # Clean up trailing empty parens if year is None
-    result = re.sub(r"\s*\(\s*\)\s*$", "", result).strip()
-    return sanitize_filename(result)
+    return sanitize_filename(_strip_empty_name_groups(result))
+
+
+def format_movie_filename(
+    fmt: str,
+    title: str,
+    year: int | None,
+    tmdb_id: str | int | None = None,
+    edition: str | None = None,
+) -> str:
+    """Format a movie filename (no extension) from a config format string.
+
+    Mirrors ``format_movie_folder`` but adds ``{edition}`` for Plex's
+    ``{edition-Director's Cut}`` convention, which belongs on the file rather than
+    the folder. Empty groups are stripped, so a movie with no edition renders
+    byte-identically to the bare folder format and pre-#576 libraries are
+    untouched.
+
+    Unlike ``format_movie_folder``, a blank ``fmt`` is intentionally NOT
+    special-cased here: an empty movie filename format means "reuse the folder
+    format", and that fallback is applied at the call site rather than in this
+    formatter.
+    """
+    # `edition` is free text from the review queue and gets embedded inside a
+    # literal "{edition-...}" tag, so it needs shielding the other placeholders
+    # (numeric ids, titles) do not:
+    #   - braces would break out of the tag ("Weird}Name" -> "{edition-Weird}Name}")
+    #   - a trailing hyphen makes _strip_empty_name_groups see "{edition-Cut-}" as
+    #     an EMPTY tag and delete the whole thing, losing the edition silently
+    if edition:
+        edition = edition.replace("{", "").replace("}", "").strip().rstrip("-").strip()
+    try:
+        result = fmt.format_map(
+            {
+                "title": title,
+                "year": year if year is not None else "",
+                "tmdb_id": tmdb_id if tmdb_id is not None else "",
+                "edition": edition if edition is not None else "",
+            }
+        )
+    except (KeyError, ValueError, IndexError):
+        result = f"{title} ({year})" if year else title
+    return sanitize_filename(_strip_empty_name_groups(result))
 
 
 def _strip_empty_name_groups(name: str) -> str:
@@ -315,6 +381,10 @@ def organize_movie(
     library_path: Path | None = None,
     move_extras: bool = True,
     conflict_resolution: str = "ask",
+    *,
+    tmdb_id: str | int | None = None,
+    edition: str | None = None,
+    already_clean: bool = False,
 ) -> dict:
     """Organize a ripped movie into the library.
 
@@ -325,6 +395,15 @@ def organize_movie(
         library_path: Override for library path (defaults to settings)
         move_extras: Whether to move extra content as well
         conflict_resolution: How to handle file conflicts: "ask", "overwrite", "rename", "skip"
+        tmdb_id: TMDB movie id, used only when the configured folder/filename
+            format includes ``{tmdb_id}``.
+        edition: Edition label (e.g. "Final Cut"). Rendered via the ``{edition}``
+            placeholder in the FILENAME format; Plex reads the tag off the file.
+            Passed as a real argument rather than concatenated into ``movie_name``
+            so ``clean_movie_name`` cannot flatten it (#576).
+        already_clean: True when ``movie_name`` is a canonical TMDB title that must
+            not be run through ``clean_movie_name`` (which is built for volume
+            labels and would turn "Spider-Man" into "Spider Man").
 
     Returns:
         dict with 'success', 'main_file', 'extras', 'extras_mapping', 'error' keys
@@ -376,13 +455,36 @@ def organize_movie(
                 "error": "No MKV files found in staging directory",
             }
 
-    # Clean and sanitize the movie name
-    clean_name = clean_movie_name(movie_name)
+    # Clean the movie name unless the caller says it is already canonical.
+    # clean_movie_name is built for volume labels (THE_SOCIAL_NETWORK) and would
+    # corrupt a TMDB title (Spider-Man -> Spider Man, Se7en -> Se7En).
+    clean_name = movie_name if already_clean else clean_movie_name(movie_name)
 
-    # Load naming format from config
+    # Load naming formats from config
     cfg = get_config_sync()
-    folder_name = format_movie_folder(cfg.naming_movie_format, clean_name, year)
-    file_name = f"{folder_name}.mkv"
+    folder_name = format_movie_folder(cfg.naming_movie_format, clean_name, year, tmdb_id)
+    # A blank filename format (the default) means "reuse the folder format", which
+    # is exactly the pre-#576 behavior: the folder name was used verbatim as the
+    # filename. Inheriting rather than hardcoding a shape keeps a customized folder
+    # format propagating to the file instead of the two silently disagreeing.
+    file_fmt = (getattr(cfg, "naming_movie_file_format", "") or "").strip()
+    if not file_fmt:
+        # Inherit the folder format. Fall back to the bare title when that is
+        # itself blank, so a cleared folder format cannot leave the filename with
+        # nothing but an edition tag ("{edition-Final Cut}.mkv").
+        file_fmt = (cfg.naming_movie_format or "").strip() or "{title}"
+        # Plex reads the edition tag off the FILE, so an inherited format still
+        # earns the tag when there is an edition. Appended only when one exists,
+        # so a no-edition movie stays byte-identical to its folder name.
+        if edition:
+            file_fmt = file_fmt + " {{edition-{edition}}}"
+    file_stem = format_movie_filename(file_fmt, clean_name, year, tmdb_id, edition)
+    # `format_movie_filename` has no blank-format guard of its own because blank
+    # means "inherit", which is resolved above. But the INHERITED format can itself
+    # be blank (a user who cleared naming_movie_format), which would otherwise file
+    # the movie as a bare ".mkv". Fall back to the folder name, which has its own
+    # guard and degrades to the bare title.
+    file_name = f"{file_stem or folder_name}.mkv"
 
     # Create destination directory
     dest_dir = library_path / folder_name
@@ -470,13 +572,24 @@ class MovieOrganizer:
         volume_label: str,
         detected_name: str | None = None,
         year: int | None = None,
+        *,
+        tmdb_id: str | int | None = None,
+        edition: str | None = None,
+        already_clean: bool = False,
     ) -> dict:
         """Organize a movie from staging to library.
 
         Uses detected_name if provided, otherwise falls back to volume_label.
         """
         movie_name = detected_name or volume_label
-        return organize_movie(staging_dir, movie_name, year)
+        return organize_movie(
+            staging_dir,
+            movie_name,
+            year,
+            tmdb_id=tmdb_id,
+            edition=edition,
+            already_clean=already_clean,
+        )
 
 
 movie_organizer = MovieOrganizer()
