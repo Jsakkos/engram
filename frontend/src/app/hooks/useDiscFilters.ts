@@ -52,6 +52,13 @@ export function useDiscFilters(
         return discsData.filter((d) => d.state === "completed").length;
     }, [discsData]);
 
+    // Failed jobs sit in neither the Active nor the Done bucket above, so without
+    // their own count the clear button (gated on completedCount) never renders and
+    // they cannot be dismissed at all.
+    const failedCount = useMemo(() => {
+        return discsData.filter((d) => d.state === "error").length;
+    }, [discsData]);
+
     return {
         filter,
         setFilter,
@@ -59,5 +66,6 @@ export function useDiscFilters(
         filteredDiscs,
         activeCount,
         completedCount,
+        failedCount,
     };
 }

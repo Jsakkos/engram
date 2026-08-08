@@ -461,6 +461,49 @@ describe("useJobManagement hook integration", () => {
     window.location = realLocation;
   });
 
+  it("clearFinished deletes both completed and failed jobs", async () => {
+    // Regression guard for the bug where clearFinished (then named
+    // clearCompleted) only filtered on 'completed', leaving failed jobs with no
+    // dismissal path anywhere in the UI.
+    const completedJob = makeJob(1, { state: "completed" });
+    const failedJob = makeJob(2, { state: "failed" });
+    const rippingJob = makeJob(3, { state: "ripping" });
+
+    const deleteCalls: string[] = [];
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const urlStr = String(input);
+      if (init?.method === "DELETE") {
+        deleteCalls.push(urlStr);
+        return Promise.resolve(okJson({}));
+      }
+      if (urlStr.endsWith("/api/jobs")) {
+        return Promise.resolve(okJson([completedJob, failedJob, rippingJob]));
+      }
+      if (urlStr.includes("/titles")) return Promise.resolve(okJson([]));
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await waitFor(() => {
+      expect(result.current.jobs).toHaveLength(3);
+    });
+
+    await act(async () => {
+      await result.current.clearFinished();
+    });
+
+    expect(deleteCalls).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("/api/jobs/1"),
+        expect.stringContaining("/api/jobs/2"),
+      ]),
+    );
+    expect(deleteCalls.some((url) => url.includes("/api/jobs/3"))).toBe(false);
+    expect(deleteCalls).toHaveLength(2);
+  });
+
   it("seeds updateStatus (incl. is_frozen) from /api/updates/status on mount", async () => {
     const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       const urlStr = String(input);

@@ -17,7 +17,7 @@ vi.mock("../hooks/useJobManagement", () => ({
     armedDrives: {},
     cancelJob: vi.fn(),
     advanceJob: vi.fn(),
-    clearCompleted: vi.fn(),
+    clearFinished: vi.fn(),
     setJobName: vi.fn(),
     reIdentifyJob: vi.fn(),
   }),
@@ -31,6 +31,7 @@ vi.mock("../hooks/useDiscFilters", () => ({
     filteredDiscs: [],
     activeCount: 0,
     completedCount: 0,
+    failedCount: 0,
   }),
 }));
 

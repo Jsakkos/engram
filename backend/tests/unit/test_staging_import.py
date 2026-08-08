@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.database import get_session
 from app.main import app
+from app.services.import_guard import ImportBlock, StagingJobResult
 from tests.unit.conftest import _unit_session_factory
 
 
@@ -77,7 +78,7 @@ class TestStagingImportEndpoint:
         with patch(
             "app.services.job_manager.job_manager.create_job_from_staging",
             new_callable=AsyncMock,
-            return_value=42,
+            return_value=StagingJobResult(job_id=42),
         ):
             resp = await client.post(
                 "/api/staging/import",
@@ -106,7 +107,7 @@ class TestStagingImportEndpoint:
             patch(
                 "app.services.job_manager.job_manager.create_job_from_staging",
                 new_callable=AsyncMock,
-                return_value=1,
+                return_value=StagingJobResult(job_id=1),
             ),
             patch("app.config.settings.debug", False),
         ):
@@ -124,7 +125,7 @@ class TestStagingImportEndpoint:
         staging_dir.mkdir()
         (staging_dir / "title_t00.mkv").write_bytes(b"\x1a\x45\xdf\xa3" + b"\x00" * 1024)
 
-        mock_create = AsyncMock(return_value=1)
+        mock_create = AsyncMock(return_value=StagingJobResult(job_id=1))
         with patch(
             "app.services.job_manager.job_manager.create_job_from_staging",
             mock_create,
@@ -147,7 +148,7 @@ class TestStagingImportEndpoint:
         staging_dir.mkdir()
         (staging_dir / "movie.mkv").write_bytes(b"\x1a\x45\xdf\xa3" + b"\x00" * 1024)
 
-        mock_create = AsyncMock(return_value=7)
+        mock_create = AsyncMock(return_value=StagingJobResult(job_id=7))
         with patch(
             "app.services.job_manager.job_manager.create_job_from_staging",
             mock_create,
@@ -171,3 +172,27 @@ class TestStagingImportEndpoint:
             detected_title="Inception",
             detected_season=None,
         )
+
+    @pytest.mark.parametrize("block", [ImportBlock.ALREADY_IMPORTED, ImportBlock.IN_FLIGHT])
+    async def test_blocked_staging_reports_the_reason(
+        self, client: AsyncClient, tmp_path, block: ImportBlock
+    ):
+        """A blocked path must not report success with an impossible job id."""
+        staging_dir = tmp_path / "ALREADY_DONE"
+        staging_dir.mkdir()
+        (staging_dir / "title_t00.mkv").write_bytes(b"\x1a\x45\xdf\xa3" + b"\x00" * 1024)
+
+        with patch(
+            "app.services.job_manager.job_manager.create_job_from_staging",
+            new_callable=AsyncMock,
+            return_value=StagingJobResult(block=block, blocking_job_ids=(7,)),
+        ):
+            resp = await client.post("/api/staging/import", json={"staging_path": str(staging_dir)})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "blocked"
+        assert data["job_id"] is None
+        assert data["reason"] == block.value
+        assert data["blocking_job_ids"] == [7]
+        assert data["titles_count"] == 1

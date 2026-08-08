@@ -50,6 +50,7 @@ from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
 from app.services.identity_prompts import BLOCKING_KINDS
+from app.services.import_guard import ImportBlock
 
 logger = logging.getLogger(__name__)
 
@@ -2812,6 +2813,30 @@ class ImportPathRequest(BaseModel):
 class ImportStartRequest(BaseModel):
     path: str
     destination_mode: str = "library"
+    # Unit keys the user explicitly confirmed re-importing. Scoped rather than a
+    # blanket `force: bool` so a unit that became blocked between the two calls
+    # cannot be forced by a confirmation the user gave about a different unit.
+    force_keys: list[str] = []
+
+
+class BlockedImportUnit(BaseModel):
+    """One (show, season) unit that import/start refused to start.
+
+    `unit_key` is opaque: the client echoes it back in `force_keys` and must not
+    parse it. `display_path` is for rendering only, never for identity.
+    """
+
+    unit_key: str
+    show_name: str | None
+    season: int | None
+    display_path: str
+    reason: ImportBlock
+    job_ids: list[int]
+
+
+class ImportStartResponse(BaseModel):
+    job_ids: list[int]
+    blocked: list[BlockedImportUnit]
 
 
 @router.get("/import/browse", dependencies=[Depends(require_localhost_or_lan)])
@@ -2906,8 +2931,12 @@ async def import_preview(req: ImportPathRequest) -> dict:
     }
 
 
-@router.post("/import/start", dependencies=[Depends(require_localhost_or_lan)])
-async def import_start(req: ImportStartRequest) -> dict:
+@router.post(
+    "/import/start",
+    dependencies=[Depends(require_localhost_or_lan)],
+    response_model=ImportStartResponse,
+)
+async def import_start(req: ImportStartRequest) -> ImportStartResponse:
     """Create one import job per (show, season) unit from a chosen path.
 
     Each job gets an explicit file manifest, so nested Disc/ files import
@@ -2915,6 +2944,7 @@ async def import_start(req: ImportStartRequest) -> dict:
     """
     from app.core import import_scanner
     from app.services import config_service
+    from app.services.import_guard import unit_key_for
     from app.services.job_manager import job_manager
 
     if req.destination_mode not in ("library", "in_place"):
@@ -2931,17 +2961,29 @@ async def import_start(req: ImportStartRequest) -> dict:
         raise HTTPException(status_code=400, detail="No MKV files found to import")
 
     root_str = str(scan.root)
+    force_keys = set(req.force_keys)
+    seen_keys: set[str] = set()
     job_ids: list[int] = []
+    blocked: list[BlockedImportUnit] = []
     for unit in scan.units:
         files = [str(f) for f in unit.files]
+        # The dedup path (and therefore unit_key) is the single file's parent, or
+        # the files' common ancestor for multi-file units. This now backs a
+        # cross-request wire contract (force_keys round-tripping), so a unit that
+        # gains or drops files between the preview and the start call shifts to a
+        # different path and therefore a different key.
         staging = str(Path(files[0]).parent) if len(files) == 1 else os.path.commonpath(files)
+        # The key must be derived from the dedup path, never scan.root and never
+        # the pre-resolve() req.path, or force_keys will not round-trip.
+        key = unit_key_for(staging)
+        seen_keys.add(key)
         manifest = {
             "root": root_str,
             "files": files,
             "picked_is_show": scan.picked_is_show,
             "picked_is_season": scan.picked_is_season,
         }
-        jid = await job_manager.create_job_from_staging(
+        result = await job_manager.create_job_from_staging(
             staging_path=staging,
             content_type="tv" if unit.season is not None else "unknown",
             detected_title=unit.show_name,
@@ -2949,34 +2991,44 @@ async def import_start(req: ImportStartRequest) -> dict:
             destination_mode=req.destination_mode,
             drive_id="import",
             import_manifest=manifest,
+            force=key in force_keys,
         )
-        if jid != -1:
-            job_ids.append(jid)
+        if result.job_id is not None:
+            job_ids.append(result.job_id)
+        else:
+            blocked.append(
+                BlockedImportUnit(
+                    unit_key=key,
+                    show_name=unit.show_name,
+                    season=unit.season,
+                    display_path=staging,
+                    reason=result.block,
+                    job_ids=list(result.blocking_job_ids),
+                )
+            )
 
-    skipped = len(scan.units) - len(job_ids)
     # Persist the path/destination as next-time defaults even when everything was
-    # a dedup no-op, so the modal still reopens where the user last browsed.
+    # blocked, so the modal still reopens where the user last browsed.
     await config_service.update_config(
         import_watch_path=req.path, import_destination_mode=req.destination_mode
     )
+    # A confirmed key that never matched a unit this scan produced (e.g. the unit
+    # disappeared from disk between the confirmation call and this one) is a
+    # silent no-op otherwise: it lands in neither job_ids nor blocked. Log-only,
+    # by design — there is no UI surface that would consume a response field for
+    # it, see PR review on #571.
+    unused_force_keys = force_keys - seen_keys
     logger.info(
-        "Import start: %s -> %d job(s) created, %d skipped",
+        "Import start: %s -> %d job(s) created, %d blocked%s",
         sanitize_log_value(req.path),
         len(job_ids),
-        skipped,
+        len(blocked),
+        f", {len(unused_force_keys)} force_keys unused" if unused_force_keys else "",
     )
-    # Every unit already had an active or completed job for its folder. Tell the
-    # caller (409) instead of returning a silent empty list with 200 — the
-    # DB-backed dedup persists across restarts, so this is a real "nothing to do".
-    if not job_ids and skipped:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"All {skipped} import job(s) for this folder already exist "
-                "(active or completed); nothing new was started."
-            ),
-        )
-    return {"job_ids": job_ids, "skipped": skipped}
+    # No 409: a conflict is a normal outcome carrying its own remedy (force_keys),
+    # and a non-2xx alongside partial success would invite a blind client retry
+    # that double-starts the units that succeeded.
+    return ImportStartResponse(job_ids=job_ids, blocked=blocked)
 
 
 class StagingImportRequest(BaseModel):
@@ -2996,6 +3048,11 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
     Creates a real job that skips the ripping phase and proceeds
     directly to identification, matching, and organization.
     Available in all modes (no DEBUG required).
+
+    A blocked import (``{"status": "blocked", "reason": "already_imported", ...}``)
+    cannot be forced through this endpoint; there is no ``force`` parameter here.
+    Per-unit ``force_keys`` overrides are only available on
+    ``POST /api/import/start``.
     """
     from app.services.job_manager import job_manager
 
@@ -3009,7 +3066,7 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
     if not mkv_files:
         raise HTTPException(status_code=404, detail=f"No MKV files found in {request.staging_path}")
 
-    job_id = await job_manager.create_job_from_staging(
+    result = await job_manager.create_job_from_staging(
         staging_path=str(staging_dir),
         volume_label=request.volume_label,
         content_type=request.content_type,
@@ -3017,7 +3074,18 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
         detected_season=request.detected_season,
     )
 
-    return {"status": "created", "job_id": job_id, "titles_count": len(mkv_files)}
+    if result.job_id is None:
+        # Never report "created" with a sentinel id: the caller has to be able to
+        # tell a real job from a refused one.
+        return {
+            "status": "blocked",
+            "job_id": None,
+            "reason": result.block.value,
+            "blocking_job_ids": list(result.blocking_job_ids),
+            "titles_count": len(mkv_files),
+        }
+
+    return {"status": "created", "job_id": result.job_id, "titles_count": len(mkv_files)}
 
 
 @router.get("/staging/orphaned")

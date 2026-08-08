@@ -363,15 +363,60 @@ export async function previewImport(path: string): Promise<PreviewResult> {
   });
 }
 
-/** Create one import job per (show, season) unit under path. */
+/** Why a scanned unit was not started by {@link startImport}. */
+export type ImportBlockReason = "in_flight" | "already_imported";
+
+/** One (show, season) unit that `/api/import/start` refused to start. */
+export interface BlockedUnit {
+  /**
+   * Opaque token identifying the unit. Echo it back in `force_keys`; never parse
+   * it. It is deliberately not a path so the server can change how identity is
+   * derived without breaking this client.
+   */
+  unit_key: string;
+  show_name: string | null;
+  season: number | null;
+  /** Human-readable only. Never use as an identity. */
+  display_path: string;
+  reason: ImportBlockReason;
+  /** Prior jobs responsible for the block. */
+  job_ids: number[];
+}
+
+/** Result of {@link startImport}: jobs created plus any units it refused. */
+export interface ImportStartResult {
+  job_ids: number[];
+  blocked: BlockedUnit[];
+}
+
+/**
+ * Create one import job per (show, season) unit under path.
+ *
+ * Units already owned by another job are reported in `blocked` rather than
+ * failing the whole call. Re-send with those units' `unit_key` values in
+ * `forceKeys` to re-import ones whose prior job has completed; `in_flight`
+ * blocks are never forceable.
+ *
+ * `unit_key` values are only valid when re-sent with the SAME `path`: the
+ * server regenerates keys by re-scanning that root and re-deriving each
+ * unit's dedup path. A key sent against a different path matches nothing and
+ * is silently discarded, i.e. the unit appears in neither `job_ids` nor
+ * `blocked`. Re-browsing to a different path invalidates any keys collected
+ * so far.
+ */
 export async function startImport(
   path: string,
   destinationMode: "library" | "in_place",
-): Promise<{ job_ids: number[] }> {
-  return apiFetch<{ job_ids: number[] }>("/api/import/start", {
+  forceKeys: string[] = [],
+): Promise<ImportStartResult> {
+  return apiFetch<ImportStartResult>("/api/import/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, destination_mode: destinationMode }),
+    body: JSON.stringify({
+      path,
+      destination_mode: destinationMode,
+      force_keys: forceKeys,
+    }),
   });
 }
 
