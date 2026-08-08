@@ -4,6 +4,12 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Re-importing a folder that was already imported no longer fails with an unactionable conflict. A finished import now warns and offers "Re-import Anyway" instead of blocking permanently, so correcting a mistaken season or show no longer requires renaming the source folder (#571)
+- Importing a folder where only some seasons were previously imported no longer closes the dialog and silently skips them; every skipped unit is now listed with the reason (#571)
+- Failed jobs can now be dismissed from the dashboard. The clear action covers both finished states rather than completed jobs only (#571)
+
 ## [0.28.2] - 2026-07-31
 
 _Highlights: a failed disc no longer claims it is still analyzing._
