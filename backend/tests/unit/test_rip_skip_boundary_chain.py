@@ -247,7 +247,10 @@ class TestRipSkipBoundaryChain:
             await _wait_for_file(staging / "TEST_t01.mkv")
             assert await job_manager.skip_rip_title(job_id, title_ids[2])  # title 3
             assert await job_manager.skip_rip_title(job_id, title_ids[3])  # title 4
-            await task
+            # wait_for, not a bare `await task`: it bounds a hung rip so a
+            # regression cannot wedge CI, and a bare await of a name reads as
+            # effect-free to static analysis (CodeQL py/ineffectual-statement).
+            await asyncio.wait_for(task, timeout=60)
 
         assert len(procs) == 1, "the per-title fallback pass must not have run"
         assert 4 not in write_log, "the fake was asked to write the never-wanted title 4"
@@ -281,7 +284,10 @@ class TestRipSkipBoundaryChain:
             task = asyncio.create_task(job_manager._run_ripping(job_id))
             await _wait_for_file(staging / "TEST_t01.mkv")
             assert await job_manager.skip_rip_title(job_id, title_ids[2])  # title 3 only
-            await task
+            # wait_for, not a bare `await task`: it bounds a hung rip so a
+            # regression cannot wedge CI, and a bare await of a name reads as
+            # effect-free to static analysis (CodeQL py/ineffectual-statement).
+            await asyncio.wait_for(task, timeout=60)
 
         assert len(procs) == 1
         assert set(write_log) == {1, 2, 3, 4}, "a skipped middle track cost the rest of the disc"
@@ -312,7 +318,10 @@ class TestRipSkipBoundaryChain:
             await _wait_for_file(staging / "TEST_t00.mkv")
             assert await job_manager.skip_rip_title(job_id, title_ids[2])  # title 3 (native 2)
             assert await job_manager.skip_rip_title(job_id, title_ids[3])  # title 4 (native 3)
-            await task
+            # wait_for, not a bare `await task`: it bounds a hung rip so a
+            # regression cannot wedge CI, and a bare await of a name reads as
+            # effect-free to static analysis (CodeQL py/ineffectual-statement).
+            await asyncio.wait_for(task, timeout=60)
 
         assert len(procs) == 1
         # Native 3 (scan title 4) was never opened; natives 0 and 1 (scan
@@ -357,7 +366,10 @@ class TestRipSkipBoundaryChain:
             await _wait_for_file(staging / "TEST_t01.mkv")
             assert await job_manager.skip_rip_title(job_id, title_ids[2])
             assert await job_manager.skip_rip_title(job_id, title_ids[3])
-            await task
+            # wait_for, not a bare `await task`: it bounds a hung rip so a
+            # regression cannot wedge CI, and a bare await of a name reads as
+            # effect-free to static analysis (CodeQL py/ineffectual-statement).
+            await asyncio.wait_for(task, timeout=60)
 
         assert len(procs) == 1
         assert set(write_log) == {1, 2, 3, 4}, "an inert map must never abort the pass"

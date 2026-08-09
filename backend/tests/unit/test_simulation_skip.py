@@ -63,7 +63,10 @@ async def test_simulated_rip_skips_a_track_skipped_mid_rip():
     # Skip the LAST track while the loop is still on the first one.
     await asyncio.sleep(0.3)
     assert await job_manager.skip_rip_title(job_id, last_id) is True
-    await rip
+    # wait_for, not a bare `await rip`: it bounds a hung simulation so a
+    # regression cannot wedge CI, and a bare await of a name reads as
+    # effect-free to static analysis (CodeQL py/ineffectual-statement).
+    await asyncio.wait_for(rip, timeout=60)
 
     async with async_session() as s:
         t = await s.get(DiscTitle, last_id)
