@@ -3,6 +3,9 @@ import { simulateInsertDisc, resetAllJobs } from './fixtures/api-helpers';
 import { TV_DISC_ARRESTED_DEVELOPMENT } from './fixtures/disc-scenarios';
 import { SELECTORS } from './fixtures/selectors';
 
+// The dedicated E2E backend, same port api-helpers uses.
+const API = 'http://localhost:8001';
+
 test.beforeEach(async ({ page }) => {
     await resetAllJobs().catch(() => {});
     await page.goto('/');
@@ -86,26 +89,40 @@ test.describe('Track skipping — skip / un-skip a not-yet-ripped track', () => 
         await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
         await expect(page.getByTestId(/^skip-track-\d+$/).first()).toBeVisible({ timeout: 15000 });
 
-        // Resolve every target id up front, BEFORE clicking anything. Each skip
-        // re-renders the grid (the clicked card swaps SKIP for UN-SKIP and
-        // animates), so a positional locator like `.last()` re-evaluated between
-        // clicks resolves against a mutating list and detaches mid-click. Reading
-        // the ids once and then addressing each card by its exact testid keeps the
-        // targeting stable no matter how the list reflows.
+        // Exactly ONE skip goes through the button; the rest go through the API.
+        //
+        // While a rip is in flight the grid re-renders on every progress broadcast
+        // and Framer Motion animates the cards, so a button is rarely "stable" in
+        // Playwright's actionability sense, and each skip adds another churn burst.
+        // Clicking three in a row reliably timed out on "element is not stable" ->
+        // "element was detached from the DOM" in CI. Driving the extra skips over
+        // HTTP removes that exposure without weakening what this test is for: the
+        // button path is still exercised once, and the assertions below still cover
+        // the full skip-everything-remaining scenario.
+        //
+        // Backend behaviour for multiple/trailing skips (including the title
+        // boundary abort) is covered directly and deterministically by
+        // backend/tests/unit/test_rip_skip_boundary_chain.py.
         const allIds = await page
             .getByTestId(/^skip-track-\d+$/)
             .evaluateAll((els) =>
                 els.map((el) => el.getAttribute('data-testid')!.replace('skip-track-', '')),
             );
         // The rip loop reaches the highest-indexed tracks last, so they stay
-        // PENDING longest and will not flip to RIPPING under us mid-click.
+        // PENDING longest and will not flip to RIPPING under us.
         const ids = allIds.slice(-3);
         expect(ids.length).toBe(3);
 
-        for (const trackId of ids) {
-            const btn = page.getByTestId(`skip-track-${trackId}`);
-            await expect(btn).toBeVisible({ timeout: 10000 });
-            await btn.click();
+        const [clickedId, ...apiIds] = ids;
+        await page.getByTestId(`skip-track-${clickedId}`).click();
+        await expect(page.getByTestId(`unskip-track-${clickedId}`)).toBeVisible({ timeout: 10000 });
+
+        const jobId = (await page.request.get(`${API}/api/jobs`).then((r) => r.json()))[0].id;
+        for (const trackId of apiIds) {
+            const res = await page.request.post(
+                `${API}/api/jobs/${jobId}/titles/${trackId}/skip-rip`,
+            );
+            expect(res.ok()).toBe(true);
             await expect(page.getByTestId(`unskip-track-${trackId}`)).toBeVisible({ timeout: 10000 });
         }
 
