@@ -86,19 +86,28 @@ test.describe('Track skipping — skip / un-skip a not-yet-ripped track', () => 
         await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
         await expect(page.getByTestId(/^skip-track-\d+$/).first()).toBeVisible({ timeout: 15000 });
 
-        // Skip the three LAST pending tracks -- the ones the rip loop reaches
-        // last, so they stay PENDING while we click through them.
-        const ids: string[] = [];
-        for (let i = 0; i < 3; i++) {
-            const btn = page.getByTestId(/^skip-track-\d+$/).last();
-            const testId = await btn.getAttribute('data-testid');
-            if (!testId) break;
-            const trackId = testId.replace('skip-track-', '');
-            ids.push(trackId);
+        // Resolve every target id up front, BEFORE clicking anything. Each skip
+        // re-renders the grid (the clicked card swaps SKIP for UN-SKIP and
+        // animates), so a positional locator like `.last()` re-evaluated between
+        // clicks resolves against a mutating list and detaches mid-click. Reading
+        // the ids once and then addressing each card by its exact testid keeps the
+        // targeting stable no matter how the list reflows.
+        const allIds = await page
+            .getByTestId(/^skip-track-\d+$/)
+            .evaluateAll((els) =>
+                els.map((el) => el.getAttribute('data-testid')!.replace('skip-track-', '')),
+            );
+        // The rip loop reaches the highest-indexed tracks last, so they stay
+        // PENDING longest and will not flip to RIPPING under us mid-click.
+        const ids = allIds.slice(-3);
+        expect(ids.length).toBe(3);
+
+        for (const trackId of ids) {
+            const btn = page.getByTestId(`skip-track-${trackId}`);
+            await expect(btn).toBeVisible({ timeout: 10000 });
             await btn.click();
             await expect(page.getByTestId(`unskip-track-${trackId}`)).toBeVisible({ timeout: 10000 });
         }
-        expect(ids.length).toBe(3);
 
         // The job must NOT fail. Before the fix, skipping every remaining track
         // ejected with work outstanding, and skipping some froze the job in
