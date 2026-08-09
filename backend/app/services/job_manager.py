@@ -2665,6 +2665,16 @@ class JobManager:
                     title_error_callback=on_title_error,
                     log_dir=get_makemkv_log_dir(job_id),
                     job_id=job_id,
+                    # All-pass only: lets the extractor decide, at a title
+                    # boundary, whether the user's skips have left nothing wanted
+                    # on the disc. Keyed by MakeMKV's NATIVE title number (what
+                    # the output filename carries) because scan order and native
+                    # numbering diverge on some discs (issue #517).
+                    disc_title_map=(
+                        {expected_native_index(t): t.title_index for t in sorted_titles}
+                        if rip_all
+                        else None
+                    ),
                 )
             finally:
                 monitor_task.cancel()
