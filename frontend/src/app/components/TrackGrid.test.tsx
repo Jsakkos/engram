@@ -128,3 +128,35 @@ describe("TrackGrid — provenance rendering", () => {
     expect(node!.getAttribute("fill")).toBe("#ff3d7f");
   });
 });
+
+describe("TrackGrid — skip affordance", () => {
+  it("offers SKIP for a pending track", () => {
+    render(
+      <TrackGrid
+        tracks={[makeTrack({ id: "7", state: "pending" })]}
+        onSkipTrack={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("skip-track-7")).toBeInTheDocument();
+  });
+
+  it("does NOT offer SKIP for a queued track — it is already ripped to disk", () => {
+    render(
+      <TrackGrid
+        tracks={[makeTrack({ id: "8", state: "queued" })]}
+        onSkipTrack={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("skip-track-8")).not.toBeInTheDocument();
+  });
+
+  it("still offers UN-SKIP for a skipped track", () => {
+    render(
+      <TrackGrid
+        tracks={[makeTrack({ id: "9", state: "skipped" })]}
+        onUnskipTrack={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("unskip-track-9")).toBeInTheDocument();
+  });
+});

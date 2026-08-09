@@ -109,3 +109,15 @@ async def test_on_title_ripped_deletes_skipped_file(tmp_path):
     async with async_session() as s:
         t = await s.get(DiscTitle, title_id)
         assert t.state == TitleState.SKIPPED
+
+
+async def test_skip_rip_rejects_queued_title():
+    # QUEUED means "ripped, on disk, waiting for a matching slot" — the bytes
+    # already exist. Offering skip there silently discards a successful rip.
+    job_id, title_id = await _make_job(title_state=TitleState.QUEUED)
+    ok = await job_manager.skip_rip_title(job_id, title_id)
+    assert ok is False
+    async with async_session() as s:
+        t = await s.get(DiscTitle, title_id)
+        assert t.state == TitleState.QUEUED
+        assert t.is_selected is True

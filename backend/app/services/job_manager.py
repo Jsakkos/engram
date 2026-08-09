@@ -1518,19 +1518,24 @@ class JobManager:
         return True
 
     async def skip_rip_title(self, job_id: int, title_id: int) -> bool:
-        """Skip a queued/not-yet-ripped title so MakeMKV does not rip it.
+        """Skip a not-yet-ripped title so MakeMKV does not rip it.
 
-        Acts only on PENDING or QUEUED titles (never one actively RIPPING or
-        already terminal). Marks the title SKIPPED + deselected, registers its
-        index in the extractor's live skip-set (honored by the per-title rip
-        loop), then re-checks job completion. Returns False if the title is not
-        in a skippable state.
+        Acts only on PENDING titles (never one actively RIPPING, already
+        terminal, or QUEUED — a QUEUED title is already ripped and sitting on
+        disk waiting for a matching slot, so "skip the rip" is meaningless
+        there). Marks the title SKIPPED + deselected, registers its index in
+        the extractor's live skip-set (honored by the per-title rip loop),
+        then re-checks job completion. Returns False if the title is not in a
+        skippable state.
         """
         async with async_session() as session:
             title = await session.get(DiscTitle, title_id)
             if not title or title.job_id != job_id:
                 return False
-            if title.state not in (TitleState.PENDING, TitleState.QUEUED):
+            # PENDING only. QUEUED means the title is already ripped and sitting
+            # on disk waiting for a matching slot (see TitleState) — "skip the
+            # rip" is meaningless there and silently discarded good bytes.
+            if title.state != TitleState.PENDING:
                 return False
 
             title.state = TitleState.SKIPPED

@@ -14,7 +14,7 @@ interface TrackGridProps {
    *  currently-matching tracks get a "DEEP RE-MATCH" chip so the user sees that
    *  the spinning matching state is an auto-resolution pass, not initial work. */
   conflictStatus?: string;
-  /** Skip a queued/not-yet-ripped track (PENDING/QUEUED). Omit to hide the control. */
+  /** Skip a not-yet-ripped track (PENDING only). Omit to hide the control. */
   onSkipTrack?: (titleId: number) => void;
   /** Reverse a skip while still reversible (SKIPPED, not yet ripped). */
   onUnskipTrack?: (titleId: number) => void;
@@ -238,7 +238,9 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus,
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                  {onSkipTrack && (track.state === "pending" || track.state === "queued") && (
+                  {/* PENDING only: a queued track is already ripped and on disk,
+                      so "skip the rip" would just discard good bytes. */}
+                  {onSkipTrack && track.state === "pending" && (
                     <button
                       type="button"
                       data-testid={`skip-track-${track.id}`}

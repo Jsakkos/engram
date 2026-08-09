@@ -22,9 +22,9 @@ test.describe('Track skipping — skip / un-skip a not-yet-ripped track', () => 
         // titles stay PENDING until the loop reaches them). At multiplier 1 each
         // track takes ~2s, so the later-indexed tracks sit PENDING for many
         // seconds — a wide, stable window to click SKIP before the loop arrives.
-        // The SKIP control only renders for tracks in pending/queued state
-        // (TrackGrid gates it on that), so we act on the LAST pending track,
-        // which the rip loop reaches last.
+        // The SKIP control only renders for tracks in the PENDING state
+        // (TrackGrid gates it there — a QUEUED track is already ripped to disk),
+        // so we act on the LAST pending track, which the rip loop reaches last.
         await simulateInsertDisc({
             ...TV_DISC_ARRESTED_DEVELOPMENT,
             rip_speed_multiplier: 1,
