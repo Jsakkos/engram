@@ -1533,19 +1533,24 @@ class JobManager:
         return True
 
     async def skip_rip_title(self, job_id: int, title_id: int) -> bool:
-        """Skip a queued/not-yet-ripped title so MakeMKV does not rip it.
+        """Skip a not-yet-ripped title so MakeMKV does not rip it.
 
-        Acts only on PENDING or QUEUED titles (never one actively RIPPING or
-        already terminal). Marks the title SKIPPED + deselected, registers its
-        index in the extractor's live skip-set (honored by the per-title rip
-        loop), then re-checks job completion. Returns False if the title is not
-        in a skippable state.
+        Acts only on PENDING titles (never one actively RIPPING, already
+        terminal, or QUEUED — a QUEUED title is already ripped and sitting on
+        disk waiting for a matching slot, so "skip the rip" is meaningless
+        there). Marks the title SKIPPED + deselected, registers its index in
+        the extractor's live skip-set (honored by the per-title rip loop),
+        then re-checks job completion. Returns False if the title is not in a
+        skippable state.
         """
         async with async_session() as session:
             title = await session.get(DiscTitle, title_id)
             if not title or title.job_id != job_id:
                 return False
-            if title.state not in (TitleState.PENDING, TitleState.QUEUED):
+            # PENDING only. QUEUED means the title is already ripped and sitting
+            # on disk waiting for a matching slot (see TitleState) — "skip the
+            # rip" is meaningless there and silently discarded good bytes.
+            if title.state != TitleState.PENDING:
                 return False
 
             title.state = TitleState.SKIPPED
@@ -2667,6 +2672,33 @@ class JobManager:
             _background_tasks.add(monitor_task)
             monitor_task.add_done_callback(_background_tasks.discard)
 
+            # Native -> scan-order map for the all-pass boundary skip-abort. Keyed
+            # by MakeMKV's NATIVE title number, which is what the output filename
+            # carries and which diverges from scan order on some discs (#517).
+            #
+            # Built only for an all-pass. A per-title pass never receives the map
+            # (it drops skipped indices command-by-command instead), so computing
+            # it there would only emit a collision warning about a feature that
+            # was not in play for that rip.
+            #
+            # A collision means two titles claim the same native number (a disc
+            # with output_index populated on some rows and NULL on others, where a
+            # fallback title_index lands on another row's real output_index). The
+            # comprehension would silently keep the last writer, and a scan index
+            # missing from the values is never counted as "still ahead" -- so the
+            # pass could abort with a wanted title left unripped. Drop the map
+            # instead: the extractor then never aborts and the rip runs to the end.
+            native_to_scan: dict[int, int] | None = None
+            if rip_all:
+                native_to_scan = {expected_native_index(t): t.title_index for t in sorted_titles}
+                if len(native_to_scan) != len(sorted_titles):
+                    logger.warning(
+                        f"Job {safe_job}: native title numbers collide "
+                        f"({len(native_to_scan)} distinct for {len(sorted_titles)} titles); "
+                        f"boundary skip-abort disabled for this rip"
+                    )
+                    native_to_scan = None
+
             # Run extraction
             try:
                 from app.core.discdb_exporter import get_makemkv_log_dir
@@ -2680,6 +2712,11 @@ class JobManager:
                     title_error_callback=on_title_error,
                     log_dir=get_makemkv_log_dir(job_id),
                     job_id=job_id,
+                    # Lets the extractor decide, at a title boundary, whether the
+                    # user's skips have left nothing wanted on the disc. None for
+                    # a per-title pass (see where native_to_scan is built), which
+                    # drops skipped indices command-by-command instead.
+                    disc_title_map=native_to_scan,
                 )
             finally:
                 monitor_task.cancel()
@@ -2692,9 +2729,10 @@ class JobManager:
             # One-pass + per-title fallback: a single 'all' pass that stalls or
             # errors leaves later titles unripped. Re-rip just the still-missing
             # selected titles individually so one bad title can't lose the rest of
-            # the disc. (Live progress isn't refreshed during this rare recovery
-            # pass — titles still finalize via the title-complete callback, and
-            # reconcile_stuck_titles is the final safety net.)
+            # the disc. (The fs progress monitor is restarted for that pass, so
+            # live progress and the watchdog heartbeat continue; titles finalize
+            # via the title-complete callback, and reconcile_stuck_titles is the
+            # final safety net.)
             stall_title_list = sorted_titles
             if rip_all:
                 async with async_session() as chk_session:
@@ -2721,6 +2759,12 @@ class JobManager:
                     # The single pass produced every title. 'all'-mode stall
                     # bookkeeping uses command indices that don't map to titles,
                     # so discard it — nothing actually failed.
+                    if result.aborted_for_skip:
+                        logger.info(
+                            f"Job {safe_job}: full-disc pass stopped at a title "
+                            f"boundary because every remaining title was skipped "
+                            f"by the user — nothing left to rip"
+                        )
                     result.stalled_titles = None
                     result.success = True
                 elif disc_unreadable:
@@ -2756,26 +2800,51 @@ class JobManager:
                     result.stalled_titles = None
                     result.success = True
                 else:
-                    logger.warning(
-                        f"Job {safe_job}: single-pass rip left {len(missing)} title(s) "
-                        f"missing; re-ripping individually: "
-                        f"{[t.title_index for t in missing]}"
-                    )
-                    # The fs monitor (the sole stale-job heartbeat during ripping)
-                    # was cancelled above, so reset the watchdog clock to give the
-                    # fallback the full timeout_ripping_seconds window — otherwise a
-                    # slow per-title recovery could trip reconcile_and_advance.
+                    if result.aborted_for_skip:
+                        # A title was un-skipped between the boundary abort and
+                        # this check. Not a fault — rip what is still wanted.
+                        logger.info(
+                            f"Job {safe_job}: full-disc pass stopped for a skip, but "
+                            f"{len(missing)} title(s) are still wanted; ripping them "
+                            f"individually: {[t.title_index for t in missing]}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Job {safe_job}: single-pass rip left {len(missing)} title(s) "
+                            f"missing; re-ripping individually: "
+                            f"{[t.title_index for t in missing]}"
+                        )
+                    # The fs monitor is the SOLE _note_activity heartbeat while a
+                    # job is RIPPING, and it was cancelled when the main pass
+                    # returned. Restart it for the recovery pass: without it the
+                    # dashboard shows no progress, no speed and no per-title state
+                    # for the whole pass, and — worse — the stale-job watchdog
+                    # cancels a healthy recovery rip after timeout_ripping_seconds
+                    # (default 1200s), which a single Blu-ray title routinely
+                    # exceeds. Reset the clock first so the pass starts with a
+                    # full window.
                     self._note_activity(job_id)
-                    result = await self._extractor.rip_titles(
-                        drive_id,
-                        output_dir,
-                        title_indices=[t.title_index for t in missing],
-                        title_complete_callback=on_title_complete,
-                        stall_timeout=stall_timeout,
-                        title_error_callback=on_title_error,
-                        log_dir=None,  # keep the informative all-pass rip.log
-                        job_id=job_id,
-                    )
+                    fallback_monitor = asyncio.create_task(_filesystem_progress_monitor())
+                    _background_tasks.add(fallback_monitor)
+                    fallback_monitor.add_done_callback(_background_tasks.discard)
+                    try:
+                        result = await self._extractor.rip_titles(
+                            drive_id,
+                            output_dir,
+                            title_indices=[t.title_index for t in missing],
+                            title_complete_callback=on_title_complete,
+                            stall_timeout=stall_timeout,
+                            title_error_callback=on_title_error,
+                            log_dir=None,  # keep the informative all-pass rip.log
+                            job_id=job_id,
+                        )
+                    finally:
+                        fallback_monitor.cancel()
+                        try:
+                            await fallback_monitor
+                        except asyncio.CancelledError:
+                            # Expected: the monitor task was just cancelled above.
+                            pass
                     # Stall bookkeeping below now refers to the fallback's per-title
                     # command order, not the original full title list.
                     stall_title_list = missing
