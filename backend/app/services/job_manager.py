@@ -2661,6 +2661,11 @@ class JobManager:
             # by MakeMKV's NATIVE title number, which is what the output filename
             # carries and which diverges from scan order on some discs (#517).
             #
+            # Built only for an all-pass. A per-title pass never receives the map
+            # (it drops skipped indices command-by-command instead), so computing
+            # it there would only emit a collision warning about a feature that
+            # was not in play for that rip.
+            #
             # A collision means two titles claim the same native number (a disc
             # with output_index populated on some rows and NULL on others, where a
             # fallback title_index lands on another row's real output_index). The
@@ -2668,16 +2673,16 @@ class JobManager:
             # missing from the values is never counted as "still ahead" -- so the
             # pass could abort with a wanted title left unripped. Drop the map
             # instead: the extractor then never aborts and the rip runs to the end.
-            native_to_scan: dict[int, int] | None = {
-                expected_native_index(t): t.title_index for t in sorted_titles
-            }
-            if native_to_scan is not None and len(native_to_scan) != len(sorted_titles):
-                logger.warning(
-                    f"Job {safe_job}: native title numbers collide "
-                    f"({len(native_to_scan)} distinct for {len(sorted_titles)} titles); "
-                    f"boundary skip-abort disabled for this rip"
-                )
-                native_to_scan = None
+            native_to_scan: dict[int, int] | None = None
+            if rip_all:
+                native_to_scan = {expected_native_index(t): t.title_index for t in sorted_titles}
+                if len(native_to_scan) != len(sorted_titles):
+                    logger.warning(
+                        f"Job {safe_job}: native title numbers collide "
+                        f"({len(native_to_scan)} distinct for {len(sorted_titles)} titles); "
+                        f"boundary skip-abort disabled for this rip"
+                    )
+                    native_to_scan = None
 
             # Run extraction
             try:
@@ -2692,10 +2697,11 @@ class JobManager:
                     title_error_callback=on_title_error,
                     log_dir=get_makemkv_log_dir(job_id),
                     job_id=job_id,
-                    # All-pass only: lets the extractor decide, at a title
-                    # boundary, whether the user's skips have left nothing wanted
-                    # on the disc.
-                    disc_title_map=native_to_scan if rip_all else None,
+                    # Lets the extractor decide, at a title boundary, whether the
+                    # user's skips have left nothing wanted on the disc. None for
+                    # a per-title pass (see where native_to_scan is built), which
+                    # drops skipped indices command-by-command instead.
+                    disc_title_map=native_to_scan,
                 )
             finally:
                 monitor_task.cancel()
