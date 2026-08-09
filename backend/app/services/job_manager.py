@@ -2703,9 +2703,10 @@ class JobManager:
             # One-pass + per-title fallback: a single 'all' pass that stalls or
             # errors leaves later titles unripped. Re-rip just the still-missing
             # selected titles individually so one bad title can't lose the rest of
-            # the disc. (Live progress isn't refreshed during this rare recovery
-            # pass — titles still finalize via the title-complete callback, and
-            # reconcile_stuck_titles is the final safety net.)
+            # the disc. (The fs progress monitor is restarted for that pass, so
+            # live progress and the watchdog heartbeat continue; titles finalize
+            # via the title-complete callback, and reconcile_stuck_titles is the
+            # final safety net.)
             stall_title_list = sorted_titles
             if rip_all:
                 async with async_session() as chk_session:
@@ -2732,6 +2733,12 @@ class JobManager:
                     # The single pass produced every title. 'all'-mode stall
                     # bookkeeping uses command indices that don't map to titles,
                     # so discard it — nothing actually failed.
+                    if result.aborted_for_skip:
+                        logger.info(
+                            f"Job {safe_job}: full-disc pass stopped at a title "
+                            f"boundary because every remaining title was skipped "
+                            f"by the user — nothing left to rip"
+                        )
                     result.stalled_titles = None
                     result.success = True
                 elif disc_unreadable:
@@ -2767,26 +2774,51 @@ class JobManager:
                     result.stalled_titles = None
                     result.success = True
                 else:
-                    logger.warning(
-                        f"Job {safe_job}: single-pass rip left {len(missing)} title(s) "
-                        f"missing; re-ripping individually: "
-                        f"{[t.title_index for t in missing]}"
-                    )
-                    # The fs monitor (the sole stale-job heartbeat during ripping)
-                    # was cancelled above, so reset the watchdog clock to give the
-                    # fallback the full timeout_ripping_seconds window — otherwise a
-                    # slow per-title recovery could trip reconcile_and_advance.
+                    if result.aborted_for_skip:
+                        # A title was un-skipped between the boundary abort and
+                        # this check. Not a fault — rip what is still wanted.
+                        logger.info(
+                            f"Job {safe_job}: full-disc pass stopped for a skip, but "
+                            f"{len(missing)} title(s) are still wanted; ripping them "
+                            f"individually: {[t.title_index for t in missing]}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Job {safe_job}: single-pass rip left {len(missing)} title(s) "
+                            f"missing; re-ripping individually: "
+                            f"{[t.title_index for t in missing]}"
+                        )
+                    # The fs monitor is the SOLE _note_activity heartbeat while a
+                    # job is RIPPING, and it was cancelled when the main pass
+                    # returned. Restart it for the recovery pass: without it the
+                    # dashboard shows no progress, no speed and no per-title state
+                    # for the whole pass, and — worse — the stale-job watchdog
+                    # cancels a healthy recovery rip after timeout_ripping_seconds
+                    # (default 1200s), which a single Blu-ray title routinely
+                    # exceeds. Reset the clock first so the pass starts with a
+                    # full window.
                     self._note_activity(job_id)
-                    result = await self._extractor.rip_titles(
-                        drive_id,
-                        output_dir,
-                        title_indices=[t.title_index for t in missing],
-                        title_complete_callback=on_title_complete,
-                        stall_timeout=stall_timeout,
-                        title_error_callback=on_title_error,
-                        log_dir=None,  # keep the informative all-pass rip.log
-                        job_id=job_id,
-                    )
+                    fallback_monitor = asyncio.create_task(_filesystem_progress_monitor())
+                    _background_tasks.add(fallback_monitor)
+                    fallback_monitor.add_done_callback(_background_tasks.discard)
+                    try:
+                        result = await self._extractor.rip_titles(
+                            drive_id,
+                            output_dir,
+                            title_indices=[t.title_index for t in missing],
+                            title_complete_callback=on_title_complete,
+                            stall_timeout=stall_timeout,
+                            title_error_callback=on_title_error,
+                            log_dir=None,  # keep the informative all-pass rip.log
+                            job_id=job_id,
+                        )
+                    finally:
+                        fallback_monitor.cancel()
+                        try:
+                            await fallback_monitor
+                        except asyncio.CancelledError:
+                            # Expected: the monitor task was just cancelled above.
+                            pass
                     # Stall bookkeeping below now refers to the fallback's per-title
                     # command order, not the original full title list.
                     stall_title_list = missing
