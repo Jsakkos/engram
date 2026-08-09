@@ -57,6 +57,11 @@ class _FallbackExtractor:
         return RipResult(success=True, output_files=[p])
 
 
+async def _noop_match(job_id, title_id, file_path, *a, **kw):
+    """Stand-in for matching_coordinator.match_single_file: this test only
+    cares about the fs-monitor heartbeat, not the matching pipeline."""
+
+
 async def test_fallback_rip_keeps_the_watchdog_clock_moving(tmp_path, monkeypatch):
     staging = tmp_path / "staging"
     staging.mkdir()
@@ -91,6 +96,10 @@ async def test_fallback_rip_keeps_the_watchdog_clock_moving(tmp_path, monkeypatc
     monkeypatch.setattr(job_manager, "_loop", asyncio.get_running_loop())
     # _run_ripping ejects at the end of the rip; drive "Z:" does not exist.
     monkeypatch.setattr("app.core.sentinel.eject_disc", lambda *_a, **_k: None)
+    # Matching is out of scope here and its real path waits (up to 600s) for
+    # the file to look "done", which would leak a background task past this
+    # test's teardown and corrupt later tests' DB state. Stub it out.
+    monkeypatch.setattr(job_manager._matching, "match_single_file", _noop_match)
 
     beats: list[int] = []
     real_note = job_manager._note_activity
