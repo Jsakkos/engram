@@ -242,23 +242,27 @@ class _RippingProc:
 
 
 def _rip_steps(
-    output_dir: Path, natives: list[int], *, final_size: int = 4096
+    output_dir: Path, natives: list[int], *, final_size: int = 4096, open_size: int = 0
 ) -> list[tuple[float, tuple[Path, int] | None, str]]:
     """Steps for a sequential 'all' pass over *natives*, in disc order.
 
     Lines are the ones real MakeMKV rip logs actually contain (PRGC/PRGV);
     notably there is no "file created" line, because no real log has one.
+
+    ``open_size`` is how many bytes the file already holds when the poll lands
+    on it. Zero is the clean boundary. A non-zero value models MakeMKV having
+    flushed part of the title before the poll -- the case where "grew since the
+    last poll" can no longer recognize the file as unfinished.
     """
     steps: list[tuple[float, tuple[Path, int] | None, str]] = []
     for native in natives:
         path = output_dir / f"TEST_t{native:02d}.mkv"
         # Opening the next title IS the boundary. Sleep past the poll interval
-        # first so the reader loop polls with this stub still at zero bytes.
-        steps.append((_TEST_POLL * 3, (path, 0), 'PRGC:5017,0,"Saving to MKV file"'))
+        # first so the reader loop polls before any further bytes are written.
+        steps.append((_TEST_POLL * 3, (path, open_size), 'PRGC:5017,0,"Saving to MKV file"'))
         for quarter in (1, 2, 3, 4):
-            steps.append(
-                (0.005, (path, final_size * quarter // 4), f"PRGV:{quarter * 16384},65536,65536")
-            )
+            size = max(open_size, final_size * quarter // 4)
+            steps.append((0.005, (path, size), f"PRGV:{quarter * 16384},65536,65536"))
         steps.append((0.005, None, 'PRGC:5057,0,"Analyzing seamless segments"'))
     return steps
 
@@ -372,6 +376,79 @@ class TestAllPassSkipAbort:
         assert finished.exists(), "the title that finished before the abort was deleted"
         assert finished.stat().st_size == 8192, "the finished title was truncated"
         assert not (tmp_path / "TEST_t02.mkv").exists(), "the just-opened stub was kept"
+
+    async def test_boundary_abort_deletes_a_stub_that_had_already_written_bytes(self, tmp_path):
+        # The terminate -> wait window. files_incomplete_at_abort condemns a file
+        # only when it GREW since the last poll (or is zero-byte, or was never
+        # polled). A stub that MakeMKV had already flushed bytes into, and that
+        # does not grow between the boundary poll and the post-kill snapshot,
+        # reads as `size == prev > 0` -- i.e. finished -- and would be preserved,
+        # then force-promoted and handed to matching as a truncated MKV for a
+        # track the user explicitly skipped. The abort must therefore delete the
+        # stub it stopped on by NAME, not by inference.
+        def _fake_popen(cmd, **kwargs):
+            return _RippingProc(_rip_steps(tmp_path, [1, 2, 3], final_size=8192, open_size=2048))
+
+        ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+        ex.skip_title_index(25, 2)
+        ex.skip_title_index(25, 3)
+
+        with (
+            patch("app.core.extractor.FS_POLL_INTERVAL", _TEST_POLL),
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+        ):
+            result = await ex.rip_titles(
+                "/dev/sr0",
+                tmp_path,
+                title_indices=None,
+                stall_timeout=0,
+                job_id=25,
+                disc_title_map={1: 1, 2: 2, 3: 3},
+            )
+
+        assert result.aborted_for_skip is True
+        stub = tmp_path / "TEST_t02.mkv"
+        # Guard the premise: if the stub were zero-byte or still growing, the
+        # size-based rule would have caught it and this test would prove nothing.
+        assert not stub.exists(), "a partially-written stub for a skipped track survived"
+        assert result.output_files == [tmp_path / "TEST_t01.mkv"]
+        assert (tmp_path / "TEST_t01.mkv").stat().st_size == 8192
+
+    async def test_pre_existing_staging_output_does_not_trigger_a_spurious_abort(self, tmp_path):
+        # A populated staging dir must not read as "MakeMKV just opened these".
+        # Without seeding seen_native, the first boundary poll sees last run's
+        # TEST_t09.mkv as brand new, takes it as the highest native, finds scan
+        # index 9 skipped with nothing above it -- and kills the pass while
+        # title 1 is mid-write. That is the very failure class this change fixes.
+        (tmp_path / "TEST_t09.mkv").write_bytes(b"\0" * 16384)
+
+        procs: list[_RippingProc] = []
+
+        def _fake_popen(cmd, **kwargs):
+            proc = _RippingProc(_rip_steps(tmp_path, [1, 2]))
+            procs.append(proc)
+            return proc
+
+        ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+        ex.skip_title_index(26, 9)
+
+        with (
+            patch("app.core.extractor.FS_POLL_INTERVAL", _TEST_POLL),
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+        ):
+            result = await ex.rip_titles(
+                "/dev/sr0",
+                tmp_path,
+                title_indices=None,
+                stall_timeout=0,
+                job_id=26,
+                disc_title_map={1: 1, 2: 2, 9: 9},
+            )
+
+        assert result.aborted_for_skip is False
+        assert procs and procs[0].terminated is False
+        assert (tmp_path / "TEST_t01.mkv").exists()
+        assert (tmp_path / "TEST_t02.mkv").exists()
 
     async def test_no_abort_without_a_disc_title_map(self, tmp_path):
         # Fail-safe: an all-pass whose caller did not supply the disc contents
