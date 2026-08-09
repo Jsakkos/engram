@@ -604,7 +604,21 @@ class SimulationService:
                 steps = max(5, 20 // speed_multiplier)
                 step_size = title_bytes / steps
 
+                # The rip loop holds ONE long-lived session, so its identity map
+                # still caches the pre-skip row. skip_rip_title commits from a
+                # different session, so expire first or the skip is invisible here.
+                session.expire_all()
                 title_db = await session.get(DiscTitle, title.id)
+                if title_db and title_db.state == TitleState.SKIPPED:
+                    # The user skipped this track from the dashboard mid-rip. The
+                    # real extractor drops it too (per-title commands consult the
+                    # live skip-set; an all-pass stops at the next title boundary
+                    # when nothing wanted remains), so the simulation must match.
+                    logger.info(
+                        f"Job {job_id}: simulated rip skipping user-skipped title "
+                        f"{title.title_index}"
+                    )
+                    continue
                 if title_db:
                     title_db.state = TitleState.RIPPING
                     await session.commit()
@@ -775,8 +789,13 @@ class SimulationService:
 
         needs_review = False
         for i, title in enumerate(titles):
+            session.expire_all()
             title_db = await session.get(DiscTitle, title.id)
             if not title_db:
+                continue
+            if title_db.state == TitleState.SKIPPED:
+                # Dropped during the rip above — leave it SKIPPED, don't manufacture
+                # a match for a title that was never ripped.
                 continue
 
             # Persist MATCHING the moment this title starts matching, mirroring the

@@ -135,6 +135,10 @@ async def isolate_database(monkeypatch):
     # (via job_manager's module-level state machine) — patch it too so a prewarm
     # task kicked off by an unrelated unit test never touches engram.db.
     _prewarm_mod = importlib.import_module("app.services.transcription_prewarm")
+    # simulation_service opens its own DB sessions for the simulated rip/matching
+    # background tasks — patch it too, or a unit test that drives job_manager's
+    # wired SimulationService instance directly writes to engram.db unnoticed.
+    _sim_mod = importlib.import_module("app.services.simulation_service")
 
     monkeypatch.setattr(_db_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_config_mod, "async_session", _unit_session_factory)
@@ -143,6 +147,7 @@ async def isolate_database(monkeypatch):
     monkeypatch.setattr(_final_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_match_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_prewarm_mod, "async_session", _unit_session_factory)
+    monkeypatch.setattr(_sim_mod, "async_session", _unit_session_factory)
 
     # Redirect the cached sync engine in config_service so get_config_sync()
     # uses the in-memory test database instead of connecting to engram.db.
