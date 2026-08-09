@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-08-09
+
+_Highlights: movie folder and filename naming is configurable, a skipped track no longer stops the track that's currently ripping, and re-importing an already-imported folder no longer fails permanently._
+
 ### Added
 
 - **Movie naming is configurable now, the same way TV naming already was.** Settings → Preferences → Naming & extras gains a **Movie Folder Format** and a **Movie Filename Format**, with `{title}`, `{year}`, `{tmdb_id}`, and, on the filename, `{edition}`. Two same-titled movies can finally sit side by side by adding the id tag your media server expects, Plex `{title} ({year}) {{tmdb-{tmdb_id}}}` or Jellyfin `{title} ({year}) [tmdbid-{tmdb_id}]`, exactly as TV shows could. Leave the filename format blank and it reuses your folder format, so customizing one carries through to the other instead of the two quietly drifting apart. (#576, thanks @DrAquafreshhh!)
