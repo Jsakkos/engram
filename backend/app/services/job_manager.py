@@ -2652,6 +2652,28 @@ class JobManager:
             _background_tasks.add(monitor_task)
             monitor_task.add_done_callback(_background_tasks.discard)
 
+            # Native -> scan-order map for the all-pass boundary skip-abort. Keyed
+            # by MakeMKV's NATIVE title number, which is what the output filename
+            # carries and which diverges from scan order on some discs (#517).
+            #
+            # A collision means two titles claim the same native number (a disc
+            # with output_index populated on some rows and NULL on others, where a
+            # fallback title_index lands on another row's real output_index). The
+            # comprehension would silently keep the last writer, and a scan index
+            # missing from the values is never counted as "still ahead" -- so the
+            # pass could abort with a wanted title left unripped. Drop the map
+            # instead: the extractor then never aborts and the rip runs to the end.
+            native_to_scan: dict[int, int] | None = {
+                expected_native_index(t): t.title_index for t in sorted_titles
+            }
+            if native_to_scan is not None and len(native_to_scan) != len(sorted_titles):
+                logger.warning(
+                    f"Job {safe_job}: native title numbers collide "
+                    f"({len(native_to_scan)} distinct for {len(sorted_titles)} titles); "
+                    f"boundary skip-abort disabled for this rip"
+                )
+                native_to_scan = None
+
             # Run extraction
             try:
                 from app.core.discdb_exporter import get_makemkv_log_dir
@@ -2667,14 +2689,8 @@ class JobManager:
                     job_id=job_id,
                     # All-pass only: lets the extractor decide, at a title
                     # boundary, whether the user's skips have left nothing wanted
-                    # on the disc. Keyed by MakeMKV's NATIVE title number (what
-                    # the output filename carries) because scan order and native
-                    # numbering diverge on some discs (issue #517).
-                    disc_title_map=(
-                        {expected_native_index(t): t.title_index for t in sorted_titles}
-                        if rip_all
-                        else None
-                    ),
+                    # on the disc.
+                    disc_title_map=native_to_scan if rip_all else None,
                 )
             finally:
                 monitor_task.cancel()

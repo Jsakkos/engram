@@ -74,6 +74,38 @@ async def _seed(staging: Path, native_offset: int) -> int:
         return job.id
 
 
+async def _seed_colliding_natives(staging: Path) -> int:
+    """Titles 1 and 2 both resolve to native number 1: title 1 has no
+    ``output_index`` (falls back to its ``title_index`` of 1), and title 2's
+    real ``output_index`` genuinely is 1. Title 3 is unaffected."""
+    async with async_session() as s:
+        job = DiscJob(
+            drive_id="Z:",
+            volume_label="TEST",
+            state=JobState.RIPPING,
+            content_type=ContentType.TV,
+            staging_path=str(staging),
+            total_titles=3,
+        )
+        s.add(job)
+        await s.commit()
+        await s.refresh(job)
+        for idx, output_index in ((1, None), (2, 1), (3, None)):
+            s.add(
+                DiscTitle(
+                    job_id=job.id,
+                    title_index=idx,
+                    output_index=output_index,
+                    duration_seconds=1300,
+                    file_size_bytes=4096,
+                    state=TitleState.PENDING,
+                    is_selected=True,
+                )
+            )
+        await s.commit()
+        return job.id
+
+
 async def test_all_pass_receives_the_native_to_scan_map(tmp_path, monkeypatch):
     staging = tmp_path / "staging"
     staging.mkdir()
@@ -115,3 +147,20 @@ async def test_per_title_pass_gets_no_map(tmp_path, monkeypatch):
 
     assert ext.kwargs[0]["title_indices"] == [1, 2]
     assert ext.kwargs[0]["disc_title_map"] is None
+
+
+async def test_colliding_native_numbers_disable_the_map(tmp_path, monkeypatch):
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id = await _seed_colliding_natives(staging)
+
+    ext = _RecordingExtractor()
+    monkeypatch.setattr(job_manager, "_extractor", ext)
+    monkeypatch.setattr("app.core.sentinel.eject_disc", lambda *_a, **_k: None)
+
+    await job_manager._run_ripping(job_id)
+
+    assert ext.kwargs, "rip_titles was never called"
+    first = ext.kwargs[0]
+    assert first["title_indices"] is None, "every title selected -> all-pass"
+    assert first["disc_title_map"] is None, "colliding natives must disable the map, not corrupt it"
