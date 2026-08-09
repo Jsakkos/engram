@@ -72,4 +72,48 @@ test.describe('Track skipping — skip / un-skip a not-yet-ripped track', () => 
         await expect(page.getByTestId(`unskip-track-${trackId}`)).toHaveCount(0);
         await expect(page.getByText('SKIPPED, WILL NOT RIP')).toHaveCount(0);
     });
+
+    test('skipping later tracks leaves the in-flight rip running and the job finishing', async ({ page }) => {
+        // Regression for the 0.28.2 report: skipping FUTURE tracks stopped the
+        // track being ripped, and the disc either ejected "successfully" with
+        // work outstanding or froze with no progress. Rip slowly enough that
+        // several tracks are still PENDING when we click.
+        await simulateInsertDisc({
+            ...TV_DISC_ARRESTED_DEVELOPMENT,
+            rip_speed_multiplier: 2,
+        });
+
+        await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
+        await expect(page.getByTestId(/^skip-track-\d+$/).first()).toBeVisible({ timeout: 15000 });
+
+        // Skip the three LAST pending tracks -- the ones the rip loop reaches
+        // last, so they stay PENDING while we click through them.
+        const ids: string[] = [];
+        for (let i = 0; i < 3; i++) {
+            const btn = page.getByTestId(/^skip-track-\d+$/).last();
+            const testId = await btn.getAttribute('data-testid');
+            if (!testId) break;
+            const trackId = testId.replace('skip-track-', '');
+            ids.push(trackId);
+            await btn.click();
+            await expect(page.getByTestId(`unskip-track-${trackId}`)).toBeVisible({ timeout: 10000 });
+        }
+        expect(ids.length).toBe(3);
+
+        // The job must NOT fail. Before the fix, skipping every remaining track
+        // ejected with work outstanding, and skipping some froze the job in
+        // RIPPING until the watchdog force-advanced it to an error.
+        await expect(page.locator(SELECTORS.stateFailed)).toHaveCount(0);
+
+        // No track is left stuck mid-rip: the RIPPING indicator clears on its own.
+        await expect(page.locator(SELECTORS.stateRipping)).toHaveCount(0, { timeout: 60000 });
+
+        // Every skipped track still reads SKIPPED -- none was ripped after the fact.
+        for (const id of ids) {
+            const card = page
+                .locator(`${SELECTORS.trackItem}:has([data-testid="unskip-track-${id}"])`)
+                .first();
+            await expect(card.getByText('SKIPPED, WILL NOT RIP')).toBeVisible({ timeout: 30000 });
+        }
+    });
 });
