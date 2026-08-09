@@ -44,6 +44,11 @@ from app.services.identification_coordinator import (
     IdentificationCoordinator,
 )
 from app.services.identity_prompts import BLOCKING_KINDS, ResumeAction
+from app.services.import_guard import (
+    ImportBlock,
+    StagingJobResult,
+    classify_staging_path,
+)
 from app.services.job_state_machine import JobStateMachine
 from app.services.manual_identity import arm_store
 from app.services.matching_coordinator import (
@@ -172,7 +177,8 @@ class JobManager:
         # Per staging-path lock guarding create_job_from_staging's check->insert,
         # mirroring _drive_locks for the disc path. create_job_from_staging is
         # reachable from the manual import endpoints (POST /api/import/start and
-        # POST /api/staging/import) and simulation, so concurrent calls for the
+        # POST /api/staging/import) only — /api/simulate/insert-disc-from-staging
+        # builds its own job rather than calling it — so concurrent calls for the
         # same path must not both pass the dedup guard.
         self._staging_locks: dict[str, asyncio.Lock] = {}
         self._last_job_created_at: dict[str, float] = {}
@@ -778,10 +784,14 @@ class JobManager:
         destination_mode: str = "library",
         drive_id: str = "staging",
         import_manifest: dict | None = None,
-    ) -> int:
-        """Create a job from pre-ripped MKV files in a staging directory."""
-        from sqlmodel import select as sa_select
+        force: bool = False,
+    ) -> StagingJobResult:
+        """Create a job from pre-ripped MKV files in a staging directory.
 
+        Returns a StagingJobResult: either a created job id, or the block tier and
+        the ids of the jobs responsible for it. ``force`` suppresses the soft
+        (ALREADY_IMPORTED) tier only and can never suppress the hard one.
+        """
         staging_dir = Path(staging_path)
 
         if not volume_label:
@@ -797,22 +807,27 @@ class JobManager:
 
         async with self._staging_locks[str(staging_dir)]:
             async with async_session() as session:
-                # Guard: don't create a duplicate job for the same staging directory.
-                # A staging path can be re-submitted (re-import, or after a server
-                # restart), so a *terminal-failed* prior job (cancelled, or auto-failed
-                # by restart recovery) must NOT permanently wedge re-import; only an
-                # active or review-pending job should dedup. Use .first() because a
-                # path may now accumulate multiple FAILED rows across retries.
-                existing = await session.execute(
-                    sa_select(DiscJob).where(
-                        DiscJob.staging_path == str(staging_dir),
-                        DiscJob.state != JobState.FAILED,
+                # Guard: a staging path is OWNED by an in-flight job and merely
+                # RECORDED by a finished one. See app/services/import_guard.py for
+                # why this is not the old `state != FAILED` rule, and why it is not
+                # a copy of the disc-side guard either.
+                block, blocking_ids = await classify_staging_path(session, str(staging_dir))
+                forced = force and block is ImportBlock.ALREADY_IMPORTED
+                safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
+                if block is not None and not forced:
+                    logger.info(
+                        "Import blocked for staging path %s (%s, blocking jobs %s)",
+                        safe_path,
+                        block.value,
+                        blocking_ids,
                     )
-                )
-                if existing.scalars().first() is not None:
-                    safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
-                    logger.info("Job already exists for staging path %s, skipping", safe_path)
-                    return -1
+                    return StagingJobResult(block=block, blocking_job_ids=tuple(blocking_ids))
+                if forced:
+                    logger.info(
+                        "Import forced over completed job(s) %s for staging path %s",
+                        blocking_ids,
+                        safe_path,
+                    )
 
                 job = DiscJob(
                     drive_id=drive_id,
@@ -836,16 +851,16 @@ class JobManager:
                 await session.refresh(job)
 
                 job_id = job.id
-                safe_path = str(staging_path).replace("\n", "").replace("\r", "")
+                safe_created_path = str(staging_path).replace("\n", "").replace("\r", "")
                 safe_label = str(volume_label).replace("\n", "").replace("\r", "")
                 # destination_mode is user-supplied via POST /api/import/start; strip
-                # CR/LF so it can't forge log lines (matches safe_path/safe_label).
+                # CR/LF so it can't forge log lines (matches safe_created_path/safe_label).
                 safe_dest = str(destination_mode).replace("\n", "").replace("\r", "")
                 logger.info(
                     "Created %s job %s from %s (label: %s, destination: %s)",
                     "import" if drive_id == "import" else "staging",
                     job_id,
-                    safe_path,
+                    safe_created_path,
                     safe_label,
                     safe_dest,
                 )
@@ -858,7 +873,7 @@ class JobManager:
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
-        return job_id
+        return StagingJobResult(job_id=job_id)
 
     # --- Public API (delegated to coordinators) ---
 

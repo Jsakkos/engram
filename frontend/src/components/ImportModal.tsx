@@ -8,7 +8,9 @@ import {
   browseDir,
   previewImport,
   startImport,
+  type BlockedUnit,
   type BrowseEntry,
+  type ImportStartResult,
   type PreviewResult,
 } from "../api/client";
 
@@ -28,10 +30,17 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   const [destMode, setDestMode] = useState<"library" | "in_place">(defaultDestinationMode);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // Set when a start attempt came back with blocked units. Holds the modal open
+  // so the user can act on them instead of the modal closing on a silent skip.
+  const [conflict, setConflict] = useState<ImportStartResult | null>(null);
   const [pathInput, setPathInput] = useState(defaultPath || "");
   const [landmark, setLandmark] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const cwdRef = useRef<string | null>(null);
+  // Job ids started by this modal session (across possibly multiple
+  // runImport calls on the same folder). An in_flight block whose job_ids are
+  // all in this set is a job we ourselves just started, not a real conflict.
+  const startedJobIds = useRef<Set<number>>(new Set());
   // Monotonic request tokens so a slow earlier click can't overwrite the state
   // of a later one (navigate and choose fire together per directory click).
   const navSeq = useRef(0);
@@ -90,6 +99,8 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
     setSelected(path);
     setPreview(null);
     setError(null);
+    setConflict(null);
+    startedJobIds.current = new Set();
     try {
       const result = await previewImport(path);
       if (seq !== chooseSeq.current) return; // a newer selection superseded this one
@@ -115,18 +126,50 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
     [pathInput, navigate, choose],
   );
 
-  const onStart = useCallback(async () => {
-    if (!selected || !preview || preview.total_jobs === 0) return;
-    setStarting(true);
-    setError(null);
-    try {
-      await startImport(selected, destMode);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed to start");
-      setStarting(false);
-    }
-  }, [selected, preview, destMode, onClose]);
+  const runImport = useCallback(
+    async (forceKeys: string[]) => {
+      if (!selected) return;
+      setStarting(true);
+      setError(null);
+      try {
+        const res = await startImport(selected, destMode, forceKeys);
+        for (const id of res.job_ids) startedJobIds.current.add(id);
+        // A block is only a genuine conflict if it isn't fully covered by jobs
+        // this session already started: a rescan during a forced re-import can
+        // reclassify a job we just kicked off (still IDENTIFYING) as in_flight,
+        // reporting our own success back to us as a conflict.
+        const unresolved = res.blocked.filter(
+          (b) =>
+            !(b.reason === "in_flight" && b.job_ids.every((id) => startedJobIds.current.has(id))),
+        );
+        if (unresolved.length === 0) {
+          onClose();
+          return;
+        }
+        setConflict({ ...res, blocked: unresolved });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Import failed to start");
+      } finally {
+        setStarting(false);
+      }
+    },
+    [selected, destMode, onClose],
+  );
+
+  const onStart = useCallback(() => {
+    if (!preview || preview.total_jobs === 0) return;
+    setConflict(null);
+    void runImport([]);
+  }, [preview, runImport]);
+
+  // Only already_imported units are forceable. in_flight blocks are excluded here
+  // and have no button, because a second job would race the live one.
+  const onForce = useCallback(() => {
+    const keys = (conflict?.blocked ?? [])
+      .filter((b) => b.reason === "already_imported")
+      .map((b) => b.unit_key);
+    if (keys.length > 0) void runImport(keys);
+  }, [conflict, runImport]);
 
   const seasonsByShow = (p: PreviewResult) => {
     const map = new Map<string, typeof p.units>();
@@ -378,6 +421,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                   <Notice text="This folder is very large; only part of it was scanned." />
                 )}
                 {error && <Notice text={error} tone="error" />}
+                {conflict && (
+                  <ConflictPanel result={conflict} onForce={onForce} busy={starting} />
+                )}
               </div>
 
               {/* Destination */}
@@ -548,6 +594,115 @@ function Notice({ text, tone = "warn" }: { text: string; tone?: "warn" | "error"
     >
       <IcoError size={14} color={color} style={{ flexShrink: 0, marginTop: 1 }} />
       <span style={{ fontFamily: sv.mono, fontSize: 10, color, lineHeight: 1.5 }}>{text}</span>
+    </div>
+  );
+}
+
+/**
+ * Blocked-unit report shown in place of closing the modal.
+ *
+ * Deliberately an inline panel rather than a nested modal: a dismissed modal in
+ * this app can leave a stuck opacity-0 overlay that swallows clicks under
+ * automation, and nesting one here would put that hazard directly in the path of
+ * this feature's E2E test.
+ */
+function ConflictPanel({
+  result,
+  onForce,
+  busy,
+}: {
+  result: ImportStartResult;
+  onForce: () => void;
+  busy: boolean;
+}) {
+  const soft = result.blocked.filter((b) => b.reason === "already_imported");
+  const hard = result.blocked.filter((b) => b.reason === "in_flight");
+  const total = result.job_ids.length + result.blocked.length;
+
+  const label = (b: BlockedUnit) =>
+    `${b.show_name ?? "Unknown"}${b.season != null ? ` · Season ${b.season}` : ""}`;
+
+  const heading = (text: string) => (
+    <div
+      style={{
+        fontFamily: sv.mono,
+        fontSize: 9,
+        letterSpacing: "0.15em",
+        color: sv.inkFaint,
+        marginTop: 8,
+        marginBottom: 4,
+      }}
+    >
+      {text}
+    </div>
+  );
+
+  const row = (b: BlockedUnit, text: string) => (
+    <div key={b.unit_key} style={{ padding: "2px 0" }}>
+      <div style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>{text}</div>
+      <div
+        style={{
+          fontFamily: sv.mono,
+          fontSize: 9,
+          color: sv.inkFaint,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {b.display_path}
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      data-testid="import-conflict-panel"
+      style={{
+        marginTop: 10,
+        padding: "10px 12px",
+        border: `1px solid ${sv.yellow}4d`,
+        background: `${sv.yellow}14`,
+      }}
+    >
+      {result.job_ids.length > 0 && (
+        <div style={{ fontFamily: sv.mono, fontSize: 11, color: sv.yellow }}>
+          Started {result.job_ids.length} of {total}.
+        </div>
+      )}
+
+      {hard.length > 0 && (
+        <>
+          {heading("ALREADY PROCESSING")}
+          {hard.map((b) => row(b, `${label(b)} (job ${b.job_ids.join(", ")})`))}
+        </>
+      )}
+
+      {soft.length > 0 && (
+        <>
+          {heading("PREVIOUSLY IMPORTED")}
+          {soft.map((b) => row(b, label(b)))}
+          <button
+            onClick={onForce}
+            disabled={busy}
+            data-testid="import-force-btn"
+            style={{
+              marginTop: 8,
+              fontFamily: sv.mono,
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.1em",
+              padding: "6px 12px",
+              border: `1px solid ${sv.yellow}`,
+              background: "transparent",
+              color: sv.yellow,
+              cursor: busy ? "not-allowed" : "pointer",
+            }}
+          >
+            RE-IMPORT ANYWAY
+          </button>
+        </>
+      )}
     </div>
   );
 }

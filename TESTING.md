@@ -130,7 +130,7 @@ Run: `cd frontend && npm run test:unit` (~0.5s)
 | File | Tests | What It Covers |
 |------|------:|----------------|
 | `src/types/__tests__/adapters.test.ts` | 24 | Data transformation layer: `JobState` to UI state mapping (8 values), `TitleState` mapping (7 values), full job-to-disc-data transformation (TV/movie/fallback/unknown), duration formatting edge cases, match candidate extraction from JSON |
-| `src/hooks/__tests__/useJobManagement.test.ts` | 8 | WebSocket data merging logic: partial job update merging, title update targeting correct job/title, all-terminal-state detection, `titles_discovered` replacement, `subtitle_event` field updates |
+| `src/app/hooks/__tests__/useJobManagement.test.ts` | 16 | WebSocket data merging logic: partial job update merging, title update targeting correct job/title, all-terminal-state detection, `titles_discovered` replacement, `subtitle_event` field updates |
 
 ### Frontend E2E Tests (`frontend/e2e/`)
 

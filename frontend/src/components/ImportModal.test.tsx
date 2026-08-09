@@ -27,7 +27,7 @@ beforeEach(() => {
     total_bytes: 100,
     truncated: false,
   });
-  vi.spyOn(client, "startImport").mockResolvedValue({ job_ids: [1] });
+  vi.spyOn(client, "startImport").mockResolvedValue({ job_ids: [1], blocked: [] });
 });
 
 describe("ImportModal", () => {
@@ -44,7 +44,7 @@ describe("ImportModal", () => {
     await waitFor(() => expect(client.previewImport).toHaveBeenCalledWith("/media/King of Queens"));
     const startBtn = await screen.findByTestId("import-start-btn");
     fireEvent.click(startBtn);
-    await waitFor(() => expect(client.startImport).toHaveBeenCalledWith("/media/King of Queens", "library"));
+    await waitFor(() => expect(client.startImport).toHaveBeenCalledWith("/media/King of Queens", "library", []));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
@@ -183,5 +183,134 @@ describe("ImportModal", () => {
 
     await waitFor(() => expect(screen.getByText("King of Queens")).toBeInTheDocument());
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+  });
+
+  const blockedUnit = (over: Partial<client.BlockedUnit> = {}): client.BlockedUnit => ({
+    unit_key: "key-s1",
+    show_name: "King of Queens",
+    season: 1,
+    display_path: "/media/King of Queens/Season 1",
+    reason: "already_imported",
+    job_ids: [7],
+    ...over,
+  });
+
+  async function startAndExpectConflict(result: client.ImportStartResult) {
+    vi.mocked(client.startImport).mockResolvedValueOnce(result);
+    const onClose = vi.fn();
+    render(<ImportModal onClose={onClose} defaultPath="/media" defaultDestinationMode="library" />);
+    await waitFor(() => screen.getByText("King of Queens"));
+    fireEvent.click(screen.getByText("King of Queens"));
+    fireEvent.click(await screen.findByTestId("import-start-btn"));
+    await waitFor(() => expect(screen.getByTestId("import-conflict-panel")).toBeInTheDocument());
+    return onClose;
+  }
+
+  it("keeps the modal open and reports blocked units instead of closing silently", async () => {
+    const onClose = await startAndExpectConflict({ job_ids: [], blocked: [blockedUnit()] });
+    expect(screen.getByText(/previously imported/i)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("re-imports only the soft-blocked units when Re-import Anyway is pressed", async () => {
+    await startAndExpectConflict({
+      job_ids: [],
+      blocked: [
+        blockedUnit(),
+        blockedUnit({ unit_key: "key-s2", season: 2, reason: "in_flight", job_ids: [9] }),
+      ],
+    });
+
+    const forceBtn = screen.getByTestId("import-force-btn");
+    fireEvent.click(forceBtn);
+
+    // Disabled the moment the re-send is in flight, so a fast second click can't double-submit.
+    expect(forceBtn).toBeDisabled();
+
+    // Only the already_imported unit is forced; the in_flight one is never forceable.
+    await waitFor(() =>
+      expect(client.startImport).toHaveBeenLastCalledWith(
+        "/media/King of Queens",
+        "library",
+        ["key-s1"],
+      ),
+    );
+  });
+
+  it("offers no force action when every block is in flight", async () => {
+    await startAndExpectConflict({
+      job_ids: [],
+      blocked: [blockedUnit({ reason: "in_flight", job_ids: [9] })],
+    });
+    expect(screen.getByText(/already processing/i)).toBeInTheDocument();
+    // The owning job id must stay visible: it's the only way to find the live job.
+    expect(screen.getByText(/job 9/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("import-force-btn")).not.toBeInTheDocument();
+  });
+
+  it("reports how many units started when only some were blocked", async () => {
+    await startAndExpectConflict({ job_ids: [11], blocked: [blockedUnit()] });
+    expect(screen.getByText(/started 1 of 2/i)).toBeInTheDocument();
+  });
+
+  it("closes once a forced re-import succeeds", async () => {
+    const onClose = await startAndExpectConflict({ job_ids: [], blocked: [blockedUnit()] });
+    vi.mocked(client.startImport).mockResolvedValueOnce({ job_ids: [12], blocked: [] });
+    fireEvent.click(screen.getByTestId("import-force-btn"));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("clears the stale conflict panel when the user switches to a different folder", async () => {
+    await startAndExpectConflict({ job_ids: [], blocked: [blockedUnit()] });
+
+    // Switch selection to a different folder before acting on the old panel.
+    fireEvent.change(screen.getByTestId("import-path-input"), {
+      target: { value: "/media/Other Show" },
+    });
+    fireEvent.submit(screen.getByTestId("import-path-form"));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("import-conflict-panel")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("closes instead of reporting a conflict when a forced re-import's own newly-started jobs come back reclassified as in_flight", async () => {
+    // First call: one unit starts (job 11), two soft-blocked as already_imported.
+    const onClose = await startAndExpectConflict({
+      job_ids: [11],
+      blocked: [blockedUnit({ unit_key: "key-s1" }), blockedUnit({ unit_key: "key-s2", season: 2 })],
+    });
+
+    // User forces the two soft blocks. The server rescans all three units;
+    // job 11 (already started) is mid-flight and reclassifies as in_flight.
+    vi.mocked(client.startImport).mockResolvedValueOnce({
+      job_ids: [21, 22],
+      blocked: [
+        blockedUnit({
+          unit_key: "key-s3",
+          season: 3,
+          reason: "in_flight",
+          job_ids: [11],
+        }),
+      ],
+    });
+    fireEvent.click(screen.getByTestId("import-force-btn"));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("identifies an unnamed unit by its display_path instead of a bare 'Unknown'", async () => {
+    await startAndExpectConflict({
+      job_ids: [],
+      blocked: [
+        blockedUnit({
+          unit_key: "key-unknown",
+          show_name: null,
+          season: null,
+          display_path: "/media/Unsorted Movie Folder",
+        }),
+      ],
+    });
+    expect(screen.getByText("/media/Unsorted Movie Folder")).toBeInTheDocument();
   });
 });

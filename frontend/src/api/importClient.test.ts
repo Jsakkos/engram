@@ -31,12 +31,42 @@ describe("import client", () => {
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
   });
 
-  it("startImport posts path and destination", async () => {
-    const fetchMock = mockJson({ job_ids: [1, 2] });
+  it("startImport posts path, destination, and force keys", async () => {
+    const fetchMock = mockJson({ job_ids: [1, 2], blocked: [] });
     vi.stubGlobal("fetch", fetchMock);
     const res = await startImport("/x", "library");
     expect(res.job_ids).toEqual([1, 2]);
+    expect(res.blocked).toEqual([]);
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-    expect(body).toEqual({ path: "/x", destination_mode: "library" });
+    expect(body).toEqual({ path: "/x", destination_mode: "library", force_keys: [] });
+  });
+
+  it("startImport forwards explicit force keys", async () => {
+    const fetchMock = mockJson({ job_ids: [3], blocked: [] });
+    vi.stubGlobal("fetch", fetchMock);
+    await startImport("/x", "library", ["abc123"]);
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.force_keys).toEqual(["abc123"]);
+  });
+
+  it("startImport surfaces blocked units with their server field names", async () => {
+    const fetchMock = mockJson({
+      job_ids: [],
+      blocked: [
+        {
+          unit_key: "k1",
+          show_name: "Seinfeld",
+          season: 1,
+          display_path: "/x/Season 1",
+          reason: "already_imported",
+          job_ids: [7],
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await startImport("/x", "library");
+    expect(res.blocked[0].unit_key).toBe("k1");
+    expect(res.blocked[0].reason).toBe("already_imported");
+    expect(res.blocked[0].job_ids).toEqual([7]);
   });
 });

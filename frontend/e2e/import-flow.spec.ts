@@ -107,6 +107,59 @@ test.describe('Manual media import', () => {
             .toBe(true);
     });
 
+    test('a blocked unit keeps the modal open and can be re-imported', async ({ page, request }) => {
+        const root = seedShowTree();
+        await request.put('/api/config', { data: { import_watch_path: root } });
+
+        // The pipeline cannot be driven to COMPLETED reliably with fake MKVs, so the
+        // conflict response is served directly. What is under test here is the UI
+        // wiring in a real browser; the contract itself is covered by
+        // backend/tests/integration/test_import_endpoints.py.
+        const startBodies: string[] = [];
+        let call = 0;
+        await page.route('**/api/import/start', async (route) => {
+            startBodies.push(route.request().postData() ?? '');
+            call += 1;
+            const body =
+                call === 1
+                    ? {
+                          job_ids: [],
+                          blocked: [
+                              {
+                                  unit_key: 'key-s1',
+                                  show_name: 'Demo Show',
+                                  season: 1,
+                                  display_path: `${root}/Demo Show/Season 1`,
+                                  reason: 'already_imported',
+                                  job_ids: [7],
+                              },
+                          ],
+                      }
+                    : { job_ids: [42], blocked: [] };
+            await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+        });
+
+        await page.goto('/');
+        await expect(page.locator('text=/LIVE/i')).toBeVisible({ timeout: 10000 });
+        await page.getByTestId('sv-import-btn').click();
+        await page.getByText('Demo Show', { exact: true }).first().click();
+        await expect(page.getByText(/SEASON 1/)).toBeVisible({ timeout: 5000 });
+
+        await page.getByTestId('import-start-btn').click();
+
+        // The modal must stay open and explain itself, not close on a silent skip.
+        await expect(page.getByTestId('import-conflict-panel')).toBeVisible();
+        await expect(page.getByTestId('import-start-btn')).toBeVisible();
+
+        await page.getByTestId('import-force-btn').click();
+
+        // The modal closes once the forced retry succeeds.
+        await expect(page.getByTestId('import-start-btn')).toBeHidden({ timeout: 5000 });
+
+        expect(JSON.parse(startBodies[0]).force_keys).toEqual([]);
+        expect(JSON.parse(startBodies[1]).force_keys).toEqual(['key-s1']);
+    });
+
     test('folder browser stays within the viewport and scrolls', async ({ page, request }) => {
         const root = seedManyDirs();
         await request.put('/api/config', { data: { import_watch_path: root } });
