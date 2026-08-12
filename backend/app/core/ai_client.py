@@ -45,7 +45,10 @@ _MAX_DETAIL_CHARS = 2048
 # ("anthropic/claude-haiku-4-5-20251001"); requiring each segment to start with an
 # alphanumeric is what keeps that safe, since it rules out "." and "..". Anything
 # with a space, query, or fragment is rejected outright.
-_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@:-]*(?:/[A-Za-z0-9][A-Za-z0-9._@:-]*)*$")
+# Anchored with \Z, not $: Python's $ also matches just before a single trailing
+# newline, so "gemini-2.5-flash-lite\n" would pass a ^...$ check despite carrying
+# exactly the whitespace this guard exists to reject.
+_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@:-]*(?:/[A-Za-z0-9][A-Za-z0-9._@:-]*)*\Z")
 
 # How many model ids to name in a "your key cannot see this model" message. A key
 # can list dozens; the message is rendered verbatim in the UI.

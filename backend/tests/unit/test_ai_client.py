@@ -996,6 +996,10 @@ class TestModelOverride:
             "model?key=leak",
             "model#frag",
             "..",
+            # Python's $ matches before a single trailing newline, so a ^...$
+            # anchor would let this through. The pattern uses \Z for that reason.
+            "gemini-2.5-flash-lite\n",
+            "gemini-2.5-flash-lite\r\n",
         ],
     )
     @pytest.mark.asyncio
