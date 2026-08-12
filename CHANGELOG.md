@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **The AI model is configurable now.** Settings → Preferences gains a **Model** field next to the AI provider and key. Leave it blank and nothing changes: Engram uses its own default for that provider. It exists because a key is not guaranteed access to that default. A Gemini key whose Google Cloud project does not carry `gemini-2.5-flash-lite` was told, correctly, that it lacked access to the model, and then given no way whatsoever to point Engram at a model it *could* use. **Test Connection** sends the model as typed, so you can confirm a combination before saving it.
+
+### Fixed
+
+- **"This key does not have access to the model" now says which models the key does have.** When a Gemini request comes back with the model missing, Engram asks the API which models that key can actually use and names them in the error, along with the model it asked for. The old message was accurate and completely undiagnosable: it never said which model was refused, and left no next step. Reaching this error also proves the key itself is good, since Google checks the credential before it looks up the model.
+- **The AI "Test Connection" button no longer fails with a bare HTTP 403 behind a reverse proxy.** The button is restricted to the machine running Engram because each press spends money on your key, and in Docker or any proxied setup the request arrives from the proxy rather than from loopback. That refusal came with an explanation, but the dashboard discarded it and showed only the status code, while the server log recorded nothing at all beyond the access line, so the whole event read as an unexplained failure of the key. The reason ("enable LAN access in Settings") is now shown in the dashboard and written to the log.
+
 ## [0.29.0] - 2026-08-09
 
 _Highlights: movie folder and filename naming is configurable, a skipped track no longer stops the track that's currently ripping, and re-importing an already-imported folder no longer fails permanently._

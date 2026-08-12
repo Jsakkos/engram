@@ -84,6 +84,16 @@ const AI_KEY_PLACEHOLDERS: Record<string, string> = {
     gemini: 'AIzaSy...',
 };
 
+// Shown as the model-field placeholder so the user can see what they are
+// overriding. Mirrors DEFAULT_MODELS in backend/app/core/ai_client.py — the
+// backend is authoritative, this is a label only.
+const AI_DEFAULT_MODELS: Record<string, string> = {
+    anthropic: 'claude-haiku-4-5-20251001',
+    openai: 'gpt-4o-mini',
+    openrouter: 'anthropic/claude-haiku-4-5-20251001',
+    gemini: 'gemini-2.5-flash-lite',
+};
+
 interface NamingPreset {
     id: string;
     seasonFormat: string;
@@ -155,6 +165,7 @@ interface ConfigData {
     aiEpisodeMatchingEnabled: boolean;
     aiProvider: string;
     aiApiKey: string;
+    aiModel: string;
     discdbContributionsEnabled: boolean;
     discdbContributionTier: number;
     discdbExportPath: string;
@@ -236,6 +247,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         aiEpisodeMatchingEnabled: false,
         aiProvider: 'anthropic',
         aiApiKey: '',
+        aiModel: '',
         discdbContributionsEnabled: false,
         discdbContributionTier: 2,
         discdbExportPath: '',
@@ -354,6 +366,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     aiEpisodeMatchingEnabled: data.ai_episode_matching_enabled ?? false,
                     aiProvider: data.ai_provider || 'anthropic',
                     aiApiKey: data.ai_api_key === '***' ? '' : (data.ai_api_key || ''),
+                    aiModel: data.ai_model || '',
                     discdbContributionsEnabled: data.discdb_contributions_enabled ?? false,
                     discdbContributionTier: data.discdb_contribution_tier ?? 2,
                     discdbExportPath: data.discdb_export_path || '',
@@ -537,6 +550,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     ai_episode_matching_enabled: config.aiEpisodeMatchingEnabled,
                     ai_provider: config.aiProvider,
                     ...optional('ai_api_key', config.aiApiKey),
+                    // Sent unconditionally, unlike the key: blank is a meaningful
+                    // value here ("use the provider default"), so optional() —
+                    // which drops blanks so a saved key survives — would make the
+                    // override impossible to clear once set.
+                    ai_model: config.aiModel.trim(),
                     discdb_contributions_enabled: config.discdbContributionsEnabled,
                     discdb_contribution_tier: config.discdbContributionTier,
                     discdb_export_path: config.discdbExportPath,
@@ -598,7 +616,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             return;
         }
         setAiValidation({status: 'testing'});
-        const result = await requestAiValidation(config.aiProvider, config.aiApiKey);
+        // The model goes as typed, not as saved: the point of testing is to find
+        // out whether this key can reach this model before committing to it.
+        const result = await requestAiValidation(config.aiProvider, config.aiApiKey, config.aiModel);
         if (result.status === 'valid') {
             setAiValidation({status: 'valid', model: result.model});
         } else {
@@ -1241,6 +1261,24 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                     </div>
                                     <span className="form-hint">
                                         API key for {providerLabel}. Used only when TMDB lookup fails.
+                                    </span>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="aiModel">Model (optional)</label>
+                                    <input
+                                        id="aiModel"
+                                        type="text"
+                                        placeholder={AI_DEFAULT_MODELS[config.aiProvider] || ''}
+                                        value={config.aiModel}
+                                        onChange={(e) => {
+                                            handleInputChange('aiModel', e.target.value);
+                                            setAiValidation({status: 'idle'});
+                                        }}
+                                    />
+                                    <span className="form-hint">
+                                        Leave blank to use Engram's default. Set this if your key
+                                        cannot reach the default model — a key without access gets
+                                        a "does not have access" error naming the models it can use.
                                     </span>
                                 </div>
                                 </div>

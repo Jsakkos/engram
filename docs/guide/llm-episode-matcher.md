@@ -20,8 +20,31 @@ When the season can't be determined from the disc, the LLM matcher is skipped �
 1. Open **Settings** → **Preferences**.
 2. Pick an **AI Provider** and paste your **API key**. The same provider/key is shared with AI-Powered Title Resolution (if you've enabled that).
 3. Check **AI-Powered Episode Matching (TV)**.
+4. Optionally set **Model**. Leave it blank to use Engram's default for the provider.
+
+Use **Test Connection** after step 2 — it runs a real completion against the
+provider, so it catches a key that cannot reach the model before a disc does.
 
 See [Configuration](../getting-started/configuration.md) for the full settings reference.
+
+### If your key can't reach the default model
+
+Not every key has access to every model. A Gemini key whose Google Cloud project
+does not carry `gemini-2.5-flash-lite`, for example, gets an HTTP 404 rather than
+an auth error, because Google resolves the credential *before* the model — so
+reaching that error means the key itself is fine.
+
+Engram reports this as "This key does not have access to the model Engram uses for
+Gemini", then lists the models your key *can* use. Put one of those in the
+**Model** field.
+
+### Running behind a reverse proxy
+
+**Test Connection** is restricted to the machine running Engram, because each
+press spends money on your key. In Docker or any reverse-proxied deployment the
+request arrives from the proxy rather than from loopback, so the button reports
+that LAN access is required. Enable **Allow LAN access** in Settings → Network to
+use it from another device.
 
 ## Provider recommendation
 

@@ -1829,6 +1829,7 @@ class IdentificationCoordinator:
                     job.volume_label,
                     config.ai_provider,
                     config.ai_api_key,
+                    getattr(config, "ai_model", "") or None,
                 )
                 if ai_result and ai_result.get("title"):
                     ai_identified_name = ai_result["title"]

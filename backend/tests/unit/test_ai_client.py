@@ -820,3 +820,216 @@ class TestTruncatedAndMalformed:
         with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
             result = await complete_json(prompt="x", schema=None, provider="openai", api_key="k")
         assert result is None
+
+
+def _mock_httpx_with_models(post_status: int, models: list[str] | None = None, get_exc=None):
+    """Mocked client whose POST fails and whose GET answers Gemini's ListModels.
+
+    Both calls go through the same patched ``httpx.AsyncClient``, so the ListModels
+    probe is told apart from the completion by verb, not by URL.
+    """
+    client = _mock_httpx({}, status=post_status)
+    if get_exc is not None:
+        client.get = AsyncMock(side_effect=get_exc)
+        return client
+    listing = MagicMock()
+    listing.status_code = 200
+    listing.raise_for_status = MagicMock()
+    listing.json.return_value = {
+        "models": [
+            {"name": f"models/{m}", "supportedGenerationMethods": ["generateContent"]}
+            for m in (models or [])
+        ]
+    }
+    client.get = AsyncMock(return_value=listing)
+    return client
+
+
+class TestGeminiModelUnavailableIsActionable:
+    """A Gemini 404 proves the key authenticated but cannot see the model.
+
+    Google resolves auth *before* the model (a bad key is 400, a missing key 403),
+    so the only useful next step is naming the models the key *can* reach. Without
+    that, the user is told the model is unavailable and given nowhere to go.
+    """
+
+    @pytest.mark.asyncio
+    async def test_404_message_names_the_models_the_key_can_use(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx_with_models(404, ["gemini-3.5-flash", "gemini-2.5-pro"])
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="gemini",
+                    api_key="AIzaSy-x",
+                    raise_on_error=True,
+                    retries=0,
+                )
+
+        assert exc.value.code == "model_unavailable"
+        message = str(exc.value)
+        assert "gemini-3.5-flash" in message
+        assert "gemini-2.5-pro" in message
+
+    @pytest.mark.asyncio
+    async def test_404_names_the_model_that_was_requested(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx_with_models(404, ["gemini-3.5-flash"])
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="gemini",
+                    api_key="AIzaSy-x",
+                    raise_on_error=True,
+                    retries=0,
+                )
+
+        assert "gemini-2.5-flash-lite" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_listmodels_failure_leaves_the_base_message_intact(self):
+        """The probe is a bonus. It must never turn one failure into two."""
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx_with_models(404, get_exc=RuntimeError("boom"))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="gemini",
+                    api_key="AIzaSy-x",
+                    raise_on_error=True,
+                    retries=0,
+                )
+
+        assert exc.value.code == "model_unavailable"
+        assert "does not have access" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_bulk_path_does_not_pay_for_the_probe(self):
+        """raise_on_error=False is the bulk matcher, whose message nobody reads.
+        Probing there would add one request per title on a disc-wide failure."""
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx_with_models(404, ["gemini-3.5-flash"])
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x", schema=None, provider="gemini", api_key="AIzaSy-x", retries=0
+            )
+
+        assert result is None
+        mock.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_gemini_404_does_not_probe(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx_with_models(404, ["gpt-4o-mini"])
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError):
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="openai",
+                    api_key="sk-x",
+                    raise_on_error=True,
+                    retries=0,
+                )
+
+        mock.get.assert_not_awaited()
+
+
+class TestModelOverride:
+    """A hardcoded model leaves a user whose key cannot reach it with no recourse."""
+
+    @pytest.mark.asyncio
+    async def test_gemini_override_reaches_the_url(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"candidates": [{"content": {"parts": [{"text": '{"x": 1}'}]}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="x",
+                schema=None,
+                provider="gemini",
+                api_key="k",
+                model="gemini-3.5-flash",
+            )
+
+        assert mock.post.await_args.args[0].endswith("/models/gemini-3.5-flash:generateContent")
+
+    @pytest.mark.asyncio
+    async def test_openrouter_slashed_model_is_allowed(self):
+        """OpenRouter model ids legitimately contain a slash."""
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"choices": [{"message": {"content": '{"x": 1}'}}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x",
+                schema=None,
+                provider="openrouter",
+                api_key="k",
+                model="google/gemini-2.5-flash-lite",
+            )
+
+        assert result == {"x": 1}
+        assert mock.post.await_args.kwargs["json"]["model"] == "google/gemini-2.5-flash-lite"
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "../../v1beta/models/evil",
+            "/absolute/path",
+            "model name with spaces",
+            "model?key=leak",
+            "model#frag",
+            "..",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_unsafe_model_names_are_rejected_before_any_request(self, bad):
+        """The Gemini model is interpolated into a URL path, so an unvalidated
+        override is a request-forgery primitive, not merely a typo."""
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx({"candidates": []})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="x", schema=None, provider="gemini", api_key="k", model=bad
+            )
+
+        assert result is None
+        mock.post.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unsafe_model_name_is_explained_when_raising(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx({"candidates": []})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc:
+                await complete_json(
+                    prompt="x",
+                    schema=None,
+                    provider="gemini",
+                    api_key="k",
+                    model="../evil",
+                    raise_on_error=True,
+                )
+
+        assert exc.value.code == "bad_request"
+        assert "model name" in str(exc.value).lower()
+        mock.post.assert_not_awaited()

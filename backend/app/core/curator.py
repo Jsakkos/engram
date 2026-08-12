@@ -637,6 +637,7 @@ class EpisodeCurator:
                 tmdb_show_id=str(tmdb_show_id),
                 ai_provider=config.ai_provider,
                 ai_api_key=config.ai_api_key,
+                ai_model=getattr(config, "ai_model", "") or None,
                 tmdb_api_key=config.tmdb_api_key,
             )
         except Exception as e:

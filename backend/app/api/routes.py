@@ -309,6 +309,7 @@ class ConfigResponse(BaseModel):
     ai_identification_enabled: bool
     ai_provider: str
     ai_api_key: str
+    ai_model: str
     ai_episode_matching_enabled: bool
     # Staging watcher
     staging_watch_enabled: bool
@@ -399,6 +400,7 @@ class ConfigUpdate(BaseModel):
     ai_identification_enabled: bool | None = None
     ai_provider: str | None = None
     ai_api_key: str | None = None
+    ai_model: str | None = None
     ai_episode_matching_enabled: bool | None = None
     # Staging watcher
     staging_watch_enabled: bool | None = None
@@ -1580,6 +1582,8 @@ async def get_config() -> ConfigResponse:
         ai_identification_enabled=config.ai_identification_enabled,
         ai_provider=config.ai_provider,
         ai_api_key="***" if config.ai_api_key else "",  # Redacted
+        # Not a secret, and the wizard must round-trip it to show what is in use.
+        ai_model=config.ai_model or "",
         ai_episode_matching_enabled=config.ai_episode_matching_enabled,
         # Staging watcher
         staging_watch_enabled=config.staging_watch_enabled,
@@ -1692,6 +1696,23 @@ async def update_config(config: ConfigUpdate) -> dict:
             raise HTTPException(
                 status_code=422,
                 detail="discord_webhook_url must be an http/https URL pointing to a non-internal host",
+            )
+
+    # Validate the AI model override before persisting. The Gemini adapter
+    # interpolates this into a request URL path, so an unchecked value stored
+    # here becomes a request-forgery primitive executed on the next match.
+    # A blank value is the documented way to revert to the provider default and
+    # is deliberately allowed through.
+    if update_data.get("ai_model"):
+        from app.core.ai_client import _is_safe_model_name
+
+        if not _is_safe_model_name(update_data["ai_model"]):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "ai_model must be a plain model id such as 'gemini-2.5-flash-lite' "
+                    "or 'anthropic/claude-haiku-4-5-20251001'"
+                ),
             )
 
     # Validate Discord notification templates before persisting
@@ -4372,6 +4393,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
             tmdb_show_id=str(tmdb_show_id),
             ai_provider=config.ai_provider,
             ai_api_key=config.ai_api_key,
+            ai_model=getattr(config, "ai_model", "") or None,
             tmdb_api_key=config.tmdb_api_key,
             raise_on_error=True,
         )

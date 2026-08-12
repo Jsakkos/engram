@@ -58,10 +58,16 @@ class AiValidationRequest(BaseModel):
     ``api_key`` is optional: when omitted or blank the stored key for the
     provider is used, so a user can verify a key they saved earlier without
     having it to hand. The stored key is never returned.
+
+    ``model`` is likewise optional and blank means the provider default. It is
+    sent from the wizard as typed, not as saved, so the button answers "will
+    this combination work" rather than "did the last saved one work" — which is
+    the whole point when the user is testing a model their key might not have.
     """
 
     provider: str
     api_key: str | None = None
+    model: str | None = None
 
 
 class ValidationResponse(BaseModel):
@@ -678,20 +684,30 @@ async def validate_ai(
         )
 
     api_key = (request.api_key or "").strip()
-    if not api_key:
+    model = (request.model or "").strip()
+    if not api_key or not model:
         from app.services.config_service import get_config
 
         # Guarded: this endpoint promises never to 500, and a config read can
         # fail (locked or migrating DB). Reporting "could not read the saved
         # key" is more useful than a stack trace behind a dead button.
+        config = None
         try:
             config = await get_config()
         except Exception:  # noqa: BLE001 — a validator must never 500
-            logger.warning("AI validation could not read the stored key", exc_info=True)
+            logger.warning("AI validation could not read the stored config", exc_info=True)
+        if config is None and not api_key:
+            # Only fatal when the key itself was what we came for. A failed read
+            # with a supplied key just means "no stored model override", which
+            # falls back to the provider default like any blank model.
             return ValidationResponse(
                 valid=False, error="Could not read the saved API key from the database"
             )
-        api_key = (getattr(config, "ai_api_key", "") or "").strip()
+        if config is not None:
+            if not api_key:
+                api_key = (getattr(config, "ai_api_key", "") or "").strip()
+            if not model:
+                model = (getattr(config, "ai_model", "") or "").strip()
     if not api_key:
         return ValidationResponse(
             valid=False, error="No API key provided and none is saved for this provider"
@@ -705,6 +721,7 @@ async def validate_ai(
             schema={"type": "object", "properties": {"ok": {"type": "boolean"}}},
             provider=provider,
             api_key=api_key,
+            model=model or None,
             max_tokens=16,
             raise_on_error=True,
             # A dead key must fail in one request rather than paying the backoff
@@ -725,4 +742,6 @@ async def validate_ai(
 
     if not result:
         return ValidationResponse(valid=False, error="Provider returned an empty response")
-    return ValidationResponse(valid=True, version=DEFAULT_MODELS[provider])
+    # Report the model that actually answered, not the default, so a user testing
+    # an override can see which one the key accepted.
+    return ValidationResponse(valid=True, version=model or DEFAULT_MODELS[provider])
