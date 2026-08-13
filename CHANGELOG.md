@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-08-12
+
+_Highlights: the AI model is configurable per-provider, and a Gemini access error now says which models your key can actually use._
+
 ### Added
 
 - **The AI model is configurable now.** Settings → Preferences gains a **Model** field next to the AI provider and key. Leave it blank and nothing changes: Engram uses its own default for that provider. It exists because a key is not guaranteed access to that default. A Gemini key whose Google Cloud project does not carry `gemini-2.5-flash-lite` was told, correctly, that it lacked access to the model, and then given no way whatsoever to point Engram at a model it *could* use. **Test Connection** sends the model as typed, so you can confirm a combination before saving it.
