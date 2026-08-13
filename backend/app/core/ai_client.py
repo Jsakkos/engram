@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 
 import httpx
 
@@ -36,6 +37,36 @@ MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0  # seconds
 
 _MAX_DETAIL_CHARS = 2048
+
+# Model ids are user-settable config (AppConfig.ai_model) and the Gemini one is
+# interpolated into a URL *path*, so an unvalidated value is a request-forgery
+# primitive, not just a typo: "../../v1beta/tunedModels/x" would retarget the
+# request. Slashes are allowed because OpenRouter ids legitimately contain one
+# ("anthropic/claude-haiku-4-5-20251001"); requiring each segment to start with an
+# alphanumeric is what keeps that safe, since it rules out "." and "..". Anything
+# with a space, query, or fragment is rejected outright.
+# Anchored with \Z, not $: Python's $ also matches just before a single trailing
+# newline, so "gemini-2.5-flash-lite\n" would pass a ^...$ check despite carrying
+# exactly the whitespace this guard exists to reject.
+_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@:-]*(?:/[A-Za-z0-9][A-Za-z0-9._@:-]*)*\Z")
+
+# How many model ids to name in a "your key cannot see this model" message. A key
+# can list dozens; the message is rendered verbatim in the UI.
+_MAX_LISTED_MODELS = 12
+
+
+def _is_safe_model_name(model: str) -> bool:
+    """True if ``model`` is safe to place in a request path or body.
+
+    Rejects path traversal, absolute paths, whitespace, and URL metacharacters.
+    Requiring every slash-separated segment to *start* with an alphanumeric is
+    what rules out "..", "." and empty segments, so no separate traversal check
+    is needed.
+    """
+    if not model or len(model) > 200:
+        return False
+    return bool(_MODEL_NAME_RE.match(model))
+
 
 # Display names for the four provider slugs. The slugs themselves are lowercase
 # identifiers, and these sentences are read by users, so "OpenAI accepted the
@@ -68,6 +99,13 @@ _CAUSE_MESSAGES: dict[ProviderErrorCode, str] = {
     "malformed_response": "{provider} returned a reply that was not valid JSON.",
     "unknown": "{provider} returned an unexpected error.",
 }
+
+# Shown when AppConfig.ai_model fails _is_safe_model_name. Says what to do, since
+# the user cannot be expected to know which character offended.
+_INVALID_MODEL_MESSAGE = (
+    "The configured model name is not valid. Clear the AI model field in Settings "
+    "to use Engram's default for {provider}."
+)
 
 
 def classify_provider_error(provider: str, exc: Exception) -> tuple[ProviderErrorCode, str]:
@@ -121,6 +159,53 @@ def _classify_status(provider: str, exc: httpx.HTTPStatusError) -> ProviderError
             return "bad_key"
         return "bad_request"
     return "unknown"
+
+
+async def _gemini_available_models(api_key: str, timeout: float) -> list[str]:
+    """Model ids this key can call generateContent on, or ``[]`` if unknowable.
+
+    Gemini answers a 404 for a model the key cannot see, and resolves auth
+    *before* the model (a bad key is 400, a missing key 403), so reaching a 404
+    proves the credential works and the model is the whole problem. ListModels is
+    the only thing that turns that into an actionable message, and it is free.
+
+    Never raises: this runs while another failure is already being reported, and
+    turning one error into two would be strictly worse than saying less.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(
+                GEMINI_API_BASE,
+                headers={"x-goog-api-key": api_key},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:  # noqa: BLE001 — a best-effort hint must not mask the real error
+        logger.debug("Gemini ListModels probe failed", exc_info=True)
+        return []
+
+    names: list[str] = []
+    for entry in data.get("models") or []:
+        if not isinstance(entry, dict):
+            continue
+        methods = entry.get("supportedGenerationMethods") or []
+        if "generateContent" not in methods:
+            continue
+        name = str(entry.get("name") or "").removeprefix("models/")
+        if name:
+            names.append(name)
+    return names
+
+
+def _with_model_hint(message: str, model: str, available: list[str]) -> str:
+    """Append what was asked for, and what the key could have had instead."""
+    message = f"{message} Engram asked for '{model}'."
+    if not available:
+        return message
+    shown = ", ".join(available[:_MAX_LISTED_MODELS])
+    if len(available) > _MAX_LISTED_MODELS:
+        shown += ", ..."
+    return f"{message} Models available to this key: {shown}. Set one in Settings."
 
 
 def detail_from(exc: Exception) -> str:
@@ -209,6 +294,18 @@ async def complete_json(
         logger.warning("Unknown AI provider: %s", sanitize_log_value(provider))
         return None
 
+    if not _is_safe_model_name(model):
+        # Unlike the two early returns above, this one honours raise_on_error: a
+        # bad model name is a config mistake the user can fix, and silently
+        # returning None would send them hunting for a key or network problem.
+        logger.warning("Rejecting unsafe AI model name: %s", sanitize_log_value(model))
+        if raise_on_error:
+            raise AIProviderError(
+                _INVALID_MODEL_MESSAGE.format(provider=_PROVIDER_LABELS.get(provider, provider)),
+                code="bad_request",
+            )
+        return None
+
     if provider == "anthropic":
 
         def factory():
@@ -261,6 +358,14 @@ async def complete_json(
             exc_info=True,
         )
         if raise_on_error:
+            if provider == "gemini" and code == "model_unavailable":
+                # Only on the human-facing paths (the connection test and the
+                # single-title Inspector re-match set raise_on_error). The bulk
+                # matcher would pay one extra request per title for a message
+                # nobody reads.
+                message = _with_model_hint(
+                    message, model, await _gemini_available_models(api_key, timeout)
+                )
             raise AIProviderError(message, code=code, detail=detail_from(e)) from e
         return None
     except Exception as e:

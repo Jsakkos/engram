@@ -167,6 +167,11 @@ class AppConfig(SQLModel, table=True):
     ai_identification_enabled: bool = False  # Enable AI-powered title resolution
     ai_provider: str = "anthropic"  # "anthropic" | "openai" | "openrouter" | "gemini"
     ai_api_key: str = ""  # API key for the selected provider
+    # Optional model override; "" means "use ai_client.DEFAULT_MODELS[provider]".
+    # Exists because a key is not guaranteed access to the default model — a
+    # Gemini key whose project cannot see gemini-2.5-flash-lite gets a 404, and
+    # without this field there is no way to point Engram at a model it can use.
+    ai_model: str = ""
     ai_episode_matching_enabled: bool = (
         False  # Enable LLM-based episode identification fallback (uses ai_provider/ai_api_key)
     )

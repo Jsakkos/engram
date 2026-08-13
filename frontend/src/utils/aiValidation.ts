@@ -13,16 +13,39 @@ export type AiValidationResult =
   | { status: 'invalid'; error: string }
   | { status: 'error'; error: string };
 
+/**
+ * Pull the human sentence out of a FastAPI error body.
+ *
+ * A dependency that raises HTTPException produces `{"detail": "..."}` and no
+ * server-side log line, so this string is the only explanation that exists for,
+ * say, the LAN gate on this endpoint. Dropping it left users with a bare "HTTP
+ * 403" and nothing to act on.
+ */
+function detailFrom(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body);
+    const detail = parsed?.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail.trim();
+  } catch {
+    // Not JSON (a proxy's HTML error page, say) — the status is all we have.
+  }
+  return null;
+}
+
 export async function requestAiValidation(
   provider: string,
   apiKey: string,
+  model?: string,
 ): Promise<AiValidationResult> {
   // Omit the key entirely when blank so the backend falls back to the stored
   // one. Posting "" would be rejected as an empty key, which is what makes the
-  // TMDB test button useless for an already-saved token.
+  // TMDB test button useless for an already-saved token. The model follows the
+  // same rule: blank means "let the backend pick the provider default".
   const trimmed = apiKey.trim();
+  const trimmedModel = (model ?? '').trim();
   const payload: Record<string, string> = { provider };
   if (trimmed) payload.api_key = trimmed;
+  if (trimmedModel) payload.model = trimmedModel;
 
   let response: Response;
   try {
@@ -40,11 +63,14 @@ export async function requestAiValidation(
   }
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    console.error(`AI validation endpoint returned HTTP ${response.status}:`, detail);
+    const body = await response.text().catch(() => '');
+    console.error(`AI validation endpoint returned HTTP ${response.status}:`, body);
+    const detail = detailFrom(body);
     return {
       status: 'error',
-      error: `Couldn't check the key — validation endpoint returned HTTP ${response.status}`,
+      error: detail
+        ? `Couldn't check the key — ${detail}`
+        : `Couldn't check the key — validation endpoint returned HTTP ${response.status}`,
     };
   }
 

@@ -142,6 +142,7 @@ The `conflict_resolution_default` field accepts one of four values:
 | `ai_identification_enabled` | Enable AI-assisted disc title resolution | Requires `ai_provider` and `ai_api_key` |
 | `ai_provider` | AI provider to use | `anthropic`, `openai`, `openrouter`, `gemini` |
 | `ai_api_key` | API key for the selected provider | Redacted in API responses |
+| `ai_model` | Model override | Blank uses Engram's default for the provider. Set this when your key has no access to that default |
 
 ### AI-Powered Episode Matching
 

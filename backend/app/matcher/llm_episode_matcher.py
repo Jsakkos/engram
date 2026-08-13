@@ -86,9 +86,14 @@ async def match_episode_via_llm(
     ai_provider: str,
     ai_api_key: str,
     tmdb_api_key: str,
+    ai_model: str | None = None,
     raise_on_error: bool = False,
 ) -> LLMEpisodeMatch | None:
     """Run LLM episode matching. Returns None on no-confident-match or empty response.
+
+    ``ai_model`` is the user's optional override (AppConfig.ai_model); None means
+    the provider default. It is recorded on the returned match so per-track
+    provenance names the model that actually answered.
 
     When ``raise_on_error`` is True, a provider/transport failure raises
     ``AIProviderError`` (instead of being swallowed to None by ``complete_json``)
@@ -131,6 +136,7 @@ async def match_episode_via_llm(
         schema=RESPONSE_SCHEMA,
         provider=ai_provider,
         api_key=ai_api_key,
+        model=ai_model or None,
         max_tokens=512,
         raise_on_error=raise_on_error,
     )
@@ -168,5 +174,5 @@ async def match_episode_via_llm(
         confidence=confidence,
         reasoning=str(raw.get("reasoning") or ""),
         runner_up=runner_up,
-        model=DEFAULT_MODELS.get(ai_provider, "unknown"),
+        model=ai_model or DEFAULT_MODELS.get(ai_provider, "unknown"),
     )

@@ -31,8 +31,12 @@ async def identify_from_label(
     volume_label: str,
     provider: str,
     api_key: str,
+    model: str | None = None,
 ) -> dict | None:
     """Send volume label to an LLM to identify the disc content.
+
+    ``model`` is the user's optional override (AppConfig.ai_model); None means
+    the provider default.
 
     Returns dict with keys: title, year, type (or None on failure).
     """
@@ -42,6 +46,7 @@ async def identify_from_label(
         schema=None,
         provider=provider,
         api_key=api_key,
+        model=model,
         max_tokens=200,
     )
     return _validate(raw, volume_label)

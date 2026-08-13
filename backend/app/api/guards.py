@@ -13,8 +13,16 @@ suite keep working unchanged.
 """
 
 import ipaddress
+import logging
 
 from fastapi import HTTPException, Request
+
+# Safe at module scope: app.core.security imports only the stdlib, so it cannot
+# reintroduce the import cycle this leaf module exists to avoid. (get_config
+# below stays function-local for exactly that reason.)
+from app.core.security import sanitize_log_value
+
+logger = logging.getLogger(__name__)
 
 
 def is_loopback(host: str | None) -> bool:
@@ -72,7 +80,8 @@ async def require_localhost_or_lan(request: Request) -> None:
     opt-in rather than always-on: enabling `allow_lan_access` is the user's
     statement that they trust their network.
     """
-    if is_loopback(request.client.host if request.client else None):
+    peer = request.client.host if request.client else None
+    if is_loopback(peer):
         return
     try:
         from app.services.config_service import get_config
@@ -82,6 +91,23 @@ async def require_localhost_or_lan(request: Request) -> None:
     except Exception:  # noqa: BLE001 — a config read failure must fail closed
         allow_lan = False
     if not allow_lan:
+        # Logged because an HTTPException raised from a dependency produces
+        # nothing but a bare uvicorn access line, which reads as an unexplained
+        # 403. Docker-behind-a-proxy deployments hit this on every such call
+        # (the peer is the proxy container, never loopback), so the server log
+        # has to say which gate closed and what turns it off.
+        #
+        # The request path is attacker-controlled and reaches here percent-decoded
+        # (uvicorn unquotes it into the ASGI scope), so it is sanitized like every
+        # other tainted log value in this codebase (py/log-injection). Starlette's
+        # URL parsing happens to drop CR/LF already, but terminal escapes survive
+        # it, and relying on that incidental behaviour is not a control.
+        logger.warning(
+            "Refused %s %s from non-loopback peer %s: allow_lan_access is off",
+            sanitize_log_value(request.method),
+            sanitize_log_value(request.url.path),
+            sanitize_log_value(peer or "unknown"),
+        )
         raise HTTPException(
             status_code=403,
             detail=(
