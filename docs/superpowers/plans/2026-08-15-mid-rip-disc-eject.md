@@ -452,6 +452,86 @@ git commit -m "feat(matching): register rip_ejected as a re-rippable failure cod
 
 ---
 
+## Task 3b: Register rip_ejected in the frontend re-rip gate
+
+**Discovered during Task 3 review.** `frontend/src/components/ReviewQueue/rerip.ts:1`
+hardcodes its OWN copy of the backend's rip-failure code set:
+
+```typescript
+const RIP_FAILURE_CODES = new Set(['incomplete_rip', 'rip_stalled']);
+```
+
+`getRerippableState` returns `EMPTY` for any code not in that set, so without this
+task `isRerippable` is `false` for every ejected track and the Re-rip button never
+renders. The recovery path the feature promises would be dead, and
+`EJECTED_RIP_MESSAGE` (which tells the user to "use Re-rip to recover it") would be
+a false promise, with every backend test still green.
+
+**Files:**
+- Modify: `frontend/src/components/ReviewQueue/rerip.ts:1`
+- Test: `frontend/src/components/ReviewQueue/__tests__/rerip.test.ts` (check the real
+  path; if no test file exists for this module, create one next to it following the
+  colocated `*.test.ts` convention used elsewhere in `frontend/src`)
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { getRerippableState } from '../rerip';
+
+describe('getRerippableState for ejected tracks', () => {
+  it('treats rip_ejected as re-rippable', () => {
+    const details = JSON.stringify({
+      error: 'rip_ejected',
+      message: 'You ejected the disc before this track finished ripping.',
+      rerip_eligible: true,
+      rerip_attempts: 0,
+    });
+
+    const state = getRerippableState(details);
+
+    expect(state.isRerippable).toBe(true);
+    expect(state.errorCode).toBe('rip_ejected');
+    expect(state.autoEligible).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+cd frontend && npm run test:unit -- rerip
+```
+
+Expected: FAIL, `expected false to be true` on `isRerippable`.
+
+- [ ] **Step 3: Add the code**
+
+```typescript
+// Mirrors RIP_FAILURE_ERROR_CODES in backend/app/services/matching_coordinator.py.
+// Both must be updated together: this set gates whether the Re-rip button renders,
+// so a code registered only on the backend parks tracks as re-rippable that the UI
+// then offers no way to recover.
+const RIP_FAILURE_CODES = new Set(['incomplete_rip', 'rip_stalled', 'rip_ejected']);
+```
+
+- [ ] **Step 4: Verify**
+
+```bash
+cd frontend && npm run test:unit -- rerip
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/components/ReviewQueue/rerip.ts frontend/src/components/ReviewQueue/__tests__/rerip.test.ts
+git commit -m "fix(ui): treat rip_ejected as re-rippable in the review queue"
+```
+
+---
+
 ## Task 4: JobManager.eject_disc_for_job
 
 **Files:**
@@ -686,8 +766,14 @@ Add directly after `cancel_job` in `backend/app/services/job_manager.py` (after 
 
         # Stop MakeMKV FIRST so it releases its handle on the drive; a rip in
         # progress is exactly why the tray would otherwise refuse to open.
+        #
+        # to_thread is required, not cosmetic: eject_abort runs the rip's
+        # eject preparer, which globs and stats the staging directory under
+        # the rip's filesystem lock (held by the rip thread during its own
+        # polls). Calling it inline would block the event loop on contended
+        # disc I/O. See eject_abort's docstring.
         if state == JobState.RIPPING:
-            self._extractor.eject_abort(job_id)
+            await asyncio.to_thread(self._extractor.eject_abort, job_id)
 
         ejected = False
         try:
