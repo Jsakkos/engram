@@ -302,6 +302,13 @@ class RipResult:
     # caller re-rips the remaining not-skipped titles individually — where the
     # live skip-set IS honored (issue #538).
     aborted_for_skip: bool = False
+    # True when a rip was terminated because the user ejected the disc from the
+    # dashboard. Like aborted_for_skip this is NOT a failure: titles that
+    # finished before the abort are kept and continue to matching, and the
+    # caller routes every unfinished title to REVIEW as re-rippable. Unlike
+    # aborted_for_skip there is no per-title fallback pass afterward, because
+    # the disc is no longer in the drive.
+    aborted_for_eject: bool = False
 
 
 class ScanTimeoutError(Exception):
@@ -572,6 +579,11 @@ class MakeMKVExtractor:
         # terminates the correct process.
         self._processes: dict[int, subprocess.Popen] = {}  # job_id -> process
         self._cancelled_jobs: set[int] = set()
+        # Jobs the user ejected mid-rip. Distinct from _cancelled_jobs so the
+        # return path can report a salvageable eject rather than a cancel;
+        # eject_abort populates BOTH so the existing reader-loop terminate
+        # check needs no change.
+        self._ejected_jobs: set[int] = set()
         # Per-job set of title_index values to skip. Checked before each
         # per-title rip command so a queued-but-not-yet-ripped title can be
         # dropped mid-rip. A full-disc "all" pass cannot honor this (one process
@@ -1382,6 +1394,18 @@ class MakeMKVExtractor:
                 proc.terminate()
             except (ProcessLookupError, PermissionError) as e:
                 logger.debug(f"Could not terminate MakeMKV process for job {job_id}: {e}")
+
+    def eject_abort(self, job_id: int) -> None:
+        """Stop ripping because the user ejected the disc, keeping finished titles.
+
+        Adds the job to _ejected_jobs (read by the return path) and to
+        _cancelled_jobs (read by the reader loop, which already terminates the
+        subprocess and breaks out of the command loop). The caller is
+        responsible for the physical eject and for routing unfinished titles
+        to REVIEW.
+        """
+        self._ejected_jobs.add(job_id)
+        self.cancel(job_id)
 
     async def shutdown(self, grace: float = 5.0) -> None:
         """Drain all tracked MakeMKV subprocesses on server shutdown.
