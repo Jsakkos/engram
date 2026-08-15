@@ -317,18 +317,36 @@ async def _job_state(job_id: int) -> JobState:
         return job.state
 
 
-class _EjectSpy:
-    """Records eject_abort calls in place of the real extractor method."""
+class _EjectStubs:
+    """Recorder for the eject collaborators.
 
-    def __init__(self) -> None:
-        self.job_ids: list[int] = []
+    ``calls`` is a single ordered log both the eject_abort and eject_disc stubs
+    append to, so the abort-before-eject ordering can be asserted. Stubbing them
+    independently would let a refactor that swapped the two lines pass silently,
+    and the ordering is load-bearing: MakeMKV holds a handle on the drive, so a
+    tray asked to open first almost always refuses.
+    """
 
-    def __call__(self, job_id: int) -> None:
-        self.job_ids.append(job_id)
+    def __init__(self, eject_ok: bool) -> None:
+        self.eject_ok = eject_ok
+        self.calls: list[str] = []
+        self.abort_job_ids: list[int] = []
+        self.notified: list[str] = []
+
+    def eject_abort(self, job_id: int) -> None:
+        self.calls.append("abort")
+        self.abort_job_ids.append(job_id)
+
+    def eject_disc(self, drive: str) -> bool:
+        self.calls.append("eject")
+        return self.eject_ok
+
+    def notify_ejected(self, drive: str) -> None:
+        self.notified.append(drive)
 
 
-def _install_eject_stubs(monkeypatch, *, eject_ok: bool) -> tuple[_EjectSpy, list[str]]:
-    """Stub eject_abort, eject_disc and notify_ejected; return the two spies.
+def _install_eject_stubs(monkeypatch, *, eject_ok: bool) -> _EjectStubs:
+    """Stub eject_abort, eject_disc and notify_ejected onto one recorder.
 
     eject_disc is patched on the sentinel module, matching every other rip test
     in this tree. That reaches JobManager because its call sites import the name
@@ -336,16 +354,13 @@ def _install_eject_stubs(monkeypatch, *, eject_ok: bool) -> tuple[_EjectSpy, lis
     import function-local if you touch it, or this stub silently stops working
     and a unit test opens the physical tray.
     """
-    abort_spy = _EjectSpy()
-    notified: list[str] = []
-    monkeypatch.setattr(job_manager._extractor, "eject_abort", abort_spy)
-    monkeypatch.setattr("app.core.sentinel.eject_disc", lambda drive: eject_ok)
-    # notify_ejected and eject_abort are instance attributes on the singletons,
-    # so they are patched directly and are unaffected by the above.
-    monkeypatch.setattr(
-        job_manager._drive_monitor, "notify_ejected", lambda drive: notified.append(drive)
-    )
-    return abort_spy, notified
+    stubs = _EjectStubs(eject_ok)
+    # eject_abort and notify_ejected are instance attributes on the singletons,
+    # so they are patched directly and are unaffected by the sentinel patch.
+    monkeypatch.setattr(job_manager._extractor, "eject_abort", stubs.eject_abort)
+    monkeypatch.setattr(job_manager._drive_monitor, "notify_ejected", stubs.notify_ejected)
+    monkeypatch.setattr("app.core.sentinel.eject_disc", stubs.eject_disc)
+    return stubs
 
 
 @pytest.mark.unit
@@ -357,12 +372,15 @@ async def test_eject_while_ripping_stops_rip_and_does_not_cancel(monkeypatch):
     tracks that already ripped cleanly.
     """
     job_id = await _seed_job_in_state(JobState.RIPPING)
-    abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=True)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=True)
 
     result = await job_manager.eject_disc_for_job(job_id)
 
-    assert abort_spy.job_ids == [job_id]
-    assert notified == ["Z:"]
+    assert stubs.abort_job_ids == [job_id]
+    assert stubs.calls == ["abort", "eject"], (
+        "MakeMKV must release the drive before the tray is asked to open"
+    )
+    assert stubs.notified == ["Z:"]
     assert result == {"ejected": True, "action": "rip_stopped"}
     assert await _job_state(job_id) == JobState.RIPPING
 
@@ -375,12 +393,13 @@ async def test_failed_eject_still_stops_rip_and_skips_notify(monkeypatch):
     observes the disc when the user pops it out by hand.
     """
     job_id = await _seed_job_in_state(JobState.RIPPING)
-    abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=False)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=False)
 
     result = await job_manager.eject_disc_for_job(job_id)
 
-    assert abort_spy.job_ids == [job_id]
-    assert notified == []
+    assert stubs.abort_job_ids == [job_id]
+    assert stubs.calls == ["abort", "eject"]
+    assert stubs.notified == []
     assert result == {"ejected": False, "action": "rip_stopped"}
 
 
@@ -388,7 +407,7 @@ async def test_failed_eject_still_stops_rip_and_skips_notify(monkeypatch):
 async def test_eject_while_identifying_cancels_the_job(monkeypatch):
     """Nothing has been ripped yet, so there is nothing to salvage."""
     job_id = await _seed_job_in_state(JobState.IDENTIFYING)
-    _abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=True)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=True)
     # A job driven to a terminal state fires Discord notification tasks that
     # leak a DB connection past teardown; drop the callbacks for this test.
     monkeypatch.setattr(jm_mod.state_machine, "_on_terminal_callbacks", [])
@@ -405,7 +424,8 @@ async def test_eject_while_identifying_cancels_the_job(monkeypatch):
     result = await job_manager.eject_disc_for_job(job_id)
 
     assert cancelled == [job_id]
-    assert notified == ["Z:"]
+    assert stubs.calls == ["eject"], "no rip is running, so there is no MakeMKV to abort"
+    assert stubs.notified == ["Z:"]
     assert result == {"ejected": True, "action": "job_cancelled"}
     # The spy delegates to the real cancel, so the job really did go terminal.
     assert await _job_state(job_id) == JobState.FAILED
@@ -415,10 +435,11 @@ async def test_eject_while_identifying_cancels_the_job(monkeypatch):
 async def test_eject_in_matching_raises(monkeypatch):
     """Past the rip the drive is no longer held, so there is nothing to eject."""
     job_id = await _seed_job_in_state(JobState.MATCHING)
-    abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=True)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=True)
 
     with pytest.raises(ValueError, match="Cannot eject"):
         await job_manager.eject_disc_for_job(job_id)
 
-    assert abort_spy.job_ids == [], "a rejected eject must not touch MakeMKV"
-    assert notified == []
+    assert stubs.abort_job_ids == [], "a rejected eject must not touch MakeMKV"
+    assert stubs.calls == [], "a rejected eject must not touch the drive at all"
+    assert stubs.notified == []

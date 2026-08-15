@@ -1196,6 +1196,7 @@ class JobManager:
             raise ValueError(f"Cannot eject a job in state: {state.value}")
 
         safe_job = sanitize_log_value(job_id)
+        safe_drive = sanitize_log_value(drive_id)
 
         # Stop MakeMKV FIRST so it releases its handle on the drive; a rip in
         # progress is exactly why the tray would otherwise refuse to open.
@@ -1214,7 +1215,7 @@ class JobManager:
         try:
             ejected = await asyncio.to_thread(eject_disc, drive_id)
         except (OSError, RuntimeError) as e:
-            logger.warning(f"Job {safe_job}: eject of {drive_id} raised: {e}")
+            logger.warning(f"Job {safe_job}: eject of {safe_drive} raised: {e}")
 
         if ejected:
             # Only on success: after a failed eject the sentinel must stay armed
@@ -1222,7 +1223,7 @@ class JobManager:
             self._drive_monitor.notify_ejected(drive_id)
         else:
             logger.warning(
-                f"Job {safe_job}: drive {drive_id} did not open; "
+                f"Job {safe_job}: drive {safe_drive} did not open; "
                 f"the rip was still stopped and the disc can be removed by hand"
             )
 
