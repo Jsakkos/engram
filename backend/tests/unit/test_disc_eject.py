@@ -1,12 +1,29 @@
 """Unit tests for the mid-rip disc eject feature."""
 
+import asyncio
+import time
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from app.core.extractor import (
     MakeMKVExtractor,
     RipResult,
     TitleCompletionDetector,
     _delete_partials_at_abort,
+)
+from app.services.job_manager import job_manager
+
+# Reuse the fake-makemkvcon harness that already drives the full
+# _run_ripping -> real MakeMKVExtractor chain, rather than duplicating it.
+# The two fixtures are autouse in their home module; importing the names binds
+# them here so they apply to this module's chain test too.
+from tests.unit.test_rip_skip_boundary_chain import (  # noqa: F401
+    _clean_db,
+    _make_popen,
+    _seed_job,
+    _stub_matching_and_eject,
 )
 
 
@@ -172,3 +189,64 @@ def test_eject_abort_without_a_registered_preparer_is_safe():
     extractor = MakeMKVExtractor()
     extractor.eject_abort(99)
     assert 99 in extractor._ejected_jobs
+
+
+async def _wait_for_size(path: Path, size: int, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.exists() and path.stat().st_size >= size:
+            return
+        await asyncio.sleep(0.001)
+    raise AssertionError(f"timed out waiting for {path} to reach {size} bytes")
+
+
+@pytest.mark.unit
+async def test_live_rip_registers_a_preparer_that_saves_a_finished_title(tmp_path):
+    """Chain test: _run_ripping -> real extractor -> eject_abort -> cleanup.
+
+    The helper-level tests above prove the cleanup's semantics and eject_abort's
+    ordering, but both supply the preparer themselves. Nothing asserted that a
+    real rip registers one, so deleting the registration left them all green
+    while the unrecoverable data-loss bug came back. This closes that seam.
+
+    FS_POLL_INTERVAL is raised above the length of the whole fake rip on
+    purpose: the reader loop then never polls after title 1 finishes writing,
+    so the ONLY fresh reading available to the cleanup is the one the eject
+    preparer takes. Without the registration the detector has no record of
+    title 1 at all, it is condemned as "never polled", and a finished title is
+    destroyed off a disc that has already left the drive.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, _title_ids = await _seed_job(staging, native_offset=0, count=2)
+
+    write_log: list[int] = []
+    procs: list = []
+    job_manager._loop = asyncio.get_running_loop()
+    extractor = job_manager._extractor
+    title1 = staging / "TEST_t01.mkv"
+
+    with (
+        patch("app.core.extractor.FS_POLL_INTERVAL", 30.0),
+        patch(
+            "app.core.extractor.subprocess.Popen",
+            side_effect=_make_popen(staging, [1, 2], write_log, procs),
+        ),
+    ):
+        task = asyncio.create_task(job_manager._run_ripping(job_id))
+        await _wait_for_size(title1, 4096)
+
+        assert job_id in extractor._eject_preparers, (
+            "a live rip must register an eject preparer, or eject cleanup runs on stale sizes"
+        )
+
+        # to_thread mirrors the contract eject_abort's docstring states: it
+        # blocks on disc I/O under the rip's lock.
+        await asyncio.to_thread(extractor.eject_abort, job_id)
+        # wait_for, not a bare `await task`: it bounds a hung rip so a
+        # regression cannot wedge CI.
+        await asyncio.wait_for(task, timeout=60)
+
+    assert title1.exists(), "a title that finished before the eject was destroyed"
+    assert title1.stat().st_size == 4096, "the preserved title must be intact"
+    assert job_id not in extractor._eject_preparers, "the preparer must not outlive the rip"

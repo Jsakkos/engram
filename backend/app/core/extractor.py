@@ -1505,6 +1505,11 @@ class MakeMKVExtractor:
     def eject_abort(self, job_id: int) -> None:
         """Stop ripping because the user ejected the disc, keeping finished titles.
 
+        Blocking (the preparer globs and stats the staging dir under the rip's
+        filesystem lock, which the rip thread holds during its own polls): run
+        via ``asyncio.to_thread`` from async callers so the event loop is never
+        blocked.
+
         Runs the job's registered eject preparer FIRST, before cancel() kills
         MakeMKV: the preparer takes a final completion poll while the rip is
         still writing, which the cleanup path depends on to tell a title that
