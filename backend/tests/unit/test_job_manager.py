@@ -452,6 +452,9 @@ def rip_env(monkeypatch, tmp_path):
     import app.core.sentinel as sentinel_mod
 
     monkeypatch.setattr(sentinel_mod, "eject_disc", lambda drive_id: None)
+    # job_manager binds eject_disc at import time, so the sentinel patch
+    # above no longer reaches its auto-eject call sites.
+    monkeypatch.setattr(jm_mod, "eject_disc", lambda drive_id: None)
     monkeypatch.setattr(exporter_mod, "get_makemkv_log_dir", lambda job_id: tmp_path)
     monkeypatch.setattr(jm_mod.state_machine, "_on_terminal_callbacks", [])
     return tmp_path

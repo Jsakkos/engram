@@ -1,6 +1,7 @@
 """Unit tests for single-track re-rip (Feature C)."""
 
 import json
+import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,6 +16,11 @@ from app.services.matching_coordinator import (
     MatchingCoordinator,
 )
 from tests.unit.conftest import _unit_session_factory
+
+# job_manager binds eject_disc at import time; patching the sentinel module
+# alone no longer reaches its auto-eject call sites. `import app.services.
+# job_manager as x` yields the singleton, so go through sys.modules.
+_jm_module = sys.modules["app.services.job_manager"]
 
 
 def test_disc_title_has_rerip_attempts_default_zero():
@@ -170,6 +176,7 @@ async def test_rerip_titles_transitions_deletes_and_rips(monkeypatch, tmp_path):
     monkeypatch.setattr(job_manager._extractor, "rip_titles", fake_rip_titles)
     monkeypatch.setattr(job_manager, "_drive_monitor", MagicMock())
     monkeypatch.setattr("app.core.sentinel.eject_disc", lambda d: None)
+    monkeypatch.setattr(_jm_module, "eject_disc", lambda d: None)
 
     await job_manager.rerip_titles(job_id, [title_id])
 

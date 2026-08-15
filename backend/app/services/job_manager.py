@@ -32,7 +32,7 @@ from app.core.extractor import (
 from app.core.log_context import job_log_context, with_job_log_context
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
-from app.core.sentinel import DriveMonitor
+from app.core.sentinel import DriveMonitor, eject_disc
 from app.database import async_session
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -1167,6 +1167,73 @@ class JobManager:
                 await state_machine.transition_to_failed(
                     job, session, error_message="Cancelled by user"
                 )
+
+    async def eject_disc_for_job(self, job_id: int) -> dict:
+        """Release the disc without cancelling the job.
+
+        RIPPING: terminate MakeMKV and eject. The in-flight ``_run_ripping``
+        task sees ``aborted_for_eject`` and performs the salvage itself (finished
+        titles continue to matching, unfinished ones route to REVIEW as
+        re-rippable), so this method does NOT await it.
+
+        IDENTIFYING: eject and cancel. Nothing was produced to salvage.
+
+        Any other state: the drive is not held, so raise.
+
+        Returns ``{"ejected": bool, "action": str}``. ``ejected`` is False when
+        the tray refused to open (MakeMKV may still hold a handle, or the
+        platform has no eject support); the rip is stopped either way, and the
+        caller tells the user to eject manually.
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+            state = job.state
+            drive_id = job.drive_id
+
+        if state not in (JobState.IDENTIFYING, JobState.RIPPING):
+            raise ValueError(f"Cannot eject a job in state: {state.value}")
+
+        safe_job = sanitize_log_value(job_id)
+
+        # Stop MakeMKV FIRST so it releases its handle on the drive; a rip in
+        # progress is exactly why the tray would otherwise refuse to open.
+        #
+        # to_thread is required, not cosmetic: eject_abort runs the rip's eject
+        # preparer, which globs and stats the staging directory under the rip's
+        # filesystem lock (held by the rip thread during its own polls). Calling
+        # it inline would block the event loop on contended disc I/O. See
+        # eject_abort's docstring.
+        if state == JobState.RIPPING:
+            await asyncio.to_thread(self._extractor.eject_abort, job_id)
+
+        ejected = False
+        try:
+            ejected = await asyncio.to_thread(eject_disc, drive_id)
+        except (OSError, RuntimeError) as e:
+            logger.warning(f"Job {safe_job}: eject of {drive_id} raised: {e}")
+
+        if ejected:
+            # Only on success: after a failed eject the sentinel must stay armed
+            # so it correctly observes the disc when the user pops it by hand.
+            self._drive_monitor.notify_ejected(drive_id)
+        else:
+            logger.warning(
+                f"Job {safe_job}: drive {drive_id} did not open; "
+                f"the rip was still stopped and the disc can be removed by hand"
+            )
+
+        if state == JobState.IDENTIFYING:
+            await self.cancel_job(job_id)
+            logger.info(f"Job {safe_job}: ejected during identify, job cancelled")
+            return {"ejected": ejected, "action": "job_cancelled"}
+
+        logger.info(
+            f"Job {safe_job}: disc ejected mid-rip; finished titles continue, "
+            f"unfinished titles route to review"
+        )
+        return {"ejected": ejected, "action": "rip_stopped"}
 
     # --- Stale-job watchdog + force-progress engine ---
 
@@ -2332,8 +2399,6 @@ class JobManager:
         # Free the drive for the next disc.
         if cfg and cfg.auto_eject_enabled:
             try:
-                from app.core.sentinel import eject_disc
-
                 await asyncio.to_thread(eject_disc, drive_id)
                 self._drive_monitor.notify_ejected(drive_id)
             except (OSError, RuntimeError) as e:
@@ -2874,8 +2939,6 @@ class JobManager:
             # Eject disc and reset sentinel state so a new disc insert is detected
             if rip_config and rip_config.auto_eject_enabled:
                 try:
-                    from app.core.sentinel import eject_disc
-
                     await asyncio.to_thread(eject_disc, drive_id)
                     self._drive_monitor.notify_ejected(drive_id)
                 except (OSError, RuntimeError) as e:

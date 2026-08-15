@@ -72,6 +72,9 @@ def _stub_matching_and_eject(monkeypatch):
     monkeypatch.setattr(job_manager._matching, "match_single_file", _no_op_match)
     monkeypatch.setattr(job_manager._matching, "on_match_task_done", lambda *a, **k: None)
     monkeypatch.setattr("app.core.sentinel.eject_disc", lambda *_a, **_k: None)
+    # job_manager binds eject_disc at import time, so patching the sentinel
+    # module alone no longer reaches the auto-eject call sites.
+    monkeypatch.setattr(job_manager_module, "eject_disc", lambda *_a, **_k: None)
 
 
 async def _seed_job(staging: Path, *, native_offset: int, count: int = 4) -> tuple[int, list[int]]:

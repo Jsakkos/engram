@@ -1,18 +1,21 @@
 """Unit tests for the mid-rip disc eject feature."""
 
 import asyncio
+import sys
 import time
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import app.database as _db
 from app.core.extractor import (
     MakeMKVExtractor,
     RipResult,
     TitleCompletionDetector,
     _delete_partials_at_abort,
 )
+from app.models.disc_job import ContentType, DiscJob, JobState
 from app.services.job_manager import job_manager
 from app.services.matching_coordinator import (
     EJECTED_RIP_MESSAGE,
@@ -277,3 +280,136 @@ def test_ejected_rip_message_is_user_facing():
     """The review queue shows this verbatim, so it must explain the recovery."""
     assert "eject" in EJECTED_RIP_MESSAGE.lower()
     assert EJECTED_RIP_MESSAGE.strip() == EJECTED_RIP_MESSAGE
+
+
+# --- JobManager.eject_disc_for_job -----------------------------------------
+
+# `app.services/__init__.py` rebinds the `app.services.job_manager` package
+# attribute to the singleton, so `import app.services.job_manager as x` hands
+# back the instance. Reach the real module through sys.modules to patch its
+# module-level names.
+_jm_module = sys.modules["app.services.job_manager"]
+
+
+async def _seed_job_in_state(state: JobState, *, drive_id: str = "Z:") -> int:
+    """A minimal job row parked in *state*.
+
+    Extends test_rip_skip_boundary_chain's `_seed_job` pattern (which always
+    seeds RIPPING with titles); these tests only need the job row's state and
+    drive_id, and two of them need states `_seed_job` cannot produce.
+    """
+    async with _db.async_session() as s:
+        job = DiscJob(
+            drive_id=drive_id,
+            volume_label="EJECT_TEST",
+            state=state,
+            content_type=ContentType.TV,
+        )
+        s.add(job)
+        await s.commit()
+        await s.refresh(job)
+        return job.id
+
+
+async def _job_state(job_id: int) -> JobState:
+    async with _db.async_session() as s:
+        job = await s.get(DiscJob, job_id)
+        return job.state
+
+
+class _EjectSpy:
+    """Records eject_abort calls in place of the real extractor method."""
+
+    def __init__(self) -> None:
+        self.job_ids: list[int] = []
+
+    def __call__(self, job_id: int) -> None:
+        self.job_ids.append(job_id)
+
+
+def _install_eject_stubs(monkeypatch, *, eject_ok: bool) -> tuple[_EjectSpy, list[str]]:
+    """Stub eject_abort, eject_disc and notify_ejected; return the two spies."""
+    abort_spy = _EjectSpy()
+    notified: list[str] = []
+    monkeypatch.setattr(job_manager._extractor, "eject_abort", abort_spy)
+    monkeypatch.setattr(_jm_module, "eject_disc", lambda drive: eject_ok)
+    monkeypatch.setattr(
+        job_manager._drive_monitor, "notify_ejected", lambda drive: notified.append(drive)
+    )
+    return abort_spy, notified
+
+
+@pytest.mark.unit
+async def test_eject_while_ripping_stops_rip_and_does_not_cancel(monkeypatch):
+    """The whole point of the feature: stop hammering the disc, keep the job.
+
+    The in-flight _run_ripping task does the salvage itself, so the job must
+    still be RIPPING when this returns; cancelling here would throw away the
+    tracks that already ripped cleanly.
+    """
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=True)
+
+    result = await job_manager.eject_disc_for_job(job_id)
+
+    assert abort_spy.job_ids == [job_id]
+    assert notified == ["Z:"]
+    assert result == {"ejected": True, "action": "rip_stopped"}
+    assert await _job_state(job_id) == JobState.RIPPING
+
+
+@pytest.mark.unit
+async def test_failed_eject_still_stops_rip_and_skips_notify(monkeypatch):
+    """A tray that refuses to open must not roll back the abort.
+
+    notify_ejected must be skipped so the sentinel stays armed and still
+    observes the disc when the user pops it out by hand.
+    """
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=False)
+
+    result = await job_manager.eject_disc_for_job(job_id)
+
+    assert abort_spy.job_ids == [job_id]
+    assert notified == []
+    assert result == {"ejected": False, "action": "rip_stopped"}
+
+
+@pytest.mark.unit
+async def test_eject_while_identifying_cancels_the_job(monkeypatch):
+    """Nothing has been ripped yet, so there is nothing to salvage."""
+    job_id = await _seed_job_in_state(JobState.IDENTIFYING)
+    _abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=True)
+    # A job driven to a terminal state fires Discord notification tasks that
+    # leak a DB connection past teardown; drop the callbacks for this test.
+    monkeypatch.setattr(_jm_module.state_machine, "_on_terminal_callbacks", [])
+
+    cancelled: list[int] = []
+    real_cancel = job_manager.cancel_job
+
+    async def _spy_cancel(jid: int) -> None:
+        cancelled.append(jid)
+        await real_cancel(jid)
+
+    monkeypatch.setattr(job_manager, "cancel_job", _spy_cancel)
+
+    result = await job_manager.eject_disc_for_job(job_id)
+
+    assert cancelled == [job_id]
+    assert notified == ["Z:"]
+    assert result == {"ejected": True, "action": "job_cancelled"}
+    # The spy delegates to the real cancel, so the job really did go terminal.
+    assert await _job_state(job_id) == JobState.FAILED
+
+
+@pytest.mark.unit
+async def test_eject_in_matching_raises(monkeypatch):
+    """Past the rip the drive is no longer held, so there is nothing to eject."""
+    job_id = await _seed_job_in_state(JobState.MATCHING)
+    abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=True)
+
+    with pytest.raises(ValueError, match="Cannot eject"):
+        await job_manager.eject_disc_for_job(job_id)
+
+    assert abort_spy.job_ids == [], "a rejected eject must not touch MakeMKV"
+    assert notified == []
