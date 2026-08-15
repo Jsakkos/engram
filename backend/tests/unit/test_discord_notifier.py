@@ -973,3 +973,19 @@ def test_context_episodes_blank_without_titles():
     """Default argument keeps every existing two-arg caller working."""
     job = DiscJob(drive_id="E:", volume_label="X")
     assert build_template_context(job, job_id=1)["episodes"] == ""
+
+
+def test_context_keys_always_equal_allowed_vars():
+    """Locks the two halves of the template contract together.
+
+    ALLOWED_TEMPLATE_VARS gates what a user may write; build_template_context
+    decides what actually renders. The job-is-None branch derives its keys from
+    the set and cannot drift, but the populated branch is a hand-written literal
+    that can. A variable in the set but absent from the context renders silently
+    empty; a key in the context but not the set is unreferenceable.
+    """
+    from app.core.discord_notifier import ALLOWED_TEMPLATE_VARS
+
+    job = DiscJob(drive_id="E:", volume_label="X")
+    assert set(build_template_context(job, 1)) == ALLOWED_TEMPLATE_VARS
+    assert set(build_template_context(None, 1)) == ALLOWED_TEMPLATE_VARS
