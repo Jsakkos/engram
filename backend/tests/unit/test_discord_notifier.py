@@ -774,3 +774,54 @@ def test_summarize_episodes_counts_unparseable_rows_without_ranging_them():
 
     titles = [_title("S01E01"), _title("special-1")]
     assert summarize_episodes(titles) == "S01E01 (2 episodes)"
+
+
+# --------------------------------------------------------------------------- #
+# resolve_poster_url
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_resolve_poster_url_returns_none_without_api_key():
+    from app.core.tmdb_poster import resolve_poster_url
+    from app.services.config_service import update_config
+
+    await update_config(tmdb_api_key="")
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, tmdb_id=1396)
+    assert await resolve_poster_url(job) is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_poster_url_uses_tmdb_id_when_present():
+    from app.core.tmdb_poster import resolve_poster_url
+    from app.services.config_service import update_config
+
+    await update_config(tmdb_api_key="eyJtest")
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, tmdb_id=1396)
+
+    response = MagicMock()
+    response.status_code = 200
+    response.json = MagicMock(return_value={"poster_path": "/abc.jpg"})
+
+    with patch("requests.get", return_value=response) as mock_get:
+        url = await resolve_poster_url(job)
+
+    assert url is not None and url.endswith("/abc.jpg")
+    assert "/tv/1396" in mock_get.call_args[0][0]
+
+    await update_config(tmdb_api_key="")
+
+
+@pytest.mark.asyncio
+async def test_resolve_poster_url_swallows_network_errors():
+    """A TMDB hiccup costs the thumbnail, never the notification."""
+    from app.core.tmdb_poster import resolve_poster_url
+    from app.services.config_service import update_config
+
+    await update_config(tmdb_api_key="eyJtest")
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, tmdb_id=1396)
+
+    with patch("requests.get", side_effect=RuntimeError("network dead")):
+        assert await resolve_poster_url(job) is None
+
+    await update_config(tmdb_api_key="")

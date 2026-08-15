@@ -1896,54 +1896,10 @@ async def get_parked_discs() -> dict:
 
 @router.get("/jobs/{job_id}/poster")
 async def get_job_poster(job: DiscJob = Depends(get_job_or_404)) -> dict:
-    """Get the TMDB poster URL for a job.
+    """Get the TMDB poster URL for a job."""
+    from app.core.tmdb_poster import resolve_poster_url
 
-    Prefer the authoritative ``job.tmdb_id`` (exact, immune to a garbled
-    detected_title); fall back to a name search only when no id is set.
-    """
-    import requests
-
-    from app.core.tmdb_classifier import _build_auth
-    from app.matcher.tmdb_client import BASE_IMAGE_URL
-    from app.services.config_service import get_config as get_db_config
-
-    config = await get_db_config()
-    api_key = config.tmdb_api_key
-    if not api_key:
-        return {"poster_url": None}
-
-    media = "movie" if job.content_type == "movie" else "tv"
-    headers, params = _build_auth(api_key)
-
-    try:
-        if job.tmdb_id:
-            # int() sanitizes the id into the URL (no path/host injection, and clears
-            # CodeQL's partial-SSRF taint); the guard above ensures it is set.
-            detail_url = f"https://api.themoviedb.org/3/{media}/{int(job.tmdb_id)}"
-            response = await asyncio.to_thread(
-                requests.get, detail_url, headers=headers, params=params, timeout=10
-            )
-            if response.status_code == 200:
-                poster_path = response.json().get("poster_path")
-                if poster_path:
-                    return {"poster_url": f"{BASE_IMAGE_URL}{poster_path}"}
-            return {"poster_url": None}
-
-        if not job.detected_title:
-            return {"poster_url": None}
-        search_url = f"https://api.themoviedb.org/3/search/{media}"
-        params["query"] = job.detected_title
-        response = await asyncio.to_thread(
-            requests.get, search_url, headers=headers, params=params, timeout=10
-        )
-        if response.status_code == 200:
-            results = response.json().get("results", [])
-            if results and results[0].get("poster_path"):
-                return {"poster_url": f"{BASE_IMAGE_URL}{results[0]['poster_path']}"}
-    except Exception as e:
-        logger.warning(f"Error fetching poster: {e}", exc_info=True)
-
-    return {"poster_url": None}
+    return {"poster_url": await resolve_poster_url(job)}
 
 
 @router.get("/drives")
