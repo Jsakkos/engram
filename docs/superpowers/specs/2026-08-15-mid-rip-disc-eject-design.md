@@ -178,12 +178,12 @@ Response: `{"ejected": bool, "action": "rip_stopped" | "job_cancelled"}`.
 
 An **Eject** button in `DiscCard/ActionButtons.tsx`, shown for
 `state ∈ {"scanning", "ripping"}`, built from the existing `ToneButton` and
-`ConfirmModal` primitives. Requires a new `IcoEject` in
-`app/components/icons/action.tsx`.
+`ConfirmModal` primitives. `IcoEject` already exists in
+`app/components/icons/action.tsx`; no new icon is needed.
 
-Visual treatment (tone, since it is neither destructive-red nor routine-cyan; icon
-form; labeled vs. icon-only) is specified by the frontend-design pass in the
-implementation plan rather than guessed here.
+Visual treatment (tone, since it is neither destructive-red nor routine-cyan;
+labeled vs. icon-only) is specified by the frontend-design pass recorded in the
+implementation plan.
 
 `useJobManagement` gains `ejectJob(id)`; the API client gains the call. No new
 WebSocket message type is needed: existing `job_update` and `title_state_changed`
