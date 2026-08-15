@@ -700,3 +700,77 @@ def test_embed_fields_render_season_zero_as_specials_season():
         f["name"]: f["value"] for f in build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
     }
     assert by_name["Season"] == "Season 0"
+
+
+# --------------------------------------------------------------------------- #
+# summarize_episodes
+# --------------------------------------------------------------------------- #
+
+
+def _title(episode: str | None, state=None, is_extra: bool = False):
+    from app.models.disc_job import DiscTitle, TitleState
+
+    return DiscTitle(
+        job_id=1,
+        title_index=0,
+        duration_seconds=1200,
+        matched_episode=episode,
+        state=state or TitleState.COMPLETED,
+        is_extra=is_extra,
+    )
+
+
+def test_summarize_episodes_collapses_a_contiguous_run():
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title(f"S01E0{n}") for n in (1, 2, 3, 4)]
+    assert summarize_episodes(titles) == "S01E01-E04 (4 episodes)"
+
+
+def test_summarize_episodes_preserves_gaps():
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title("S01E01"), _title("S01E02"), _title("S01E03"), _title("S01E06")]
+    assert summarize_episodes(titles) == "S01E01-E03, S01E06 (4 episodes)"
+
+
+def test_summarize_episodes_single_episode():
+    from app.core.discord_notifier import summarize_episodes
+
+    assert summarize_episodes([_title("S01E01")]) == "S01E01 (1 episode)"
+
+
+def test_summarize_episodes_spans_seasons_separately():
+    """A disc straddling a season boundary must not collapse S01E12 and S02E01."""
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title("S01E11"), _title("S01E12"), _title("S02E01")]
+    assert summarize_episodes(titles) == "S01E11-E12, S02E01 (3 episodes)"
+
+
+def test_summarize_episodes_ignores_extras_and_incomplete_titles():
+    from app.core.discord_notifier import summarize_episodes
+    from app.models.disc_job import TitleState
+
+    titles = [
+        _title("S01E01"),
+        _title("S01E02", is_extra=True),
+        _title("S01E03", state=TitleState.FAILED),
+    ]
+    assert summarize_episodes(titles) == "S01E01 (1 episode)"
+
+
+def test_summarize_episodes_empty_when_nothing_matched():
+    from app.core.discord_notifier import summarize_episodes
+
+    assert summarize_episodes([]) == ""
+    assert summarize_episodes([_title(None)]) == ""
+
+
+def test_summarize_episodes_counts_unparseable_rows_without_ranging_them():
+    """A completed title with a non-standard code still happened; report the count
+    honestly rather than pretending the disc had one fewer episode."""
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title("S01E01"), _title("special-1")]
+    assert summarize_episodes(titles) == "S01E01 (2 episodes)"

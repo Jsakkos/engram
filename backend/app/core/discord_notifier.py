@@ -1,5 +1,6 @@
 """Discord webhook notifications for job lifecycle events."""
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -167,9 +168,51 @@ def _field(name: str, value: str, inline: bool = True) -> dict | None:
     )
 
 
+_EPISODE_CODE = re.compile(r"^S(\d+)E(\d+)$", re.IGNORECASE)
+
+
 def summarize_episodes(titles: list) -> str:
-    """Replaced in Task 5. Returns "" so the Episodes field is dropped."""
-    return ""
+    """One-line manifest of what actually landed, e.g. "S01E01-E04 (4 episodes)".
+
+    Counts every completed, non-extra title, but only ranges the ones whose
+    matched_episode parses as SxxEyy. Ranges never span a season boundary.
+    """
+    from app.models.disc_job import TitleState
+
+    landed = [t for t in titles if t.state == TitleState.COMPLETED and not t.is_extra]
+    if not landed:
+        return ""
+
+    parsed: list[tuple[int, int]] = []
+    for title in landed:
+        match = _EPISODE_CODE.match((title.matched_episode or "").strip())
+        if match:
+            parsed.append((int(match.group(1)), int(match.group(2))))
+
+    count = len(landed)
+    noun = "episode" if count == 1 else "episodes"
+    if not parsed:
+        return ""
+
+    parsed = sorted(set(parsed))
+    runs: list[list[tuple[int, int]]] = [[parsed[0]]]
+    for season, episode in parsed[1:]:
+        prev_season, prev_episode = runs[-1][-1]
+        if season == prev_season and episode == prev_episode + 1:
+            runs[-1].append((season, episode))
+        else:
+            runs.append([(season, episode)])
+
+    parts = []
+    for run in runs:
+        start_season, start_episode = run[0]
+        start = f"S{start_season:02d}E{start_episode:02d}"
+        if len(run) == 1:
+            parts.append(start)
+        else:
+            parts.append(f"{start}-E{run[-1][1]:02d}")
+
+    return f"{', '.join(parts)} ({count} {noun})"
 
 
 def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEvent) -> list[dict]:
