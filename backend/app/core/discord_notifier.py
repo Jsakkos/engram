@@ -10,7 +10,8 @@ from chevron.tokenizer import ChevronError, tokenize
 from loguru import logger
 
 from app import __version__
-from app.models.disc_job import ContentType, DiscJob, JobState
+from app.core.security import is_safe_dashboard_url
+from app.models.disc_job import ContentType, DiscJob, JobState, TitleState
 
 
 @dataclass(frozen=True)
@@ -177,8 +178,6 @@ def summarize_episodes(titles: list) -> str:
     Counts every completed, non-extra title, but only ranges the ones whose
     matched_episode parses as SxxEyy. Ranges never span a season boundary.
     """
-    from app.models.disc_job import TitleState
-
     landed = [t for t in titles if t.state == TitleState.COMPLETED and not t.is_extra]
     if not landed:
         return ""
@@ -247,6 +246,18 @@ def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEve
         _field("Library", job.final_path or "" if event.key == "completed" else "", inline=False),
     ]
     return [f for f in candidates if f is not None]
+
+
+def build_dashboard_link(base_url: str, job_id: int) -> str | None:
+    """Deep link to this job's detail page, or None when no base URL is configured.
+
+    Re-validates the stored value rather than trusting it: config can be written
+    by an older build or edited in the DB directly, and an unvalidated string
+    here becomes a clickable link in a chat channel.
+    """
+    if not base_url or not is_safe_dashboard_url(base_url):
+        return None
+    return f"{base_url.rstrip('/')}/history/{job_id}"
 
 
 def build_embed(

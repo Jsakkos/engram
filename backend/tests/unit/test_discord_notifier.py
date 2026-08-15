@@ -825,3 +825,64 @@ async def test_resolve_poster_url_swallows_network_errors():
         assert await resolve_poster_url(job) is None
 
     await update_config(tmdb_api_key="")
+
+
+# --------------------------------------------------------------------------- #
+# build_dashboard_link / thumbnail
+# --------------------------------------------------------------------------- #
+
+
+def test_dashboard_link_built_from_base_url():
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("http://192.168.1.50:5173", 42) == (
+        "http://192.168.1.50:5173/history/42"
+    )
+
+
+def test_dashboard_link_tolerates_trailing_slash():
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("http://192.168.1.50:5173/", 42) == (
+        "http://192.168.1.50:5173/history/42"
+    )
+
+
+def test_dashboard_link_none_when_unset():
+    """No base URL must yield no embed url key at all; Discord rejects an empty one."""
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("", 42) is None
+
+
+def test_dashboard_link_none_for_unsafe_url():
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("javascript:alert(1)", 42) is None
+
+
+def test_build_embed_omits_url_and_thumbnail_when_not_supplied():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="X")
+    embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "d")
+    assert "url" not in embed
+    assert "thumbnail" not in embed
+
+
+def test_build_embed_attaches_url_and_thumbnail_when_supplied():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="X")
+    embed = build_embed(
+        job,
+        [],
+        EVENTS[JobState.REVIEW_NEEDED],
+        "d",
+        poster_url="https://image.tmdb.org/t/p/w500/abc.jpg",
+        link_url="http://192.168.1.50:5173/history/7",
+    )
+    assert embed["url"] == "http://192.168.1.50:5173/history/7"
+    assert embed["thumbnail"]["url"] == "https://image.tmdb.org/t/p/w500/abc.jpg"
