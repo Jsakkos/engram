@@ -58,6 +58,8 @@ async def resolve_poster_url(job: DiscJob) -> str | None:
             if results and results[0].get("poster_path"):
                 return f"{BASE_IMAGE_URL}{results[0]['poster_path']}"
     except Exception as e:
-        logger.warning(f"Error fetching poster: {e}", exc_info=True)
+        # Name the job: this now runs from a background notification task, where
+        # the log line is the only thing tying a failure back to a disc.
+        logger.warning(f"Job {job.id}: error fetching poster: {e}", exc_info=True)
 
     return None
