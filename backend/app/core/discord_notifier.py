@@ -39,7 +39,14 @@ EVENTS: dict[JobState, NotificationEvent] = {
 ALLOWED_TEMPLATE_VARS = frozenset(
     {
         "title",
+        # Misnamed: renders volume_label, not the drive letter. Kept for
+        # back-compat with saved templates; {{volume_label}} is the correct name
+        # and {{drive_id}} is the actual drive.
         "drive",
+        "volume_label",
+        "drive_id",
+        "disc_number",
+        "discdb_disc_slug",
         "job_id",
         "content_type",
         "season",
@@ -47,6 +54,9 @@ ALLOWED_TEMPLATE_VARS = frozenset(
         "tmdb_year",
         "duration",
         "error",
+        "review_reason",
+        "episodes",
+        "state",
         "subtitle_status",
         "subtitles_downloaded",
         "subtitles_total",
@@ -97,8 +107,14 @@ def _format_duration(job: DiscJob) -> str:
     return f"{minutes}m"
 
 
-def build_template_context(job: DiscJob | None, job_id: int) -> dict[str, str]:
-    """Build the chevron render context from a DiscJob row."""
+def build_template_context(
+    job: DiscJob | None, job_id: int, titles: list | None = None
+) -> dict[str, str]:
+    """Build the chevron render context from a DiscJob row.
+
+    ``titles`` is optional so every existing two-argument caller keeps working;
+    without it, {{episodes}} renders empty.
+    """
     if job is None:
         return {"title": f"Job #{job_id}"} | dict.fromkeys(ALLOWED_TEMPLATE_VARS - {"title"}, "")
 
@@ -106,6 +122,10 @@ def build_template_context(job: DiscJob | None, job_id: int) -> dict[str, str]:
     return {
         "title": title,
         "drive": job.volume_label or "",
+        "volume_label": job.volume_label or "",
+        "drive_id": job.drive_id or "",
+        "disc_number": str(job.disc_number) if job.disc_number is not None else "",
+        "discdb_disc_slug": job.discdb_disc_slug or "",
         "job_id": str(job.id or job_id),
         "content_type": job.content_type.value.replace("_", " ").title(),
         "season": str(job.detected_season) if job.detected_season is not None else "",
@@ -113,6 +133,9 @@ def build_template_context(job: DiscJob | None, job_id: int) -> dict[str, str]:
         "tmdb_year": str(job.tmdb_year) if job.tmdb_year is not None else "",
         "duration": _format_duration(job),
         "error": job.error_message or "",
+        "review_reason": job.review_reason or "",
+        "episodes": summarize_episodes(titles or []),
+        "state": job.state.value,
         "subtitle_status": job.subtitle_status or "",
         "subtitles_downloaded": str(job.subtitles_downloaded),
         "subtitles_total": str(job.subtitles_total),

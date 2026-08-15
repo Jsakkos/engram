@@ -908,3 +908,68 @@ def test_dashboard_link_discards_query_and_fragment():
     assert build_dashboard_link("http://192.168.1.50:5173#frag", 42) == (
         "http://192.168.1.50:5173/history/42"
     )
+
+
+# --------------------------------------------------------------------------- #
+# New template variables
+# --------------------------------------------------------------------------- #
+
+
+def test_new_template_variables_validate():
+    template = (
+        "{{volume_label}} {{drive_id}} {{disc_number}} {{discdb_disc_slug}} "
+        "{{review_reason}} {{episodes}} {{state}}"
+    )
+    assert validate_discord_template(template) is None
+
+
+def test_drive_still_renders_volume_label_for_back_compat():
+    """{{drive}} is misnamed but shipped; changing its value would silently break
+    saved templates. It keeps volume_label and {{drive_id}} is the correct name."""
+    job = DiscJob(drive_id="E:", volume_label="THE_WIRE_S1D3")
+    context = build_template_context(job, job_id=1)
+    assert context["drive"] == "THE_WIRE_S1D3"
+    assert context["volume_label"] == "THE_WIRE_S1D3"
+    assert context["drive_id"] == "E:"
+
+
+def test_context_exposes_disc_and_review_metadata():
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        volume_label="THE_WIRE_S1D3",
+        disc_number=3,
+        discdb_disc_slug="S01D03",
+        review_reason="Could not match 3 titles",
+        state=JobState.REVIEW_NEEDED,
+    )
+    context = build_template_context(job, job_id=1)
+    assert context["disc_number"] == "3"
+    assert context["discdb_disc_slug"] == "S01D03"
+    assert context["review_reason"] == "Could not match 3 titles"
+    assert context["state"] == "review_needed"
+
+
+def test_context_episodes_populated_from_titles():
+    from app.models.disc_job import DiscTitle, TitleState
+
+    job = DiscJob(drive_id="E:", volume_label="THE_WIRE_S1D1")
+    titles = [
+        DiscTitle(
+            job_id=1,
+            title_index=i,
+            duration_seconds=1200,
+            matched_episode=f"S01E0{i + 1}",
+            state=TitleState.COMPLETED,
+        )
+        for i in range(2)
+    ]
+    context = build_template_context(job, job_id=1, titles=titles)
+    assert context["episodes"] == "S01E01-E02 (2 episodes)"
+
+
+def test_context_episodes_blank_without_titles():
+    """Default argument keeps every existing two-arg caller working."""
+    job = DiscJob(drive_id="E:", volume_label="X")
+    assert build_template_context(job, job_id=1)["episodes"] == ""
