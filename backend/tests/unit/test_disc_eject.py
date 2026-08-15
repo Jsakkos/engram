@@ -14,6 +14,10 @@ from app.core.extractor import (
     _delete_partials_at_abort,
 )
 from app.services.job_manager import job_manager
+from app.services.matching_coordinator import (
+    EJECTED_RIP_MESSAGE,
+    RIP_FAILURE_ERROR_CODES,
+)
 
 # Reuse the fake-makemkvcon harness that already drives the full
 # _run_ripping -> real MakeMKVExtractor chain, rather than duplicating it.
@@ -250,3 +254,26 @@ async def test_live_rip_registers_a_preparer_that_saves_a_finished_title(tmp_pat
     assert title1.exists(), "a title that finished before the eject was destroyed"
     assert title1.stat().st_size == 4096, "the preserved title must be intact"
     assert job_id not in extractor._eject_preparers, "the preparer must not outlive the rip"
+
+
+def test_rip_ejected_is_a_registered_rip_failure_code():
+    """Registration grants rerip_eligible and non-rematchable status.
+
+    An unregistered REVIEW error code gets auto-escalated and has its
+    match_details overwritten by the re-match pass, which would destroy the
+    re-rip bookkeeping this feature depends on.
+    """
+    assert "rip_ejected" in RIP_FAILURE_ERROR_CODES
+
+
+def test_rip_ejected_is_excluded_from_auto_rematch():
+    """_NON_REMATCHABLE_REVIEW_ERRORS is derived from RIP_FAILURE_ERROR_CODES."""
+    from app.services.finalization_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
+
+    assert "rip_ejected" in _NON_REMATCHABLE_REVIEW_ERRORS
+
+
+def test_ejected_rip_message_is_user_facing():
+    """The review queue shows this verbatim, so it must explain the recovery."""
+    assert "eject" in EJECTED_RIP_MESSAGE.lower()
+    assert EJECTED_RIP_MESSAGE.strip() == EJECTED_RIP_MESSAGE
