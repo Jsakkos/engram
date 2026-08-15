@@ -198,6 +198,7 @@ traffic already carries the outcome.
 | Eject during the per-title fallback pass | Same handling, because that pass's `rip_titles` call sees the same flag. |
 | `auto_eject_enabled = false` | Ignored by the manual button. That config governs *automatic* post-rip eject; an explicit click is not that. |
 | Eject fails (tray held, headless Linux) | Rip still stopped, salvage still runs, `notify_ejected` **not** called, UI shows manual-eject message. |
+| Manual-import job (found in Task 4 review) | Import jobs carry `drive_id == "import"`, so one in `RIPPING` passes the state gate and would call `eject_disc("import")`. That returns `False` harmlessly, but there is no tray to open, so the affordance must be suppressed: the endpoint returns 409 and the button does not render. |
 | Simulation (`DEBUG=true`) | `simulation_service` gains an eject path so E2E can drive it without a real drive, matching its existing `SKIPPED` special-casing. |
 
 ## Testing

@@ -1252,11 +1252,48 @@ async def eject_job_disc(job: DiscJob = Depends(get_job_or_404)) -> dict:
     """
     from app.services.job_manager import job_manager
 
+    # Manual-import jobs carry drive_id == "import" and hold no physical drive,
+    # so they pass the state gate but have no tray to open (found in Task 4
+    # review). Reject them here rather than letting eject_disc("import") return
+    # a confusing silent False.
+    if job.drive_id == IMPORT_DRIVE_ID:
+        raise HTTPException(
+            status_code=409, detail="Cannot eject an imported job: there is no disc in a drive."
+        )
+
     try:
         result = await job_manager.eject_disc_for_job(job.id)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     return {**result, "job_id": job.id}
+```
+
+Find the real constant or literal used for the import sentinel value in
+`backend/app/models/disc_job.py` (the review reported `drive_id == "import"`). If a
+named constant exists, import and use it; if the codebase uses the bare string,
+match that rather than introducing a new constant.
+
+Add a fifth test for this:
+
+```python
+@pytest.mark.asyncio
+async def test_eject_endpoint_409s_for_import_jobs(client):
+    """An imported job holds no drive, so there is no tray to open."""
+    job = DiscJob(
+        drive_id="import",
+        volume_label="TEST",
+        state=JobState.RIPPING,
+        content_type=ContentType.TV,
+    )
+    async with jm_module.async_session() as session:
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+
+    response = await client.post(f"/api/jobs/{job.id}/eject")
+
+    assert response.status_code == 409
+    assert "no disc" in response.json()["detail"].lower()
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -1658,6 +1695,26 @@ Add after `CANCELABLE_STATES` (line 127):
 // Eject only makes sense while the drive physically holds the disc. Post-rip
 // states (matching, organizing) run after auto-eject has already fired.
 const EJECTABLE_STATES = ["scanning", "ripping"];
+```
+
+**Import jobs must not get an Eject button** (found in Task 4 review). A manual-import
+job carries `drive_id === "import"` and holds no physical drive, so the endpoint 409s.
+Rendering a button that always errors is worse than rendering none. Gate on it:
+
+```typescript
+    const showEject = !!onEject && EJECTABLE_STATES.includes(state) && !isImport;
+```
+
+Thread an `isImport` boolean into `ActionButtonsProps` from the disc's `drive_id`.
+Check how `DiscCard` already exposes `drive_id` (or an existing import flag) before
+adding a new prop: if the card already distinguishes imports for another purpose,
+reuse that rather than introducing a parallel signal. Add a test:
+
+```typescript
+    it('hides Eject for imported jobs, which hold no drive', () => {
+        render(<ActionButtons state="ripping" isHovered={false} onEject={vi.fn()} isImport />);
+        expect(screen.queryByTestId('eject-button')).not.toBeInTheDocument();
+    });
 ```
 
 Add to `ActionButtonsProps`:
