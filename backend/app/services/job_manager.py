@@ -1303,14 +1303,16 @@ class JobManager:
         """Record that a job made progress just now (watchdog activity clock)."""
         self._last_activity[job_id] = time.monotonic()
 
-    def _note_activity_on_transition(self, job_id: int, state: JobState) -> None:
+    def _note_activity_on_transition(
+        self, job_id: int, state: JobState, from_state: JobState
+    ) -> None:
         """on_transition observer: reset the clock on phase change, drop it on terminal."""
         if state in (JobState.COMPLETED, JobState.FAILED):
             self._last_activity.pop(job_id, None)
         else:
             self._last_activity[job_id] = time.monotonic()
 
-    def _start_prewarm_on_review(self, job_id: int, state: JobState) -> None:
+    def _start_prewarm_on_review(self, job_id: int, state: JobState, from_state: JobState) -> None:
         """on_transition observer: prewarm transcripts when a job parks in review."""
         if state == JobState.REVIEW_NEEDED:
             self._prewarmer.kickoff(job_id)

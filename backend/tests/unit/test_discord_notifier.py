@@ -989,3 +989,34 @@ def test_context_keys_always_equal_allowed_vars():
     job = DiscJob(drive_id="E:", volume_label="X")
     assert set(build_template_context(job, 1)) == ALLOWED_TEMPLATE_VARS
     assert set(build_template_context(None, 1)) == ALLOWED_TEMPLATE_VARS
+
+
+# --------------------------------------------------------------------------- #
+# on_transition contract
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_on_transition_callbacks_receive_from_state():
+    """Observers need from_state to distinguish entering a state from a same-state
+    re-broadcast, which transition() also performs."""
+    from app.database import async_session
+    from app.models import JobState
+    from app.services.event_broadcaster import EventBroadcaster
+    from app.services.job_state_machine import JobStateMachine
+
+    broadcaster = MagicMock(spec=EventBroadcaster)
+    broadcaster.broadcast_job_state_changed = AsyncMock()
+    machine = JobStateMachine(broadcaster)
+
+    seen = []
+    machine.on_transition(lambda job_id, to_state, from_state: seen.append((to_state, from_state)))
+
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", content_type=ContentType.TV, state=JobState.RIPPING)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        await machine.transition(job, JobState.REVIEW_NEEDED, session, broadcast=False)
+
+    assert seen == [(JobState.REVIEW_NEEDED, JobState.RIPPING)]

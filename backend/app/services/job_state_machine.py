@@ -71,9 +71,11 @@ class JobStateMachine:
     def on_transition(self, callback) -> None:
         """Register a callback invoked after every successful state transition.
 
-        Used by the stale-job watchdog to reset a job's activity clock whenever it
-        enters a new phase. Callback signature: callback(job_id: int, state: JobState).
-        Synchronous and best-effort — exceptions are logged, never raised.
+        Callback signature: callback(job_id: int, to_state: JobState,
+        from_state: JobState). ``from_state`` is what lets an observer tell a
+        genuine entry into a state from the same-state re-broadcast this method
+        also performs (see can_transition). Synchronous and best-effort:
+        exceptions are logged, never raised.
         """
         self._on_transition_callbacks.append(callback)
 
@@ -156,7 +158,7 @@ class JobStateMachine:
         # Notify transition observers (e.g. watchdog activity clock). Best-effort.
         for cb in self._on_transition_callbacks:
             try:
-                cb(job.id, to_state)
+                cb(job.id, to_state, from_state)
             except Exception as e:
                 logger.error(f"Job {job.id}: transition callback failed: {e}", exc_info=True)
 

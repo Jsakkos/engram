@@ -144,7 +144,9 @@ async def test_movie_import_advances_to_organizing_via_state_machine(tmp_path, m
     coordinator, _broadcaster_ws, module_ws = _build_coordinator(ContentType.MOVIE, monkeypatch)
 
     transitions: list = []
-    coordinator._state_machine.on_transition(lambda jid, state: transitions.append((jid, state)))
+    coordinator._state_machine.on_transition(
+        lambda jid, state, from_state: transitions.append((jid, state))
+    )
 
     job_id = await _make_job(str(staging_dir), "INCEPTION_2010")
     await coordinator.identify_from_staging(job_id)

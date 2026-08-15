@@ -403,10 +403,10 @@ class TestJobManagerWiring:
         mock_prewarmer = MagicMock()
         monkeypatch.setattr(jm.job_manager, "_prewarmer", mock_prewarmer)
 
-        jm.job_manager._start_prewarm_on_review(7, JobState.REVIEW_NEEDED)
+        jm.job_manager._start_prewarm_on_review(7, JobState.REVIEW_NEEDED, JobState.MATCHING)
         mock_prewarmer.kickoff.assert_called_once_with(7)
 
-        jm.job_manager._start_prewarm_on_review(7, JobState.MATCHING)
+        jm.job_manager._start_prewarm_on_review(7, JobState.MATCHING, JobState.RIPPING)
         mock_prewarmer.kickoff.assert_called_once()  # unchanged: review-only
 
     async def test_finalization_review_parking_triggers_prewarm(self, tmp_path, monkeypatch):
