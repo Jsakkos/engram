@@ -133,6 +133,32 @@ def is_safe_remote_url(url: str) -> bool:
     return True
 
 
+def is_safe_dashboard_url(url: str) -> bool:
+    """Return True if ``url`` is usable as this dashboard's own base URL.
+
+    Deliberately NOT is_safe_remote_url. That guard rejects private, loopback
+    and link-local hosts to prevent SSRF, but the dashboard base URL is a LAN
+    address by design and the server never fetches it: the value is only
+    embedded as a clickable link in a Discord notification. The threat model is
+    therefore scheme injection (javascript:, data:, file:) and credential
+    leakage, not request forgery.
+    """
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        return False
+
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not host:
+        return False
+    # Credentials in a URL that gets posted to a chat channel leak them.
+    if parsed.username or parsed.password:
+        return False
+    return True
+
+
 def sanitize_log_value(value: object) -> str:
     """Strip line breaks and control characters from a value before logging.
 

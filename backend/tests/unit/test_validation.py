@@ -1265,3 +1265,33 @@ class TestValidateDiscordTemplateEndpoint:
         )
         assert result.valid is False
         assert result.error is not None
+
+
+# --------------------------------------------------------------------------- #
+# is_safe_dashboard_url
+# --------------------------------------------------------------------------- #
+
+
+def test_dashboard_url_accepts_lan_address():
+    """A private LAN address is the EXPECTED value here, unlike is_safe_remote_url."""
+    from app.core.security import is_safe_dashboard_url
+
+    assert is_safe_dashboard_url("http://192.168.1.50:5173") is True
+    assert is_safe_dashboard_url("http://localhost:5173") is True
+    assert is_safe_dashboard_url("https://engram.example.com") is True
+
+
+def test_dashboard_url_rejects_non_http_scheme():
+    """The value becomes a clickable embed url, so javascript: must not survive."""
+    from app.core.security import is_safe_dashboard_url
+
+    assert is_safe_dashboard_url("javascript:alert(1)") is False
+    assert is_safe_dashboard_url("file:///etc/passwd") is False
+
+
+def test_dashboard_url_rejects_credentials_and_empty_host():
+    from app.core.security import is_safe_dashboard_url
+
+    assert is_safe_dashboard_url("http://user:pass@192.168.1.50:5173") is False
+    assert is_safe_dashboard_url("http://") is False
+    assert is_safe_dashboard_url("") is False
