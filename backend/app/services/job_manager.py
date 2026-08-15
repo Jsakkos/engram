@@ -1362,8 +1362,9 @@ class JobManager:
         """Send the Discord embed. Runs as a background task; all errors are swallowed."""
         try:
             from app.core.discord_notifier import (
-                DEFAULT_TEMPLATE_COMPLETED,
-                DEFAULT_TEMPLATE_FAILED,
+                DEFAULT_TEMPLATES,
+                EVENTS,
+                build_embed,
                 build_template_context,
                 notify_discord,
                 render_discord_template,
@@ -1374,23 +1375,27 @@ class JobManager:
             if not config.discord_webhook_url:
                 return
 
-            if state not in TERMINAL_JOB_STATES:
+            event = EVENTS.get(state)
+            if event is None:
                 logger.warning(
-                    f"Job {job_id}: Discord notification requested for non-terminal state {state}"
+                    f"Job {job_id}: Discord notification requested for non-notifiable state {state}"
                 )
                 return
 
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
 
-            if state == JobState.COMPLETED:
-                template = config.discord_template_completed or DEFAULT_TEMPLATE_COMPLETED
-            else:
-                template = config.discord_template_failed or DEFAULT_TEMPLATE_FAILED
+            templates = {
+                "completed": config.discord_template_completed,
+                "failed": config.discord_template_failed,
+                "review": config.discord_template_review,
+            }
+            template = templates[event.key] or DEFAULT_TEMPLATES[event.key]
 
             context = build_template_context(job, job_id)
             description = render_discord_template(template, context)
-            await notify_discord(config.discord_webhook_url, job_id, description, state.value)
+            embed = build_embed(job, [], event, description)
+            await notify_discord(config.discord_webhook_url, job_id, embed)
         except Exception as e:
             logger.warning(f"Job {job_id}: Discord notification failed: {e}", exc_info=True)
 

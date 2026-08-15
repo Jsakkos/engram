@@ -1,11 +1,37 @@
-"""Discord webhook notifications for job completion events."""
+"""Discord webhook notifications for job lifecycle events."""
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import chevron
 import httpx
 from chevron.tokenizer import ChevronError, tokenize
 from loguru import logger
 
-from app.models.disc_job import DiscJob
+from app import __version__
+from app.models.disc_job import DiscJob, JobState
+
+
+@dataclass(frozen=True)
+class NotificationEvent:
+    """Presentation for one notifiable job state.
+
+    Replaces the old `state == "completed"` binary. `key` is the config suffix
+    (discord_template_<key>, discord_notify_<key>), deliberately "review" rather
+    than "review_needed" so config field names stay readable.
+    """
+
+    key: str
+    label: str
+    emoji: str
+    color: int
+
+
+EVENTS: dict[JobState, NotificationEvent] = {
+    JobState.COMPLETED: NotificationEvent("completed", "Disc Completed", "✅", 0x00B97A),
+    JobState.FAILED: NotificationEvent("failed", "Disc Failed", "❌", 0xE53935),
+    JobState.REVIEW_NEEDED: NotificationEvent("review", "Review Needed", "🔍", 0xF59E0B),
+}
 
 ALLOWED_TEMPLATE_VARS = frozenset(
     {
@@ -29,6 +55,13 @@ ALLOWED_TEMPLATE_VARS = frozenset(
 
 DEFAULT_TEMPLATE_COMPLETED = "**{{{title}}}**"
 DEFAULT_TEMPLATE_FAILED = "**{{{title}}}**"
+DEFAULT_TEMPLATE_REVIEW = "**{{{title}}}**"
+
+DEFAULT_TEMPLATES = {
+    "completed": DEFAULT_TEMPLATE_COMPLETED,
+    "failed": DEFAULT_TEMPLATE_FAILED,
+    "review": DEFAULT_TEMPLATE_REVIEW,
+}
 
 
 def validate_discord_template(template: str) -> str | None:
@@ -90,28 +123,52 @@ def render_discord_template(template: str, context: dict) -> str:
     return chevron.render(template, context, partials_dict={})
 
 
-async def notify_discord(webhook_url: str, job_id: int, description: str, state: str) -> None:
-    """POST a Discord embed to webhook_url. No-op if URL is empty."""
+def build_embed(
+    job: DiscJob | None,
+    titles: list,
+    event: NotificationEvent,
+    description: str,
+    *,
+    poster_url: str | None = None,
+    link_url: str | None = None,
+) -> dict:
+    """Assemble the Discord embed for one notification.
+
+    The user template renders into `description`; everything else is structured
+    so disc identity shows up without anyone editing a template.
+    """
+    embed: dict = {
+        "title": f"{event.emoji} {event.label}",
+        "description": description,
+        "color": event.color,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "footer": {"text": f"Engram v{__version__}"},
+    }
+    if link_url:
+        embed["url"] = link_url
+    if poster_url:
+        embed["thumbnail"] = {"url": poster_url}
+    return embed
+
+
+async def notify_discord(webhook_url: str, job_id: int, embed: dict, content: str = "") -> None:
+    """POST a prebuilt embed to webhook_url. No-op if URL is empty.
+
+    Pure transport: it knows nothing about job semantics. `content` is the only
+    part Discord resolves mentions in, so it carries the configured mention and
+    never rendered template output.
+    """
     if not webhook_url:
         return
 
-    color = 0x00B97A if state == "completed" else 0xE53935  # green / red
-    emoji = "✅" if state == "completed" else "❌"
-
-    payload = {
-        "embeds": [
-            {
-                "title": f"{emoji} Disc {state.title()}",
-                "description": description,
-                "color": color,
-            }
-        ]
-    }
+    payload: dict = {"embeds": [embed]}
+    if content:
+        payload["content"] = content
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(webhook_url, json=payload)
             resp.raise_for_status()
-        logger.debug(f"Discord notification sent for job {job_id} ({state})")
+        logger.debug(f"Discord notification sent for job {job_id}")
     except Exception:
         logger.warning(f"Discord notification failed for job {job_id}", exc_info=True)

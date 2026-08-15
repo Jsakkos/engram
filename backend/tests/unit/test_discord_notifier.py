@@ -16,69 +16,93 @@ from app.core.discord_notifier import (
 from app.models.disc_job import ContentType, DiscJob
 
 # --------------------------------------------------------------------------- #
+# Event table
+# --------------------------------------------------------------------------- #
+
+
+def test_event_table_covers_the_three_notifiable_states():
+    from app.core.discord_notifier import EVENTS
+    from app.models.disc_job import JobState
+
+    assert set(EVENTS) == {JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED}
+    assert EVENTS[JobState.COMPLETED].key == "completed"
+    assert EVENTS[JobState.COMPLETED].color == 0x00B97A
+    assert EVENTS[JobState.FAILED].key == "failed"
+    assert EVENTS[JobState.FAILED].color == 0xE53935
+    assert EVENTS[JobState.REVIEW_NEEDED].key == "review"
+    assert EVENTS[JobState.REVIEW_NEEDED].label == "Review Needed"
+
+
+def test_event_table_has_no_entry_for_transient_states():
+    """RIPPING and friends must not resolve to an event; that guard is what stops
+    a mid-pipeline transition from posting to Discord."""
+    from app.core.discord_notifier import EVENTS
+    from app.models.disc_job import JobState
+
+    assert EVENTS.get(JobState.RIPPING) is None
+    assert EVENTS.get(JobState.MATCHING) is None
+
+
+# --------------------------------------------------------------------------- #
 # notify_discord unit tests
 # --------------------------------------------------------------------------- #
 
 
+def _mock_http_client():
+    """AsyncClient double whose .post records the call and reports success."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return mock_client
+
+
 @pytest.mark.asyncio
 async def test_notify_discord_noop_on_empty_url():
-    """Empty webhook URL → no HTTP call made."""
+    """Empty webhook URL means no HTTP call is made."""
     with patch("httpx.AsyncClient") as mock_client_cls:
-        await notify_discord("", job_id=1, description="**Show Name**", state="completed")
+        await notify_discord("", job_id=1, embed={"title": "x"})
         mock_client_cls.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_notify_discord_posts_completed_embed():
-    """COMPLETED state → green embed with checkmark title, description passed through verbatim."""
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+async def test_notify_discord_posts_the_embed_verbatim():
+    """notify_discord is pure transport: it wraps the embed and posts, nothing else."""
+    mock_client = _mock_http_client()
+    embed = {"title": "✅ Disc Completed", "description": "**The Wire**", "color": 0x00B97A}
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        await notify_discord(
-            "https://discord.com/api/webhooks/123/abc",
-            job_id=5,
-            description="**The Wire**",
-            state="completed",
-        )
+        await notify_discord("https://discord.com/api/webhooks/123/abc", job_id=5, embed=embed)
 
-    mock_client.post.assert_called_once()
     url, kwargs = mock_client.post.call_args[0][0], mock_client.post.call_args[1]
     assert url == "https://discord.com/api/webhooks/123/abc"
-    embed = kwargs["json"]["embeds"][0]
-    assert "✅" in embed["title"]
-    assert "Completed" in embed["title"]
-    assert embed["description"] == "**The Wire**"
-    assert embed["color"] == 0x00B97A  # green
+    assert kwargs["json"]["embeds"] == [embed]
 
 
 @pytest.mark.asyncio
-async def test_notify_discord_posts_failed_embed():
-    """FAILED state → red embed with X title, description passed through verbatim."""
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+async def test_notify_discord_omits_content_key_when_blank():
+    """A blank content must not be sent as an empty message body."""
+    mock_client = _mock_http_client()
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        await notify_discord("https://discord.com/api/webhooks/1/a", job_id=1, embed={}, content="")
+
+    assert "content" not in mock_client.post.call_args[1]["json"]
+
+
+@pytest.mark.asyncio
+async def test_notify_discord_includes_content_when_set():
+    """The mention rides as message content, which is the only part Discord pings on."""
+    mock_client = _mock_http_client()
 
     with patch("httpx.AsyncClient", return_value=mock_client):
         await notify_discord(
-            "https://discord.com/api/webhooks/123/abc",
-            job_id=5,
-            description="**Mystery Disc**",
-            state="failed",
+            "https://discord.com/api/webhooks/1/a", job_id=1, embed={}, content="<@1234>"
         )
 
-    embed = mock_client.post.call_args[1]["json"]["embeds"][0]
-    assert "❌" in embed["title"]
-    assert "Failed" in embed["title"]
-    assert embed["description"] == "**Mystery Disc**"
-    assert embed["color"] == 0xE53935  # red
+    assert mock_client.post.call_args[1]["json"]["content"] == "<@1234>"
 
 
 @pytest.mark.asyncio
@@ -92,13 +116,26 @@ async def test_notify_discord_swallows_http_errors():
     mock_client.__aexit__ = AsyncMock(return_value=False)
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        # Should not raise
-        await notify_discord(
-            "https://discord.com/api/webhooks/123/abc",
-            job_id=3,
-            description="**Some Disc**",
-            state="completed",
-        )
+        await notify_discord("https://discord.com/api/webhooks/123/abc", job_id=3, embed={})
+
+
+# --------------------------------------------------------------------------- #
+# build_embed
+# --------------------------------------------------------------------------- #
+
+
+def test_build_embed_sets_title_description_and_color_from_event():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+    embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "**The Wire**")
+
+    assert embed["title"] == "✅ Disc Completed"
+    assert embed["description"] == "**The Wire**"
+    assert embed["color"] == 0x00B97A
+    assert "timestamp" in embed
+    assert embed["footer"]["text"].startswith("Engram")
 
 
 # --------------------------------------------------------------------------- #
@@ -248,8 +285,9 @@ async def test_send_notification_noop_when_no_webhook():
 
 
 @pytest.mark.asyncio
-async def test_send_notification_noop_for_non_terminal_state():
-    """Called with a non-terminal state (defensive guard) → notify_discord never called."""
+async def test_send_notification_noop_for_non_notifiable_state():
+    """Called with a state that has no event mapping (RIPPING) means notify_discord
+    is never called."""
     from app.models import JobState
     from app.services.config_service import update_config
     from app.services.job_manager import job_manager
@@ -287,13 +325,9 @@ async def test_send_notification_fires_on_completed():
         await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
 
     mock_notify.assert_called_once()
-    _, description, state = (
-        mock_notify.call_args[0][1],
-        mock_notify.call_args[0][2],
-        mock_notify.call_args[0][3],
-    )
-    assert description == "**Breaking Bad**"
-    assert state == "completed"
+    embed = mock_notify.call_args[0][2]
+    assert embed["description"] == "**Breaking Bad**"
+    assert "Completed" in embed["title"]
 
 
 @pytest.mark.asyncio
@@ -321,8 +355,9 @@ async def test_send_notification_fires_on_failed():
         await job_manager._send_discord_notification(job_id, JobState.FAILED)
 
     mock_notify.assert_called_once()
-    state = mock_notify.call_args[0][3]
-    assert state == "failed"
+    embed = mock_notify.call_args[0][2]
+    assert "Failed" in embed["title"]
+    assert embed["color"] == 0xE53935
 
 
 @pytest.mark.asyncio
@@ -350,8 +385,7 @@ async def test_send_notification_falls_back_to_volume_label():
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
         await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
 
-    description = mock_notify.call_args[0][2]
-    assert description == "**UNKNOWN_DISC**"
+    assert mock_notify.call_args[0][2]["description"] == "**UNKNOWN_DISC**"
 
 
 @pytest.mark.asyncio
@@ -382,8 +416,7 @@ async def test_send_notification_uses_configured_completed_template():
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
         await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
 
-    description = mock_notify.call_args[0][2]
-    assert description == "Done: Breaking Bad (BREAKING_BAD_S1D1)"
+    assert mock_notify.call_args[0][2]["description"] == "Done: Breaking Bad (BREAKING_BAD_S1D1)"
 
     await update_config(discord_template_completed="")
 
@@ -398,7 +431,7 @@ async def test_send_notification_uses_configured_failed_template():
 
     await update_config(
         discord_webhook_url="https://discord.com/api/webhooks/1/tok",
-        discord_template_failed="Failed: {{title}} — {{error}}",
+        discord_template_failed="Failed: {{title}}: {{error}}",
     )
 
     async with async_session() as session:
@@ -416,8 +449,7 @@ async def test_send_notification_uses_configured_failed_template():
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
         await job_manager._send_discord_notification(job_id, JobState.FAILED)
 
-    description = mock_notify.call_args[0][2]
-    assert description == "Failed: BAD_DISC — disc unreadable"
+    assert mock_notify.call_args[0][2]["description"] == "Failed: BAD_DISC: disc unreadable"
 
     await update_config(discord_template_failed="")
 
