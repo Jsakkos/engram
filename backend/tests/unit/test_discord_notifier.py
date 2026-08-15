@@ -667,3 +667,36 @@ def test_build_embed_attaches_fields():
     job = DiscJob(drive_id="E:", content_type=ContentType.TV, volume_label="THE_WIRE_S1D3")
     embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "**The Wire**")
     assert any(f["name"] == "Disc" for f in embed["fields"])
+
+
+def test_field_value_truncated_to_discord_limit():
+    """A verbose MakeMKV stderr must not push the embed past Discord's field limit;
+    a 400 there would cost the user the whole failure notification."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="BAD_DISC", error_message="x" * 5000)
+    by_name = {f["name"]: f["value"] for f in build_embed_fields(job, [], EVENTS[JobState.FAILED])}
+    assert len(by_name["Reason"]) == 1024
+    assert by_name["Reason"].endswith("...")
+
+
+def test_description_truncated_to_discord_limit():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="X")
+    embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "y" * 9000)
+    assert len(embed["description"]) == 4096
+
+
+def test_embed_fields_render_season_zero_as_specials_season():
+    """Season 0 is Specials, a real season, not a missing value."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, volume_label="X", detected_season=0)
+    by_name = {
+        f["name"]: f["value"] for f in build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
+    }
+    assert by_name["Season"] == "Season 0"

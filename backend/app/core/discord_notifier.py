@@ -140,13 +140,31 @@ def format_disc_identity(job: DiscJob) -> str:
     return f"Disc {disc_number}"
 
 
+# Discord's documented embed limits. Exceeding one makes the API reject the
+# whole message with a 400, which notify_discord swallows, so a too-long
+# error_message would silently cost the user the notification entirely.
+_MAX_FIELD_VALUE = 1024
+_MAX_DESCRIPTION = 4096
+
+
+def _truncate(value: str, limit: int) -> str:
+    """Clip to Discord's limit, marking the cut so nobody reads a partial value as complete."""
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3] + "..."
+
+
 def _field(name: str, value: str, inline: bool = True) -> dict | None:
     """Build one embed field, or None when the value is empty.
 
     Emptiness is the universal drop signal: it lets a single field list serve
     movies, TV, imports and all three events without conditional branching.
     """
-    return {"name": name, "value": value, "inline": inline} if value else None
+    return (
+        {"name": name, "value": _truncate(value, _MAX_FIELD_VALUE), "inline": inline}
+        if value
+        else None
+    )
 
 
 def summarize_episodes(titles: list) -> str:
@@ -170,7 +188,10 @@ def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEve
 
     candidates = [
         _field("Disc", format_disc_identity(job)),
-        _field("Season", f"Season {job.detected_season}" if is_tv and job.detected_season else ""),
+        _field(
+            "Season",
+            f"Season {job.detected_season}" if is_tv and job.detected_season is not None else "",
+        ),
         _field(
             "Episodes",
             summarize_episodes(titles) if event.key == "completed" else "",
@@ -201,7 +222,7 @@ def build_embed(
     """
     embed: dict = {
         "title": f"{event.emoji} {event.label}",
-        "description": description,
+        "description": _truncate(description, _MAX_DESCRIPTION),
         "color": event.color,
         "timestamp": datetime.now(UTC).isoformat(),
         "footer": {"text": f"Engram v{__version__}"},
