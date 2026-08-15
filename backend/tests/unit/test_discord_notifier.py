@@ -486,3 +486,21 @@ async def test_advance_job_via_state_machine_fires_notification():
     assert new_state == "completed"
     mock_send.assert_called_once()
     assert mock_send.call_args[0][1] == JobState.COMPLETED
+
+
+# --------------------------------------------------------------------------- #
+# New notification config fields
+# --------------------------------------------------------------------------- #
+
+
+def test_app_config_notification_defaults():
+    """New notification fields default to on, with blank templates/mention/link."""
+    from app.models.app_config import AppConfig
+
+    config = AppConfig()
+    assert config.discord_template_review == ""
+    assert config.discord_notify_completed is True
+    assert config.discord_notify_failed is True
+    assert config.discord_notify_review is True
+    assert config.discord_mention_review == ""
+    assert config.dashboard_base_url == ""

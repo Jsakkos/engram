@@ -210,6 +210,28 @@ class AppConfig(SQLModel, table=True):
     # "" means use the built-in default (see app.core.discord_notifier).
     discord_template_completed: str = ""
     discord_template_failed: str = ""
+    discord_template_review: str = ""
+    # Per-event enable toggles. Stored NOT NULL with a server_default of 1, but
+    # the notifier treats None as enabled anyway (see _send_discord_notification)
+    # so a NULL left by an out-of-band schema change can never silently mute
+    # notifications.
+    discord_notify_completed: bool = Field(
+        default=True, sa_column_kwargs={"server_default": text("1")}
+    )
+    discord_notify_failed: bool = Field(
+        default=True, sa_column_kwargs={"server_default": text("1")}
+    )
+    discord_notify_review: bool = Field(
+        default=True, sa_column_kwargs={"server_default": text("1")}
+    )
+    # Message `content` sent alongside the embed on review events, e.g. "<@1234>"
+    # or "@here". Embeds do not resolve mentions; only `content` does, which is
+    # what makes a review ping actually reach a phone.
+    discord_mention_review: str = ""
+    # Base URL of this Engram dashboard, e.g. "http://192.168.1.50:5173". When
+    # set, notifications link to /history/{job_id}. Deliberately NOT validated
+    # with is_safe_remote_url: a LAN address is the expected value here.
+    dashboard_base_url: str = ""
 
     # Onboarding
     setup_complete: bool = False  # Set True after user completes setup wizard
