@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from urllib.parse import urlsplit, urlunsplit
 
 import chevron
 import httpx
@@ -253,11 +254,22 @@ def build_dashboard_link(base_url: str, job_id: int) -> str | None:
 
     Re-validates the stored value rather than trusting it: config can be written
     by an older build or edited in the DB directly, and an unvalidated string
-    here becomes a clickable link in a chat channel.
+    here becomes a clickable link in a chat channel. A rejected value is logged
+    rather than silently dropped, so "why is there no link" is diagnosable.
+
+    Any query string or fragment on the configured base is discarded. Appending
+    a path to ``http://host/?x=1`` would bury ``/history/42`` inside the query
+    and yield a plausible-looking but broken link.
     """
-    if not base_url or not is_safe_dashboard_url(base_url):
+    if not base_url:
         return None
-    return f"{base_url.rstrip('/')}/history/{job_id}"
+    if not is_safe_dashboard_url(base_url):
+        logger.warning(f"Ignoring unsafe dashboard_base_url in config: {base_url!r}")
+        return None
+
+    parsed = urlsplit(base_url)
+    origin_and_path = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    return f"{origin_and_path.rstrip('/')}/history/{job_id}"
 
 
 def build_embed(

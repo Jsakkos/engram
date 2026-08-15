@@ -886,3 +886,25 @@ def test_build_embed_attaches_url_and_thumbnail_when_supplied():
     )
     assert embed["url"] == "http://192.168.1.50:5173/history/7"
     assert embed["thumbnail"]["url"] == "https://image.tmdb.org/t/p/w500/abc.jpg"
+
+
+def test_dashboard_link_preserves_a_reverse_proxy_path_prefix():
+    """Engram behind a reverse proxy at /engram must keep that prefix."""
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("https://home.example.com/engram", 42) == (
+        "https://home.example.com/engram/history/42"
+    )
+
+
+def test_dashboard_link_discards_query_and_fragment():
+    """Appending a path to a base carrying ?x=1 would bury /history/42 in the
+    query string and produce a broken but plausible-looking link."""
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("http://192.168.1.50:5173/?x=1", 42) == (
+        "http://192.168.1.50:5173/history/42"
+    )
+    assert build_dashboard_link("http://192.168.1.50:5173#frag", 42) == (
+        "http://192.168.1.50:5173/history/42"
+    )
