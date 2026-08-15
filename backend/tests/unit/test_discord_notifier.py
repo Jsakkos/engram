@@ -536,3 +536,134 @@ def test_app_config_notification_defaults():
     assert config.discord_notify_review is True
     assert config.discord_mention_review == ""
     assert config.dashboard_base_url == ""
+
+
+# --------------------------------------------------------------------------- #
+# format_disc_identity / build_embed_fields
+# --------------------------------------------------------------------------- #
+
+
+def test_disc_identity_prefers_volume_label():
+    from app.core.discord_notifier import format_disc_identity
+
+    job = DiscJob(drive_id="E:", volume_label="ARRESTED_DEVELOPMENT_S1D1", disc_number=1)
+    assert format_disc_identity(job) == "ARRESTED_DEVELOPMENT_S1D1"
+
+
+def test_disc_identity_appends_disc_number_beyond_the_first():
+    """The whole point of the feature: disc 3 of a box set must not read like disc 1."""
+    from app.core.discord_notifier import format_disc_identity
+
+    job = DiscJob(drive_id="E:", volume_label="THE_WIRE_S1", disc_number=3)
+    assert format_disc_identity(job) == "THE_WIRE_S1 (Disc 3)"
+
+
+def test_disc_identity_falls_back_to_discdb_slug():
+    from app.core.discord_notifier import format_disc_identity
+
+    job = DiscJob(drive_id="E:", volume_label="", discdb_disc_slug="S01D02", disc_number=2)
+    assert format_disc_identity(job) == "S01D02"
+
+
+def test_disc_identity_falls_back_to_disc_number():
+    from app.core.discord_notifier import format_disc_identity
+
+    job = DiscJob(drive_id="E:", volume_label="", discdb_disc_slug=None, disc_number=4)
+    assert format_disc_identity(job) == "Disc 4"
+
+
+def test_embed_fields_include_disc_and_season_for_tv():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.TV,
+        detected_title="The Wire",
+        detected_season=1,
+        volume_label="THE_WIRE_S1D3",
+        disc_number=3,
+        total_titles=6,
+    )
+    fields = build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
+    by_name = {f["name"]: f["value"] for f in fields}
+
+    assert by_name["Disc"] == "THE_WIRE_S1D3 (Disc 3)"
+    assert by_name["Season"] == "Season 1"
+    assert by_name["Tracks"] == "6 titles"
+
+
+def test_embed_fields_omit_season_for_movies():
+    """Skip-if-empty is what lets one builder serve movies and TV without a
+    conditional matrix; a blank 'Season: ' row would be noise."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.MOVIE,
+        detected_title="Inception",
+        volume_label="INCEPTION_2010",
+    )
+    fields = build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
+    assert "Season" not in {f["name"] for f in fields}
+
+
+def test_embed_fields_show_review_reason_on_review_event():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.TV,
+        volume_label="MYSTERY_DISC",
+        review_reason="Could not match 3 titles",
+    )
+    fields = build_embed_fields(job, [], EVENTS[JobState.REVIEW_NEEDED])
+    by_name = {f["name"]: f["value"] for f in fields}
+    assert by_name["Reason"] == "Could not match 3 titles"
+
+
+def test_embed_fields_show_error_on_failed_event():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="BAD_DISC", error_message="disc unreadable")
+    fields = build_embed_fields(job, [], EVENTS[JobState.FAILED])
+    by_name = {f["name"]: f["value"] for f in fields}
+    assert by_name["Reason"] == "disc unreadable"
+
+
+def test_embed_fields_report_subtitles_with_failures():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        volume_label="X",
+        subtitle_status="partial",
+        subtitles_downloaded=18,
+        subtitles_total=20,
+        subtitles_failed=2,
+    )
+    by_name = {
+        f["name"]: f["value"] for f in build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
+    }
+    assert by_name["Subtitles"] == "18/20, 2 failed"
+
+
+def test_embed_fields_empty_when_job_is_none():
+    """Job vanished before the background task re-fetched it: no crash, no fields."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    assert build_embed_fields(None, [], EVENTS[JobState.COMPLETED]) == []
+
+
+def test_build_embed_attaches_fields():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, volume_label="THE_WIRE_S1D3")
+    embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "**The Wire**")
+    assert any(f["name"] == "Disc" for f in embed["fields"])

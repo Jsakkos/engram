@@ -9,7 +9,7 @@ from chevron.tokenizer import ChevronError, tokenize
 from loguru import logger
 
 from app import __version__
-from app.models.disc_job import DiscJob, JobState
+from app.models.disc_job import ContentType, DiscJob, JobState
 
 
 @dataclass(frozen=True)
@@ -123,6 +123,68 @@ def render_discord_template(template: str, context: dict) -> str:
     return chevron.render(template, context, partials_dict={})
 
 
+def format_disc_identity(job: DiscJob) -> str:
+    """Human-readable identity for THIS disc, not the show it belongs to.
+
+    A box set's detected_title is identical on every disc, which is exactly the
+    problem this solves. Falls back volume_label, then discdb_disc_slug, then
+    a bare disc number.
+    """
+    disc_number = job.disc_number or 1
+    if job.volume_label:
+        if disc_number > 1:
+            return f"{job.volume_label} (Disc {disc_number})"
+        return job.volume_label
+    if job.discdb_disc_slug:
+        return job.discdb_disc_slug
+    return f"Disc {disc_number}"
+
+
+def _field(name: str, value: str, inline: bool = True) -> dict | None:
+    """Build one embed field, or None when the value is empty.
+
+    Emptiness is the universal drop signal: it lets a single field list serve
+    movies, TV, imports and all three events without conditional branching.
+    """
+    return {"name": name, "value": value, "inline": inline} if value else None
+
+
+def summarize_episodes(titles: list) -> str:
+    """Replaced in Task 5. Returns "" so the Episodes field is dropped."""
+    return ""
+
+
+def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEvent) -> list[dict]:
+    """Structured embed fields for one notification. Empty values are dropped."""
+    if job is None:
+        return []
+
+    is_tv = job.content_type == ContentType.TV
+    reason = job.review_reason if event.key == "review" else job.error_message
+
+    subtitles = ""
+    if job.subtitle_status:
+        subtitles = f"{job.subtitles_downloaded}/{job.subtitles_total}"
+        if job.subtitles_failed:
+            subtitles += f", {job.subtitles_failed} failed"
+
+    candidates = [
+        _field("Disc", format_disc_identity(job)),
+        _field("Season", f"Season {job.detected_season}" if is_tv and job.detected_season else ""),
+        _field(
+            "Episodes",
+            summarize_episodes(titles) if event.key == "completed" else "",
+            inline=False,
+        ),
+        _field("Duration", _format_duration(job)),
+        _field("Tracks", f"{job.total_titles} titles" if job.total_titles else ""),
+        _field("Subtitles", subtitles),
+        _field("Reason", reason or "", inline=False),
+        _field("Library", job.final_path or "" if event.key == "completed" else "", inline=False),
+    ]
+    return [f for f in candidates if f is not None]
+
+
 def build_embed(
     job: DiscJob | None,
     titles: list,
@@ -143,6 +205,7 @@ def build_embed(
         "color": event.color,
         "timestamp": datetime.now(UTC).isoformat(),
         "footer": {"text": f"Engram v{__version__}"},
+        "fields": build_embed_fields(job, titles, event),
     }
     if link_url:
         embed["url"] = link_url
