@@ -6,7 +6,6 @@ cancel a perfectly healthy recovery rip after timeout_ripping_seconds.
 """
 
 import asyncio
-import sys
 from pathlib import Path
 
 import pytest
@@ -16,11 +15,6 @@ import app.database as _db
 from app.core.extractor import RipResult
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
 from app.services.job_manager import job_manager
-
-# job_manager binds eject_disc at import time; patching the sentinel module
-# alone no longer reaches its auto-eject call sites. `import app.services.
-# job_manager as x` yields the singleton, so go through sys.modules.
-_jm_module = sys.modules["app.services.job_manager"]
 
 
 def async_session():
@@ -102,7 +96,6 @@ async def test_fallback_rip_keeps_the_watchdog_clock_moving(tmp_path, monkeypatc
     monkeypatch.setattr(job_manager, "_loop", asyncio.get_running_loop())
     # _run_ripping ejects at the end of the rip; drive "Z:" does not exist.
     monkeypatch.setattr("app.core.sentinel.eject_disc", lambda *_a, **_k: None)
-    monkeypatch.setattr(_jm_module, "eject_disc", lambda *_a, **_k: None)
     # Matching is out of scope here and its real path waits (up to 600s) for
     # the file to look "done", which would leak a background task past this
     # test's teardown and corrupt later tests' DB state. Stub it out.

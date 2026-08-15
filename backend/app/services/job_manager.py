@@ -32,7 +32,7 @@ from app.core.extractor import (
 from app.core.log_context import job_log_context, with_job_log_context
 from app.core.organizer import movie_organizer
 from app.core.security import sanitize_log_value
-from app.core.sentinel import DriveMonitor, eject_disc
+from app.core.sentinel import DriveMonitor
 from app.database import async_session
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -1207,6 +1207,8 @@ class JobManager:
         # eject_abort's docstring.
         if state == JobState.RIPPING:
             await asyncio.to_thread(self._extractor.eject_abort, job_id)
+
+        from app.core.sentinel import eject_disc
 
         ejected = False
         try:
@@ -2399,6 +2401,8 @@ class JobManager:
         # Free the drive for the next disc.
         if cfg and cfg.auto_eject_enabled:
             try:
+                from app.core.sentinel import eject_disc
+
                 await asyncio.to_thread(eject_disc, drive_id)
                 self._drive_monitor.notify_ejected(drive_id)
             except (OSError, RuntimeError) as e:
@@ -2939,6 +2943,8 @@ class JobManager:
             # Eject disc and reset sentinel state so a new disc insert is detected
             if rip_config and rip_config.auto_eject_enabled:
                 try:
+                    from app.core.sentinel import eject_disc
+
                     await asyncio.to_thread(eject_disc, drive_id)
                     self._drive_monitor.notify_ejected(drive_id)
                 except (OSError, RuntimeError) as e:

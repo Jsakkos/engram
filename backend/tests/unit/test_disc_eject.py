@@ -284,11 +284,11 @@ def test_ejected_rip_message_is_user_facing():
 
 # --- JobManager.eject_disc_for_job -----------------------------------------
 
-# `app.services/__init__.py` rebinds the `app.services.job_manager` package
-# attribute to the singleton, so `import app.services.job_manager as x` hands
-# back the instance. Reach the real module through sys.modules to patch its
-# module-level names.
-_jm_module = sys.modules["app.services.job_manager"]
+# app.services.__init__ rebinds the name ``job_manager`` to the singleton, which
+# shadows the submodule for a plain ``import ... as`` -- reach the module itself.
+# Only needed for its ``state_machine`` singleton; ``eject_disc`` is stubbed on
+# the sentinel module (see _install_eject_stubs).
+jm_mod = sys.modules["app.services.job_manager"]
 
 
 async def _seed_job_in_state(state: JobState, *, drive_id: str = "Z:") -> int:
@@ -328,11 +328,20 @@ class _EjectSpy:
 
 
 def _install_eject_stubs(monkeypatch, *, eject_ok: bool) -> tuple[_EjectSpy, list[str]]:
-    """Stub eject_abort, eject_disc and notify_ejected; return the two spies."""
+    """Stub eject_abort, eject_disc and notify_ejected; return the two spies.
+
+    eject_disc is patched on the sentinel module, matching every other rip test
+    in this tree. That reaches JobManager because its call sites import the name
+    *inside* the method, so the attribute is resolved at call time. Keep the
+    import function-local if you touch it, or this stub silently stops working
+    and a unit test opens the physical tray.
+    """
     abort_spy = _EjectSpy()
     notified: list[str] = []
     monkeypatch.setattr(job_manager._extractor, "eject_abort", abort_spy)
-    monkeypatch.setattr(_jm_module, "eject_disc", lambda drive: eject_ok)
+    monkeypatch.setattr("app.core.sentinel.eject_disc", lambda drive: eject_ok)
+    # notify_ejected and eject_abort are instance attributes on the singletons,
+    # so they are patched directly and are unaffected by the above.
     monkeypatch.setattr(
         job_manager._drive_monitor, "notify_ejected", lambda drive: notified.append(drive)
     )
@@ -382,7 +391,7 @@ async def test_eject_while_identifying_cancels_the_job(monkeypatch):
     _abort_spy, notified = _install_eject_stubs(monkeypatch, eject_ok=True)
     # A job driven to a terminal state fires Discord notification tasks that
     # leak a DB connection past teardown; drop the callbacks for this test.
-    monkeypatch.setattr(_jm_module.state_machine, "_on_terminal_callbacks", [])
+    monkeypatch.setattr(jm_mod.state_machine, "_on_terminal_callbacks", [])
 
     cancelled: list[int] = []
     real_cancel = job_manager.cancel_job
