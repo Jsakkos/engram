@@ -1020,3 +1020,23 @@ async def test_on_transition_callbacks_receive_from_state():
         await machine.transition(job, JobState.REVIEW_NEEDED, session, broadcast=False)
 
     assert seen == [(JobState.REVIEW_NEEDED, JobState.RIPPING)]
+
+
+def test_registered_transition_observers_accept_the_full_signature():
+    """Guards the silent-failure mode of the on_transition contract.
+
+    JobStateMachine.transition wraps each observer in `except Exception` and
+    logs, so an observer whose arity does not match does not crash: it stops
+    working, permanently and invisibly. A green suite is not evidence that a
+    contract change reached every observer, so assert the arity directly.
+    """
+    import inspect
+
+    from app.models.disc_job import JobState
+    from app.services.job_manager import job_manager, state_machine
+
+    assert state_machine._on_transition_callbacks, "no observers registered"
+    for callback in state_machine._on_transition_callbacks:
+        # Bind three positional args without calling; raises TypeError on a mismatch.
+        inspect.signature(callback).bind(1, JobState.REVIEW_NEEDED, JobState.RIPPING)
+    assert job_manager._start_prewarm_on_review in state_machine._on_transition_callbacks
