@@ -10,6 +10,7 @@ import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
 import { requestAiValidation } from '../utils/aiValidation';
 import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
+import { requestDiscordWebhookTest } from '../utils/discordWebhookTest';
 import { formatToolVersion } from '../utils/formatting';
 import './ConfigWizard.css';
 
@@ -178,6 +179,12 @@ interface ConfigData {
     discordWebhookUrl: string;
     discordTemplateCompleted: string;
     discordTemplateFailed: string;
+    discordTemplateReview: string;
+    discordNotifyCompleted: boolean;
+    discordNotifyFailed: boolean;
+    discordNotifyReview: boolean;
+    discordMentionReview: string;
+    dashboardBaseUrl: string;
 }
 
 interface NetworkInfo {
@@ -260,10 +267,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         discordWebhookUrl: '',
         discordTemplateCompleted: '',
         discordTemplateFailed: '',
+        discordTemplateReview: '',
+        discordNotifyCompleted: true,
+        discordNotifyFailed: true,
+        discordNotifyReview: true,
+        discordMentionReview: '',
+        dashboardBaseUrl: '',
     });
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string}>({completed: '', failed: ''});
+    const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string; review: string}>({completed: '', failed: '', review: ''});
+    const [webhookTest, setWebhookTest] = useState<{status: 'idle' | 'testing' | 'ok' | 'error', error?: string}>({status: 'idle'});
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
@@ -379,6 +393,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     discordWebhookUrl: data.discord_webhook_url === '***' ? '' : (data.discord_webhook_url || ''),
                     discordTemplateCompleted: data.discord_template_completed || '',
                     discordTemplateFailed: data.discord_template_failed || '',
+                    discordTemplateReview: data.discord_template_review || '',
+                    discordNotifyCompleted: data.discord_notify_completed ?? true,
+                    discordNotifyFailed: data.discord_notify_failed ?? true,
+                    discordNotifyReview: data.discord_notify_review ?? true,
+                    discordMentionReview: data.discord_mention_review || '',
+                    dashboardBaseUrl: data.dashboard_base_url || '',
                 });
             } catch (error) {
                 console.error('Failed to load config:', error);
@@ -397,21 +417,25 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             // Empty template is always valid (falls back to the built-in default) —
             // skip the round-trip, which also avoids validating on mount before the
             // user has touched either field.
-            const [completedResult, failedResult] = await Promise.all([
+            const [completedResult, failedResult, reviewResult] = await Promise.all([
                 config.discordTemplateCompleted
                     ? requestDiscordTemplateValidation(config.discordTemplateCompleted)
                     : Promise.resolve({ status: 'valid' as const }),
                 config.discordTemplateFailed
                     ? requestDiscordTemplateValidation(config.discordTemplateFailed)
                     : Promise.resolve({ status: 'valid' as const }),
+                config.discordTemplateReview
+                    ? requestDiscordTemplateValidation(config.discordTemplateReview)
+                    : Promise.resolve({ status: 'valid' as const }),
             ]);
             setDiscordTemplateErrors({
                 completed: completedResult.status === 'invalid' ? completedResult.error : '',
                 failed: failedResult.status === 'invalid' ? failedResult.error : '',
+                review: reviewResult.status === 'invalid' ? reviewResult.error : '',
             });
         }, 400);
         return () => window.clearTimeout(timer);
-    }, [config.discordTemplateCompleted, config.discordTemplateFailed]);
+    }, [config.discordTemplateCompleted, config.discordTemplateFailed, config.discordTemplateReview]);
 
     // Detect tools when entering step 2
     useEffect(() => {
@@ -479,6 +503,14 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
 
     const handleInputChange = (field: keyof ConfigData, value: string | boolean | number) => {
         setConfig(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleTestWebhook = async () => {
+        setWebhookTest({ status: 'testing' });
+        const result = await requestDiscordWebhookTest(config.discordWebhookUrl);
+        setWebhookTest(
+            result.status === 'ok' ? { status: 'ok' } : { status: 'error', error: result.error },
+        );
     };
 
     const handleNext = () => {
@@ -567,6 +599,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     ...optional('discord_webhook_url', config.discordWebhookUrl),
                     discord_template_completed: config.discordTemplateCompleted,
                     discord_template_failed: config.discordTemplateFailed,
+                    discord_template_review: config.discordTemplateReview,
+                    discord_notify_completed: config.discordNotifyCompleted,
+                    discord_notify_failed: config.discordNotifyFailed,
+                    discord_notify_review: config.discordNotifyReview,
+                    discord_mention_review: config.discordMentionReview,
+                    dashboard_base_url: config.dashboardBaseUrl,
                     setup_complete: true,
                 }),
             });
@@ -1906,6 +1944,95 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         </div>
 
                         <div className="form-group">
+                            <SvActionButton
+                                tone="cyan"
+                                size="md"
+                                onClick={handleTestWebhook}
+                                disabled={webhookTest.status === 'testing'}
+                            >
+                                {webhookTest.status === 'testing' ? 'Sending...' : 'Send test message'}
+                            </SvActionButton>
+                            {webhookTest.status === 'ok' && (
+                                <span style={{color: '#22c55e', fontSize: '0.85rem', marginLeft: '0.5rem'}}>✓ Sent</span>
+                            )}
+                            {webhookTest.status === 'error' && (
+                                <span style={{color: '#ef4444', fontSize: '0.85rem', marginLeft: '0.5rem'}}>✗ {webhookTest.error}</span>
+                            )}
+                            <span className="form-hint">
+                                Posts a sample notification. Leave the field above blank to test the saved webhook.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="dashboardBaseUrl">Dashboard URL</label>
+                            <input
+                                id="dashboardBaseUrl"
+                                type="url"
+                                value={config.dashboardBaseUrl}
+                                onChange={(e) => handleInputChange('dashboardBaseUrl', e.target.value)}
+                                placeholder="http://192.168.1.50:5173"
+                            />
+                            <span className="form-hint">
+                                Where this dashboard is reachable on your network. When set, notifications link
+                                straight to the job, so a review ping is one tap from the review screen.
+                            </span>
+                        </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.discordNotifyCompleted}
+                                    onChange={(e) => handleInputChange('discordNotifyCompleted', e.target.checked)}
+                                />
+                                <span className="checkbox-text">Notify when a disc completes</span>
+                            </label>
+                        </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.discordNotifyFailed}
+                                    onChange={(e) => handleInputChange('discordNotifyFailed', e.target.checked)}
+                                />
+                                <span className="checkbox-text">Notify when a disc fails</span>
+                            </label>
+                        </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.discordNotifyReview}
+                                    onChange={(e) => handleInputChange('discordNotifyReview', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    Notify when a disc needs review
+                                    <span className="checkbox-hint">
+                                        Engram pings the channel when a disc parks waiting for you, so a walk-away
+                                        rip does not stall silently.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="discordMentionReview">Review Mention</label>
+                            <input
+                                id="discordMentionReview"
+                                type="text"
+                                value={config.discordMentionReview}
+                                onChange={(e) => handleInputChange('discordMentionReview', e.target.value)}
+                                placeholder="<@123456789012345678>"
+                            />
+                            <span className="form-hint">
+                                Sent alongside the review notification so Discord actually pushes it to your phone.
+                                Accepts {'<@userid>'}, {'<@&roleid>'}, or @here. Leave blank for no mention.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
                             <label htmlFor="discordTemplateCompleted">Completed Message</label>
                             <textarea
                                 id="discordTemplateCompleted"
@@ -1918,9 +2045,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {discordTemplateErrors.completed}</span>
                             )}
                             <span className="form-hint">
-                                Available variables: {'{{'}title{'}}'}, {'{{'}drive{'}}'}, {'{{'}content_type{'}}'}, {'{{'}season{'}}'},{' '}
-                                {'{{'}tmdb_name{'}}'}, {'{{'}tmdb_year{'}}'}, {'{{'}duration{'}}'}, {'{{'}subtitle_status{'}}'},{' '}
-                                {'{{'}path{'}}'}, {'{{'}total_titles{'}}'}. Leave blank to use the default. Use triple braces
+                                Available variables: {'{{'}title{'}}'}, {'{{'}volume_label{'}}'}, {'{{'}drive_id{'}}'},{' '}
+                                {'{{'}disc_number{'}}'}, {'{{'}discdb_disc_slug{'}}'}, {'{{'}content_type{'}}'}, {'{{'}season{'}}'},{' '}
+                                {'{{'}episodes{'}}'}, {'{{'}state{'}}'}, {'{{'}tmdb_name{'}}'}, {'{{'}tmdb_year{'}}'},{' '}
+                                {'{{'}duration{'}}'}, {'{{'}subtitle_status{'}}'}, {'{{'}path{'}}'}, {'{{'}total_titles{'}}'}.{' '}
+                                {'{{'}drive{'}}'} still works but is a deprecated alias for {'{{'}volume_label{'}}'}.
+                                Disc name, season and episodes also appear automatically as fields, so a blank
+                                template still identifies the disc. Leave blank to use the default. Use triple braces
                                 ({'{{{'}var{'}}}'}) instead of double to avoid HTML-escaping characters like {'&'}, {'<'}, {'>'}.
                             </span>
                         </div>
@@ -1940,6 +2071,23 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             <span className="form-hint">
                                 Same variables as above, plus {'{{'}error{'}}'} for the failure reason. Leave blank to use the default.
                                 Use triple braces ({'{{{'}var{'}}}'}) to avoid HTML-escaping.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="discordTemplateReview">Review Needed Message</label>
+                            <textarea
+                                id="discordTemplateReview"
+                                value={config.discordTemplateReview}
+                                onChange={(e) => handleInputChange('discordTemplateReview', e.target.value)}
+                                placeholder="**{{title}}**"
+                                rows={2}
+                            />
+                            {discordTemplateErrors.review && (
+                                <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {discordTemplateErrors.review}</span>
+                            )}
+                            <span className="form-hint">
+                                Same variables as above, plus {'{{'}review_reason{'}}'}. Leave blank to use the default.
                             </span>
                         </div>
 
@@ -2064,7 +2212,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <button
                             className="btn-primary"
                             onClick={handleNext}
-                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed}
+                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed || !!discordTemplateErrors.review}
                         >
                             {step === totalSteps ? (isSaving ? 'Saving...' : 'Complete Setup') : 'Next →'}
                         </button>
@@ -2072,7 +2220,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <button
                             className="btn-primary"
                             onClick={handleSave}
-                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed}
+                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed || !!discordTemplateErrors.review}
                         >
                             {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>

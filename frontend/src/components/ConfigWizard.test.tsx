@@ -79,6 +79,7 @@ function mockApi(configOverrides: Record<string, unknown> = {}) {
                 if (url.includes('/api/network/info'))
                     return { lan_access_enabled: false, active_lan_bound: false, lan_ip: null, port: 8000, lan_url: null };
                 if (url.includes('/api/validate/discord-template')) return { valid: true };
+                if (url.includes('/api/validate/discord-webhook')) return { valid: true };
                 return config;
             };
             return Promise.resolve({ ok: true, status: 200, json, text: async () => JSON.stringify(config) });
@@ -404,5 +405,29 @@ describe('ConfigWizard — Discord notification templates', () => {
 
         await waitFor(() => expect(screen.queryByText(/unknown template variable/i)).not.toBeInTheDocument());
         await waitFor(() => expect(saveButton).toBeEnabled());
+    });
+});
+
+describe('ConfigWizard: Discord notification settings', () => {
+    async function openPreferences() {
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        fireEvent.click(within(nav).getByRole('button', { name: 'Preferences' }));
+    }
+
+    it('renders the review notification controls', async () => {
+        await openPreferences();
+
+        expect(await screen.findByLabelText(/Review Needed Message/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Review Mention/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/Dashboard URL/i)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Send test message/i })).toBeInTheDocument();
+    });
+
+    it('reports success after a webhook test', async () => {
+        await openPreferences();
+
+        fireEvent.click(await screen.findByRole('button', { name: /Send test message/i }));
+        await waitFor(() => expect(screen.getByText(/Sent/)).toBeInTheDocument());
     });
 });
