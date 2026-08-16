@@ -745,3 +745,61 @@ async def validate_ai(
     # Report the model that actually answered, not the default, so a user testing
     # an override can see which one the key accepted.
     return ValidationResponse(valid=True, version=model or DEFAULT_MODELS[provider])
+
+
+class DiscordWebhookTestRequest(BaseModel):
+    """Request model for the Discord webhook smoke test.
+
+    A blank or omitted url means "use the saved one": GET /api/config redacts the
+    stored webhook to "***", so the frontend has nothing to send back.
+    """
+
+    webhook_url: str | None = None
+
+
+@router.post("/validate/discord-webhook", response_model=ValidationResponse)
+async def test_discord_webhook(request: DiscordWebhookTestRequest) -> ValidationResponse:
+    """Post a sample notification so the user can confirm the webhook works.
+
+    Builds the sample through the real build_embed path, so a passing test
+    message proves the production builder works, not just the URL.
+    """
+    from app.core.discord_notifier import EVENTS, build_embed, notify_discord
+    from app.core.security import is_safe_remote_url
+    from app.models.disc_job import ContentType, DiscJob, JobState
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    webhook_url = (request.webhook_url or "").strip() or config.discord_webhook_url
+    if not webhook_url:
+        return ValidationResponse(valid=False, error="No webhook URL configured or supplied")
+
+    # Same guard PUT /api/config applies. Without it this endpoint becomes an
+    # unauthenticated probe against internal hosts.
+    if not is_safe_remote_url(webhook_url):
+        return ValidationResponse(
+            valid=False,
+            error="Webhook URL must be an http/https URL pointing to a non-internal host",
+        )
+
+    sample = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.TV,
+        detected_title="Engram Test",
+        volume_label="ENGRAM_TEST_S1D1",
+        detected_season=1,
+        disc_number=1,
+        total_titles=6,
+        state=JobState.COMPLETED,
+    )
+    embed = build_embed(sample, [], EVENTS[JobState.COMPLETED], "**Engram Test**")
+
+    # Positional, matching every other call site: the tests assert on
+    # call_args[0][2] being the embed.
+    try:
+        await notify_discord(webhook_url, 0, embed)
+    except Exception as e:  # notify_discord swallows its own errors; belt and braces
+        logger.warning(f"Discord webhook test failed: {e}", exc_info=True)
+        return ValidationResponse(valid=False, error=f"Failed to post: {e}")
+
+    return ValidationResponse(valid=True)

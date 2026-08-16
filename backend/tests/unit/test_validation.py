@@ -6,9 +6,29 @@ Tests path validation, configuration validation, and input sanitization.
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
+from app.database import get_session
+from app.main import app
 from app.models import AppConfig
+
+
+@pytest.fixture
+async def client():
+    """Provide an async HTTP client with the patched DB session."""
+    from tests.unit.conftest import _unit_session_factory
+
+    async def override_get_session():
+        async with _unit_session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
 
 
 class TestPathValidation:
@@ -1295,3 +1315,45 @@ def test_dashboard_url_rejects_credentials_and_empty_host():
     assert is_safe_dashboard_url("http://user:pass@192.168.1.50:5173") is False
     assert is_safe_dashboard_url("http://") is False
     assert is_safe_dashboard_url("") is False
+
+
+# --------------------------------------------------------------------------- #
+# POST /api/validate/discord-webhook
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_rejects_internal_host(client):
+    """Without the SSRF guard this endpoint is an internal-host probe."""
+    resp = await client.post(
+        "/api/validate/discord-webhook", json={"webhook_url": "http://169.254.169.254/latest"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["valid"] is False
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_errors_when_nothing_configured(client):
+    from app.services.config_service import update_config
+
+    await update_config(discord_webhook_url="")
+    resp = await client.post("/api/validate/discord-webhook", json={})
+    assert resp.json()["valid"] is False
+    assert "no webhook" in resp.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_posts_a_sample_embed(client):
+    from unittest.mock import AsyncMock, patch
+
+    from app.services.config_service import update_config
+
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        resp = await client.post("/api/validate/discord-webhook", json={})
+
+    assert resp.json()["valid"] is True
+    mock_notify.assert_called_once()
+    embed = mock_notify.call_args[0][2]
+    assert any(f["name"] == "Disc" for f in embed["fields"])
