@@ -1070,6 +1070,36 @@ async def cancel_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
     return {"status": "cancelled", "job_id": job.id}
 
 
+@router.post("/jobs/{job_id}/eject")
+async def eject_job_disc(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """Release the disc without cancelling the job.
+
+    While RIPPING: stops MakeMKV, ejects, and lets the job continue. Tracks
+    that finished ripping still match and organize; tracks that did not are
+    parked in review as re-rippable. While IDENTIFYING: ejects and cancels,
+    because nothing has been produced to salvage.
+
+    ``ejected`` reports whether the tray actually opened. False means the rip
+    was still stopped but the user must remove the disc by hand.
+    """
+    from app.services.job_manager import job_manager
+
+    # Manual-import jobs carry drive_id == "import" and hold no physical drive,
+    # so they would pass the state gate with no tray to open. Reject them here
+    # rather than returning a confusing silent ejected=False.
+    if job.drive_id == "import":
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot eject an imported job: there is no disc in a drive.",
+        )
+
+    try:
+        result = await job_manager.eject_disc_for_job(job.id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return {**result, "job_id": job.id}
+
+
 @router.post("/jobs/{job_id}/advance")
 async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
     """Force a stuck job forward to its next resting state.
