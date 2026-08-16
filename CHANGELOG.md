@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-08-16
+
+_Highlights: eject a disc mid-rip without losing the job, and Discord notifications now identify the disc._
+
 ### Added
 
 - **You can eject a disc mid-rip without losing the job.** A dirty or damaged disc usually announces itself partway through a rip: read speeds collapse and the drive starts grinding. Until now the only mid-rip control was Cancel, which failed the whole job and deleted everything already staged, so rescuing a scratched disc meant throwing away the tracks that had ripped perfectly. Pulling the disc by hand was not a workaround either: a rip in progress survives the disc vanishing and then sits on MakeMKV until the stall timeout expires, twenty minutes later. The disc card now has an **Eject** button while scanning or ripping. Ripping stops within seconds, the drive opens, and the job carries on: tracks that finished ripping match and organize exactly as they always would, and the rest are parked in review marked re-rippable, so you can clean the disc, put it back in, and recover them one at a time. Ejecting during the initial scan cancels the job instead, since nothing has been produced yet. If the tray refuses to open, the rip is still stopped and the disc is safe to remove by hand; Engram says so rather than pretending it worked.
