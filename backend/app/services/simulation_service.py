@@ -45,6 +45,11 @@ class SimulationService:
         self._subtitle_tasks: dict = None
         self._active_jobs: dict = None
         self._on_task_done: callable = None
+        # Mid-rip eject support. Injected rather than imported: reaching into
+        # job_manager from here would close an import cycle.
+        self._ejected_jobs: set = None
+        self._cancelled_jobs: set = None
+        self._route_unfinished_after_eject: callable = None
 
     def set_callbacks(
         self,
@@ -53,12 +58,22 @@ class SimulationService:
         subtitle_tasks,
         active_jobs,
         on_task_done,
+        ejected_jobs=None,
+        cancelled_jobs=None,
+        route_unfinished_after_eject=None,
     ) -> None:
         """Set cross-coordinator references."""
         self._subtitle_ready = subtitle_ready
         self._subtitle_tasks = subtitle_tasks
         self._active_jobs = active_jobs
         self._on_task_done = on_task_done
+        self._ejected_jobs = ejected_jobs
+        self._cancelled_jobs = cancelled_jobs
+        self._route_unfinished_after_eject = route_unfinished_after_eject
+
+    def _is_ejected(self, job_id: int) -> bool:
+        """Whether the user ejected this job's disc mid-rip."""
+        return bool(self._ejected_jobs) and job_id in self._ejected_jobs
 
     async def simulate_disc_insert(self, params: dict) -> int:
         """Simulate a disc insertion for testing purposes."""
@@ -571,10 +586,6 @@ class SimulationService:
         """Simulate the ripping process with realistic progress updates."""
         import random
 
-        # Function-local like the other job_manager import in this file, which
-        # keeps the simulation service out of job_manager's import cycle.
-        from app.services.job_manager import job_manager
-
         # Blocking prompt kinds — titles park in QUEUED until user answers.
         blocking = identity_pending in BLOCKING_KINDS
 
@@ -627,7 +638,7 @@ class SimulationService:
                 # Mid-rip eject: stop producing titles, exactly like the real
                 # extractor's eject abort. Titles not yet produced stay PENDING
                 # for the salvage routing below to park in REVIEW.
-                if job_id in job_manager._extractor._ejected_jobs:
+                if self._is_ejected(job_id):
                     logger.info(
                         f"Job {job_id}: simulated rip stopped for disc eject at title "
                         f"{title.title_index}"
@@ -678,7 +689,7 @@ class SimulationService:
                     # Checked inside the step loop too, so an eject lands within
                     # a fraction of a second instead of waiting out the current
                     # title. This title stays RIPPING and is routed below.
-                    if job_id in job_manager._extractor._ejected_jobs:
+                    if self._is_ejected(job_id):
                         logger.info(
                             f"Job {job_id}: simulated rip stopped for disc eject "
                             f"during title {title.title_index}"
@@ -718,13 +729,14 @@ class SimulationService:
                 # reconciles stranded titles and would mark them FAILED. Clear
                 # the extractor flags so a later re-rip of this job is not
                 # mistaken for another eject.
-                job_manager._extractor._ejected_jobs.discard(job_id)
-                job_manager._extractor._cancelled_jobs.discard(job_id)
+                self._ejected_jobs.discard(job_id)
+                if self._cancelled_jobs is not None:
+                    self._cancelled_jobs.discard(job_id)
                 # The rip loop's long-lived session cached these rows; the
                 # routing commits from its own session, so expire first or the
                 # convergence below re-reads pre-routing state.
                 session.expire_all()
-                await job_manager._route_unfinished_titles_after_eject(job_id)
+                await self._route_unfinished_after_eject(job_id)
                 session.expire_all()
 
             # Move to matching / convergence

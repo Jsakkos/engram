@@ -274,6 +274,11 @@ class JobManager:
             subtitle_tasks=self._matching._subtitle_tasks,
             active_jobs=self._active_jobs,
             on_task_done=self._on_task_done,
+            # Mid-rip eject: injected so the simulation service never has to
+            # import job_manager, which would close an import cycle.
+            ejected_jobs=self._extractor._ejected_jobs,
+            cancelled_jobs=self._extractor._cancelled_jobs,
+            route_unfinished_after_eject=self._route_unfinished_titles_after_eject,
         )
 
         # Register terminal job state callbacks

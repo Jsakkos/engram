@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.analyst import TitleInfo
+from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -1409,7 +1410,7 @@ class MakeMKVExtractor:
                 if not output_files:
                     output_files = list(output_dir.glob("*.mkv"))
                 logger.info(
-                    f"Job {job_id}: rip stopped for disc eject; "
+                    f"Job {sanitize_log_value(job_id)}: rip stopped for disc eject; "
                     f"{len(output_files)} title(s) already ripped"
                 )
                 return RipResult(

@@ -35,6 +35,22 @@ from tests.unit.test_rip_skip_boundary_chain import (  # noqa: F401
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_eject_flags():
+    """Never leak an eject flag onto the module-level extractor singleton.
+
+    These tests call eject_abort on the real singleton, and job ids restart at
+    1 for every in-memory database. A leaked id makes a LATER test's job of the
+    same id look already-ejected: its rip stops instantly and the job jumps to
+    review_needed without ever reaching RIPPING. The tiers currently run in
+    separate pytest processes, which hides this, so the leak only bites whoever
+    first runs the whole suite in one command.
+    """
+    yield
+    job_manager._extractor._ejected_jobs.clear()
+    job_manager._extractor._cancelled_jobs.clear()
+
+
 def test_rip_result_defaults_aborted_for_eject_false():
     """A normal RipResult is not an eject abort."""
     result = RipResult(success=True, output_files=[])
