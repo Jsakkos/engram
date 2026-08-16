@@ -758,11 +758,20 @@ class DiscordWebhookTestRequest(BaseModel):
 
 
 @router.post("/validate/discord-webhook", response_model=ValidationResponse)
-async def test_discord_webhook(request: DiscordWebhookTestRequest) -> ValidationResponse:
+async def test_discord_webhook(
+    request: DiscordWebhookTestRequest,
+    _: None = Depends(require_localhost_or_lan),
+) -> ValidationResponse:
     """Post a sample notification so the user can confirm the webhook works.
 
     Builds the sample through the real build_embed path, so a passing test
     message proves the production builder works, not just the URL.
+
+    Gated to the host (or an opted-in LAN) for the same reason as the AI
+    validator: this is the one validator that POSTs to a caller-supplied URL
+    rather than a fixed third-party host. is_safe_remote_url blocks internal
+    targets, but without this gate the server would still relay arbitrary
+    outbound requests to public hosts for anyone who can reach the port.
     """
     from app.core.discord_notifier import EVENTS, build_embed, notify_discord
     from app.core.security import is_safe_remote_url
@@ -795,7 +804,9 @@ async def test_discord_webhook(request: DiscordWebhookTestRequest) -> Validation
     embed = build_embed(sample, [], EVENTS[JobState.COMPLETED], "**Engram Test**")
 
     # Positional, matching every other call site: the tests assert on
-    # call_args[0][2] being the embed.
+    # call_args[0][2] being the embed. job_id 0 is a sentinel: no real job backs
+    # this smoke test, and real ids autoincrement from 1, so a "job 0" log line
+    # is unambiguously from here.
     try:
         await notify_discord(webhook_url, 0, embed)
     except Exception as e:  # notify_discord swallows its own errors; belt and braces

@@ -1357,3 +1357,31 @@ async def test_test_webhook_posts_a_sample_embed(client):
     mock_notify.assert_called_once()
     embed = mock_notify.call_args[0][2]
     assert any(f["name"] == "Disc" for f in embed["fields"])
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_rejects_a_non_local_caller():
+    """Proves the localhost/LAN gate is load-bearing, not decorative.
+
+    ASGITransport reports a loopback peer by default, so every other test in
+    this file sails through the gate and would keep passing if the dependency
+    were removed. Spoofing a public client address is the only way to exercise
+    the deny branch.
+    """
+    from tests.unit.conftest import _unit_session_factory
+
+    async def override_get_session():
+        async with _unit_session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    transport = ASGITransport(app=app, client=("203.0.113.7", 12345))
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post(
+                "/api/validate/discord-webhook",
+                json={"webhook_url": "https://discord.com/api/webhooks/1/tok"},
+            )
+        assert resp.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
