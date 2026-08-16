@@ -1248,3 +1248,65 @@ async def test_notify_discord_reraises_only_when_asked():
             await notify_discord(
                 "https://discord.com/api/webhooks/1/a", job_id=1, embed={}, raise_on_error=True
             )
+
+
+# --------------------------------------------------------------------------- #
+# normalize_discord_webhook_url
+# --------------------------------------------------------------------------- #
+
+
+def test_normalize_webhook_rebuilds_a_valid_discord_url():
+    from app.core.discord_notifier import normalize_discord_webhook_url
+
+    assert (
+        normalize_discord_webhook_url("https://discord.com/api/webhooks/123456789/abcDEF-_.xyz")
+        == "https://discord.com/api/webhooks/123456789/abcDEF-_.xyz"
+    )
+
+
+def test_normalize_webhook_canonicalizes_discord_aliases():
+    """discordapp.com and the ptb/canary deployments all serve the same ids."""
+    from app.core.discord_notifier import normalize_discord_webhook_url
+
+    for host in ("discordapp.com", "ptb.discord.com", "canary.discord.com"):
+        assert normalize_discord_webhook_url(f"https://{host}/api/webhooks/1/tok") == (
+            "https://discord.com/api/webhooks/1/tok"
+        )
+
+
+def test_normalize_webhook_rejects_non_discord_hosts():
+    """The whole point: a caller-supplied URL cannot steer the request elsewhere."""
+    from app.core.discord_notifier import normalize_discord_webhook_url
+
+    for url in (
+        "https://evil.example.com/api/webhooks/1/tok",
+        "https://discord.com.evil.example.com/api/webhooks/1/tok",
+        "https://evil.example.com/#discord.com/api/webhooks/1/tok",
+        "http://discord.com/api/webhooks/1/tok",  # plaintext
+        "https://169.254.169.254/api/webhooks/1/tok",
+        "file:///etc/passwd",
+        "",
+    ):
+        assert normalize_discord_webhook_url(url) is None, url
+
+
+def test_normalize_webhook_rejects_a_wrong_shaped_path():
+    from app.core.discord_notifier import normalize_discord_webhook_url
+
+    for path in (
+        "/api/webhooks/",
+        "/api/webhooks/abc/tok",
+        "/latest/meta-data/",
+        "/api/webhooks/1",
+    ):
+        assert normalize_discord_webhook_url(f"https://discord.com{path}") is None, path
+
+
+def test_normalize_webhook_strips_query_and_fragment():
+    """Anything after the token is discarded rather than carried into the request."""
+    from app.core.discord_notifier import normalize_discord_webhook_url
+
+    assert (
+        normalize_discord_webhook_url("https://discord.com/api/webhooks/1/tok?redirect=http://evil")
+        == "https://discord.com/api/webhooks/1/tok"
+    )

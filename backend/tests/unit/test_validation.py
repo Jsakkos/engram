@@ -1414,3 +1414,33 @@ async def test_test_webhook_reports_a_discord_rejection(client):
     body = resp.json()
     assert body["valid"] is False
     assert "rejected" in body["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_rejects_a_supplied_non_discord_url(client):
+    """A URL in the request body is the only attacker-reachable route into an
+    outbound request here, so it must be a real Discord webhook, not merely a
+    non-internal host."""
+    resp = await client.post(
+        "/api/validate/discord-webhook",
+        json={"webhook_url": "https://evil.example.com/api/webhooks/1/tok"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert "discord webhook url" in body["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_posts_to_the_rebuilt_url(client):
+    """The supplied string is never the request target; the rebuilt one is."""
+    from unittest.mock import AsyncMock, patch
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        resp = await client.post(
+            "/api/validate/discord-webhook",
+            json={"webhook_url": "https://discordapp.com/api/webhooks/42/tok"},
+        )
+
+    assert resp.json()["valid"] is True
+    assert mock_notify.call_args[0][0] == "https://discord.com/api/webhooks/42/tok"
