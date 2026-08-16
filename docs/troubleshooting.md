@@ -55,9 +55,11 @@ Settings live under **Settings, Preferences, Notifications**.
 **First, prove the webhook works.** Click **Send test message**. A sample notification
 should appear in the channel within a second or two. If it doesn't:
 
-- Re-create the webhook in Discord under **Channel Settings, Integrations, Webhooks** and
-  paste the fresh URL. Webhook URLs stop working when the channel or the webhook is
-  deleted, and Engram cannot tell a revoked URL from a working one.
+- Read the message next to the button. A red cross means Discord refused the post, which
+  usually means the webhook or its channel was deleted: re-create it under **Channel
+  Settings, Integrations, Webhooks** and paste the fresh URL. An amber warning means the
+  check itself could not run, so the webhook may well be fine and the problem is between
+  your browser and Engram.
 - Check that the URL starts with `https://discord.com/api/webhooks/`.
 
 **The test works but real discs are silent.** Check the three per-event toggles. Each

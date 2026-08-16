@@ -1222,3 +1222,29 @@ async def test_completion_notification_includes_episode_manifest():
 
     by_name = {f["name"]: f["value"] for f in mock_notify.call_args[0][2]["fields"]}
     assert by_name["Episodes"] == "S01E01-E03 (3 episodes)"
+
+
+@pytest.mark.asyncio
+async def test_notify_discord_reraises_only_when_asked():
+    """The swallow-all default is load-bearing on the pipeline path.
+
+    A rip must never be affected by an unreachable webhook, so the default must
+    keep swallowing. The test-webhook endpoint needs the opposite contract: it
+    reports delivery, and reporting success for a revoked URL would defeat the
+    button entirely.
+    """
+    import httpx
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=httpx.HTTPError("410 Gone"))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        # Default: swallowed, no raise.
+        await notify_discord("https://discord.com/api/webhooks/1/a", job_id=1, embed={})
+
+        with pytest.raises(httpx.HTTPError):
+            await notify_discord(
+                "https://discord.com/api/webhooks/1/a", job_id=1, embed={}, raise_on_error=True
+            )

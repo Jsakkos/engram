@@ -1385,3 +1385,32 @@ async def test_test_webhook_rejects_a_non_local_caller():
         assert resp.status_code == 403
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_reports_a_discord_rejection(client):
+    """A revoked webhook must report invalid, not success.
+
+    notify_discord swallows errors by default, so without raise_on_error this
+    endpoint would report valid=True for a URL Discord refused.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    import httpx
+
+    from app.services.config_service import update_config
+
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=httpx.HTTPError("404 Not Found"))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        resp = await client.post("/api/validate/discord-webhook", json={})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert "rejected" in body["error"].lower()

@@ -765,7 +765,11 @@ async def test_discord_webhook(
     """Post a sample notification so the user can confirm the webhook works.
 
     Builds the sample through the real build_embed path, so a passing test
-    message proves the production builder works, not just the URL.
+    exercises the production builder rather than a stub, and posts with
+    ``raise_on_error=True`` so a rejection by Discord (revoked webhook, deleted
+    channel) reports as invalid. Without that flag notify_discord swallows the
+    failure and the button would cheerfully report success for a dead URL, which
+    is the one thing it exists to rule out.
 
     Gated to the host (or an opted-in LAN) for the same reason as the AI
     validator: this is the one validator that POSTs to a caller-supplied URL
@@ -808,9 +812,9 @@ async def test_discord_webhook(
     # this smoke test, and real ids autoincrement from 1, so a "job 0" log line
     # is unambiguously from here.
     try:
-        await notify_discord(webhook_url, 0, embed)
-    except Exception as e:  # notify_discord swallows its own errors; belt and braces
+        await notify_discord(webhook_url, 0, embed, raise_on_error=True)
+    except Exception as e:
         logger.warning(f"Discord webhook test failed: {e}", exc_info=True)
-        return ValidationResponse(valid=False, error=f"Failed to post: {e}")
+        return ValidationResponse(valid=False, error=f"Discord rejected the test message: {e}")
 
     return ValidationResponse(valid=True)

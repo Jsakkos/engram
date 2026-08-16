@@ -324,12 +324,25 @@ def build_embed(
     return embed
 
 
-async def notify_discord(webhook_url: str, job_id: int, embed: dict, content: str = "") -> None:
+async def notify_discord(
+    webhook_url: str,
+    job_id: int,
+    embed: dict,
+    content: str = "",
+    raise_on_error: bool = False,
+) -> None:
     """POST a prebuilt embed to webhook_url. No-op if URL is empty.
 
     Pure transport: it knows nothing about job semantics. `content` is the only
     part Discord resolves mentions in, so it carries the configured mention and
     never rendered template output.
+
+    Swallowing every error is the default and is load-bearing: this runs as a
+    fire-and-forget task on the pipeline path, where an unreachable webhook must
+    never affect a rip. ``raise_on_error=True`` opts into the opposite contract
+    for the one caller that needs a real delivery verdict, the "send test
+    message" endpoint: reporting success there when Discord rejected the post
+    would defeat the entire point of the button.
     """
     if not webhook_url:
         return
@@ -345,3 +358,5 @@ async def notify_discord(webhook_url: str, job_id: int, embed: dict, content: st
         logger.debug(f"Discord notification sent for job {job_id}")
     except Exception:
         logger.warning(f"Discord notification failed for job {job_id}", exc_info=True)
+        if raise_on_error:
+            raise
