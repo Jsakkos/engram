@@ -238,6 +238,28 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
+    async function ejectJob(jobId: string) {
+        try {
+            const result = await apiFetch<{ ejected: boolean; action: string }>(
+                `/api/jobs/${jobId}/eject`,
+                { method: 'POST' },
+            );
+            if (!result.ejected) {
+                // The rip was still stopped and the salvage still ran, so this
+                // is a warning, not an error.
+                toast.warning('Ripping stopped, but the drive would not open. Eject the disc manually.');
+            } else if (result.action === 'job_cancelled') {
+                toast.success('Disc ejected. The job was cancelled because nothing had been ripped yet.');
+            } else {
+                toast.success('Disc ejected. Finished tracks keep processing; the rest are in review.');
+            }
+            // Job and track states arrive via WebSocket.
+        } catch (error) {
+            console.error('Failed to eject disc:', error);
+            toast.error('Failed to eject the disc. Please try again.');
+        }
+    }
+
     async function advanceJob(jobId: string) {
         try {
             await apiFetchVoid(`/api/jobs/${jobId}/advance`, { method: 'POST' });
@@ -463,6 +485,7 @@ export function useJobManagement(devMode: boolean = false) {
         parkedDiscs,
         armedDrives,
         cancelJob,
+        ejectJob,
         advanceJob,
         clearFinished,
         setJobName,

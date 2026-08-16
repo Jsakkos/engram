@@ -45,6 +45,11 @@ class SimulationService:
         self._subtitle_tasks: dict = None
         self._active_jobs: dict = None
         self._on_task_done: callable = None
+        # Mid-rip eject support. Injected rather than imported: reaching into
+        # job_manager from here would close an import cycle.
+        self._ejected_jobs: set = None
+        self._cancelled_jobs: set = None
+        self._route_unfinished_after_eject: callable = None
 
     def set_callbacks(
         self,
@@ -53,12 +58,22 @@ class SimulationService:
         subtitle_tasks,
         active_jobs,
         on_task_done,
+        ejected_jobs=None,
+        cancelled_jobs=None,
+        route_unfinished_after_eject=None,
     ) -> None:
         """Set cross-coordinator references."""
         self._subtitle_ready = subtitle_ready
         self._subtitle_tasks = subtitle_tasks
         self._active_jobs = active_jobs
         self._on_task_done = on_task_done
+        self._ejected_jobs = ejected_jobs
+        self._cancelled_jobs = cancelled_jobs
+        self._route_unfinished_after_eject = route_unfinished_after_eject
+
+    def _is_ejected(self, job_id: int) -> bool:
+        """Whether the user ejected this job's disc mid-rip."""
+        return bool(self._ejected_jobs) and job_id in self._ejected_jobs
 
     async def simulate_disc_insert(self, params: dict) -> int:
         """Simulate a disc insertion for testing purposes."""
@@ -597,6 +612,7 @@ class SimulationService:
 
             total_bytes = sum(t.file_size_bytes for t in titles)
             cumulative_bytes = 0
+            ejected_mid_rip = False
 
             for i, title in enumerate(titles):
                 current_title = i + 1
@@ -619,6 +635,16 @@ class SimulationService:
                         f"{title.title_index}"
                     )
                     continue
+                # Mid-rip eject: stop producing titles, exactly like the real
+                # extractor's eject abort. Titles not yet produced stay PENDING
+                # for the salvage routing below to park in REVIEW.
+                if self._is_ejected(job_id):
+                    logger.info(
+                        f"Job {job_id}: simulated rip stopped for disc eject at title "
+                        f"{title.title_index}"
+                    )
+                    ejected_mid_rip = True
+                    break
                 if title_db:
                     title_db.state = TitleState.RIPPING
                     await session.commit()
@@ -660,6 +686,20 @@ class SimulationService:
                         actual_size_bytes=min(title_actual, title_bytes),
                     )
 
+                    # Checked inside the step loop too, so an eject lands within
+                    # a fraction of a second instead of waiting out the current
+                    # title. This title stays RIPPING and is routed below.
+                    if self._is_ejected(job_id):
+                        logger.info(
+                            f"Job {job_id}: simulated rip stopped for disc eject "
+                            f"during title {title.title_index}"
+                        )
+                        ejected_mid_rip = True
+                        break
+
+                if ejected_mid_rip:
+                    break
+
                 title_db = await session.get(DiscTitle, title.id)
                 if title_db:
                     title_db.output_filename = f"simulated_title_{title.title_index}.mkv"
@@ -682,6 +722,22 @@ class SimulationService:
                         duration_seconds=title_db.duration_seconds,
                         file_size_bytes=title_db.file_size_bytes,
                     )
+
+            if ejected_mid_rip:
+                # Mirror the real _run_ripping fork: park every unfinished title
+                # in REVIEW as re-rippable BEFORE the convergence below, which
+                # reconciles stranded titles and would mark them FAILED. Clear
+                # the extractor flags so a later re-rip of this job is not
+                # mistaken for another eject.
+                self._ejected_jobs.discard(job_id)
+                if self._cancelled_jobs is not None:
+                    self._cancelled_jobs.discard(job_id)
+                # The rip loop's long-lived session cached these rows; the
+                # routing commits from its own session, so expire first or the
+                # convergence below re-reads pre-routing state.
+                session.expire_all()
+                await self._route_unfinished_after_eject(job_id)
+                session.expire_all()
 
             # Move to matching / convergence
             job = await session.get(DiscJob, job_id)
@@ -796,6 +852,22 @@ class SimulationService:
             if title_db.state == TitleState.SKIPPED:
                 # Dropped during the rip above — leave it SKIPPED, don't manufacture
                 # a match for a title that was never ripped.
+                continue
+            if title_db.state == TitleState.REVIEW:
+                # Already handed to a human: a mid-rip eject parked this title as
+                # re-rippable, or the rip failed on it. Same reasoning as SKIPPED
+                # above, and stronger: manufacturing a match here would flip it
+                # out of REVIEW and hide a track the user still has to recover.
+                #
+                # Unlike SKIPPED (user-excluded, neutral to the outcome) a REVIEW
+                # title must hold the job in REVIEW_NEEDED, mirroring the real
+                # _check_job_completion. Without this the job would report
+                # COMPLETED while tracks still await the user.
+                needs_review = True
+                logger.info(
+                    f"[SIMULATE] Job {job_id}: leaving title {title_db.title_index} in "
+                    f"REVIEW (never ripped), not manufacturing a match"
+                )
                 continue
 
             # Persist MATCHING the moment this title starts matching, mirroring the

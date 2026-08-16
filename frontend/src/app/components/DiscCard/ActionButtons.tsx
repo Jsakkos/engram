@@ -20,7 +20,7 @@
 import { useState, useEffect, useRef, type CSSProperties, type ReactNode, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { IcoCancel, IcoError, IcoRetry, IcoPlay } from "../icons";
+import { IcoCancel, IcoError, IcoRetry, IcoPlay, IcoEject } from "../icons";
 import type { DiscState } from "../DiscCard";
 import { sv, SvPanel } from "../synapse";
 
@@ -30,7 +30,7 @@ interface ConfirmModalProps {
     body: string;
     confirmLabel: string;
     dismissLabel: string;
-    confirmTone?: "red" | "cyan";
+    confirmTone?: "red" | "cyan" | "amber";
     onConfirm: () => void;
     onDismiss: () => void;
 }
@@ -50,8 +50,14 @@ function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confir
         return () => document.removeEventListener("keydown", onKey);
     }, [onDismiss]);
 
-    const confirmColor = confirmTone === "red" ? sv.red : sv.cyan;
-    const confirmBg = confirmTone === "red" ? "rgba(255,85,85,0.12)" : "rgba(94,234,212,0.12)";
+    const confirmColor =
+        confirmTone === "red" ? sv.red : confirmTone === "amber" ? sv.amber : sv.cyan;
+    const confirmBg =
+        confirmTone === "red"
+            ? "rgba(255,85,85,0.12)"
+            : confirmTone === "amber"
+              ? "rgba(252,211,77,0.12)"
+              : "rgba(94,234,212,0.12)";
 
     return createPortal(
         <motion.div
@@ -111,6 +117,11 @@ interface ActionButtonsProps {
     onReview?: () => void;
     onReIdentify?: () => void;
     onAdvance?: () => void;
+    onEject?: () => void;
+    /** Manual-import jobs hold no physical drive, so the backend rejects an
+     *  eject for them. Rendering a button that always errors is worse than
+     *  rendering none. */
+    isImport?: boolean;
     /** Render the "Wrong title?" button filled — it's the primary action when
      *  the review queue is suppressed pre-rip. */
     emphasizeReIdentify?: boolean;
@@ -125,6 +136,9 @@ const ACTIVE_STATES = ["scanning", "ripping", "matching", "organizing", "process
 // Cancel was historically shown only during rip-phase states; keep that scope so it
 // doesn't surface during organizing, where cancelling could leave files partially moved.
 const CANCELABLE_STATES = ["scanning", "ripping", "processing"];
+// Eject only makes sense while the drive physically holds the disc. Post-rip
+// states (matching, organizing) run after auto-eject has already fired.
+const EJECTABLE_STATES = ["scanning", "ripping"];
 
 interface Tone {
     fg: string;        // foreground / icon / text
@@ -164,6 +178,20 @@ const YELLOW: Tone = {
     glow: `${sv.yellow}55`,
     glowHi: `${sv.yellow}99`,
     bgHi: "rgba(253, 224, 71, 0.12)",
+};
+
+// Eject: the caution/interrupt register. Distinct from RED (Cancel destroys the
+// job) and CYAN (routine). It shares a hue family with YELLOW, but the Review
+// button only renders in review_needed and Eject only in scanning/ripping, so
+// the two are never on screen together.
+const AMBER: Tone = {
+    fg: sv.amber,
+    fgHi: "#fde9a8",
+    border: `${sv.amber}66`,
+    borderHi: sv.amber,
+    glow: `${sv.amber}33`,
+    glowHi: `${sv.amber}77`,
+    bgHi: "rgba(252, 211, 77, 0.10)",
 };
 
 const BUTTON_HEIGHT = 30;
@@ -231,16 +259,23 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, t
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, emphasizeReIdentify = false, manualIdentity = false }: ActionButtonsProps) {
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onEject, isImport = false, emphasizeReIdentify = false, manualIdentity = false }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
+    const showEject = !!onEject && EJECTABLE_STATES.includes(state) && !isImport;
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+    const [showEjectModal, setShowEjectModal] = useState(false);
 
     const handleCancel = (e: MouseEvent) => {
         e.stopPropagation();
         setShowCancelModal(true);
+    };
+
+    const handleEject = (e: MouseEvent) => {
+        e.stopPropagation();
+        setShowEjectModal(true);
     };
 
     const handleAdvance = (e: MouseEvent) => {
@@ -275,6 +310,18 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     onDismiss={() => setShowAdvanceModal(false)}
                 />
             )}
+            {showEjectModal && (
+                <ConfirmModal
+                    titleId="eject-modal-title"
+                    title="Eject disc?"
+                    body="Ripping stops and the disc is released. Finished tracks keep processing; the rest go to review so you can re-rip them after cleaning the disc."
+                    confirmLabel="Eject disc"
+                    dismissLabel="Keep ripping"
+                    confirmTone="amber"
+                    onConfirm={() => { setShowEjectModal(false); onEject!(); }}
+                    onDismiss={() => setShowEjectModal(false)}
+                />
+            )}
         </AnimatePresence>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {showCancel && (
@@ -286,6 +333,20 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     paddingX={0}
                 >
                     <IcoCancel size={14} />
+                </ToneButton>
+            )}
+
+            {showEject && (
+                <ToneButton
+                    tone={AMBER}
+                    onClick={handleEject}
+                    title="Eject the disc and keep the finished tracks"
+                    ariaLabel="Eject disc"
+                    paddingX={10}
+                    testId="eject-button"
+                >
+                    <IcoEject size={12} />
+                    <span style={{ fontSize: 10 }}>Eject</span>
                 </ToneButton>
             )}
 

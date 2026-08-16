@@ -168,7 +168,7 @@ function MainDashboard() {
   }, [showImport]);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, clearFinished, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, ejectJob, clearFinished, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   useUpdateSuccessToast(updateStatus);
   const whatsNew = useWhatsNewModal(updateStatus, setupComplete);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
@@ -789,6 +789,7 @@ function MainDashboard() {
                   onSkipTrack={(titleId) => { void skipRipTitle(Number(disc.id), titleId); }}
                   onUnskipTrack={(titleId) => { void unskipRipTitle(Number(disc.id), titleId); }}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
+                  onEject={() => ejectJob(disc.id)}
                   onReview={disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 ? () => navigate(reviewPath(disc.id)) : undefined}
                   // Always-on identity control (#520): available while ripping or
                   // parked in review, not only in review. Deliberately EXCLUDES

@@ -194,7 +194,15 @@ RERIP_MAX_ATTEMPTS = 2
 
 # match_details["error"] codes that mean "the rip itself failed" — these titles
 # are eligible for single-track re-rip after a clean & reinsert.
-RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled"})
+RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_ejected"})
+
+# Shown verbatim in the review queue for a track the user's mid-rip eject cut
+# short (or never reached). Deliberately states that nothing was lost, because
+# the alarming case is a user who thinks ejecting discarded the whole disc.
+EJECTED_RIP_MESSAGE = (
+    "You ejected the disc before this track finished ripping. "
+    "Nothing else was lost: reinsert the disc and use Re-rip to recover it."
+)
 
 
 class MatchingCoordinator:

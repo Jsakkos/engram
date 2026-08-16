@@ -54,3 +54,20 @@ describe('getRerippableState', () => {
     expect(s.attempts).toBe(3);
   });
 });
+
+describe('getRerippableState for ejected tracks', () => {
+  it('treats rip_ejected as re-rippable', () => {
+    const details = JSON.stringify({
+      error: 'rip_ejected',
+      message: 'You ejected the disc before this track finished ripping.',
+      rerip_eligible: true,
+      rerip_attempts: 0,
+    });
+
+    const state = getRerippableState(details);
+
+    expect(state.isRerippable).toBe(true);
+    expect(state.errorCode).toBe('rip_ejected');
+    expect(state.autoEligible).toBe(true);
+  });
+});

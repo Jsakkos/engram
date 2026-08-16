@@ -741,3 +741,85 @@ class TestLLMMatchEndpoint:
         assert body["reason"] == "llm_error"
         assert body["detail"] == "no_credits"
         assert body["message"] == "This account has no API credits."
+
+
+class TestEjectEndpoint:
+    """POST /api/jobs/{id}/eject: release the disc without cancelling the job."""
+
+    @pytest.mark.asyncio
+    async def test_eject_returns_result_and_job_id(self, client, monkeypatch):
+        """The endpoint surfaces whether the tray actually opened."""
+        from app.services.job_manager import job_manager
+
+        job = await _seed_job(state=JobState.RIPPING)
+
+        async def fake_eject(job_id):
+            assert job_id == job.id
+            return {"ejected": True, "action": "rip_stopped"}
+
+        monkeypatch.setattr(job_manager, "eject_disc_for_job", fake_eject)
+
+        response = await client.post(f"/api/jobs/{job.id}/eject")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "ejected": True,
+            "action": "rip_stopped",
+            "job_id": job.id,
+        }
+
+    @pytest.mark.asyncio
+    async def test_failed_tray_open_is_still_a_200(self, client, monkeypatch):
+        """A tray that would not open is reported, not raised: the rip still stopped."""
+        from app.services.job_manager import job_manager
+
+        job = await _seed_job(state=JobState.RIPPING)
+
+        async def fake_eject(job_id):
+            return {"ejected": False, "action": "rip_stopped"}
+
+        monkeypatch.setattr(job_manager, "eject_disc_for_job", fake_eject)
+
+        response = await client.post(f"/api/jobs/{job.id}/eject")
+
+        assert response.status_code == 200
+        assert response.json()["ejected"] is False
+
+    @pytest.mark.asyncio
+    async def test_eject_409s_on_wrong_state(self, client, monkeypatch):
+        """A job that does not hold the drive returns 409, not 500."""
+        from app.services.job_manager import job_manager
+
+        job = await _seed_job(state=JobState.MATCHING)
+
+        async def fake_eject(job_id):
+            raise ValueError("Cannot eject a job in state: matching")
+
+        monkeypatch.setattr(job_manager, "eject_disc_for_job", fake_eject)
+
+        response = await client.post(f"/api/jobs/{job.id}/eject")
+
+        assert response.status_code == 409
+        assert "Cannot eject" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_eject_409s_for_import_jobs(self, client, monkeypatch):
+        """An imported job holds no drive, so there is no tray to open."""
+        from app.services.job_manager import job_manager
+
+        job = await _seed_job(state=JobState.RIPPING, drive_id="import")
+
+        async def unreachable(job_id):
+            raise AssertionError("an import job must be rejected before reaching the manager")
+
+        monkeypatch.setattr(job_manager, "eject_disc_for_job", unreachable)
+
+        response = await client.post(f"/api/jobs/{job.id}/eject")
+
+        assert response.status_code == 409
+        assert "no disc" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_eject_404s_on_missing_job(self, client):
+        response = await client.post("/api/jobs/999999/eject")
+        assert response.status_code == 404

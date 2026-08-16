@@ -1,4 +1,8 @@
-const RIP_FAILURE_CODES = new Set(['incomplete_rip', 'rip_stalled']);
+// Mirrors RIP_FAILURE_ERROR_CODES in backend/app/services/matching_coordinator.py.
+// Both must be updated together: this set gates whether the Re-rip button renders,
+// so a code registered only on the backend parks tracks as re-rippable that the UI
+// then offers no way to recover.
+const RIP_FAILURE_CODES = new Set(['incomplete_rip', 'rip_stalled', 'rip_ejected']);
 
 export interface RerippableState {
   /** True when this REVIEW title failed at the rip level (re-rippable). */

@@ -5,6 +5,7 @@ Handles disc scanning and extraction using makemkvcon.
 
 import asyncio
 import concurrent.futures
+import contextlib
 import hashlib
 import logging
 import re
@@ -18,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.analyst import TitleInfo
+from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +304,13 @@ class RipResult:
     # caller re-rips the remaining not-skipped titles individually — where the
     # live skip-set IS honored (issue #538).
     aborted_for_skip: bool = False
+    # True when a rip was terminated because the user ejected the disc from the
+    # dashboard. Like aborted_for_skip this is NOT a failure: titles that
+    # finished before the abort are kept and continue to matching, and the
+    # caller routes every unfinished title to REVIEW as re-rippable. Unlike
+    # aborted_for_skip there is no per-title fallback pass afterward, because
+    # the disc is no longer in the drive.
+    aborted_for_eject: bool = False
 
 
 class ScanTimeoutError(Exception):
@@ -562,6 +571,60 @@ def compute_content_hash(drive: str) -> str | None:
         return None
 
 
+def _delete_partials_at_abort(
+    output_dir: Path,
+    completion: TitleCompletionDetector,
+    extra_stub: str | None,
+    *,
+    # Quoted deliberately. threading.Lock is a factory FUNCTION until CPython
+    # 3.13 made it a real type, so an unquoted `threading.Lock | None` is
+    # evaluated at def time and raises TypeError on 3.11 and 3.12, which this
+    # project supports and which the Docker image runs. Do not unquote it.
+    lock: "threading.Lock | None",
+    reason: str,
+) -> None:
+    """Delete the files MakeMKV was mid-write on when a pass was terminated.
+
+    Titles that already finished are kept so the caller need not re-rip them.
+    Two sources of doom: files that grew since the last completion poll (still
+    being written), plus a named stub. The stub is named explicitly because
+    growth detection cannot see a file that stopped growing inside the
+    terminate -> wait window; it would read as finished and survive.
+
+    **Precondition:** ``completion`` must have been polled immediately before
+    the terminate that preceded this call. ``files_incomplete_at_abort``
+    answers "grew since the last poll", so against a stale reading it condemns
+    a title that finished during the staleness window. See that method's
+    docstring; the skip path satisfies this via ``_boundary_abort_stub`` and
+    the eject path via the registered eject preparer.
+
+    ``lock`` is the rip's filesystem lock, so the size snapshot stays
+    consistent with the concurrent completion polls; pass None only from
+    outside a live rip (tests). ``reason`` names the abort cause for the log,
+    so a diagnostics bundle shows why a user's file was deleted.
+
+    Shared by the skip-abort and eject-abort paths.
+    """
+    with lock or contextlib.nullcontext():
+        abort_sizes: dict[str, int] = {}
+        for mkv in output_dir.glob("*.mkv"):
+            try:
+                abort_sizes[mkv.name] = mkv.stat().st_size
+            except OSError as e:
+                logger.debug(f"Could not stat {mkv.name} on abort: {e}")
+        doomed = completion.files_incomplete_at_abort(abort_sizes)
+        if extra_stub and extra_stub not in doomed:
+            doomed.append(extra_stub)
+    for fname in doomed:
+        try:
+            (output_dir / fname).unlink()
+            logger.info(f"Deleted partial file from {reason}: {fname}")
+        except FileNotFoundError:
+            logger.debug(f"Partial file already gone: {fname}")
+        except OSError as e:
+            logger.warning(f"Failed to delete partial file {fname}: {e}")
+
+
 class MakeMKVExtractor:
     """Wrapper for MakeMKV command-line interface."""
 
@@ -571,7 +634,19 @@ class MakeMKVExtractor:
         # Each running job registers its subprocess here so cancel() only
         # terminates the correct process.
         self._processes: dict[int, subprocess.Popen] = {}  # job_id -> process
+        # Per-job hook run by eject_abort just BEFORE the subprocess is killed,
+        # while MakeMKV is still writing. The eject cleanup reads the completion
+        # detector, whose "grew since the last poll" answer is only correct
+        # against a fresh reading; the detector and the rip's filesystem lock are
+        # locals of the rip, so the rip registers a closure here rather than
+        # exposing them. Same per-job registry shape as _processes.
+        self._eject_preparers: dict[int, Callable[[], None]] = {}
         self._cancelled_jobs: set[int] = set()
+        # Jobs the user ejected mid-rip. Distinct from _cancelled_jobs so the
+        # return path can report a salvageable eject rather than a cancel;
+        # eject_abort populates BOTH so the existing reader-loop terminate
+        # check needs no change.
+        self._ejected_jobs: set[int] = set()
         # Per-job set of title_index values to skip. Checked before each
         # per-title rip command so a queued-but-not-yet-ripped title can be
         # dropped mid-rip. A full-disc "all" pass cannot honor this (one process
@@ -764,6 +839,7 @@ class MakeMKVExtractor:
     ) -> RipResult:
         """Internal rip implementation (caller must hold drive lock)."""
         self._cancelled_jobs.discard(job_id)
+        self._ejected_jobs.discard(job_id)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         drive_spec = _to_drive_spec(drive)
@@ -1021,8 +1097,26 @@ class MakeMKVExtractor:
 
                     prev_sizes = current_sizes
 
+            def _prepare_eject_abort() -> None:
+                """Freeze a fresh view of the rip before the eject terminate.
+
+                Runs on the ejecting caller's thread while the rip thread is
+                still live. ``files_incomplete_at_abort`` compares against the
+                detector's last poll, so it is only correct while those sizes
+                are current; without this final poll the cleanup below would
+                condemn a title that finished during the up-to-FS_POLL_INTERVAL
+                staleness window. After an eject that is unrecoverable, because
+                the disc is leaving the drive.
+
+                No lock is taken here: _check_for_completed_files acquires
+                _fs_lock itself, and threading.Lock is not reentrant.
+                """
+                _check_for_completed_files()
+
             try:
                 self._cancelled_jobs.discard(job_id)
+                self._ejected_jobs.discard(job_id)
+                self._eject_preparers[job_id] = _prepare_eject_abort
 
                 for title_index, cmd in commands:
                     if job_id in self._cancelled_jobs:
@@ -1148,35 +1242,46 @@ class MakeMKVExtractor:
 
                     if aborted_for_skip[0]:
                         # The 'all' pass was terminated to honor a mid-rip skip.
-                        # Delete ONLY the title MakeMKV was actively writing when
-                        # killed (identified by growth since the last poll) plus
+                        # Delete only the title MakeMKV was actively writing plus
                         # the stub the abort stopped on, so neither is handed to
-                        # matching; titles that already finished are kept so the
-                        # caller doesn't needlessly re-rip them. The post-process
-                        # force poll below then finalizes those kept titles.
-                        # Snapshot under _fs_lock to stay consistent with the
-                        # concurrent completion polls.
-                        with _fs_lock:
-                            abort_sizes: dict[str, int] = {}
-                            for mkv in output_dir.glob("*.mkv"):
-                                try:
-                                    abort_sizes[mkv.name] = mkv.stat().st_size
-                                except OSError as e:
-                                    logger.debug(f"Could not stat {mkv.name} on abort: {e}")
-                            doomed = completion.files_incomplete_at_abort(abort_sizes)
-                            # Growth-since-last-poll cannot see a stub that
-                            # stopped growing in the terminate -> wait window; it
-                            # would read as finished and survive. Name it.
-                            if aborted_stub[0] and aborted_stub[0] not in doomed:
-                                doomed.append(aborted_stub[0])
-                        for fname in doomed:
-                            try:
-                                (output_dir / fname).unlink()
-                                logger.info(
-                                    f"Deleted partial file from skip-aborted 'all' pass: {fname}"
-                                )
-                            except OSError as e:
-                                logger.warning(f"Failed to delete partial file {fname}: {e}")
+                        # matching; finished titles are kept so the caller doesn't
+                        # needlessly re-rip them. The post-process force poll below
+                        # then finalizes those kept titles.
+                        _delete_partials_at_abort(
+                            output_dir,
+                            completion,
+                            aborted_stub[0],
+                            lock=_fs_lock,
+                            reason="skip-aborted 'all' pass",
+                        )
+                        break
+
+                    if job_id in self._ejected_jobs:
+                        # The user ejected the disc. Same salvage as a skip abort:
+                        # drop the truncated in-flight file, keep everything that
+                        # finished. The sizes this compares against are fresh
+                        # because eject_abort ran _prepare_eject_abort before
+                        # killing MakeMKV.
+                        #
+                        # No stub is named here, unlike the skip path. A stub can
+                        # only be identified by growth, and at an arbitrary eject
+                        # moment "grew since the last poll" cannot distinguish a
+                        # title still being written from one that finished just
+                        # after that poll. Naming a growing file would therefore
+                        # risk deleting a good title, which an eject makes
+                        # unrecoverable; the residual gap (MakeMKV paused
+                        # mid-title exactly across the eject, so its truncated
+                        # file reads as finished) is deliberately left to the
+                        # caller's REVIEW routing. See _boundary_abort_stub for
+                        # why the skip path CAN name one: a title boundary proves
+                        # the new file is a stub.
+                        _delete_partials_at_abort(
+                            output_dir,
+                            completion,
+                            None,
+                            lock=_fs_lock,
+                            reason="disc eject",
+                        )
                         break
 
                     if process.returncode != 0:
@@ -1262,6 +1367,7 @@ class MakeMKVExtractor:
                 return (-1, str(e), set())
             finally:
                 self._processes.pop(job_id, None)
+                self._eject_preparers.pop(job_id, None)
                 self._skipped_indices.pop(job_id, None)
 
         try:
@@ -1298,6 +1404,24 @@ class MakeMKVExtractor:
             # Save rip log for TheDiscDB contributions
             if log_dir and output_lines:
                 _save_makemkv_log(log_dir / "rip.log", "\n".join(output_lines))
+
+            # Checked before _cancelled_jobs: eject_abort populates BOTH sets, so
+            # a cancel-first check would misreport every eject as a cancel.
+            if job_id in self._ejected_jobs:
+                # Not a failure: the user chose this. Titles that finished are
+                # returned for matching; the caller routes the rest to REVIEW as
+                # re-rippable and skips the per-title fallback.
+                if not output_files:
+                    output_files = list(output_dir.glob("*.mkv"))
+                logger.info(
+                    f"Job {sanitize_log_value(job_id)}: rip stopped for disc eject; "
+                    f"{len(output_files)} title(s) already ripped"
+                )
+                return RipResult(
+                    success=True,
+                    output_files=output_files,
+                    aborted_for_eject=True,
+                )
 
             if job_id in self._cancelled_jobs:
                 return RipResult(
@@ -1383,6 +1507,32 @@ class MakeMKVExtractor:
             except (ProcessLookupError, PermissionError) as e:
                 logger.debug(f"Could not terminate MakeMKV process for job {job_id}: {e}")
 
+    def eject_abort(self, job_id: int) -> None:
+        """Stop ripping because the user ejected the disc, keeping finished titles.
+
+        Blocking (the preparer globs and stats the staging dir under the rip's
+        filesystem lock, which the rip thread holds during its own polls): run
+        via ``asyncio.to_thread`` from async callers so the event loop is never
+        blocked.
+
+        Runs the job's registered eject preparer FIRST, before cancel() kills
+        MakeMKV: the preparer takes a final completion poll while the rip is
+        still writing, which the cleanup path depends on to tell a title that
+        just finished from one that is still being written. Polling after the
+        kill would be useless, because by then nothing is distinguishable.
+
+        Then adds the job to _ejected_jobs (read by the return path) and to
+        _cancelled_jobs (read by the reader loop, which already terminates the
+        subprocess and breaks out of the command loop). The caller is
+        responsible for the physical eject and for routing unfinished titles
+        to REVIEW.
+        """
+        prepare = self._eject_preparers.get(job_id)
+        if prepare is not None:
+            prepare()
+        self._ejected_jobs.add(job_id)
+        self.cancel(job_id)
+
     async def shutdown(self, grace: float = 5.0) -> None:
         """Drain all tracked MakeMKV subprocesses on server shutdown.
 
@@ -1405,6 +1555,7 @@ class MakeMKVExtractor:
         )
         self._processes.clear()
         self._cancelled_jobs.clear()
+        self._ejected_jobs.clear()
         self._skipped_indices.clear()
 
     def _parse_disc_info(self, output: str) -> tuple[list[TitleInfo], str]:

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscCard, type DiscData } from './DiscCard';
 
@@ -377,5 +377,58 @@ describe('DiscCard — media-type badge vs job state (#552)', () => {
     );
 
     expect(screen.getByTestId('sv-mediatype-unknown')).toHaveTextContent('ANALYZING');
+  });
+});
+
+describe('Eject button', () => {
+  it('renders while ripping', () => {
+    render(<DiscCard disc={makeDisc({ state: 'ripping', needsReview: false })} onEject={vi.fn()} />);
+    expect(screen.getByTestId('eject-button')).toBeInTheDocument();
+  });
+
+  it('renders while scanning, where a dirty disc most often fails', () => {
+    render(<DiscCard disc={makeDisc({ state: 'scanning', needsReview: false })} onEject={vi.fn()} />);
+    expect(screen.getByTestId('eject-button')).toBeInTheDocument();
+  });
+
+  it('is hidden once the drive is free', () => {
+    render(<DiscCard disc={makeDisc({ state: 'matching', needsReview: false })} onEject={vi.fn()} />);
+    expect(screen.queryByTestId('eject-button')).not.toBeInTheDocument();
+  });
+
+  it('is hidden for imported jobs, which hold no drive', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({ state: 'ripping', needsReview: false, sourceType: 'import' })}
+        onEject={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('eject-button')).not.toBeInTheDocument();
+  });
+
+  it('requires confirmation before ejecting', () => {
+    const onEject = vi.fn();
+    render(<DiscCard disc={makeDisc({ state: 'ripping', needsReview: false })} onEject={onEject} />);
+
+    fireEvent.click(screen.getByTestId('eject-button'));
+    expect(onEject).not.toHaveBeenCalled();
+
+    // The modal explains the salvage, which is the non-obvious part.
+    expect(screen.getByText(/the rest go to review/i)).toBeInTheDocument();
+
+    // Scoped to the dialog: the trigger shares the "Eject disc" accessible
+    // name, which is correct for a confirm flow but ambiguous to a bare query.
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Eject disc' }));
+    expect(onEject).toHaveBeenCalledTimes(1);
+  });
+
+  it('dismisses without ejecting', () => {
+    const onEject = vi.fn();
+    render(<DiscCard disc={makeDisc({ state: 'ripping', needsReview: false })} onEject={onEject} />);
+
+    fireEvent.click(screen.getByTestId('eject-button'));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep ripping' }));
+    expect(onEject).not.toHaveBeenCalled();
   });
 });

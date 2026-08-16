@@ -82,6 +82,47 @@ The `REVIEW_NEEDED` state is reachable from multiple stages, each for a differen
 
 When a job enters `REVIEW_NEEDED`, it appears in the Review Queue on the frontend. After the user resolves the issue, the job transitions to `RIPPING` (to continue processing) or `COMPLETED` (if the user chooses to skip).
 
+### Mid-rip eject
+
+`POST /api/jobs/{id}/eject` releases the disc without cancelling the job. It is
+accepted only in `IDENTIFYING` and `RIPPING` (the states that hold the drive)
+and returns 409 otherwise, including for manual-import jobs, which carry
+`drive_id == "import"` and hold no drive at all.
+
+While `RIPPING` there is no state transition of its own. `JobManager.eject_disc_for_job`
+aborts the MakeMKV pass and opens the tray; the in-flight rip returns
+`RipResult(aborted_for_eject=True)`, and `_run_ripping` then:
+
+1. routes every still-unfinished selected title to `REVIEW` with
+   `match_details.error = "rip_ejected"` and `rerip_eligible = true`,
+2. skips the per-title fallback pass (the disc is gone, so each retry would
+   cost a full stall timeout),
+3. skips the auto-eject block (already ejected; re-issuing would reset sentinel
+   state spuriously),
+4. falls through to the normal post-rip flow, so the job settles in
+   `REVIEW_NEEDED` via the usual completion check.
+
+Two ordering constraints hold this together, both covered by regression tests:
+
+- **The routing runs before `reconcile_stuck_titles`.** That function marks a
+  fileless `PENDING`/`RIPPING` title `FAILED`, and because the abort deletes the
+  truncated in-flight file, an interrupted track and a never-started track are
+  indistinguishable to it. Routing afterwards would make every unfinished track
+  `FAILED` and non-re-rippable, inverting the feature.
+- **The routing skips titles that already have complete output.** The final
+  completion poll fires its callback asynchronously, so a track that finished
+  just before the abort can still read `RIPPING` while its `.mkv` is on disk.
+  Without the check it would be parked in review telling the user to re-rip a
+  track that ripped perfectly.
+
+`"rip_ejected"` is registered in `RIP_FAILURE_ERROR_CODES`, which grants
+re-rip eligibility and excludes it from auto re-match. The frontend keeps its
+own copy of that set in `frontend/src/components/ReviewQueue/rerip.ts`; both
+must be updated together or the Re-rip control never renders.
+
+During `IDENTIFYING` the same endpoint ejects and then cancels the job, because
+nothing has been produced to salvage.
+
 ### FAILED Branching
 
 The `FAILED` state is reachable from every non-terminal state. Common failure causes:
