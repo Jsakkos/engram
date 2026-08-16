@@ -52,6 +52,7 @@ from app.services.import_guard import (
 from app.services.job_state_machine import JobStateMachine
 from app.services.manual_identity import arm_store
 from app.services.matching_coordinator import (
+    EJECTED_RIP_MESSAGE,
     INCOMPLETE_RIP_MESSAGE,
     RIP_FAILURE_ERROR_CODES,
     STRICT_MIN_VOTES,
@@ -1237,6 +1238,59 @@ class JobManager:
             f"unfinished titles route to review"
         )
         return {"ejected": ejected, "action": "rip_stopped"}
+
+    async def _route_unfinished_titles_after_eject(self, job_id: int) -> None:
+        """Park every still-unfinished selected title in REVIEW as re-rippable.
+
+        MUST be called BEFORE reconcile_stuck_titles. That function marks a
+        fileless PENDING/RIPPING title FAILED, and because the eject abort
+        deletes the truncated in-flight file, an interrupted track and a
+        never-started track are both fileless and indistinguishable to it.
+        Routing after reconcile would silently produce FAILED, non-re-rippable
+        titles instead of the re-rippable REVIEW titles this feature promises.
+
+        route_rip_failure_to_review is itself a no-op for titles outside
+        PENDING/RIPPING/QUEUED/MATCHING, so titles that already finished and
+        moved on are untouched. Only PENDING/RIPPING are passed here anyway,
+        which also makes a second call idempotent: the first call left them in
+        REVIEW, so the query below no longer selects them.
+
+        DB state alone is not enough to decide "unfinished". The extractor's
+        final completion poll fires title_complete_callback for a title that
+        finished just before the abort, and that callback is marshalled onto
+        the loop asynchronously, so the row can still read PENDING/RIPPING here
+        while a complete .mkv already sits in staging. Routing those would tell
+        the user to re-rip a track that ripped perfectly. Check the filesystem
+        too and leave anything with real output to the normal completion path.
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            staging = Path(job.staging_path) if job and job.staging_path else None
+            result = await session.execute(
+                select(DiscTitle).where(
+                    DiscTitle.job_id == job_id,
+                    DiscTitle.is_selected == True,  # noqa: E712 (SQL expression)
+                    DiscTitle.state.in_([TitleState.PENDING, TitleState.RIPPING]),
+                )
+            )
+            unfinished = list(result.scalars().all())
+
+        for title in unfinished:
+            if staging is not None and self._has_complete_output(staging, title):
+                logger.info(
+                    f"Job {sanitize_log_value(job_id)}: title "
+                    f"{sanitize_log_value(title.title_index)} finished just before "
+                    f"the eject (output present); leaving it to the normal path"
+                )
+                continue
+            logger.info(
+                f"Job {sanitize_log_value(job_id)}: title "
+                f"{sanitize_log_value(title.title_index)} unfinished at eject "
+                f"-> REVIEW (re-rippable)"
+            )
+            await self._matching.route_rip_failure_to_review(
+                job_id, title.id, "rip_ejected", EJECTED_RIP_MESSAGE
+            )
 
     # --- Stale-job watchdog + force-progress engine ---
 
@@ -2796,6 +2850,22 @@ class JobManager:
                     # Expected: the monitor task was just cancelled above.
                     pass
 
+            # User ejected the disc mid-rip. Salvage and skip both the per-title
+            # fallback (the disc is gone; each retry would cost a full stall
+            # timeout) and the auto-eject block below (already ejected, and
+            # re-issuing would spuriously reset sentinel state). Routing runs
+            # HERE, before the post-rip backfill/reconcile, because
+            # reconcile_stuck_titles marks fileless titles FAILED.
+            if result.aborted_for_eject:
+                logger.info(
+                    f"Job {safe_job}: rip stopped for disc eject; "
+                    f"routing unfinished titles to review"
+                )
+                await self._route_unfinished_titles_after_eject(job_id)
+                ejected_mid_rip = True
+            else:
+                ejected_mid_rip = False
+
             # One-pass + per-title fallback: a single 'all' pass that stalls or
             # errors leaves later titles unripped. Re-rip just the still-missing
             # selected titles individually so one bad title can't lose the rest of
@@ -2804,7 +2874,7 @@ class JobManager:
             # via the title-complete callback, and reconcile_stuck_titles is the
             # final safety net.)
             stall_title_list = sorted_titles
-            if rip_all:
+            if rip_all and not ejected_mid_rip:
                 async with async_session() as chk_session:
                     missing = []
                     for t in sorted_titles:
@@ -2918,6 +2988,17 @@ class JobManager:
                     # Stall bookkeeping below now refers to the fallback's per-title
                     # command order, not the original full title list.
                     stall_title_list = missing
+                    # An eject during the fallback pass sets the flag on the
+                    # fallback's own result, which the check above (which ran
+                    # before this pass) never saw. Route here, still ahead of
+                    # the backfill/reconcile below.
+                    if result.aborted_for_eject and not ejected_mid_rip:
+                        logger.info(
+                            f"Job {safe_job}: disc ejected during the per-title "
+                            f"fallback; routing unfinished titles to review"
+                        )
+                        await self._route_unfinished_titles_after_eject(job_id)
+                        ejected_mid_rip = True
 
             if not result.success and not result.stalled_titles:
                 await self._fail_job(job_id, result.error_message)
@@ -2942,7 +3023,7 @@ class JobManager:
                         )
 
             # Eject disc and reset sentinel state so a new disc insert is detected
-            if rip_config and rip_config.auto_eject_enabled:
+            if rip_config and rip_config.auto_eject_enabled and not ejected_mid_rip:
                 try:
                     from app.core.sentinel import eject_disc
 

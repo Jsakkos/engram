@@ -1,6 +1,7 @@
 """Unit tests for the mid-rip disc eject feature."""
 
 import asyncio
+import json
 import sys
 import time
 from pathlib import Path
@@ -15,7 +16,7 @@ from app.core.extractor import (
     TitleCompletionDetector,
     _delete_partials_at_abort,
 )
-from app.models.disc_job import ContentType, DiscJob, JobState
+from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
 from app.services.job_manager import job_manager
 from app.services.matching_coordinator import (
     EJECTED_RIP_MESSAGE,
@@ -443,3 +444,176 @@ async def test_eject_in_matching_raises(monkeypatch):
     assert stubs.abort_job_ids == [], "a rejected eject must not touch MakeMKV"
     assert stubs.calls == [], "a rejected eject must not touch the drive at all"
     assert stubs.notified == []
+
+
+# --- _route_unfinished_titles_after_eject -----------------------------------
+
+
+async def _set_title_states(title_ids: list[int], states: list[TitleState]) -> None:
+    """Force the seeded titles into *states*, positionally."""
+    async with _db.async_session() as s:
+        for tid, state in zip(title_ids, states, strict=True):
+            title = await s.get(DiscTitle, tid)
+            title.state = state
+            s.add(title)
+        await s.commit()
+
+
+async def _title_rows(title_ids: list[int]) -> list[DiscTitle]:
+    async with _db.async_session() as s:
+        return [await s.get(DiscTitle, tid) for tid in title_ids]
+
+
+@pytest.mark.unit
+async def test_ejected_rip_routes_unfinished_titles_to_review_not_failed(tmp_path):
+    """Both flavours of unfinished title must land in REVIEW as re-rippable.
+
+    A never-started title (PENDING) and an interrupted one (RIPPING) are
+    indistinguishable after the eject abort deletes the truncated file, and
+    reconcile_stuck_titles would mark BOTH of them FAILED. FAILED is not
+    re-rippable, so the disc the user is about to clean and reinsert would be
+    unrecoverable -- the exact opposite of what this feature promises.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, title_ids = await _seed_job(staging, native_offset=0, count=2)
+    await _set_title_states(title_ids, [TitleState.PENDING, TitleState.RIPPING])
+
+    await job_manager._route_unfinished_titles_after_eject(job_id)
+
+    for title in await _title_rows(title_ids):
+        assert title.state == TitleState.REVIEW, (
+            f"title {title.title_index} left {title.state.value}, not REVIEW"
+        )
+        details = json.loads(title.match_details)
+        assert details["error"] == "rip_ejected"
+        assert details["rerip_eligible"] is True
+        assert details["message"]
+
+
+@pytest.mark.unit
+async def test_ejected_rip_leaves_finished_titles_alone(tmp_path):
+    """A track that ripped cleanly before the eject must continue to matching.
+
+    QUEUED means the rip finished and the title is waiting on a matching slot.
+    Salvaging it into REVIEW would make the user re-rip work that already
+    succeeded.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, title_ids = await _seed_job(staging, native_offset=0, count=1)
+    await _set_title_states(title_ids, [TitleState.QUEUED])
+
+    await job_manager._route_unfinished_titles_after_eject(job_id)
+
+    (title,) = await _title_rows(title_ids)
+    assert title.state == TitleState.QUEUED
+    assert title.match_details is None
+
+
+@pytest.mark.unit
+async def test_route_unfinished_after_eject_is_idempotent(tmp_path):
+    """Two eject checks bracket the per-title fallback, so both can fire.
+
+    A second pass must not re-write match_details: that would bump the
+    re-rip attempt bookkeeping (eventually flipping rerip_eligible to False)
+    for a disc that was only ejected once.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, title_ids = await _seed_job(staging, native_offset=0, count=1)
+    await _set_title_states(title_ids, [TitleState.PENDING])
+
+    await job_manager._route_unfinished_titles_after_eject(job_id)
+    (first,) = await _title_rows(title_ids)
+    first_details = first.match_details
+
+    await job_manager._route_unfinished_titles_after_eject(job_id)
+    (second,) = await _title_rows(title_ids)
+
+    assert second.state == TitleState.REVIEW
+    assert second.match_details == first_details
+
+
+@pytest.mark.unit
+async def test_live_eject_routes_an_unripped_title_to_review_not_failed(tmp_path):
+    """Ordering guard driven through the REAL _run_ripping, not the helper.
+
+    Calling the helper directly proves the helper; it says nothing about WHERE
+    _run_ripping calls it. Routing must happen before the post-rip
+    backfill/reconcile pass, because reconcile_stuck_titles marks a fileless
+    PENDING/RIPPING title FAILED and the eject abort has already deleted the
+    truncated in-flight file. Move the call after reconcile and title 3 -- the
+    one the fake process never reaches -- lands FAILED here.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, title_ids = await _seed_job(staging, native_offset=0, count=3)
+
+    write_log: list[int] = []
+    procs: list = []
+    job_manager._loop = asyncio.get_running_loop()
+    extractor = job_manager._extractor
+    title1 = staging / "TEST_t01.mkv"
+
+    with (
+        patch("app.core.extractor.FS_POLL_INTERVAL", 30.0),
+        patch(
+            "app.core.extractor.subprocess.Popen",
+            side_effect=_make_popen(staging, [1, 2, 3], write_log, procs),
+        ),
+    ):
+        task = asyncio.create_task(job_manager._run_ripping(job_id))
+        await _wait_for_size(title1, 4096)
+        await asyncio.to_thread(extractor.eject_abort, job_id)
+        await asyncio.wait_for(task, timeout=60)
+
+    assert len(procs) == 1, "the per-title fallback must be skipped after an eject"
+
+    async with _db.async_session() as s:
+        never_started = await s.get(DiscTitle, title_ids[2])
+    assert never_started.state == TitleState.REVIEW, (
+        f"a title unripped at eject landed {never_started.state.value}; "
+        f"routing must run BEFORE reconcile_stuck_titles"
+    )
+    details = json.loads(never_started.match_details)
+    assert details["error"] == "rip_ejected"
+    assert details["rerip_eligible"] is True
+
+
+@pytest.mark.asyncio
+async def test_eject_spares_a_title_that_finished_just_before_the_abort(tmp_path):
+    """A track with real output must not be told to re-rip itself.
+
+    The extractor's final completion poll fires title_complete_callback for a
+    title that finished just before the abort, and that callback reaches the DB
+    asynchronously. So the row can still read RIPPING here while a complete
+    .mkv already sits in staging. Routing on DB state alone would park a
+    perfectly good rip in REVIEW telling the user to re-rip it.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, title_ids = await _seed_job(staging, native_offset=0, count=2)
+
+    # Title 1 finished writing; its callback has not landed, so the row is
+    # still RIPPING. Title 2 was never reached.
+    (staging / "TEST_t01.mkv").write_bytes(b"x" * 4096)
+    async with _db.async_session() as s:
+        t1 = await s.get(DiscTitle, title_ids[0])
+        t1.state = TitleState.RIPPING
+        s.add(t1)
+        await s.commit()
+
+    await job_manager._route_unfinished_titles_after_eject(job_id)
+
+    async with _db.async_session() as s:
+        finished = await s.get(DiscTitle, title_ids[0])
+        never_started = await s.get(DiscTitle, title_ids[1])
+
+    assert finished.state == TitleState.RIPPING, (
+        f"a title with complete output landed {finished.state.value}; it must be "
+        f"left to the normal completion path, not parked in review"
+    )
+    assert finished.match_details is None
+    assert never_started.state == TitleState.REVIEW
+    assert json.loads(never_started.match_details)["error"] == "rip_ejected"
