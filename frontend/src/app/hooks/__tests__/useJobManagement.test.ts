@@ -18,8 +18,14 @@ import type {
 // ---------------------------------------------------------------------------
 
 const toastErrorMock = vi.fn();
+const toastSuccessMock = vi.fn();
+const toastWarningMock = vi.fn();
 vi.mock("sonner", () => ({
-  toast: { error: (...args: unknown[]) => toastErrorMock(...args) },
+  toast: {
+    error: (...args: unknown[]) => toastErrorMock(...args),
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+    warning: (...args: unknown[]) => toastWarningMock(...args),
+  },
 }));
 
 let capturedOnOpen: (() => void) | undefined;
@@ -557,6 +563,98 @@ describe("useJobManagement hook integration", () => {
     });
     expect(result.current.updateStatus?.current_release_notes).toBeNull();
     expect(result.current.updateStatus?.current_release_url).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ejectJob: mid-rip eject. The backend always stops the rip and salvages the
+// finished tracks; the response only tells us whether the tray opened and
+// whether anything survived, so each branch gets its own message.
+// ---------------------------------------------------------------------------
+
+describe("ejectJob", () => {
+  beforeEach(() => {
+    toastErrorMock.mockClear();
+    toastSuccessMock.mockClear();
+    toastWarningMock.mockClear();
+    capturedOnOpen = undefined;
+    capturedListener = undefined;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Stub fetch so /eject returns `body`; record the eject calls for assertion. */
+  function stubEject(body: unknown, ok = true) {
+    const ejectCalls: Array<[string, RequestInit | undefined]> = [];
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const urlStr = String(input);
+      if (urlStr.includes("/eject")) {
+        ejectCalls.push([urlStr, init]);
+        return Promise.resolve(ok ? okJson(body) : errResponse(409));
+      }
+      return Promise.resolve(okJson([]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return ejectCalls;
+  }
+
+  it("POSTs to /api/jobs/{id}/eject", async () => {
+    const ejectCalls = stubEject({ ejected: true, action: "rip_stopped", job_id: 7 });
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await act(async () => {
+      await result.current.ejectJob("7");
+    });
+
+    expect(ejectCalls).toHaveLength(1);
+    expect(ejectCalls[0][0]).toContain("/api/jobs/7/eject");
+    expect(ejectCalls[0][1]?.method).toBe("POST");
+    expect(toastSuccessMock).toHaveBeenCalledTimes(1);
+    expect(String(toastSuccessMock.mock.calls[0][0])).toContain("review");
+    expect(toastWarningMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("warns (not errors) when the tray would not open", async () => {
+    stubEject({ ejected: false, action: "rip_stopped", job_id: 7 });
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await act(async () => {
+      await result.current.ejectJob("7");
+    });
+
+    expect(toastWarningMock).toHaveBeenCalledTimes(1);
+    expect(String(toastWarningMock.mock.calls[0][0])).toContain("manually");
+    // The rip WAS stopped, so this is not a failure.
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("reports the cancellation when nothing had been ripped yet", async () => {
+    stubEject({ ejected: true, action: "job_cancelled", job_id: 7 });
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await act(async () => {
+      await result.current.ejectJob("7");
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledTimes(1);
+    expect(String(toastSuccessMock.mock.calls[0][0])).toContain("cancelled");
+    expect(toastWarningMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an error when the request fails", async () => {
+    stubEject({}, false);
+    const { result } = renderHook(() => useJobManagement(false));
+
+    await act(async () => {
+      await result.current.ejectJob("7");
+    });
+
+    expect(toastErrorMock).toHaveBeenCalled();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
   });
 });
 
