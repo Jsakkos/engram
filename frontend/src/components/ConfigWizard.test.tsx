@@ -461,3 +461,19 @@ describe('ConfigWizard: Discord notification settings', () => {
         expect(screen.queryByTestId('webhook-test-status')).not.toBeInTheDocument();
     });
 });
+
+describe('ConfigWizard: webhook test targets the saved value', () => {
+    it('refuses to test an unsaved webhook edit instead of silently testing the old one', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        fireEvent.click(within(nav).getByRole('button', { name: 'Preferences' }));
+
+        fireEvent.change(await screen.findByLabelText(/Discord Webhook URL/i), {
+            target: { value: 'https://discord.com/api/webhooks/9/unsaved' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Send test message/i }));
+
+        const status = await screen.findByTestId('webhook-test-status');
+        expect(status).toHaveTextContent(/save your changes first/i);
+    });
+});

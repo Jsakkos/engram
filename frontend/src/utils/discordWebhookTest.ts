@@ -9,18 +9,16 @@ export type DiscordWebhookTestResult =
   | { status: 'invalid'; error: string }
   | { status: 'error'; error: string };
 
-export async function requestDiscordWebhookTest(
-  webhookUrl: string,
-): Promise<DiscordWebhookTestResult> {
+/**
+ * Tests the SAVED webhook. Deliberately sends no URL: letting the caller name
+ * the destination would make an outbound server request steerable from a
+ * request body. It also tests the right thing, since the saved value is the one
+ * real notifications use.
+ */
+export async function requestDiscordWebhookTest(): Promise<DiscordWebhookTestResult> {
   let response: Response;
   try {
-    response = await fetch('/api/validate/discord-webhook', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // Blank means "use the saved webhook": GET /api/config redacts it to "***",
-      // so there is nothing for the form to send back.
-      body: JSON.stringify({ webhook_url: webhookUrl || null }),
-    });
+    response = await fetch('/api/validate/discord-webhook', { method: 'POST' });
   } catch (err) {
     console.error('Discord webhook test request failed (network):', err);
     return { status: 'error', error: "Couldn't reach the backend" };

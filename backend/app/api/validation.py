@@ -747,22 +747,19 @@ async def validate_ai(
     return ValidationResponse(valid=True, version=model or DEFAULT_MODELS[provider])
 
 
-class DiscordWebhookTestRequest(BaseModel):
-    """Request model for the Discord webhook smoke test.
-
-    A blank or omitted url means "use the saved one": GET /api/config redacts the
-    stored webhook to "***", so the frontend has nothing to send back.
-    """
-
-    webhook_url: str | None = None
-
-
 @router.post("/validate/discord-webhook", response_model=ValidationResponse)
 async def test_discord_webhook(
-    request: DiscordWebhookTestRequest,
     _: None = Depends(require_localhost_or_lan),
 ) -> ValidationResponse:
-    """Post a sample notification so the user can confirm the webhook works.
+    """Post a sample notification so the user can confirm the saved webhook works.
+
+    Takes NO request body on purpose. An earlier revision accepted a URL so the
+    user could test before saving, but that made an HTTP request body the target
+    of a server-side request, which is server-side request forgery however
+    carefully the value is validated first. Testing only the persisted value
+    also answers the more useful question: the saved webhook is the one real
+    notifications will use, so a test of an unsaved string can pass and still
+    leave the user with a broken configuration.
 
     Builds the sample through the real build_embed path, so a passing test
     exercises the production builder rather than a stub, and posts with
@@ -772,51 +769,28 @@ async def test_discord_webhook(
     is the one thing it exists to rule out.
 
     Gated to the host (or an opted-in LAN) for the same reason as the AI
-    validator: this is the one validator that POSTs to a caller-supplied URL
-    rather than a fixed third-party host. is_safe_remote_url blocks internal
-    targets, but without this gate the server would still relay arbitrary
-    outbound requests to public hosts for anyone who can reach the port.
+    validator: it is the one validator that triggers an outbound request the
+    caller can provoke without owning the destination.
     """
-    from app.core.discord_notifier import (
-        EVENTS,
-        build_embed,
-        normalize_discord_webhook_url,
-        notify_discord,
-    )
+    from app.core.discord_notifier import EVENTS, build_embed, notify_discord
     from app.core.security import is_safe_remote_url
     from app.models.disc_job import ContentType, DiscJob, JobState
     from app.services.config_service import get_config
 
     config = await get_config()
-    supplied = (request.webhook_url or "").strip()
+    webhook_url = config.discord_webhook_url
+    if not webhook_url:
+        return ValidationResponse(
+            valid=False, error="No webhook URL configured. Save one first, then test it."
+        )
 
-    if supplied:
-        # A URL arriving in the request body is the only attacker-reachable path
-        # into an outbound request here, so it is rebuilt from validated parts
-        # rather than checked and passed through. See
-        # normalize_discord_webhook_url for why the stored value is treated
-        # differently.
-        webhook_url = normalize_discord_webhook_url(supplied)
-        if webhook_url is None:
-            return ValidationResponse(
-                valid=False,
-                error=(
-                    "Not a Discord webhook URL. Expected "
-                    "https://discord.com/api/webhooks/<id>/<token>"
-                ),
-            )
-    else:
-        webhook_url = config.discord_webhook_url
-        if not webhook_url:
-            return ValidationResponse(valid=False, error="No webhook URL configured or supplied")
-
-        # Same guard PUT /api/config applies on write. Re-checked here because a
-        # stored value can predate validation or be edited into the DB directly.
-        if not is_safe_remote_url(webhook_url):
-            return ValidationResponse(
-                valid=False,
-                error="Saved webhook URL must be an http/https URL pointing to a non-internal host",
-            )
+    # Same guard PUT /api/config applies on write. Re-checked here because a
+    # stored value can predate validation or be edited into the DB directly.
+    if not is_safe_remote_url(webhook_url):
+        return ValidationResponse(
+            valid=False,
+            error="Saved webhook URL must be an http/https URL pointing to a non-internal host",
+        )
 
     sample = DiscJob(
         drive_id="E:",

@@ -506,8 +506,18 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     };
 
     const handleTestWebhook = async () => {
+        // The endpoint tests the SAVED webhook and takes no URL, so an unsaved
+        // edit sitting in the field would be silently ignored and the user would
+        // read the result as being about what they just typed. Say so instead.
+        if (config.discordWebhookUrl) {
+            setWebhookTest({
+                status: 'error',
+                error: 'Save your changes first, then test the saved webhook.',
+            });
+            return;
+        }
         setWebhookTest({ status: 'testing' });
-        const result = await requestDiscordWebhookTest(config.discordWebhookUrl);
+        const result = await requestDiscordWebhookTest();
         setWebhookTest(
             result.status === 'ok' ? { status: 'ok' } : { status: result.status, error: result.error },
         );
@@ -1968,7 +1978,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 <span data-testid="webhook-test-status" style={{color: '#f59e0b', fontSize: '0.85rem', marginLeft: '0.5rem'}}>⚠ {webhookTest.error}</span>
                             )}
                             <span className="form-hint">
-                                Posts a sample notification. Leave the field above blank to test the saved webhook.
+                                Posts a sample notification to the saved webhook. If you just changed the URL above, save first.
                             </span>
                         </div>
 

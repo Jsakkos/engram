@@ -52,7 +52,8 @@ The TMDB field expects a **Read Access Token** (v4 auth) — the long string sta
 Engram posts to a Discord webhook when a disc completes, fails, or parks waiting for you.
 Settings live under **Settings, Preferences, Notifications**.
 
-**First, prove the webhook works.** Click **Send test message**. A sample notification
+**First, prove the webhook works.** Click **Send test message**. It tests the webhook you
+have saved, so if you just pasted a new URL, save before testing. A sample notification
 should appear in the channel within a second or two. If it doesn't:
 
 - Read the message next to the button. A red cross means Discord refused the post, which

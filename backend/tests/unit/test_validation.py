@@ -1320,18 +1320,6 @@ def test_dashboard_url_rejects_credentials_and_empty_host():
 # --------------------------------------------------------------------------- #
 # POST /api/validate/discord-webhook
 # --------------------------------------------------------------------------- #
-
-
-@pytest.mark.asyncio
-async def test_test_webhook_rejects_internal_host(client):
-    """Without the SSRF guard this endpoint is an internal-host probe."""
-    resp = await client.post(
-        "/api/validate/discord-webhook", json={"webhook_url": "http://169.254.169.254/latest"}
-    )
-    assert resp.status_code == 200
-    assert resp.json()["valid"] is False
-
-
 @pytest.mark.asyncio
 async def test_test_webhook_errors_when_nothing_configured(client):
     from app.services.config_service import update_config
@@ -1378,10 +1366,7 @@ async def test_test_webhook_rejects_a_non_local_caller():
     transport = ASGITransport(app=app, client=("203.0.113.7", 12345))
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            resp = await ac.post(
-                "/api/validate/discord-webhook",
-                json={"webhook_url": "https://discord.com/api/webhooks/1/tok"},
-            )
+            resp = await ac.post("/api/validate/discord-webhook")
         assert resp.status_code == 403
     finally:
         app.dependency_overrides.clear()
@@ -1414,33 +1399,3 @@ async def test_test_webhook_reports_a_discord_rejection(client):
     body = resp.json()
     assert body["valid"] is False
     assert "rejected" in body["error"].lower()
-
-
-@pytest.mark.asyncio
-async def test_test_webhook_rejects_a_supplied_non_discord_url(client):
-    """A URL in the request body is the only attacker-reachable route into an
-    outbound request here, so it must be a real Discord webhook, not merely a
-    non-internal host."""
-    resp = await client.post(
-        "/api/validate/discord-webhook",
-        json={"webhook_url": "https://evil.example.com/api/webhooks/1/tok"},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["valid"] is False
-    assert "discord webhook url" in body["error"].lower()
-
-
-@pytest.mark.asyncio
-async def test_test_webhook_posts_to_the_rebuilt_url(client):
-    """The supplied string is never the request target; the rebuilt one is."""
-    from unittest.mock import AsyncMock, patch
-
-    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        resp = await client.post(
-            "/api/validate/discord-webhook",
-            json={"webhook_url": "https://discordapp.com/api/webhooks/42/tok"},
-        )
-
-    assert resp.json()["valid"] is True
-    assert mock_notify.call_args[0][0] == "https://discord.com/api/webhooks/42/tok"

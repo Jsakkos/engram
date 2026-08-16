@@ -324,49 +324,6 @@ def build_embed(
     return embed
 
 
-# Hosts Discord serves webhooks on. Any of them is rewritten to discord.com,
-# which accepts every webhook id regardless of which alias was copied.
-_DISCORD_WEBHOOK_HOSTS = frozenset(
-    {"discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"}
-)
-_DISCORD_WEBHOOK_PATH = re.compile(r"^/api/webhooks/(\d{1,25})/([A-Za-z0-9_.-]{1,120})$")
-
-
-def normalize_discord_webhook_url(url: str) -> str | None:
-    """Rebuild a caller-supplied Discord webhook URL from validated parts.
-
-    Returns None when ``url`` is not a Discord webhook.
-
-    This exists for the "send test message" endpoint, the one path where a URL
-    arrives in an HTTP request body and is then fetched by the server. Checking
-    the string and passing it through would leave the request target
-    caller-controlled; instead the returned URL is assembled from a hardcoded
-    host plus an integer id and a character-class-restricted token, so the
-    endpoint is structurally incapable of reaching any host but Discord.
-
-    The stored-config path deliberately does NOT go through this. That value is
-    already gated by is_safe_remote_url on write, is not attacker-supplied at
-    send time, and narrowing it here would break anyone pointing Engram at a
-    Discord-compatible relay.
-    """
-    try:
-        parsed = urlsplit(url.strip())
-    except ValueError:
-        return None
-
-    if parsed.scheme != "https":
-        return None
-    if (parsed.hostname or "").lower() not in _DISCORD_WEBHOOK_HOSTS:
-        return None
-
-    match = _DISCORD_WEBHOOK_PATH.match(parsed.path)
-    if not match:
-        return None
-
-    webhook_id, token = match.group(1), match.group(2)
-    return f"https://discord.com/api/webhooks/{int(webhook_id)}/{token}"
-
-
 async def notify_discord(
     webhook_url: str,
     job_id: int,
