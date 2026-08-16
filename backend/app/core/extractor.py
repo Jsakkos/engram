@@ -576,7 +576,11 @@ def _delete_partials_at_abort(
     completion: TitleCompletionDetector,
     extra_stub: str | None,
     *,
-    lock: threading.Lock | None,
+    # Quoted deliberately. threading.Lock is a factory FUNCTION until CPython
+    # 3.13 made it a real type, so an unquoted `threading.Lock | None` is
+    # evaluated at def time and raises TypeError on 3.11 and 3.12, which this
+    # project supports and which the Docker image runs. Do not unquote it.
+    lock: "threading.Lock | None",
     reason: str,
 ) -> None:
     """Delete the files MakeMKV was mid-write on when a pass was terminated.

@@ -90,7 +90,7 @@ test.describe('Mid-rip disc eject', () => {
     });
 
     test('the ejected tracks explain how to recover them', async ({ page }) => {
-        await simulateInsertDisc({
+        const { job_id: jobId } = await simulateInsertDisc({
             ...TV_DISC_ARRESTED_DEVELOPMENT,
             rip_speed_multiplier: 1,
             drive_id: EJECT_TEST_DRIVE,
@@ -106,7 +106,12 @@ test.describe('Mid-rip disc eject', () => {
             timeout: 45000,
         });
 
-        await page.goto('/review/1');
+        // Use the real job id rather than assuming 1. reset-all-jobs empties
+        // the tables and DiscJob has no explicit AUTOINCREMENT, so SQLite
+        // happens to reissue rowid 1, but that is an implicit dependency on
+        // rowid reuse plus single-worker execution, not something this spec
+        // asserts.
+        await page.goto(`/review/${jobId}`);
 
         // The backend's EJECTED_RIP_MESSAGE promises a Re-rip control, so the
         // review queue must actually offer one. It only renders when
