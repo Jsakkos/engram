@@ -301,6 +301,9 @@ class JobManager:
         # REVIEW_NEEDED transition committed. Pre-rip reviews (e.g. name prompt)
         # also land here, but with no files on disk the task no-ops cheaply.
         state_machine.on_transition(self._start_prewarm_on_review)
+        # Review-needed Discord ping. Registered on on_transition rather than
+        # on_terminal_state because REVIEW_NEEDED is not a terminal state.
+        state_machine.on_transition(self._notify_discord_on_review)
 
     async def start(self) -> None:
         """Start the job manager and begin monitoring drives."""
@@ -1317,6 +1320,19 @@ class JobManager:
         if state == JobState.REVIEW_NEEDED:
             self._prewarmer.kickoff(job_id)
 
+    def _notify_discord_on_review(self, job_id: int, state: JobState, from_state: JobState) -> None:
+        """on_transition observer: ping Discord when a job parks in review.
+
+        REVIEW_NEEDED is not terminal, so on_terminal_state cannot carry it;
+        on_transition is the single chokepoint every review-parking path flows
+        through. Same-state re-entry is suppressed (transition() re-broadcasts
+        without a real state change), but REVIEW -> IDENTIFYING -> REVIEW does
+        re-notify: that is a new question for the user, not a duplicate.
+        """
+        if state != JobState.REVIEW_NEEDED or from_state == JobState.REVIEW_NEEDED:
+            return
+        asyncio.create_task(self._send_discord_notification(job_id, state))
+
     async def _enqueue_disc_contribution_on_terminal(self, job_id: int, state: JobState) -> None:
         """on_terminal_state hook: enqueue a whole-disc contribution on COMPLETED.
 
@@ -1361,16 +1377,23 @@ class JobManager:
         asyncio.create_task(self._send_discord_notification(job_id, state))
 
     async def _send_discord_notification(self, job_id: int, state: JobState) -> None:
-        """Send the Discord embed. Runs as a background task; all errors are swallowed."""
+        """Send the Discord notification for one job event.
+
+        Single path for completed, failed and review. Runs as a background task;
+        all errors are swallowed so a slow or unreachable webhook can never
+        affect the pipeline.
+        """
         try:
             from app.core.discord_notifier import (
                 DEFAULT_TEMPLATES,
                 EVENTS,
+                build_dashboard_link,
                 build_embed,
                 build_template_context,
                 notify_discord,
                 render_discord_template,
             )
+            from app.core.tmdb_poster import resolve_poster_url
             from app.services.config_service import get_config
 
             config = await get_config()
@@ -1384,20 +1407,39 @@ class JobManager:
                 )
                 return
 
+            # `is False` rather than falsy: a NULL column left by an out-of-band
+            # schema change must read as enabled, never as "user muted this".
+            toggles = {
+                "completed": config.discord_notify_completed,
+                "failed": config.discord_notify_failed,
+                "review": config.discord_notify_review,
+            }
+            if toggles.get(event.key) is False:
+                return
+
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
+                result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+                titles = list(result.scalars().all())
 
             templates = {
                 "completed": config.discord_template_completed,
                 "failed": config.discord_template_failed,
                 "review": config.discord_template_review,
             }
-            template = templates[event.key] or DEFAULT_TEMPLATES[event.key]
+            template = templates.get(event.key) or DEFAULT_TEMPLATES[event.key]
 
-            context = build_template_context(job, job_id)
+            context = build_template_context(job, job_id, titles)
             description = render_discord_template(template, context)
-            embed = build_embed(job, [], event, description)
-            await notify_discord(config.discord_webhook_url, job_id, embed)
+
+            poster_url = await resolve_poster_url(job) if job else None
+            link_url = build_dashboard_link(config.dashboard_base_url, job_id)
+            content = config.discord_mention_review if event.key == "review" else ""
+
+            embed = build_embed(
+                job, titles, event, description, poster_url=poster_url, link_url=link_url
+            )
+            await notify_discord(config.discord_webhook_url, job_id, embed, content=content or "")
         except Exception as e:
             logger.warning(f"Job {job_id}: Discord notification failed: {e}", exc_info=True)
 

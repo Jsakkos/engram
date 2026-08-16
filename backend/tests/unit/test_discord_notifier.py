@@ -1040,3 +1040,185 @@ def test_registered_transition_observers_accept_the_full_signature():
         # Bind three positional args without calling; raises TypeError on a mismatch.
         inspect.signature(callback).bind(1, JobState.REVIEW_NEEDED, JobState.RIPPING)
     assert job_manager._start_prewarm_on_review in state_machine._on_transition_callbacks
+
+
+# --------------------------------------------------------------------------- #
+# Review notification and per-event toggles
+# --------------------------------------------------------------------------- #
+
+
+async def _make_job(**kwargs):
+    """Persist a job and return its id."""
+    from app.database import async_session
+
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", **kwargs)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        return job.id
+
+
+@pytest.mark.asyncio
+async def test_review_observer_fires_on_entry_to_review():
+    from app.models import JobState
+    from app.services.job_manager import job_manager
+
+    with patch.object(
+        job_manager, "_send_discord_notification", new_callable=AsyncMock
+    ) as mock_send:
+        job_manager._notify_discord_on_review(7, JobState.REVIEW_NEEDED, JobState.MATCHING)
+        await asyncio.sleep(0)
+
+    mock_send.assert_called_once_with(7, JobState.REVIEW_NEEDED)
+
+
+@pytest.mark.asyncio
+async def test_review_observer_suppresses_same_state_rebroadcast():
+    """transition() re-broadcasts same-state; that must not re-ping the channel."""
+    from app.models import JobState
+    from app.services.job_manager import job_manager
+
+    with patch.object(
+        job_manager, "_send_discord_notification", new_callable=AsyncMock
+    ) as mock_send:
+        job_manager._notify_discord_on_review(7, JobState.REVIEW_NEEDED, JobState.REVIEW_NEEDED)
+        await asyncio.sleep(0)
+
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_review_observer_ignores_other_states():
+    from app.models import JobState
+    from app.services.job_manager import job_manager
+
+    with patch.object(
+        job_manager, "_send_discord_notification", new_callable=AsyncMock
+    ) as mock_send:
+        job_manager._notify_discord_on_review(7, JobState.RIPPING, JobState.IDENTIFYING)
+        await asyncio.sleep(0)
+
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_review_notification_uses_review_event_and_mention():
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_mention_review="<@1234>",
+        dashboard_base_url="http://192.168.1.50:5173",
+    )
+    job_id = await _make_job(
+        content_type=ContentType.TV,
+        detected_title="The Wire",
+        volume_label="THE_WIRE_S1D3",
+        disc_number=3,
+        review_reason="Could not match 3 titles",
+        state=JobState.REVIEW_NEEDED,
+    )
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        with patch(
+            "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
+        ):
+            await job_manager._send_discord_notification(job_id, JobState.REVIEW_NEEDED)
+
+    embed = mock_notify.call_args[0][2]
+    assert "Review Needed" in embed["title"]
+    assert embed["url"] == f"http://192.168.1.50:5173/history/{job_id}"
+    by_name = {f["name"]: f["value"] for f in embed["fields"]}
+    assert by_name["Disc"] == "THE_WIRE_S1D3 (Disc 3)"
+    assert by_name["Reason"] == "Could not match 3 titles"
+    assert mock_notify.call_args.kwargs["content"] == "<@1234>"
+
+    await update_config(discord_mention_review="", dashboard_base_url="")
+
+
+@pytest.mark.asyncio
+async def test_mention_not_attached_to_completed_event():
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_mention_review="<@1234>",
+    )
+    job_id = await _make_job(content_type=ContentType.MOVIE, volume_label="INCEPTION_2010")
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        with patch(
+            "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
+        ):
+            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+
+    assert mock_notify.call_args.kwargs["content"] == ""
+
+    await update_config(discord_mention_review="")
+
+
+@pytest.mark.asyncio
+async def test_per_event_toggle_suppresses_only_its_own_event():
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_notify_review=False,
+        discord_notify_completed=True,
+    )
+    job_id = await _make_job(content_type=ContentType.TV, volume_label="X")
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        with patch(
+            "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
+        ):
+            await job_manager._send_discord_notification(job_id, JobState.REVIEW_NEEDED)
+            assert mock_notify.call_count == 0
+            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+            assert mock_notify.call_count == 1
+
+    await update_config(discord_notify_review=True)
+
+
+@pytest.mark.asyncio
+async def test_completion_notification_includes_episode_manifest():
+    """The box-set payoff: a finished disc reports what actually landed."""
+    from app.database import async_session
+    from app.models import JobState
+    from app.models.disc_job import DiscTitle, TitleState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+    job_id = await _make_job(
+        content_type=ContentType.TV, detected_title="The Wire", volume_label="THE_WIRE_S1D1"
+    )
+
+    async with async_session() as session:
+        for i in range(3):
+            session.add(
+                DiscTitle(
+                    job_id=job_id,
+                    title_index=i,
+                    duration_seconds=1200,
+                    matched_episode=f"S01E0{i + 1}",
+                    state=TitleState.COMPLETED,
+                )
+            )
+        await session.commit()
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        with patch(
+            "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
+        ):
+            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+
+    by_name = {f["name"]: f["value"] for f in mock_notify.call_args[0][2]["fields"]}
+    assert by_name["Episodes"] == "S01E01-E03 (3 episodes)"
