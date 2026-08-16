@@ -7,6 +7,23 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - **You can eject a disc mid-rip without losing the job.** A dirty or damaged disc usually announces itself partway through a rip: read speeds collapse and the drive starts grinding. Until now the only mid-rip control was Cancel, which failed the whole job and deleted everything already staged, so rescuing a scratched disc meant throwing away the tracks that had ripped perfectly. Pulling the disc by hand was not a workaround either: a rip in progress survives the disc vanishing and then sits on MakeMKV until the stall timeout expires, twenty minutes later. The disc card now has an **Eject** button while scanning or ripping. Ripping stops within seconds, the drive opens, and the job carries on: tracks that finished ripping match and organize exactly as they always would, and the rest are parked in review marked re-rippable, so you can clean the disc, put it back in, and recover them one at a time. Ejecting during the initial scan cancels the job instead, since nothing has been produced yet. If the tray refuses to open, the rip is still stopped and the disc is safe to remove by hand; Engram says so rather than pretending it worked.
+- Discord notifications now identify the disc. Every notification carries structured
+  fields for disc name and number, season, duration, track count and subtitle status, so
+  box-set rips are distinguishable without editing a template.
+- Completion notifications list the episodes that landed, e.g. `S01E01-E04 (4 episodes)`.
+- Discord notifications when a disc parks in review, with an optional mention so the ping
+  reaches your phone and an optional deep link straight to the review screen.
+- Per-event notification toggles for completed, failed and review-needed.
+- A "Send test message" button in Settings, so a webhook can be verified at setup time
+  instead of on the next finished disc.
+- TMDB poster thumbnails on notifications.
+- New template variables: `volume_label`, `drive_id`, `disc_number`, `discdb_disc_slug`,
+  `review_reason`, `episodes`, `state`.
+
+### Changed
+
+- `{{drive}}` is now documented as a deprecated alias for `{{volume_label}}`. It keeps
+  rendering the disc volume label, so existing templates are unaffected.
 
 ## [0.30.0] - 2026-08-12
 
