@@ -277,7 +277,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string; review: string}>({completed: '', failed: '', review: ''});
-    const [webhookTest, setWebhookTest] = useState<{status: 'idle' | 'testing' | 'ok' | 'error', error?: string}>({status: 'idle'});
+    const [webhookTest, setWebhookTest] = useState<{status: 'idle' | 'testing' | 'ok' | 'invalid' | 'error', error?: string}>({status: 'idle'});
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
@@ -509,7 +509,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         setWebhookTest({ status: 'testing' });
         const result = await requestDiscordWebhookTest(config.discordWebhookUrl);
         setWebhookTest(
-            result.status === 'ok' ? { status: 'ok' } : { status: 'error', error: result.error },
+            result.status === 'ok' ? { status: 'ok' } : { status: result.status, error: result.error },
         );
     };
 
@@ -1934,7 +1934,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 id="discordWebhookUrl"
                                 type="url"
                                 value={config.discordWebhookUrl}
-                                onChange={(e) => handleInputChange('discordWebhookUrl', e.target.value)}
+                                onChange={(e) => {
+                                    handleInputChange('discordWebhookUrl', e.target.value);
+                                    setWebhookTest({ status: 'idle' });
+                                }}
                                 placeholder="https://discord.com/api/webhooks/..."
                             />
                             <span className="form-hint">
@@ -1953,10 +1956,16 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 {webhookTest.status === 'testing' ? 'Sending...' : 'Send test message'}
                             </SvActionButton>
                             {webhookTest.status === 'ok' && (
-                                <span style={{color: '#22c55e', fontSize: '0.85rem', marginLeft: '0.5rem'}}>✓ Sent</span>
+                                <span data-testid="webhook-test-status" style={{color: '#22c55e', fontSize: '0.85rem', marginLeft: '0.5rem'}}>✓ Sent</span>
                             )}
+                            {webhookTest.status === 'invalid' && (
+                                <span data-testid="webhook-test-status" style={{color: '#ef4444', fontSize: '0.85rem', marginLeft: '0.5rem'}}>✗ {webhookTest.error}</span>
+                            )}
+                            {/* "Couldn't check" (network/endpoint failure) is distinct from 'invalid'
+                                (the server rejected the webhook): amber, not red, same distinction
+                                the TMDB and AI validators above make. */}
                             {webhookTest.status === 'error' && (
-                                <span style={{color: '#ef4444', fontSize: '0.85rem', marginLeft: '0.5rem'}}>✗ {webhookTest.error}</span>
+                                <span data-testid="webhook-test-status" style={{color: '#f59e0b', fontSize: '0.85rem', marginLeft: '0.5rem'}}>⚠ {webhookTest.error}</span>
                             )}
                             <span className="form-hint">
                                 Posts a sample notification. Leave the field above blank to test the saved webhook.

@@ -56,7 +56,7 @@ const ASR_STATUS = {
 };
 
 /** Route the component's startup fetches (config, asr-status, detect-tools). */
-function mockApi(configOverrides: Record<string, unknown> = {}) {
+function mockApi(configOverrides: Record<string, unknown> = {}, options: { discordWebhookValid?: boolean } = {}) {
     const config = {
         setup_complete: true,
         staging_path: '/staging',
@@ -64,6 +64,7 @@ function mockApi(configOverrides: Record<string, unknown> = {}) {
         library_tv_path: '/tv',
         ...configOverrides,
     };
+    const { discordWebhookValid = true } = options;
     vi.stubGlobal(
         'fetch',
         vi.fn((input: RequestInfo | URL) => {
@@ -79,7 +80,10 @@ function mockApi(configOverrides: Record<string, unknown> = {}) {
                 if (url.includes('/api/network/info'))
                     return { lan_access_enabled: false, active_lan_bound: false, lan_ip: null, port: 8000, lan_url: null };
                 if (url.includes('/api/validate/discord-template')) return { valid: true };
-                if (url.includes('/api/validate/discord-webhook')) return { valid: true };
+                if (url.includes('/api/validate/discord-webhook'))
+                    return discordWebhookValid
+                        ? { valid: true }
+                        : { valid: false, error: 'Discord rejected the webhook URL' };
                 return config;
             };
             return Promise.resolve({ ok: true, status: 200, json, text: async () => JSON.stringify(config) });
@@ -428,6 +432,32 @@ describe('ConfigWizard: Discord notification settings', () => {
         await openPreferences();
 
         fireEvent.click(await screen.findByRole('button', { name: /Send test message/i }));
-        await waitFor(() => expect(screen.getByText(/Sent/)).toBeInTheDocument());
+
+        const status = await screen.findByTestId('webhook-test-status');
+        expect(status).toHaveTextContent('Sent');
+    });
+
+    it('surfaces a rejected webhook instead of reporting success', async () => {
+        mockApi({}, { discordWebhookValid: false });
+        await openPreferences();
+
+        fireEvent.click(await screen.findByRole('button', { name: /Send test message/i }));
+
+        const status = await screen.findByTestId('webhook-test-status');
+        expect(status).toHaveTextContent(/rejected|failed/i);
+        expect(status).not.toHaveTextContent(/^\s*✓/);
+    });
+
+    it('clears a previous test result when the webhook url is edited', async () => {
+        await openPreferences();
+
+        fireEvent.click(await screen.findByRole('button', { name: /Send test message/i }));
+        expect(await screen.findByTestId('webhook-test-status')).toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText(/Discord Webhook URL/i), {
+            target: { value: 'https://discord.com/api/webhooks/2/other' },
+        });
+
+        expect(screen.queryByTestId('webhook-test-status')).not.toBeInTheDocument();
     });
 });
