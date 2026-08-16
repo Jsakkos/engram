@@ -120,6 +120,7 @@ interface DiscCardProps {
   onReview?: () => void;
   onReIdentify?: () => void;
   onAdvance?: () => void;
+  onEject?: () => void;
   onReportBug?: () => void;
   onOpenSettings?: () => void;
   /** Open this disc's identify prompt (name / season) on demand. When set, the
@@ -221,7 +222,7 @@ function CoverOverlay({ children }: { children: React.ReactNode }) {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onSkipTrack, onUnskipTrack, onReview, onReIdentify, onAdvance, onReportBug, onOpenSettings, onIdentify, identifyLabel }, ref) => {
+  ({ disc, onCancel, onSkipTrack, onUnskipTrack, onReview, onReIdentify, onAdvance, onEject, onReportBug, onOpenSettings, onIdentify, identifyLabel }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
     const posterUrl = usePosterImage(disc.id, disc.title);
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
@@ -493,6 +494,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onReview={onReview}
                     onReIdentify={onReIdentify}
                     onAdvance={onAdvance}
+                    onEject={onEject}
+                    isImport={disc.sourceType === 'import'}
                     emphasizeReIdentify={showIdentityReview}
                     manualIdentity={isManualIdentity}
                   />
