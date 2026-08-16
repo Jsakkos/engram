@@ -823,3 +823,49 @@ class TestEjectEndpoint:
     async def test_eject_404s_on_missing_job(self, client):
         response = await client.post("/api/jobs/999999/eject")
         assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_config_round_trips_new_notification_fields(client):
+    """Every new notification field survives PUT -> GET. Catches the silent
+    Pydantic drop that happens when a field is added to AppConfig but not to
+    ConfigUpdate."""
+    payload = {
+        "discord_template_review": "Review: {{title}}",
+        "discord_notify_completed": False,
+        "discord_notify_failed": True,
+        "discord_notify_review": True,
+        "discord_mention_review": "<@1234>",
+        "dashboard_base_url": "http://192.168.1.50:5173",
+    }
+    put = await client.put("/api/config", json=payload)
+    assert put.status_code == 200
+
+    got = (await client.get("/api/config")).json()
+    assert got["discord_template_review"] == "Review: {{title}}"
+    assert got["discord_notify_completed"] is False
+    assert got["discord_mention_review"] == "<@1234>"
+    assert got["dashboard_base_url"] == "http://192.168.1.50:5173"
+
+    # Restore defaults so later tests in this module see a clean config.
+    await client.put(
+        "/api/config",
+        json={
+            "discord_template_review": "",
+            "discord_notify_completed": True,
+            "discord_mention_review": "",
+            "dashboard_base_url": "",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_config_rejects_javascript_dashboard_url(client):
+    resp = await client.put("/api/config", json={"dashboard_base_url": "javascript:alert(1)"})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_config_rejects_bad_review_template(client):
+    resp = await client.put("/api/config", json={"discord_template_review": "{{bogus}}"})
+    assert resp.status_code == 422

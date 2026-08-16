@@ -344,6 +344,12 @@ class ConfigResponse(BaseModel):
     discord_webhook_url: str = ""
     discord_template_completed: str = ""
     discord_template_failed: str = ""
+    discord_template_review: str = ""
+    discord_notify_completed: bool = True
+    discord_notify_failed: bool = True
+    discord_notify_review: bool = True
+    discord_mention_review: str = ""
+    dashboard_base_url: str = ""
 
 
 class ConfigUpdate(BaseModel):
@@ -433,6 +439,12 @@ class ConfigUpdate(BaseModel):
     discord_webhook_url: str | None = None
     discord_template_completed: str | None = None
     discord_template_failed: str | None = None
+    discord_template_review: str | None = None
+    discord_notify_completed: bool | None = None
+    discord_notify_failed: bool | None = None
+    discord_notify_review: bool | None = None
+    discord_mention_review: str | None = None
+    dashboard_base_url: str | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -1651,6 +1663,15 @@ async def get_config() -> ConfigResponse:
         # ConfigResponse requires str — a bare None would 500 GET /api/config.
         discord_template_completed=config.discord_template_completed or "",
         discord_template_failed=config.discord_template_failed or "",
+        discord_template_review=config.discord_template_review or "",
+        # `is not False` rather than `or True`: a NULL toggle reads as enabled,
+        # matching the notifier, so an out-of-band schema change can't mute
+        # notifications without the user ever asking for that.
+        discord_notify_completed=config.discord_notify_completed is not False,
+        discord_notify_failed=config.discord_notify_failed is not False,
+        discord_notify_review=config.discord_notify_review is not False,
+        discord_mention_review=config.discord_mention_review or "",
+        dashboard_base_url=config.dashboard_base_url or "",
     )
 
 
@@ -1748,11 +1769,27 @@ async def update_config(config: ConfigUpdate) -> dict:
     # Validate Discord notification templates before persisting
     from app.core.discord_notifier import validate_discord_template
 
-    for field in ("discord_template_completed", "discord_template_failed"):
+    for field in (
+        "discord_template_completed",
+        "discord_template_failed",
+        "discord_template_review",
+    ):
         if update_data.get(field):
             error = validate_discord_template(update_data[field])
             if error:
                 raise HTTPException(status_code=422, detail=f"{field}: {error}")
+
+    # Validate the dashboard base URL. NOT is_safe_remote_url; see the docstring
+    # on is_safe_dashboard_url. A LAN address is the expected value and the
+    # server never fetches this URL.
+    if update_data.get("dashboard_base_url"):
+        from app.core.security import is_safe_dashboard_url
+
+        if not is_safe_dashboard_url(update_data["dashboard_base_url"]):
+            raise HTTPException(
+                status_code=422,
+                detail="dashboard_base_url must be an http/https URL with no embedded credentials",
+            )
 
     # Validate naming format strings before persisting
     from app.core.organizer import (
@@ -1859,54 +1896,10 @@ async def get_parked_discs() -> dict:
 
 @router.get("/jobs/{job_id}/poster")
 async def get_job_poster(job: DiscJob = Depends(get_job_or_404)) -> dict:
-    """Get the TMDB poster URL for a job.
+    """Get the TMDB poster URL for a job."""
+    from app.core.tmdb_poster import resolve_poster_url
 
-    Prefer the authoritative ``job.tmdb_id`` (exact, immune to a garbled
-    detected_title); fall back to a name search only when no id is set.
-    """
-    import requests
-
-    from app.core.tmdb_classifier import _build_auth
-    from app.matcher.tmdb_client import BASE_IMAGE_URL
-    from app.services.config_service import get_config as get_db_config
-
-    config = await get_db_config()
-    api_key = config.tmdb_api_key
-    if not api_key:
-        return {"poster_url": None}
-
-    media = "movie" if job.content_type == "movie" else "tv"
-    headers, params = _build_auth(api_key)
-
-    try:
-        if job.tmdb_id:
-            # int() sanitizes the id into the URL (no path/host injection, and clears
-            # CodeQL's partial-SSRF taint); the guard above ensures it is set.
-            detail_url = f"https://api.themoviedb.org/3/{media}/{int(job.tmdb_id)}"
-            response = await asyncio.to_thread(
-                requests.get, detail_url, headers=headers, params=params, timeout=10
-            )
-            if response.status_code == 200:
-                poster_path = response.json().get("poster_path")
-                if poster_path:
-                    return {"poster_url": f"{BASE_IMAGE_URL}{poster_path}"}
-            return {"poster_url": None}
-
-        if not job.detected_title:
-            return {"poster_url": None}
-        search_url = f"https://api.themoviedb.org/3/search/{media}"
-        params["query"] = job.detected_title
-        response = await asyncio.to_thread(
-            requests.get, search_url, headers=headers, params=params, timeout=10
-        )
-        if response.status_code == 200:
-            results = response.json().get("results", [])
-            if results and results[0].get("poster_path"):
-                return {"poster_url": f"{BASE_IMAGE_URL}{results[0]['poster_path']}"}
-    except Exception as e:
-        logger.warning(f"Error fetching poster: {e}", exc_info=True)
-
-    return {"poster_url": None}
+    return {"poster_url": await resolve_poster_url(job)}
 
 
 @router.get("/drives")

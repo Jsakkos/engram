@@ -745,3 +745,73 @@ async def validate_ai(
     # Report the model that actually answered, not the default, so a user testing
     # an override can see which one the key accepted.
     return ValidationResponse(valid=True, version=model or DEFAULT_MODELS[provider])
+
+
+@router.post("/validate/discord-webhook", response_model=ValidationResponse)
+async def test_discord_webhook(
+    _: None = Depends(require_localhost_or_lan),
+) -> ValidationResponse:
+    """Post a sample notification so the user can confirm the saved webhook works.
+
+    Takes NO request body on purpose. An earlier revision accepted a URL so the
+    user could test before saving, but that made an HTTP request body the target
+    of a server-side request, which is server-side request forgery however
+    carefully the value is validated first. Testing only the persisted value
+    also answers the more useful question: the saved webhook is the one real
+    notifications will use, so a test of an unsaved string can pass and still
+    leave the user with a broken configuration.
+
+    Builds the sample through the real build_embed path, so a passing test
+    exercises the production builder rather than a stub, and posts with
+    ``raise_on_error=True`` so a rejection by Discord (revoked webhook, deleted
+    channel) reports as invalid. Without that flag notify_discord swallows the
+    failure and the button would cheerfully report success for a dead URL, which
+    is the one thing it exists to rule out.
+
+    Gated to the host (or an opted-in LAN) for the same reason as the AI
+    validator: it is the one validator that triggers an outbound request the
+    caller can provoke without owning the destination.
+    """
+    from app.core.discord_notifier import EVENTS, build_embed, notify_discord
+    from app.core.security import is_safe_remote_url
+    from app.models.disc_job import ContentType, DiscJob, JobState
+    from app.services.config_service import get_config
+
+    config = await get_config()
+    webhook_url = config.discord_webhook_url
+    if not webhook_url:
+        return ValidationResponse(
+            valid=False, error="No webhook URL configured. Save one first, then test it."
+        )
+
+    # Same guard PUT /api/config applies on write. Re-checked here because a
+    # stored value can predate validation or be edited into the DB directly.
+    if not is_safe_remote_url(webhook_url):
+        return ValidationResponse(
+            valid=False,
+            error="Saved webhook URL must be an http/https URL pointing to a non-internal host",
+        )
+
+    sample = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.TV,
+        detected_title="Engram Test",
+        volume_label="ENGRAM_TEST_S1D1",
+        detected_season=1,
+        disc_number=1,
+        total_titles=6,
+        state=JobState.COMPLETED,
+    )
+    embed = build_embed(sample, [], EVENTS[JobState.COMPLETED], "**Engram Test**")
+
+    # Positional, matching every other call site: the tests assert on
+    # call_args[0][2] being the embed. job_id 0 is a sentinel: no real job backs
+    # this smoke test, and real ids autoincrement from 1, so a "job 0" log line
+    # is unambiguously from here.
+    try:
+        await notify_discord(webhook_url, 0, embed, raise_on_error=True)
+    except Exception as e:
+        logger.warning(f"Discord webhook test failed: {e}", exc_info=True)
+        return ValidationResponse(valid=False, error=f"Discord rejected the test message: {e}")
+
+    return ValidationResponse(valid=True)

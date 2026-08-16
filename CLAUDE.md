@@ -217,6 +217,10 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
 - **CI caching**: Playwright browsers cached by version, uv packages cached by lockfile hash, apt packages cached via `cache-apt-pkgs-action`.
 - **Import path ownership**: a staging path is owned by an *in-flight* job (hard block, not overridable) and merely recorded by a *completed* one (soft block, overridable via `force_keys`). `FAILED` never blocks. Rules live in `app/services/import_guard.py`; `POST /api/import/start` returns `{job_ids, blocked[]}` and never 409s.
 - **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.
+- **Notification events**: `EVENTS` in `app/core/discord_notifier.py` maps `JobState` to
+  presentation. Terminal events arrive via `on_terminal_state`; `REVIEW_NEEDED` arrives via
+  `on_transition`, which receives `(job_id, to_state, from_state)` so a same-state
+  re-broadcast does not re-notify.
 
 ## TMDB Configuration
 
@@ -349,7 +353,14 @@ Components use updated settings
 - **API Keys**: `makemkv_key`, `tmdb_api_key` (redacted in responses)
 - **Matching**: `max_concurrent_matches` (default: 3), threshold constants in Analyst
 - **Conflict resolution**: `conflict_resolution_default` ("skip" | "overwrite" | "ask")
-- **Discord notifications**: `discord_template_completed` / `discord_template_failed` — customizable embed description (chevron `{{var}}` mustache syntax, see `app/core/discord_notifier.py::ALLOWED_TEMPLATE_VARS`); empty string = built-in default
+- **Discord notifications**: `discord_template_completed` / `discord_template_failed` /
+  `discord_template_review` (customizable embed description, chevron `{{var}}` mustache
+  syntax, see `app/core/discord_notifier.py::ALLOWED_TEMPLATE_VARS`; empty string = built-in
+  default). Per-event toggles `discord_notify_completed` / `_failed` / `_review`.
+  `discord_mention_review` rides as message `content` (embeds do not resolve mentions).
+  `dashboard_base_url` makes notifications link to `/history/{job_id}`; it is deliberately
+  exempt from `is_safe_remote_url` because a LAN address is the expected value and the
+  server never fetches it.
 
 ### Configuration Validation
 

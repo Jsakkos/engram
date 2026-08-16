@@ -6,9 +6,29 @@ Tests path validation, configuration validation, and input sanitization.
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
+from app.database import get_session
+from app.main import app
 from app.models import AppConfig
+
+
+@pytest.fixture
+async def client():
+    """Provide an async HTTP client with the patched DB session."""
+    from tests.unit.conftest import _unit_session_factory
+
+    async def override_get_session():
+        async with _unit_session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
 
 
 class TestPathValidation:
@@ -1265,3 +1285,117 @@ class TestValidateDiscordTemplateEndpoint:
         )
         assert result.valid is False
         assert result.error is not None
+
+
+# --------------------------------------------------------------------------- #
+# is_safe_dashboard_url
+# --------------------------------------------------------------------------- #
+
+
+def test_dashboard_url_accepts_lan_address():
+    """A private LAN address is the EXPECTED value here, unlike is_safe_remote_url."""
+    from app.core.security import is_safe_dashboard_url
+
+    assert is_safe_dashboard_url("http://192.168.1.50:5173") is True
+    assert is_safe_dashboard_url("http://localhost:5173") is True
+    assert is_safe_dashboard_url("https://engram.example.com") is True
+
+
+def test_dashboard_url_rejects_non_http_scheme():
+    """The value becomes a clickable embed url, so javascript: must not survive."""
+    from app.core.security import is_safe_dashboard_url
+
+    assert is_safe_dashboard_url("javascript:alert(1)") is False
+    assert is_safe_dashboard_url("file:///etc/passwd") is False
+
+
+def test_dashboard_url_rejects_credentials_and_empty_host():
+    from app.core.security import is_safe_dashboard_url
+
+    assert is_safe_dashboard_url("http://user:pass@192.168.1.50:5173") is False
+    assert is_safe_dashboard_url("http://") is False
+    assert is_safe_dashboard_url("") is False
+
+
+# --------------------------------------------------------------------------- #
+# POST /api/validate/discord-webhook
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_test_webhook_errors_when_nothing_configured(client):
+    from app.services.config_service import update_config
+
+    await update_config(discord_webhook_url="")
+    resp = await client.post("/api/validate/discord-webhook", json={})
+    assert resp.json()["valid"] is False
+    assert "no webhook" in resp.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_posts_a_sample_embed(client):
+    from unittest.mock import AsyncMock, patch
+
+    from app.services.config_service import update_config
+
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        resp = await client.post("/api/validate/discord-webhook", json={})
+
+    assert resp.json()["valid"] is True
+    mock_notify.assert_called_once()
+    embed = mock_notify.call_args[0][2]
+    assert any(f["name"] == "Disc" for f in embed["fields"])
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_rejects_a_non_local_caller():
+    """Proves the localhost/LAN gate is load-bearing, not decorative.
+
+    ASGITransport reports a loopback peer by default, so every other test in
+    this file sails through the gate and would keep passing if the dependency
+    were removed. Spoofing a public client address is the only way to exercise
+    the deny branch.
+    """
+    from tests.unit.conftest import _unit_session_factory
+
+    async def override_get_session():
+        async with _unit_session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    transport = ASGITransport(app=app, client=("203.0.113.7", 12345))
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post("/api/validate/discord-webhook")
+        assert resp.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_test_webhook_reports_a_discord_rejection(client):
+    """A revoked webhook must report invalid, not success.
+
+    notify_discord swallows errors by default, so without raise_on_error this
+    endpoint would report valid=True for a URL Discord refused.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    import httpx
+
+    from app.services.config_service import update_config
+
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=httpx.HTTPError("404 Not Found"))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        resp = await client.post("/api/validate/discord-webhook", json={})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert "rejected" in body["error"].lower()

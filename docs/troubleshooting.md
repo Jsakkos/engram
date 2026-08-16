@@ -47,6 +47,42 @@ MakeMKV is required for disc ripping. If the Config Wizard can't find it, instal
 
 The TMDB field expects a **Read Access Token** (v4 auth) — the long string starting with `eyJ…` — not the shorter v3 "API Key". The wizard validates it as you type. See [Configuration](getting-started/configuration.md) for where to find it.
 
+## Discord notifications aren't arriving
+
+Engram posts to a Discord webhook when a disc completes, fails, or parks waiting for you.
+Settings live under **Settings, Preferences, Notifications**.
+
+**First, prove the webhook works.** Click **Send test message**. It tests the webhook you
+have saved, so if you just pasted a new URL, save before testing. A sample notification
+should appear in the channel within a second or two. If it doesn't:
+
+- Read the message next to the button. A red cross means Discord refused the post, which
+  usually means the webhook or its channel was deleted: re-create it under **Channel
+  Settings, Integrations, Webhooks** and paste the fresh URL. An amber warning means the
+  check itself could not run, so the webhook may well be fine and the problem is between
+  your browser and Engram.
+- Check that the URL starts with `https://discord.com/api/webhooks/`.
+
+**The test works but real discs are silent.** Check the three per-event toggles. Each
+event has its own switch, so it's possible to have completions enabled and review
+notifications turned off, or the reverse.
+
+**Notifications arrive but don't alert my phone.** Discord does not push notifications for
+embed content. Set **Review Mention** to your user ID (`<@123456789012345678>`), a role
+(`<@&987654321098765432>`), or `@here`. That value is sent as the message body, which is
+the part Discord actually pings on. To find your user ID, enable **Developer Mode** in
+Discord's Advanced settings, then right-click your name and choose **Copy User ID**.
+
+**Notifications aren't clickable.** Set **Dashboard URL** to the address you use to reach
+Engram from other devices, for example `http://192.168.1.50:5173`. Notifications then link
+straight to the job. Leave it blank and notifications still arrive, just without a link.
+
+**Every disc in my box set looks the same.** Each notification carries a **Disc** field
+built from the disc's volume label plus its disc number, so `THE_WIRE_S1 (Disc 3)` is
+distinct from disc 4. If the field shows only `Disc 1`, the disc reported no volume label
+and Engram has no better identity to use; naming the disc during identification fixes it
+for that job.
+
 ## Diagnostics bundle
 
 When reporting a problem, attach a diagnostics bundle so the logs and environment come with it. From the dashboard, open a job's detail view and download its diagnostic `.zip`, or fetch the overall report from `GET /api/diagnostics/report`. Secrets (API keys, tokens) are redacted automatically.

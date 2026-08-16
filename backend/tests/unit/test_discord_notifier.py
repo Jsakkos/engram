@@ -16,69 +16,93 @@ from app.core.discord_notifier import (
 from app.models.disc_job import ContentType, DiscJob
 
 # --------------------------------------------------------------------------- #
+# Event table
+# --------------------------------------------------------------------------- #
+
+
+def test_event_table_covers_the_three_notifiable_states():
+    from app.core.discord_notifier import EVENTS
+    from app.models.disc_job import JobState
+
+    assert set(EVENTS) == {JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED}
+    assert EVENTS[JobState.COMPLETED].key == "completed"
+    assert EVENTS[JobState.COMPLETED].color == 0x00B97A
+    assert EVENTS[JobState.FAILED].key == "failed"
+    assert EVENTS[JobState.FAILED].color == 0xE53935
+    assert EVENTS[JobState.REVIEW_NEEDED].key == "review"
+    assert EVENTS[JobState.REVIEW_NEEDED].label == "Review Needed"
+
+
+def test_event_table_has_no_entry_for_transient_states():
+    """RIPPING and friends must not resolve to an event; that guard is what stops
+    a mid-pipeline transition from posting to Discord."""
+    from app.core.discord_notifier import EVENTS
+    from app.models.disc_job import JobState
+
+    assert EVENTS.get(JobState.RIPPING) is None
+    assert EVENTS.get(JobState.MATCHING) is None
+
+
+# --------------------------------------------------------------------------- #
 # notify_discord unit tests
 # --------------------------------------------------------------------------- #
 
 
+def _mock_http_client():
+    """AsyncClient double whose .post records the call and reports success."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return mock_client
+
+
 @pytest.mark.asyncio
 async def test_notify_discord_noop_on_empty_url():
-    """Empty webhook URL → no HTTP call made."""
+    """Empty webhook URL means no HTTP call is made."""
     with patch("httpx.AsyncClient") as mock_client_cls:
-        await notify_discord("", job_id=1, description="**Show Name**", state="completed")
+        await notify_discord("", job_id=1, embed={"title": "x"})
         mock_client_cls.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_notify_discord_posts_completed_embed():
-    """COMPLETED state → green embed with checkmark title, description passed through verbatim."""
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+async def test_notify_discord_posts_the_embed_verbatim():
+    """notify_discord is pure transport: it wraps the embed and posts, nothing else."""
+    mock_client = _mock_http_client()
+    embed = {"title": "✅ Disc Completed", "description": "**The Wire**", "color": 0x00B97A}
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        await notify_discord(
-            "https://discord.com/api/webhooks/123/abc",
-            job_id=5,
-            description="**The Wire**",
-            state="completed",
-        )
+        await notify_discord("https://discord.com/api/webhooks/123/abc", job_id=5, embed=embed)
 
-    mock_client.post.assert_called_once()
     url, kwargs = mock_client.post.call_args[0][0], mock_client.post.call_args[1]
     assert url == "https://discord.com/api/webhooks/123/abc"
-    embed = kwargs["json"]["embeds"][0]
-    assert "✅" in embed["title"]
-    assert "Completed" in embed["title"]
-    assert embed["description"] == "**The Wire**"
-    assert embed["color"] == 0x00B97A  # green
+    assert kwargs["json"]["embeds"] == [embed]
 
 
 @pytest.mark.asyncio
-async def test_notify_discord_posts_failed_embed():
-    """FAILED state → red embed with X title, description passed through verbatim."""
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+async def test_notify_discord_omits_content_key_when_blank():
+    """A blank content must not be sent as an empty message body."""
+    mock_client = _mock_http_client()
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        await notify_discord("https://discord.com/api/webhooks/1/a", job_id=1, embed={}, content="")
+
+    assert "content" not in mock_client.post.call_args[1]["json"]
+
+
+@pytest.mark.asyncio
+async def test_notify_discord_includes_content_when_set():
+    """The mention rides as message content, which is the only part Discord pings on."""
+    mock_client = _mock_http_client()
 
     with patch("httpx.AsyncClient", return_value=mock_client):
         await notify_discord(
-            "https://discord.com/api/webhooks/123/abc",
-            job_id=5,
-            description="**Mystery Disc**",
-            state="failed",
+            "https://discord.com/api/webhooks/1/a", job_id=1, embed={}, content="<@1234>"
         )
 
-    embed = mock_client.post.call_args[1]["json"]["embeds"][0]
-    assert "❌" in embed["title"]
-    assert "Failed" in embed["title"]
-    assert embed["description"] == "**Mystery Disc**"
-    assert embed["color"] == 0xE53935  # red
+    assert mock_client.post.call_args[1]["json"]["content"] == "<@1234>"
 
 
 @pytest.mark.asyncio
@@ -92,13 +116,26 @@ async def test_notify_discord_swallows_http_errors():
     mock_client.__aexit__ = AsyncMock(return_value=False)
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        # Should not raise
-        await notify_discord(
-            "https://discord.com/api/webhooks/123/abc",
-            job_id=3,
-            description="**Some Disc**",
-            state="completed",
-        )
+        await notify_discord("https://discord.com/api/webhooks/123/abc", job_id=3, embed={})
+
+
+# --------------------------------------------------------------------------- #
+# build_embed
+# --------------------------------------------------------------------------- #
+
+
+def test_build_embed_sets_title_description_and_color_from_event():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+    embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "**The Wire**")
+
+    assert embed["title"] == "✅ Disc Completed"
+    assert embed["description"] == "**The Wire**"
+    assert embed["color"] == 0x00B97A
+    assert "timestamp" in embed
+    assert embed["footer"]["text"].startswith("Engram")
 
 
 # --------------------------------------------------------------------------- #
@@ -248,8 +285,9 @@ async def test_send_notification_noop_when_no_webhook():
 
 
 @pytest.mark.asyncio
-async def test_send_notification_noop_for_non_terminal_state():
-    """Called with a non-terminal state (defensive guard) → notify_discord never called."""
+async def test_send_notification_noop_for_non_notifiable_state():
+    """Called with a state that has no event mapping (RIPPING) means notify_discord
+    is never called."""
     from app.models import JobState
     from app.services.config_service import update_config
     from app.services.job_manager import job_manager
@@ -287,13 +325,9 @@ async def test_send_notification_fires_on_completed():
         await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
 
     mock_notify.assert_called_once()
-    _, description, state = (
-        mock_notify.call_args[0][1],
-        mock_notify.call_args[0][2],
-        mock_notify.call_args[0][3],
-    )
-    assert description == "**Breaking Bad**"
-    assert state == "completed"
+    embed = mock_notify.call_args[0][2]
+    assert embed["description"] == "**Breaking Bad**"
+    assert "Completed" in embed["title"]
 
 
 @pytest.mark.asyncio
@@ -321,8 +355,9 @@ async def test_send_notification_fires_on_failed():
         await job_manager._send_discord_notification(job_id, JobState.FAILED)
 
     mock_notify.assert_called_once()
-    state = mock_notify.call_args[0][3]
-    assert state == "failed"
+    embed = mock_notify.call_args[0][2]
+    assert "Failed" in embed["title"]
+    assert embed["color"] == 0xE53935
 
 
 @pytest.mark.asyncio
@@ -350,8 +385,7 @@ async def test_send_notification_falls_back_to_volume_label():
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
         await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
 
-    description = mock_notify.call_args[0][2]
-    assert description == "**UNKNOWN_DISC**"
+    assert mock_notify.call_args[0][2]["description"] == "**UNKNOWN_DISC**"
 
 
 @pytest.mark.asyncio
@@ -382,8 +416,7 @@ async def test_send_notification_uses_configured_completed_template():
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
         await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
 
-    description = mock_notify.call_args[0][2]
-    assert description == "Done: Breaking Bad (BREAKING_BAD_S1D1)"
+    assert mock_notify.call_args[0][2]["description"] == "Done: Breaking Bad (BREAKING_BAD_S1D1)"
 
     await update_config(discord_template_completed="")
 
@@ -398,7 +431,7 @@ async def test_send_notification_uses_configured_failed_template():
 
     await update_config(
         discord_webhook_url="https://discord.com/api/webhooks/1/tok",
-        discord_template_failed="Failed: {{title}} — {{error}}",
+        discord_template_failed="Failed: {{title}}: {{error}}",
     )
 
     async with async_session() as session:
@@ -416,8 +449,7 @@ async def test_send_notification_uses_configured_failed_template():
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
         await job_manager._send_discord_notification(job_id, JobState.FAILED)
 
-    description = mock_notify.call_args[0][2]
-    assert description == "Failed: BAD_DISC — disc unreadable"
+    assert mock_notify.call_args[0][2]["description"] == "Failed: BAD_DISC: disc unreadable"
 
     await update_config(discord_template_failed="")
 
@@ -486,3 +518,733 @@ async def test_advance_job_via_state_machine_fires_notification():
     assert new_state == "completed"
     mock_send.assert_called_once()
     assert mock_send.call_args[0][1] == JobState.COMPLETED
+
+
+# --------------------------------------------------------------------------- #
+# New notification config fields
+# --------------------------------------------------------------------------- #
+
+
+def test_app_config_notification_defaults():
+    """New notification fields default to on, with blank templates/mention/link."""
+    from app.models.app_config import AppConfig
+
+    config = AppConfig()
+    assert config.discord_template_review == ""
+    assert config.discord_notify_completed is True
+    assert config.discord_notify_failed is True
+    assert config.discord_notify_review is True
+    assert config.discord_mention_review == ""
+    assert config.dashboard_base_url == ""
+
+
+# --------------------------------------------------------------------------- #
+# format_disc_identity / build_embed_fields
+# --------------------------------------------------------------------------- #
+
+
+def test_disc_identity_prefers_volume_label():
+    from app.core.discord_notifier import format_disc_identity
+
+    job = DiscJob(drive_id="E:", volume_label="ARRESTED_DEVELOPMENT_S1D1", disc_number=1)
+    assert format_disc_identity(job) == "ARRESTED_DEVELOPMENT_S1D1"
+
+
+def test_disc_identity_appends_disc_number_beyond_the_first():
+    """The whole point of the feature: disc 3 of a box set must not read like disc 1."""
+    from app.core.discord_notifier import format_disc_identity
+
+    job = DiscJob(drive_id="E:", volume_label="THE_WIRE_S1", disc_number=3)
+    assert format_disc_identity(job) == "THE_WIRE_S1 (Disc 3)"
+
+
+def test_disc_identity_falls_back_to_discdb_slug():
+    from app.core.discord_notifier import format_disc_identity
+
+    job = DiscJob(drive_id="E:", volume_label="", discdb_disc_slug="S01D02", disc_number=2)
+    assert format_disc_identity(job) == "S01D02"
+
+
+def test_disc_identity_falls_back_to_disc_number():
+    from app.core.discord_notifier import format_disc_identity
+
+    job = DiscJob(drive_id="E:", volume_label="", discdb_disc_slug=None, disc_number=4)
+    assert format_disc_identity(job) == "Disc 4"
+
+
+def test_embed_fields_include_disc_and_season_for_tv():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.TV,
+        detected_title="The Wire",
+        detected_season=1,
+        volume_label="THE_WIRE_S1D3",
+        disc_number=3,
+        total_titles=6,
+    )
+    fields = build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
+    by_name = {f["name"]: f["value"] for f in fields}
+
+    assert by_name["Disc"] == "THE_WIRE_S1D3 (Disc 3)"
+    assert by_name["Season"] == "Season 1"
+    assert by_name["Tracks"] == "6 titles"
+
+
+def test_embed_fields_omit_season_for_movies():
+    """Skip-if-empty is what lets one builder serve movies and TV without a
+    conditional matrix; a blank 'Season: ' row would be noise."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.MOVIE,
+        detected_title="Inception",
+        volume_label="INCEPTION_2010",
+    )
+    fields = build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
+    assert "Season" not in {f["name"] for f in fields}
+
+
+def test_embed_fields_show_review_reason_on_review_event():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.TV,
+        volume_label="MYSTERY_DISC",
+        review_reason="Could not match 3 titles",
+    )
+    fields = build_embed_fields(job, [], EVENTS[JobState.REVIEW_NEEDED])
+    by_name = {f["name"]: f["value"] for f in fields}
+    assert by_name["Reason"] == "Could not match 3 titles"
+
+
+def test_embed_fields_show_error_on_failed_event():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="BAD_DISC", error_message="disc unreadable")
+    fields = build_embed_fields(job, [], EVENTS[JobState.FAILED])
+    by_name = {f["name"]: f["value"] for f in fields}
+    assert by_name["Reason"] == "disc unreadable"
+
+
+def test_embed_fields_report_subtitles_with_failures():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        volume_label="X",
+        subtitle_status="partial",
+        subtitles_downloaded=18,
+        subtitles_total=20,
+        subtitles_failed=2,
+    )
+    by_name = {
+        f["name"]: f["value"] for f in build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
+    }
+    assert by_name["Subtitles"] == "18/20, 2 failed"
+
+
+def test_embed_fields_empty_when_job_is_none():
+    """Job vanished before the background task re-fetched it: no crash, no fields."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    assert build_embed_fields(None, [], EVENTS[JobState.COMPLETED]) == []
+
+
+def test_build_embed_attaches_fields():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, volume_label="THE_WIRE_S1D3")
+    embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "**The Wire**")
+    assert any(f["name"] == "Disc" for f in embed["fields"])
+
+
+def test_field_value_truncated_to_discord_limit():
+    """A verbose MakeMKV stderr must not push the embed past Discord's field limit;
+    a 400 there would cost the user the whole failure notification."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="BAD_DISC", error_message="x" * 5000)
+    by_name = {f["name"]: f["value"] for f in build_embed_fields(job, [], EVENTS[JobState.FAILED])}
+    assert len(by_name["Reason"]) == 1024
+    assert by_name["Reason"].endswith("...")
+
+
+def test_description_truncated_to_discord_limit():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="X")
+    embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "y" * 9000)
+    assert len(embed["description"]) == 4096
+
+
+def test_embed_fields_render_season_zero_as_specials_season():
+    """Season 0 is Specials, a real season, not a missing value."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, volume_label="X", detected_season=0)
+    by_name = {
+        f["name"]: f["value"] for f in build_embed_fields(job, [], EVENTS[JobState.COMPLETED])
+    }
+    assert by_name["Season"] == "Season 0"
+
+
+# --------------------------------------------------------------------------- #
+# summarize_episodes
+# --------------------------------------------------------------------------- #
+
+
+def _title(episode: str | None, state=None, is_extra: bool = False):
+    from app.models.disc_job import DiscTitle, TitleState
+
+    return DiscTitle(
+        job_id=1,
+        title_index=0,
+        duration_seconds=1200,
+        matched_episode=episode,
+        state=state or TitleState.COMPLETED,
+        is_extra=is_extra,
+    )
+
+
+def test_summarize_episodes_collapses_a_contiguous_run():
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title(f"S01E0{n}") for n in (1, 2, 3, 4)]
+    assert summarize_episodes(titles) == "S01E01-E04 (4 episodes)"
+
+
+def test_summarize_episodes_preserves_gaps():
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title("S01E01"), _title("S01E02"), _title("S01E03"), _title("S01E06")]
+    assert summarize_episodes(titles) == "S01E01-E03, S01E06 (4 episodes)"
+
+
+def test_summarize_episodes_single_episode():
+    from app.core.discord_notifier import summarize_episodes
+
+    assert summarize_episodes([_title("S01E01")]) == "S01E01 (1 episode)"
+
+
+def test_summarize_episodes_spans_seasons_separately():
+    """A disc straddling a season boundary must not collapse S01E12 and S02E01."""
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title("S01E11"), _title("S01E12"), _title("S02E01")]
+    assert summarize_episodes(titles) == "S01E11-E12, S02E01 (3 episodes)"
+
+
+def test_summarize_episodes_ignores_extras_and_incomplete_titles():
+    from app.core.discord_notifier import summarize_episodes
+    from app.models.disc_job import TitleState
+
+    titles = [
+        _title("S01E01"),
+        _title("S01E02", is_extra=True),
+        _title("S01E03", state=TitleState.FAILED),
+    ]
+    assert summarize_episodes(titles) == "S01E01 (1 episode)"
+
+
+def test_summarize_episodes_empty_when_nothing_matched():
+    from app.core.discord_notifier import summarize_episodes
+
+    assert summarize_episodes([]) == ""
+    assert summarize_episodes([_title(None)]) == ""
+
+
+def test_summarize_episodes_counts_unparseable_rows_without_ranging_them():
+    """A completed title with a non-standard code still happened; report the count
+    honestly rather than pretending the disc had one fewer episode."""
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title("S01E01"), _title("special-1")]
+    assert summarize_episodes(titles) == "S01E01 (2 episodes)"
+
+
+# --------------------------------------------------------------------------- #
+# resolve_poster_url
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_resolve_poster_url_returns_none_without_api_key():
+    from app.core.tmdb_poster import resolve_poster_url
+    from app.services.config_service import update_config
+
+    await update_config(tmdb_api_key="")
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, tmdb_id=1396)
+    assert await resolve_poster_url(job) is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_poster_url_uses_tmdb_id_when_present():
+    from app.core.tmdb_poster import resolve_poster_url
+    from app.services.config_service import update_config
+
+    await update_config(tmdb_api_key="eyJtest")
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, tmdb_id=1396)
+
+    response = MagicMock()
+    response.status_code = 200
+    response.json = MagicMock(return_value={"poster_path": "/abc.jpg"})
+
+    with patch("requests.get", return_value=response) as mock_get:
+        url = await resolve_poster_url(job)
+
+    assert url is not None and url.endswith("/abc.jpg")
+    assert "/tv/1396" in mock_get.call_args[0][0]
+
+    await update_config(tmdb_api_key="")
+
+
+@pytest.mark.asyncio
+async def test_resolve_poster_url_swallows_network_errors():
+    """A TMDB hiccup costs the thumbnail, never the notification."""
+    from app.core.tmdb_poster import resolve_poster_url
+    from app.services.config_service import update_config
+
+    await update_config(tmdb_api_key="eyJtest")
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, tmdb_id=1396)
+
+    with patch("requests.get", side_effect=RuntimeError("network dead")):
+        assert await resolve_poster_url(job) is None
+
+    await update_config(tmdb_api_key="")
+
+
+# --------------------------------------------------------------------------- #
+# build_dashboard_link / thumbnail
+# --------------------------------------------------------------------------- #
+
+
+def test_dashboard_link_built_from_base_url():
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("http://192.168.1.50:5173", 42) == (
+        "http://192.168.1.50:5173/history/42"
+    )
+
+
+def test_dashboard_link_tolerates_trailing_slash():
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("http://192.168.1.50:5173/", 42) == (
+        "http://192.168.1.50:5173/history/42"
+    )
+
+
+def test_dashboard_link_none_when_unset():
+    """No base URL must yield no embed url key at all; Discord rejects an empty one."""
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("", 42) is None
+
+
+def test_dashboard_link_none_for_unsafe_url():
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("javascript:alert(1)", 42) is None
+
+
+def test_build_embed_omits_url_and_thumbnail_when_not_supplied():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="X")
+    embed = build_embed(job, [], EVENTS[JobState.COMPLETED], "d")
+    assert "url" not in embed
+    assert "thumbnail" not in embed
+
+
+def test_build_embed_attaches_url_and_thumbnail_when_supplied():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", volume_label="X")
+    embed = build_embed(
+        job,
+        [],
+        EVENTS[JobState.REVIEW_NEEDED],
+        "d",
+        poster_url="https://image.tmdb.org/t/p/w500/abc.jpg",
+        link_url="http://192.168.1.50:5173/history/7",
+    )
+    assert embed["url"] == "http://192.168.1.50:5173/history/7"
+    assert embed["thumbnail"]["url"] == "https://image.tmdb.org/t/p/w500/abc.jpg"
+
+
+def test_dashboard_link_preserves_a_reverse_proxy_path_prefix():
+    """Engram behind a reverse proxy at /engram must keep that prefix."""
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("https://home.example.com/engram", 42) == (
+        "https://home.example.com/engram/history/42"
+    )
+
+
+def test_dashboard_link_discards_query_and_fragment():
+    """Appending a path to a base carrying ?x=1 would bury /history/42 in the
+    query string and produce a broken but plausible-looking link."""
+    from app.core.discord_notifier import build_dashboard_link
+
+    assert build_dashboard_link("http://192.168.1.50:5173/?x=1", 42) == (
+        "http://192.168.1.50:5173/history/42"
+    )
+    assert build_dashboard_link("http://192.168.1.50:5173#frag", 42) == (
+        "http://192.168.1.50:5173/history/42"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# New template variables
+# --------------------------------------------------------------------------- #
+
+
+def test_new_template_variables_validate():
+    template = (
+        "{{volume_label}} {{drive_id}} {{disc_number}} {{discdb_disc_slug}} "
+        "{{review_reason}} {{episodes}} {{state}}"
+    )
+    assert validate_discord_template(template) is None
+
+
+def test_drive_still_renders_volume_label_for_back_compat():
+    """{{drive}} is misnamed but shipped; changing its value would silently break
+    saved templates. It keeps volume_label and {{drive_id}} is the correct name."""
+    job = DiscJob(drive_id="E:", volume_label="THE_WIRE_S1D3")
+    context = build_template_context(job, job_id=1)
+    assert context["drive"] == "THE_WIRE_S1D3"
+    assert context["volume_label"] == "THE_WIRE_S1D3"
+    assert context["drive_id"] == "E:"
+
+
+def test_context_exposes_disc_and_review_metadata():
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        volume_label="THE_WIRE_S1D3",
+        disc_number=3,
+        discdb_disc_slug="S01D03",
+        review_reason="Could not match 3 titles",
+        state=JobState.REVIEW_NEEDED,
+    )
+    context = build_template_context(job, job_id=1)
+    assert context["disc_number"] == "3"
+    assert context["discdb_disc_slug"] == "S01D03"
+    assert context["review_reason"] == "Could not match 3 titles"
+    assert context["state"] == "review_needed"
+
+
+def test_context_episodes_populated_from_titles():
+    from app.models.disc_job import DiscTitle, TitleState
+
+    job = DiscJob(drive_id="E:", volume_label="THE_WIRE_S1D1")
+    titles = [
+        DiscTitle(
+            job_id=1,
+            title_index=i,
+            duration_seconds=1200,
+            matched_episode=f"S01E0{i + 1}",
+            state=TitleState.COMPLETED,
+        )
+        for i in range(2)
+    ]
+    context = build_template_context(job, job_id=1, titles=titles)
+    assert context["episodes"] == "S01E01-E02 (2 episodes)"
+
+
+def test_context_episodes_blank_without_titles():
+    """Default argument keeps every existing two-arg caller working."""
+    job = DiscJob(drive_id="E:", volume_label="X")
+    assert build_template_context(job, job_id=1)["episodes"] == ""
+
+
+def test_context_keys_always_equal_allowed_vars():
+    """Locks the two halves of the template contract together.
+
+    ALLOWED_TEMPLATE_VARS gates what a user may write; build_template_context
+    decides what actually renders. The job-is-None branch derives its keys from
+    the set and cannot drift, but the populated branch is a hand-written literal
+    that can. A variable in the set but absent from the context renders silently
+    empty; a key in the context but not the set is unreferenceable.
+    """
+    from app.core.discord_notifier import ALLOWED_TEMPLATE_VARS
+
+    job = DiscJob(drive_id="E:", volume_label="X")
+    assert set(build_template_context(job, 1)) == ALLOWED_TEMPLATE_VARS
+    assert set(build_template_context(None, 1)) == ALLOWED_TEMPLATE_VARS
+
+
+# --------------------------------------------------------------------------- #
+# on_transition contract
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_on_transition_callbacks_receive_from_state():
+    """Observers need from_state to distinguish entering a state from a same-state
+    re-broadcast, which transition() also performs."""
+    from app.database import async_session
+    from app.models import JobState
+    from app.services.event_broadcaster import EventBroadcaster
+    from app.services.job_state_machine import JobStateMachine
+
+    broadcaster = MagicMock(spec=EventBroadcaster)
+    broadcaster.broadcast_job_state_changed = AsyncMock()
+    machine = JobStateMachine(broadcaster)
+
+    seen = []
+    machine.on_transition(lambda job_id, to_state, from_state: seen.append((to_state, from_state)))
+
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", content_type=ContentType.TV, state=JobState.RIPPING)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        await machine.transition(job, JobState.REVIEW_NEEDED, session, broadcast=False)
+
+    assert seen == [(JobState.REVIEW_NEEDED, JobState.RIPPING)]
+
+
+def test_registered_transition_observers_accept_the_full_signature():
+    """Guards the silent-failure mode of the on_transition contract.
+
+    JobStateMachine.transition wraps each observer in `except Exception` and
+    logs, so an observer whose arity does not match does not crash: it stops
+    working, permanently and invisibly. A green suite is not evidence that a
+    contract change reached every observer, so assert the arity directly.
+    """
+    import inspect
+
+    from app.models.disc_job import JobState
+    from app.services.job_manager import job_manager, state_machine
+
+    assert state_machine._on_transition_callbacks, "no observers registered"
+    for callback in state_machine._on_transition_callbacks:
+        # Bind three positional args without calling; raises TypeError on a mismatch.
+        inspect.signature(callback).bind(1, JobState.REVIEW_NEEDED, JobState.RIPPING)
+    assert job_manager._start_prewarm_on_review in state_machine._on_transition_callbacks
+
+
+# --------------------------------------------------------------------------- #
+# Review notification and per-event toggles
+# --------------------------------------------------------------------------- #
+
+
+async def _make_job(**kwargs):
+    """Persist a job and return its id."""
+    from app.database import async_session
+
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", **kwargs)
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        return job.id
+
+
+@pytest.mark.asyncio
+async def test_review_observer_fires_on_entry_to_review():
+    from app.models import JobState
+    from app.services.job_manager import job_manager
+
+    with patch.object(
+        job_manager, "_send_discord_notification", new_callable=AsyncMock
+    ) as mock_send:
+        job_manager._notify_discord_on_review(7, JobState.REVIEW_NEEDED, JobState.MATCHING)
+        await asyncio.sleep(0)
+
+    mock_send.assert_called_once_with(7, JobState.REVIEW_NEEDED)
+
+
+@pytest.mark.asyncio
+async def test_review_observer_suppresses_same_state_rebroadcast():
+    """transition() re-broadcasts same-state; that must not re-ping the channel."""
+    from app.models import JobState
+    from app.services.job_manager import job_manager
+
+    with patch.object(
+        job_manager, "_send_discord_notification", new_callable=AsyncMock
+    ) as mock_send:
+        job_manager._notify_discord_on_review(7, JobState.REVIEW_NEEDED, JobState.REVIEW_NEEDED)
+        await asyncio.sleep(0)
+
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_review_observer_ignores_other_states():
+    from app.models import JobState
+    from app.services.job_manager import job_manager
+
+    with patch.object(
+        job_manager, "_send_discord_notification", new_callable=AsyncMock
+    ) as mock_send:
+        job_manager._notify_discord_on_review(7, JobState.RIPPING, JobState.IDENTIFYING)
+        await asyncio.sleep(0)
+
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_review_notification_uses_review_event_and_mention():
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_mention_review="<@1234>",
+        dashboard_base_url="http://192.168.1.50:5173",
+    )
+    job_id = await _make_job(
+        content_type=ContentType.TV,
+        detected_title="The Wire",
+        volume_label="THE_WIRE_S1D3",
+        disc_number=3,
+        review_reason="Could not match 3 titles",
+        state=JobState.REVIEW_NEEDED,
+    )
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        with patch(
+            "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
+        ):
+            await job_manager._send_discord_notification(job_id, JobState.REVIEW_NEEDED)
+
+    embed = mock_notify.call_args[0][2]
+    assert "Review Needed" in embed["title"]
+    assert embed["url"] == f"http://192.168.1.50:5173/history/{job_id}"
+    by_name = {f["name"]: f["value"] for f in embed["fields"]}
+    assert by_name["Disc"] == "THE_WIRE_S1D3 (Disc 3)"
+    assert by_name["Reason"] == "Could not match 3 titles"
+    assert mock_notify.call_args.kwargs["content"] == "<@1234>"
+
+    await update_config(discord_mention_review="", dashboard_base_url="")
+
+
+@pytest.mark.asyncio
+async def test_mention_not_attached_to_completed_event():
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_mention_review="<@1234>",
+    )
+    job_id = await _make_job(content_type=ContentType.MOVIE, volume_label="INCEPTION_2010")
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        with patch(
+            "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
+        ):
+            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+
+    assert mock_notify.call_args.kwargs["content"] == ""
+
+    await update_config(discord_mention_review="")
+
+
+@pytest.mark.asyncio
+async def test_per_event_toggle_suppresses_only_its_own_event():
+    from app.models import JobState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_notify_review=False,
+        discord_notify_completed=True,
+    )
+    job_id = await _make_job(content_type=ContentType.TV, volume_label="X")
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        with patch(
+            "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
+        ):
+            await job_manager._send_discord_notification(job_id, JobState.REVIEW_NEEDED)
+            assert mock_notify.call_count == 0
+            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+            assert mock_notify.call_count == 1
+
+    await update_config(discord_notify_review=True)
+
+
+@pytest.mark.asyncio
+async def test_completion_notification_includes_episode_manifest():
+    """The box-set payoff: a finished disc reports what actually landed."""
+    from app.database import async_session
+    from app.models import JobState
+    from app.models.disc_job import DiscTitle, TitleState
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+    job_id = await _make_job(
+        content_type=ContentType.TV, detected_title="The Wire", volume_label="THE_WIRE_S1D1"
+    )
+
+    async with async_session() as session:
+        for i in range(3):
+            session.add(
+                DiscTitle(
+                    job_id=job_id,
+                    title_index=i,
+                    duration_seconds=1200,
+                    matched_episode=f"S01E0{i + 1}",
+                    state=TitleState.COMPLETED,
+                )
+            )
+        await session.commit()
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        with patch(
+            "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
+        ):
+            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+
+    by_name = {f["name"]: f["value"] for f in mock_notify.call_args[0][2]["fields"]}
+    assert by_name["Episodes"] == "S01E01-E03 (3 episodes)"
+
+
+@pytest.mark.asyncio
+async def test_notify_discord_reraises_only_when_asked():
+    """The swallow-all default is load-bearing on the pipeline path.
+
+    A rip must never be affected by an unreachable webhook, so the default must
+    keep swallowing. The test-webhook endpoint needs the opposite contract: it
+    reports delivery, and reporting success for a revoked URL would defeat the
+    button entirely.
+    """
+    import httpx
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=httpx.HTTPError("410 Gone"))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        # Default: swallowed, no raise.
+        await notify_discord("https://discord.com/api/webhooks/1/a", job_id=1, embed={})
+
+        with pytest.raises(httpx.HTTPError):
+            await notify_discord(
+                "https://discord.com/api/webhooks/1/a", job_id=1, embed={}, raise_on_error=True
+            )
