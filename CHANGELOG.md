@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-08-18
+
+_Highlights: downloadable builds work again._
+
 ### Fixed
 
 - **Release builds produce a working binary again.** Since v0.29.0 every packaged
