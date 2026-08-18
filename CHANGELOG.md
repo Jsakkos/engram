@@ -4,6 +4,16 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release builds produce a working binary again.** Since v0.29.0 every packaged
+  release crashed the moment it started, with `No module named
+  'scipy._external.array_api_compat.numpy.fft'`, so no downloadable build shipped for
+  v0.29.0, v0.30.0 or v0.31.0. A scipy update relocated a vendored module that
+  PyInstaller can only find when it is named explicitly, and the bundler's built-in
+  rule still pointed at the old location. Both locations are now declared, so the
+  packaged app starts whichever one scipy uses.
+
 ## [0.31.0] - 2026-08-16
 
 _Highlights: eject a disc mid-rip without losing the job, and Discord notifications now identify the disc._
