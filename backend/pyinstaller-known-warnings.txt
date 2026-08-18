@@ -1,0 +1,37 @@
+# Hidden imports PyInstaller cannot resolve, that are known-benign for the
+# current dependency set. ci.yml's frozen-build job fails on any unresolved
+# hidden import NOT listed here.
+#
+# Why a baseline diff rather than a pattern match: the scipy 1.17.1 breakage
+# that motivated this gate was an *appearing* warning, not a specific one.
+# Before the bump, scipy._lib.array_api_compat.numpy.fft resolved and printed
+# nothing; after it, the vendored package moved and the same hidden import
+# started failing. The signal was "a warning showed up that wasn't there
+# yesterday", which only a baseline can express.
+#
+# When a new entry appears: do NOT add it here reflexively. First decide whether
+# the frozen app actually needs that module. If it does, declare the real path
+# in backend/engram.spec (that is what the scipy fix does). Only add it here
+# once you have established the module is genuinely optional, and say why.
+#
+# One module name per line. Blank lines and # comments ignored.
+
+# PyInstaller's bundled hook-scipy.py hardcodes scipy's OLD vendoring location.
+# scipy 1.17.1 moved the package to scipy._external.array_api_compat, so this
+# hook import can no longer resolve and never will again. Harmless on its own:
+# engram.spec declares whichever location the installed scipy actually uses.
+scipy._lib.array_api_compat.numpy.fft
+
+# Removed from scipy; the hook still lists it. Unused by engram.
+scipy.special._cdflib
+
+# Optional/legacy sklearn internal, absent from modern versions.
+sklearn.neighbors._typedefs
+
+# pycparser generates these lazily at runtime; absent from a fresh install.
+pycparser.lextab
+pycparser.yacctab
+
+# Optional SQLAlchemy DBAPI drivers. Engram uses aiosqlite.
+pysqlite2
+MySQLdb

@@ -80,7 +80,10 @@ echo "backend responded on /api/jobs"
 # Fork-bomb regression guard: a healthy onedir server is ~1 process; a spawn
 # fork-bomb produces 10+ within seconds, so >2 is a safe trigger. The pattern is
 # derived from the path we launched, so it cannot drift from the real layout.
-count=$(pgrep -f "$EXE" | wc -l | tr -d ' ')
+# Exclude our own PID: this script was invoked WITH the exe path as an argument,
+# so `pgrep -f` matches this shell too. Counting it would silently eat the
+# guard's headroom and make a genuine 2-process bundle look like a fork-bomb.
+count=$(pgrep -f "$EXE" | grep -cvx "$$" | tr -d ' ')
 echo "engram process count: $count"
 if [ "$count" -gt 2 ]; then
   dump_logs

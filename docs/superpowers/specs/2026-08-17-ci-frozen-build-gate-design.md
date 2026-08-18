@@ -68,19 +68,44 @@ cannot silently stop matching if the dist layout moves.
 The Windows PowerShell copy is left alone. Converting it to bash would change
 the release path for the one platform this PR's CI job cannot exercise.
 
-### 3. Hidden-import tripwire
+### 3. New-unresolved-hidden-import baseline
 
-The fatal grep stays narrow, matching only
-`Hidden import "...scipy|array_api_compat..." not found`. Every unresolved
-hidden import is additionally listed non-fatally, and `pyinstaller-build.log`
-plus PyInstaller's own `build/engram/warn-engram.txt` are uploaded as artifacts.
-Unresolved hidden imports are normal for most hooks, which declare imports
-speculatively across library versions, so broadening the fatal pattern needs
-evidence from a real build log rather than a guess.
+First attempt was a fatal grep for `Hidden import "...scipy|array_api_compat..."
+not found`. A real build log (CI run 32103108296) shows that does not work.
+Seven hidden imports are unresolved on a healthy build, two of which match that
+pattern:
 
-The tripwire is redundant with the smoke test for this specific bug, since the
-binary dies on startup. It is kept because it names the cause directly in the
-log instead of leaving a maintainer to diagnose a traceback.
+    MySQLdb
+    pycparser.lextab
+    pycparser.yacctab
+    pysqlite2
+    scipy._lib.array_api_compat.numpy.fft
+    scipy.special._cdflib
+    sklearn.neighbors._typedefs
+
+`scipy._lib.array_api_compat.numpy.fft` is PyInstaller's own bundled
+`hook-scipy.py` naming the location scipy abandoned. That hook is not changed by
+PR #598, so the warning persists after the bundle is fixed. The pattern
+therefore cannot distinguish broken from working, and would fail forever.
+
+The deeper point: the breakage was a warning *appearing*, not a particular
+warning existing. Before scipy 1.17.1 that import resolved silently. So the
+actionable signal is a diff against a known-good baseline.
+
+`backend/scripts/check_hidden_imports.sh` extracts every unresolved hidden
+import from the build log, compares it to `backend/pyinstaller-known-warnings.txt`,
+and fails on anything new. Baseline entries that stop being reported are noted
+but not fatal. This would have caught #570 on the Renovate PR from the log
+alone, and it generalizes to any dependency relocating a module.
+
+The baseline file documents, per entry, why that import is safe to ignore, and
+tells a future maintainer to declare the real path in `engram.spec` rather than
+reflexively appending to the baseline.
+
+The check lives in a script rather than inline YAML so it can be shellchecked
+and run against a saved build log locally. Booting the binary remains the real
+gate; this check exists to name the cause in the log instead of leaving someone
+to diagnose a startup traceback.
 
 ### 4. Gating
 
@@ -92,8 +117,19 @@ change. `ci-gate` treats `skipped` as acceptable and fails only on
 
 ## Verification
 
-- The job must go red on `main` as of this writing, because PR #598 is still
-  open and the scipy bug is live. That is the negative evidence.
-- Applying #598's `engram.spec` change on a scratch commit must turn it green.
-  That is the positive evidence, and the scratch commit is then dropped.
-- This PR must therefore merge after #598, or be rebased onto it.
+Both directions were observed on real CI, not inferred from the YAML.
+
+- **Red.** Run 32103108296, on top of `main` before #598 landed, failed the
+  frozen-build job on the live scipy bug, while `backend-smoke` (which boots
+  from source) passed in the same run. That contrast is the gap this closes.
+- **Green.** #598 merged mid-task and shipped as v0.31.1, so the branch was
+  rebased onto `main` rather than carrying a scratch commit. The job then builds
+  and boots the real fixed bundle.
+- **Path filter.** Exercised locally against real commits: this PR true, a
+  frontend-only Renovate bump (19b3c913) false, an unusable diff true
+  (fail-safe), a `chore: release` commit (6ee2063a) true. Confirmed on CI, where
+  `detect-release` printed `build_relevant=true`.
+- **Hidden-import checker.** Run against the saved failing build log in all
+  three modes: baseline complete (pass), an entry removed to simulate a module
+  relocating (fail, exit 1), and a baseline entry no longer reported (noted, not
+  fatal).

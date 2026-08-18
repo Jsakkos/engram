@@ -627,28 +627,12 @@ jobs:
           set -o pipefail
           uv run pyinstaller engram.spec 2>&1 | tee pyinstaller-build.log
 
-      - name: Check for dropped hidden imports
+      # Diffs every unresolved hidden import against a checked-in baseline and
+      # fails on anything new. Lives in a script so it can be shellchecked and
+      # run against a saved build log locally, rather than as unquotable YAML.
+      - name: Check for new unresolved hidden imports
         working-directory: backend
-        shell: bash
-        run: |
-          # An unresolved hidden import is only a WARNING to PyInstaller: hooks
-          # declare imports speculatively across library versions, so "not found"
-          # is normal for most of them. That is exactly why nobody saw the scipy
-          # one. List every occurrence for the record (non-fatal)...
-          echo "===== unresolved hidden imports (informational) ====="
-          grep -E 'Hidden import .* not found' pyinstaller-build.log || echo "(none)"
-          echo "===================================================="
-          # ...but FAIL on the scipy/array_api_compat family, which is known to be
-          # load-bearing at startup. Keep this narrow: widening it needs evidence
-          # from a real build log (see the frozen-build-logs artifact, and
-          # PyInstaller's own build/engram/warn-engram.txt) that the remaining
-          # warnings are benign for the current dependency set.
-          if grep -E 'Hidden import "[^"]*(scipy|array_api_compat)[^"]*" not found' pyinstaller-build.log; then
-            echo "ERROR: PyInstaller could not resolve a scipy/array_api_compat hidden import."
-            echo "The bundle will build fine and then die on startup. Fix backend/engram.spec."
-            exit 1
-          fi
-          echo "OK: no scipy/array_api_compat hidden imports were dropped."
+        run: scripts/check_hidden_imports.sh pyinstaller-build.log
 
       # Same script release.yml runs, so PR-time and release-time assertions
       # cannot drift. Executed directly (not via `bash <script>`) so a lost
@@ -667,6 +651,8 @@ jobs:
           path: |
             backend/pyinstaller-build.log
             backend/build/engram/warn-engram.txt
+            backend/found.txt
+            backend/known.txt
             smoke-stdout.log
             smoke-stderr.log
           if-no-files-found: ignore
