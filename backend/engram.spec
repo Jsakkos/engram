@@ -4,7 +4,9 @@
 Bundles the FastAPI backend + React frontend into a single distributable directory.
 """
 
+import importlib.util
 import os
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
@@ -78,7 +80,27 @@ third_party_hidden = [
     "bs4",
 ]
 
-all_hidden = app_hidden + third_party_hidden
+# scipy vendors array_api_compat, whose numpy backend loads its `fft` and `linalg`
+# submodules via `__import__(__package__ + ".fft")`, a module name built from a
+# string, which PyInstaller's static analysis cannot see. PyInstaller's own
+# hook-scipy.py covers this, but hardcodes the old `scipy._lib.array_api_compat`
+# path; scipy 1.17.1 moved the vendored copy to `scipy._external.array_api_compat`,
+# so that hidden import silently degraded to a "not found" WARNING and the frozen
+# app died at startup with:
+#   ModuleNotFoundError: No module named 'scipy._external.array_api_compat.numpy.fft'
+# The build itself stayed green (only the binary broke), which is how three
+# releases (v0.29.0-v0.31.0) shipped nothing. Declare both vendoring locations so
+# this survives the module moving again in either direction.
+scipy_array_api_hidden = []
+for _vendored in ("scipy._external.array_api_compat", "scipy._lib.array_api_compat"):
+    try:
+        _found = importlib.util.find_spec(_vendored) is not None
+    except ModuleNotFoundError:
+        _found = False
+    if _found:
+        scipy_array_api_hidden += [f"{_vendored}.numpy.fft", f"{_vendored}.numpy.linalg"]
+
+all_hidden = app_hidden + third_party_hidden + scipy_array_api_hidden
 
 # Data files that must be included
 datas = []
