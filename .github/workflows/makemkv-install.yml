@@ -25,7 +25,7 @@ jobs:
           - "1.18.3"  # pinned baseline; update when a new version releases
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install MakeMKV build dependencies
         run: |
