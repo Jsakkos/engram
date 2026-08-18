@@ -17,6 +17,16 @@ _Highlights: downloadable builds work again._
   PyInstaller can only find when it is named explicitly, and the bundler's built-in
   rule still pointed at the old location. Both locations are now declared, so the
   packaged app starts whichever one scipy uses.
+### Changed
+
+- **CI now builds and boots the packaged app before a dependency change can
+  merge.** Until now the only PyInstaller build happened at release time, so a
+  library update that broke packaging looked completely healthy on the pull
+  request and only revealed itself as a broken download days later. That is how
+  v0.29.0 through v0.31.0 each shipped without a working build. Pull requests
+  that touch the dependency set or the packaging config now assemble the real
+  binary, start it, and check that it answers and that the bundled audio
+  fingerprinter is present.
 
 ## [0.31.0] - 2026-08-16
 
