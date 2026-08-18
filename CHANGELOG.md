@@ -4,6 +4,17 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **CI now builds and boots the packaged app before a dependency change can
+  merge.** Until now the only PyInstaller build happened at release time, so a
+  library update that broke packaging looked completely healthy on the pull
+  request and only revealed itself as a broken download days later. That is how
+  v0.29.0 through v0.31.0 each shipped without a working build. Pull requests
+  that touch the dependency set or the packaging config now assemble the real
+  binary, start it, and check that it answers and that the bundled audio
+  fingerprinter is present. (#599)
+
 ## [0.31.1] - 2026-08-18
 
 _Highlights: downloadable builds work again._

@@ -32,6 +32,7 @@ jobs:
     outputs:
       is_release: ${{ steps.detect.outputs.is_release }}
       os_matrix: ${{ steps.detect.outputs.os_matrix }}
+      build_relevant: ${{ steps.detect.outputs.build_relevant }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -53,22 +54,52 @@ jobs:
           # on the commit subject (PR titles are already single-line).
           title=$(printf '%s' "${PR_TITLE:-$HEAD_MSG}" | head -n1)
           echo "event=$EVENT_NAME title=$title"
+
+          # Changed-file list, computed ONCE and consumed by both the release
+          # detection below and the frozen-build path filter. diff_ok tracks
+          # whether we actually got one: on a first push to a new branch,
+          # github.event.before is all-zeros and the diff cannot resolve.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE_SHA"; head="$PR_HEAD_SHA"
+          else
+            base="$PUSH_BEFORE"; head="$PUSH_AFTER"
+          fi
+          diff_ok=true
+          changed=$(git diff --name-only "$base" "$head" 2>/dev/null) || diff_ok=false
+          echo "diff_ok=$diff_ok"
+          echo "changed files:"; printf '%s\n' "$changed"
+
           is_release=false
           if printf '%s' "$title" | grep -qE '^chore: release v[0-9]'; then
-            if [ "$EVENT_NAME" = "pull_request" ]; then
-              base="$PR_BASE_SHA"; head="$PR_HEAD_SHA"
-            else
-              base="$PUSH_BEFORE"; head="$PUSH_AFTER"
-            fi
-            changed=$(git diff --name-only "$base" "$head" 2>/dev/null || true)
-            echo "changed files:"; printf '%s\n' "$changed"
             allow='^(backend/pyproject\.toml|backend/app/__init__\.py|backend/uv\.lock|frontend/package\.json|frontend/package-lock\.json|CHANGELOG\.md)$'
             # release-only iff there IS a diff AND no changed file is outside the allowlist
-            if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE "$allow"; then
+            if [ "$diff_ok" = "true" ] && [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE "$allow"; then
               is_release=true
             else
-              echo "Title says release but diff is empty or includes non-allowlisted files — running full CI."
+              echo "Title says release but diff is empty or includes non-allowlisted files, running full CI."
             fi
+          fi
+
+          # Path filter for the frozen-build gate. Building + booting the
+          # PyInstaller bundle costs ~5 min, so it runs only when something that
+          # can plausibly change what gets bundled moved: the dependency set, the
+          # spec, or the bundled-binary fetcher. That is the case that motivated
+          # the gate (a scipy bump in a Renovate PR relocated a vendored module
+          # and silently broke every release binary while CI stayed green). The
+          # gate's own files are listed too, so a PR editing it exercises it.
+          #
+          # This deliberately fires on `chore: release` PRs as well: they touch
+          # uv.lock + pyproject, and a release PR is exactly when a working
+          # binary matters most. It is the one heavy job release PRs keep.
+          build_paths='^(backend/uv\.lock|backend/pyproject\.toml|backend/engram\.spec|backend/scripts/fetch_fpcalc\.py|backend/scripts/smoke_test_frozen\.sh|\.github/workflows/ci\.yml)$'
+          if [ "$diff_ok" != "true" ]; then
+            # Fail safe: an unusable diff means RUN, never silently skip.
+            echo "No usable changed-file list, running the frozen build to be safe."
+            build_relevant=true
+          elif printf '%s\n' "$changed" | grep -qE "$build_paths"; then
+            build_relevant=true
+          else
+            build_relevant=false
           fi
           if [ "$is_release" = "true" ]; then
             os_matrix='["ubuntu-latest"]'
@@ -77,7 +108,8 @@ jobs:
           fi
           echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
           echo "os_matrix=$os_matrix" >> "$GITHUB_OUTPUT"
-          echo "RESULT is_release=$is_release os_matrix=$os_matrix"
+          echo "build_relevant=$build_relevant" >> "$GITHUB_OUTPUT"
+          echo "RESULT is_release=$is_release os_matrix=$os_matrix build_relevant=$build_relevant"
 
   changelog-version-check:
     name: Changelog Version Check
@@ -532,6 +564,99 @@ jobs:
           name: playwright-traces
           path: frontend/test-results/
 
+  # Build the PyInstaller bundle the way release.yml does and BOOT it. The
+  # existing backend-smoke job boots from source, where dynamic imports resolve
+  # at runtime; only a frozen bundle exercises PyInstaller's static analysis.
+  # Gap this closes: scipy 1.17.1 (a Renovate lock bump, PR #570) moved its
+  # vendored array_api_compat, PyInstaller's hook still named the old path, the
+  # unresolved hidden import degraded to a WARNING in a ~90k-line log, and
+  # v0.29.0 / v0.30.0 / v0.31.0 all shipped a binary that died on startup.
+  # Path-filtered by detect-release so normal PRs pay nothing.
+  frozen-build:
+    name: Frozen Build Smoke Test
+    runs-on: ubuntu-latest
+    needs: [detect-release]
+    if: needs.detect-release.outputs.build_relevant == 'true'
+    steps:
+      - uses: actions/checkout@v6
+
+      # Frontend build + bundle, mirroring release.yml: engram.spec expects the
+      # static assets at app/static, and a missing bundle changes what is frozen.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Bundle frontend
+        run: cp -r frontend/dist backend/app/static
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install system dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: libsndfile1 ffmpeg
+          version: 1.0
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --no-install-project
+          # Same pins as release.yml. These MUST match: the point of this job is
+          # to reproduce the release bundle, and an unpinned toolchain here would
+          # test a different bundler than the one that ships.
+          uv pip install "pyinstaller==6.20.0" "pyinstaller-hooks-contrib==2026.5"
+      - name: Fetch fpcalc (bundled audio fingerprinter)
+        working-directory: backend
+        run: uv run python scripts/fetch_fpcalc.py
+
+      - name: Build executable
+        working-directory: backend
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pyinstaller engram.spec 2>&1 | tee pyinstaller-build.log
+
+      # Diffs every unresolved hidden import against a checked-in baseline and
+      # fails on anything new. Lives in a script so it can be shellchecked and
+      # run against a saved build log locally, rather than as unquotable YAML.
+      - name: Check for new unresolved hidden imports
+        working-directory: backend
+        run: scripts/check_hidden_imports.sh pyinstaller-build.log
+
+      # Same script release.yml runs, so PR-time and release-time assertions
+      # cannot drift. Executed directly (not via `bash <script>`) so a lost
+      # executable bit fails here rather than at release time.
+      - name: Smoke test built executable
+        env:
+          PORT: "8765"
+          HOST: "127.0.0.1"
+        run: backend/scripts/smoke_test_frozen.sh backend/dist/engram/engram
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frozen-build-logs
+          path: |
+            backend/pyinstaller-build.log
+            backend/build/engram/warn-engram.txt
+            backend/found.txt
+            backend/known.txt
+            smoke-stdout.log
+            smoke-stderr.log
+          if-no-files-found: ignore
+
   # Single required status check for branch protection. `needs:` every granular
   # job and reports one pass/fail, so the individual jobs can be made
   # non-required (and freely skipped on release PRs) without leaving a required
@@ -557,6 +682,7 @@ jobs:
       - frontend-lint-build
       - frontend-test-unit
       - e2e-tests
+      - frozen-build
     steps:
       - name: Gate on needed jobs (skipped is OK, failed/cancelled is not)
         shell: bash
