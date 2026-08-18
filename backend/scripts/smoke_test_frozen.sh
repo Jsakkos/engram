@@ -77,14 +77,26 @@ if [ "$ready" != "1" ]; then
 fi
 echo "backend responded on /api/jobs"
 
-# Fork-bomb regression guard: a healthy onedir server is ~1 process; a spawn
-# fork-bomb produces 10+ within seconds, so >2 is a safe trigger. The pattern is
-# derived from the path we launched, so it cannot drift from the real layout.
-# Exclude our own PID: this script was invoked WITH the exe path as an argument,
-# so `pgrep -f` matches this shell too. Counting it would silently eat the
-# guard's headroom and make a genuine 2-process bundle look like a fork-bomb.
-count=$(pgrep -f "$EXE" | grep -cvx "$$" | tr -d ' ')
+# Fork-bomb regression guard: a healthy onedir server is 1 process; a spawn
+# fork-bomb produces 10+ within seconds, so >2 is a safe trigger.
+#
+# Match on process NAME, not command line. `pgrep -f "$EXE"` looks wrong here
+# but is worse than wrong: this script is invoked WITH the exe path as an
+# argument, and every command substitution forks a subshell that inherits that
+# argv verbatim, so the pattern matches transient shells as well as the server.
+# Excluding $$ is not enough, the forks have their own PIDs. Matching the name
+# (what the PowerShell copy does with `Get-Process engram`) cannot be fooled by
+# what any shell happens to have in its arguments.
+exe_name=$(basename "$EXE")
+count=$(pgrep -x "$exe_name" | wc -l | tr -d ' ')
 echo "engram process count: $count"
+if [ "$count" -lt 1 ]; then
+  # Fail closed. We know the server is up (it just answered /api/jobs), so a
+  # zero count means the guard matched nothing and is silently not guarding.
+  dump_logs
+  echo "process-count guard matched no '$exe_name' process despite a live server"
+  exit 1
+fi
 if [ "$count" -gt 2 ]; then
   dump_logs
   echo "too many engram processes ($count) - possible multiprocessing fork-bomb"
