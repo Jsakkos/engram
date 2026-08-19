@@ -23,6 +23,8 @@ import { FEATURES } from "../config/constants";
 import { ROUTES, historyDetailPath } from "../config/routes";
 import { SvActionButton, SvAtmosphere, SvBadge, type SvBadgeState, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
 import BugReportModal from "./BugReportModal";
+import { ALL_JOBS_FILTER, buildHistoryQuery } from "./historyQuery";
+import { historyBadgeState, historyTimelineLabel } from "./historyState";
 import {
   formatBytesScaled,
   formatDateTime,
@@ -507,7 +509,7 @@ function JobDetailPanel({
               </SvBadge>
               <SvBadge
                 size="sm"
-                state={detail.state === "completed" ? "complete" : "error"}
+                state={historyBadgeState(detail.state)}
                 dot={false}
               >
                 {detail.state}
@@ -559,7 +561,7 @@ function JobDetailPanel({
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
               <TimelineRow label="Created" value={formatDateTimeShort(detail.created_at)} />
               <TimelineRow
-                label={detail.state === "completed" ? "Completed" : "Failed"}
+                label={historyTimelineLabel(detail.state)}
                 value={formatDateTimeShort(detail.completed_at)}
               />
               {detail.created_at && detail.completed_at && (
@@ -1069,12 +1071,7 @@ export default function HistoryPage() {
   }, []);
 
   const fetchHistory = useCallback(() => {
-    const params = new URLSearchParams({
-      page: String(page),
-      per_page: String(perPage),
-    });
-    if (filterType) params.set("content_type", filterType);
-    if (filterState) params.set("state", filterState);
+    const params = buildHistoryQuery({ page, perPage, filterType, filterState });
 
     apiFetch<HistoryJob[]>(`/api/jobs/history?${params}`)
       .then((data: HistoryJob[]) => {
@@ -1237,9 +1234,11 @@ export default function HistoryPage() {
             value={filterState}
             onChange={(v) => { setFilterState(v); setPage(1); }}
             options={[
-              { value: "", label: "All states" },
+              { value: "", label: "Completed & failed" },
               { value: "completed", label: "Completed" },
               { value: "failed", label: "Failed" },
+              { value: "review_needed", label: "Needs review" },
+              { value: ALL_JOBS_FILTER, label: "All jobs" },
             ]}
           />
         </div>
@@ -1330,9 +1329,13 @@ export default function HistoryPage() {
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: sv.green }}>
                             <CheckCircle2 size={12} /> OK
                           </span>
-                        ) : (
+                        ) : job.state === "failed" ? (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: sv.red }}>
                             <XCircle size={12} /> FAIL
+                          </span>
+                        ) : (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: sv.amber }}>
+                            <Clock size={12} /> {job.state.replace(/_/g, " ").toUpperCase()}
                           </span>
                         )}
                       </td>
