@@ -18,5 +18,8 @@ export function historyBadgeState(state: string): SvBadgeState {
 export function historyTimelineLabel(state: string): string {
   if (state === "completed") return "Completed";
   if (state === "failed") return "Failed";
-  return "Finished";
+  // The row this labels carries completed_at, which stays null until a job
+  // ends. Naming a finish event here would render "Finished: -" for a job
+  // that is still running or parked in review.
+  return "In progress";
 }

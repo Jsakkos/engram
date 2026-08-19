@@ -27,8 +27,10 @@ describe("historyTimelineLabel", () => {
     expect(historyTimelineLabel("failed")).toBe("Failed");
   });
 
-  it("does not claim an unfinished job failed", () => {
-    expect(historyTimelineLabel("review_needed")).toBe("Finished");
-    expect(historyTimelineLabel("ripping")).toBe("Finished");
+  it("does not label an unfinished job with a finish event", () => {
+    // The row's value is completed_at, which is null until a job ends, so a
+    // "Finished" label here would read "Finished: -" for a job still running.
+    expect(historyTimelineLabel("review_needed")).toBe("In progress");
+    expect(historyTimelineLabel("ripping")).toBe("In progress");
   });
 });

@@ -47,7 +47,7 @@ from app.matcher.manual_subtitle_import import (
     commit_files,
 )
 from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
-from app.models import DiscJob, JobState
+from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
 from app.services.identity_prompts import BLOCKING_KINDS
 from app.services.import_guard import ImportBlock
@@ -503,10 +503,11 @@ def _export_status(job: DiscJob) -> str:
     return "exported"
 
 
-# Terminal states: a job here is finished and lives on in /api/jobs/history.
-# Everything else is either in flight or parked waiting on the user.
-_TERMINAL_STATES = (JobState.COMPLETED, JobState.FAILED)
-
+# A terminal job is finished and lives on in /api/jobs/history; everything else
+# is either in flight or parked waiting on the user. TERMINAL_JOB_STATES is the
+# canonical definition (app/models/disc_job.py), shared with the state machine
+# and the import guard, so adding a state cannot leave these views disagreeing.
+#
 # How many *finished* jobs the dashboard keeps on screen before they fall off
 # the bottom. Non-terminal jobs are exempt from this cap; see list_jobs.
 RECENT_TERMINAL_JOB_LIMIT = 10
@@ -532,7 +533,7 @@ async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJo
         (
             await session.execute(
                 select(DiscJob.id)
-                .where(uncleared, DiscJob.state.in_(_TERMINAL_STATES))
+                .where(uncleared, DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
                 .order_by(DiscJob.created_at.desc())
                 .limit(RECENT_TERMINAL_JOB_LIMIT)
             )
@@ -546,7 +547,7 @@ async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJo
         .where(
             uncleared,
             or_(
-                DiscJob.state.not_in(_TERMINAL_STATES),
+                DiscJob.state.not_in(list(TERMINAL_JOB_STATES)),
                 DiscJob.id.in_(recent_terminal_ids),
             ),
         )
@@ -577,7 +578,7 @@ async def get_job_history(
     if state is not None:
         query = query.where(DiscJob.state == state)
     elif not include_all_states:
-        query = query.where(DiscJob.state.in_(_TERMINAL_STATES))
+        query = query.where(DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
     if content_type:
         query = query.where(DiscJob.content_type == content_type)
 
@@ -1424,7 +1425,6 @@ async def arm_manual_identity(
     is already being worked on, and the caller should edit that job's identity
     instead of arming for a disc that will not be inserted.
     """
-    from app.models.disc_job import TERMINAL_JOB_STATES
     from app.services.manual_identity import ManualIdentity, arm_store
 
     result = await session.execute(
