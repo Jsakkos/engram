@@ -4,6 +4,8 @@ Tests the REST API endpoints including job management, configuration,
 and validation. Uses async client with in-memory DB (patched via conftest.py).
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -869,3 +871,113 @@ async def test_config_rejects_javascript_dashboard_url(client):
 async def test_config_rejects_bad_review_template(client):
     resp = await client.put("/api/config", json={"discord_template_review": "{{bogus}}"})
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Job visibility invariant
+# ---------------------------------------------------------------------------
+
+
+class TestJobVisibilityInvariant:
+    """Every job must stay reachable from at least one UI surface.
+
+    Regression guard for the "review jobs silently disappear" report: the
+    dashboard list is capped at the 10 most recent uncleared jobs and history
+    only shows terminal states, so a REVIEW_NEEDED job that had 10 newer jobs
+    created after it fell into the gap between the two views. The row was never
+    deleted, it just became unreachable.
+    """
+
+    async def test_old_review_job_survives_a_full_recent_window(self, client):
+        """A REVIEW_NEEDED job must not age out of /api/jobs behind newer jobs."""
+        base = datetime(2026, 1, 1, tzinfo=UTC)
+        review = await _seed_job(
+            state=JobState.REVIEW_NEEDED, created_at=base, volume_label="OLD_REVIEW"
+        )
+        for i in range(12):
+            await _seed_job(state=JobState.COMPLETED, created_at=base + timedelta(days=i + 1))
+
+        response = await client.get("/api/jobs")
+        assert response.status_code == 200
+        assert review.id in [j["id"] for j in response.json()]
+
+    async def test_every_non_terminal_state_survives_the_window(self, client):
+        """The exemption covers all human/in-flight states, not just review."""
+        base = datetime(2026, 1, 1, tzinfo=UTC)
+        stuck = [
+            await _seed_job(state=state, created_at=base)
+            for state in (
+                JobState.IDLE,
+                JobState.IDENTIFYING,
+                JobState.REVIEW_NEEDED,
+                JobState.RIPPING,
+                JobState.MATCHING,
+                JobState.ORGANIZING,
+            )
+        ]
+        for i in range(12):
+            await _seed_job(state=JobState.COMPLETED, created_at=base + timedelta(days=i + 1))
+
+        response = await client.get("/api/jobs")
+        ids = [j["id"] for j in response.json()]
+        assert [j.id for j in stuck if j.id not in ids] == []
+
+    async def test_terminal_jobs_are_still_capped(self, client):
+        """The recency cap still applies to finished jobs: no unbounded list."""
+        base = datetime(2026, 1, 1, tzinfo=UTC)
+        for i in range(15):
+            await _seed_job(state=JobState.COMPLETED, created_at=base + timedelta(days=i))
+
+        response = await client.get("/api/jobs")
+        assert len(response.json()) == 10
+
+    async def test_newest_terminal_jobs_win_the_capped_slots(self, client):
+        """The cap keeps the most recent finished jobs, not an arbitrary 10."""
+        base = datetime(2026, 1, 1, tzinfo=UTC)
+        jobs = [
+            await _seed_job(state=JobState.COMPLETED, created_at=base + timedelta(days=i))
+            for i in range(15)
+        ]
+
+        response = await client.get("/api/jobs")
+        ids = [j["id"] for j in response.json()]
+        assert ids == [j.id for j in reversed(jobs[-10:])]
+
+    async def test_cleared_non_terminal_job_stays_hidden(self, client):
+        """The exemption must not resurrect a soft-deleted row."""
+        job = await _seed_job(state=JobState.REVIEW_NEEDED, cleared_at=datetime.now(UTC))
+        response = await client.get("/api/jobs")
+        assert job.id not in [j["id"] for j in response.json()]
+
+    async def test_history_state_filter_accepts_review_needed(self, client):
+        """History must be able to surface a review job on explicit request."""
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_job(state=JobState.COMPLETED)
+
+        response = await client.get("/api/jobs/history?state=review_needed")
+        assert response.status_code == 200
+        assert [j["id"] for j in response.json()] == [job.id]
+
+    async def test_history_default_stays_terminal_only(self, client):
+        """Default history semantics are unchanged: finished jobs only."""
+        await _seed_job(state=JobState.REVIEW_NEEDED)
+        done = await _seed_job(state=JobState.COMPLETED)
+
+        response = await client.get("/api/jobs/history")
+        assert [j["id"] for j in response.json()] == [done.id]
+
+    async def test_history_include_all_states_is_a_backstop(self, client):
+        """include_all_states=true guarantees a view containing every job."""
+        seeded = [
+            await _seed_job(state=state)
+            for state in (JobState.RIPPING, JobState.REVIEW_NEEDED, JobState.COMPLETED)
+        ]
+
+        response = await client.get("/api/jobs/history?include_all_states=true")
+        assert response.status_code == 200
+        assert {j["id"] for j in response.json()} == {j.id for j in seeded}
+
+    async def test_history_rejects_an_unknown_state_filter(self, client):
+        """A typo'd filter must 422, not silently return everything."""
+        response = await client.get("/api/jobs/history?state=nonsense")
+        assert response.status_code == 422

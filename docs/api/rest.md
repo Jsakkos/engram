@@ -10,7 +10,10 @@ All endpoints are under the `/api` prefix.
 GET /api/jobs
 ```
 
-Returns active disc jobs (excludes cleared/archived jobs). Limited to 10 most recent.
+Returns active disc jobs (excludes cleared/archived jobs). The 10 most recent *finished*
+(`completed`/`failed`) jobs are included; every other state is returned in full, so a job
+still waiting on you (for example one parked in `review_needed`) never ages out of the
+dashboard behind newer discs.
 
 ::: app.api.routes.list_jobs
     options:
@@ -84,7 +87,12 @@ Soft-delete a job from the dashboard (sets `cleared_at` timestamp). Job remains 
 GET /api/jobs/history?page=1&per_page=20&content_type=tv&state=completed
 ```
 
-Returns all completed/failed jobs with pagination and filtering. Jobs appear in history automatically when they reach a terminal state — no manual clearing required.
+Returns completed/failed jobs with pagination and filtering. Jobs appear in history
+automatically when they reach a terminal state, with no manual clearing required.
+
+An explicit `state` is honoured for *any* job state, and `include_all_states=true` drops
+the state filter entirely. Either makes history a complete record of every job, including
+one still in progress or parked in review.
 
 **Query Parameters:**
 
@@ -93,7 +101,8 @@ Returns all completed/failed jobs with pagination and filtering. Jobs appear in 
 | `page` | int | 1 | Page number (1-indexed) |
 | `per_page` | int | 20 | Results per page (max 100) |
 | `content_type` | string | — | Filter: `tv` or `movie` |
-| `state` | string | — | Filter: `completed` or `failed` |
+| `state` | string | — | Filter by any `JobState`, e.g. `completed`, `failed`, `review_needed`. An unknown value is rejected with 422 |
+| `include_all_states` | bool | `false` | Return every state instead of the completed/failed default. Ignored when `state` is given |
 
 ### Job Statistics
 

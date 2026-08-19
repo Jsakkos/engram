@@ -21,7 +21,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -47,7 +47,7 @@ from app.matcher.manual_subtitle_import import (
     commit_files,
 )
 from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
-from app.models import DiscJob, JobState
+from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
 from app.services.identity_prompts import BLOCKING_KINDS
 from app.services.import_guard import ImportBlock
@@ -503,15 +503,55 @@ def _export_status(job: DiscJob) -> str:
     return "exported"
 
 
+# A terminal job is finished and lives on in /api/jobs/history; everything else
+# is either in flight or parked waiting on the user. TERMINAL_JOB_STATES is the
+# canonical definition (app/models/disc_job.py), shared with the state machine
+# and the import guard, so adding a state cannot leave these views disagreeing.
+#
+# How many *finished* jobs the dashboard keeps on screen before they fall off
+# the bottom. Non-terminal jobs are exempt from this cap; see list_jobs.
+RECENT_TERMINAL_JOB_LIMIT = 10
+
+
 # Routes
 @router.get("/jobs", response_model=list[JobResponse])
 async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJob]:
-    """List active disc jobs (excludes cleared/archived jobs)."""
+    """List active disc jobs (excludes cleared/archived jobs).
+
+    The dashboard is a recency window, but the cap applies to *finished* jobs
+    only. A non-terminal job - above all REVIEW_NEEDED, which waits on a human
+    indefinitely - must never age out behind newer discs: history shows only
+    terminal states, so a job pushed off this list would be visible nowhere at
+    all. Non-terminal jobs are bounded in practice by the number of drives, so
+    exempting them cannot make this list unbounded in normal use.
+    """
+    uncleared = DiscJob.cleared_at.is_(None)
+
+    # Resolve the capped tail of finished jobs first, then fetch both groups in
+    # one ordered query so the caller gets a single created_at-desc sequence.
+    recent_terminal_ids = (
+        (
+            await session.execute(
+                select(DiscJob.id)
+                .where(uncleared, DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
+                .order_by(DiscJob.created_at.desc())
+                .limit(RECENT_TERMINAL_JOB_LIMIT)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
     result = await session.execute(
         select(DiscJob)
-        .where(DiscJob.cleared_at.is_(None))
+        .where(
+            uncleared,
+            or_(
+                DiscJob.state.not_in(list(TERMINAL_JOB_STATES)),
+                DiscJob.id.in_(recent_terminal_ids),
+            ),
+        )
         .order_by(DiscJob.created_at.desc())
-        .limit(10)
     )
     return list(result.scalars().all())
 
@@ -521,16 +561,26 @@ async def get_job_history(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     content_type: str | None = None,
-    state: str | None = None,
+    state: JobState | None = None,
+    include_all_states: bool = False,
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
-    """Get all completed/failed job history with pagination and filtering."""
-    query = select(DiscJob).where(DiscJob.state.in_([JobState.COMPLETED, JobState.FAILED]))
+    """Get job history with pagination and filtering.
 
+    Defaults to finished jobs (completed/failed), which is what "history" means
+    to a user. An explicit ``state`` is honoured for *any* state, and
+    ``include_all_states=true`` drops the filter entirely - together these make
+    history a guaranteed backstop: every job ever created is reachable from
+    here, including a REVIEW_NEEDED job that has been parked for weeks.
+    """
+    query = select(DiscJob)
+
+    if state is not None:
+        query = query.where(DiscJob.state == state)
+    elif not include_all_states:
+        query = query.where(DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
     if content_type:
         query = query.where(DiscJob.content_type == content_type)
-    if state:
-        query = query.where(DiscJob.state == state)
 
     query = (
         query.order_by(DiscJob.completed_at.desc().nulls_last(), DiscJob.created_at.desc())
@@ -1375,7 +1425,6 @@ async def arm_manual_identity(
     is already being worked on, and the caller should edit that job's identity
     instead of arming for a disc that will not be inserted.
     """
-    from app.models.disc_job import TERMINAL_JOB_STATES
     from app.services.manual_identity import ManualIdentity, arm_store
 
     result = await session.execute(

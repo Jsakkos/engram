@@ -15,6 +15,11 @@ All notable changes to Engram will be documented in this file.
   binary, start it, and check that it answers and that the bundled audio
   fingerprinter is present. (#599)
 
+### Fixed
+
+- **Discs parked in review no longer vanish if you leave them for a few days.** The dashboard only ever showed the ten most recent jobs, and the History page only lists finished ones, so a disc waiting on review could be pushed off the dashboard by ten newer discs and then appear nowhere at all. The job was never deleted, just unreachable. Jobs that still need you (review, ripping, matching, organizing) are now exempt from the dashboard's ten-job limit, so they stay on screen until they are dealt with. The limit still applies to finished jobs, which remain in History.
+- History can now show jobs that have not finished. The state filter gains **Needs review** and **All jobs**, making History a complete record of every disc Engram has seen rather than only the completed and failed ones.
+
 ## [0.31.1] - 2026-08-18
 
 _Highlights: downloadable builds work again._
