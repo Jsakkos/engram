@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-08-19
+
+_Highlights: review jobs stay visible even after they age off the dashboard._
+
 ### Changed
 
 - **CI now builds and boots the packaged app before a dependency change can
