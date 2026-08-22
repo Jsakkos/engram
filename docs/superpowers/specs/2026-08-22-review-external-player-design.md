@@ -82,6 +82,12 @@ filename (for example `job-12-title-3.m3u`).
 http://<host>/api/jobs/12/titles/3/media
 ```
 
+**Access gate.** Both endpoints depend on `require_localhost_or_lan` from `app/api/guards.py`,
+the same gate the manual import endpoints use. Loopback is always allowed; a LAN peer is
+allowed only when the user has explicitly set `allow_lan_access`. This matches the deployment
+story exactly: the remote case this design is built to serve is precisely the case the user
+has already opted into.
+
 **Path resolution.** Both endpoints derive the path from the database, never from a client
 parameter. Resolution order:
 
@@ -124,11 +130,55 @@ Both are hidden when the title has no resolvable file (no `output_filename` and 
 `organized_to`), which is already visible in the `DiscTitle` the Inspector receives, so the
 frontend needs no extra request to decide whether to render them.
 
-**Both controls ship; the copy button is not a nice-to-have.** On Windows the `.m3u`
-extension is frequently owned by Films & TV or by nothing at all rather than VLC, so the
-download-and-open path silently fails for a meaningful share of users. Reviewing eight tracks
-also means eight downloads accumulating in the browser's download bar. "Copy URL, then VLC →
-Open Network Stream" is handler-independent and works with any player on any OS.
+**Both controls ship as peers; the copy button is not a fallback.** Its job is not to cover
+an edge case, it is the answer to the player-detection problem below: it is the one action
+that cannot silently fail. On Windows the `.m3u` extension is frequently owned by Films & TV
+or by nothing at all rather than VLC, so the download-and-open path fails silently for a
+meaningful share of users. Reviewing eight tracks also means eight downloads accumulating in
+the browser's download bar. "Copy URL, then VLC, then Open Network Stream" is
+handler-independent and works with any player on any OS.
+
+A short standing hint sits beside the two buttons, always visible rather than appearing after
+a failure, since a failure produces no signal to react to:
+
+> Opens in your system's default player. Nothing happened? Copy the URL and use your player's
+> "Open Network Stream".
+
+### Player detection: why there is none
+
+Engram cannot tell whether a working player is installed, and the UI never claims otherwise.
+There is no "VLC detected" badge and no gating of the buttons on a probe. Two independent
+reasons:
+
+**Detection would run on the wrong machine.** Any probe executes on the backend, while the
+player runs on whatever machine holds the browser. Once `allow_lan_access` is enabled those
+are different machines, and a backend-side probe is wrong in both directions: it reports a
+player present on a headless Docker host that has no display, or reports none while the
+operator's laptop has VLC installed.
+
+**The browser cannot see handlers.** No web API enumerates file-type or protocol handlers,
+and navigating to a `.m3u` returns no success or failure signal to the page. "The player
+opened" and "the file landed in Downloads and nothing happened" are indistinguishable from
+JavaScript. Probing a custom `vlc://` scheme does not rescue this, because VLC does not
+register one on Windows by default.
+
+Presence and function also come apart badly. Finding `vlc.exe` on disk would not establish
+that it owns the `.m3u` association, that it can reach the backend through the host firewall,
+or that it can authenticate (see below). A probe would therefore produce confident answers to
+a question it cannot actually settle.
+
+The one case where a probe would be truthful is `is_loopback(peer)`, which proves the browser
+is on the backend host. It was considered and rejected for v1: it buys a cosmetic hint in
+exchange for an OS-specific detection matrix (`winreg` for the `.m3u` handler association on
+Windows, `xdg-mime` on Linux, an app-bundle check on macOS, with no `winreg` usage anywhere in
+the backend today), and it would be silently absent for exactly the LAN users who most need
+guidance.
+
+**Forward-looking constraint.** An external player sends none of the browser's cookies or
+headers. The endpoints work today only because the API has no authentication. If auth is ever
+added, these two endpoints break for external players and would need a signed, expiring token
+embedded in the URL rather than session credentials. Worth knowing before an auth model is
+designed, so this case is accounted for rather than discovered.
 
 The URLs are constructed inline as plain strings rather than through `api/client.ts`, whose
 `apiFetch` helpers exist to parse JSON responses and throw `ApiError`, and neither applies to a
@@ -144,20 +194,26 @@ actually happens, and rip-first deferral routes more reviews into that phase.
 
 ## Security
 
-The API has no authentication today, and CORS is the only gate. These endpoints serve full
-media file bytes over HTTP, so anyone who can reach the dashboard on the LAN can pull raw
-rips. Relative to the existing exposure (`/api/config`, the diagnostics bundle, the whole
-job API), the delta is modest, but it is a real widening and is accepted knowingly rather
-than overlooked.
+The API has no authentication today. These endpoints serve full media file bytes over HTTP,
+which is a genuine widening of what the API exposes, so the reach is bounded by the same
+opt-in the import endpoints already use rather than left open.
 
-The mitigations that do apply:
-
-- Path comes from the database keyed by `(job_id, title_id)`; no client-supplied path is ever
-  accepted. `TitleResponse.output_filename` already goes out to the client, but it must never
-  come back in.
-- Containment check against configured roots, so a corrupted or hand-edited `output_filename`
-  cannot be used to read arbitrary files.
+- **Origin gate.** `require_localhost_or_lan`. Loopback always; LAN peers only when the user
+  has set `allow_lan_access`. On a default install these endpoints are unreachable from the
+  network, and a user who enables LAN access has already accepted filesystem browsing and
+  manual import over the same boundary. Serving media to that peer is consistent with the
+  decision they made, not an escalation beyond it.
+- **No client-supplied paths.** The path comes from the database keyed by
+  `(job_id, title_id)`. `TitleResponse.output_filename` already goes out to the client, but it
+  must never come back in.
+- **Containment check** against the configured roots, so a corrupted or hand-edited
+  `output_filename` cannot be turned into an arbitrary file read.
 - `403` for out-of-bounds paths, `404` for missing ones.
+
+The residual risk is accepted knowingly: a LAN peer permitted by `allow_lan_access` can
+enumerate job and title ids and pull any ripped file. That peer can already browse the
+filesystem and drive imports through the existing gated endpoints, so this adds a new data
+egress path rather than a new trust boundary.
 
 ## Testing
 
@@ -173,12 +229,18 @@ The mitigations that do apply:
 - Playlist body contains an absolute URL built from the request `Host` header; assert
   explicitly that a non-localhost `Host` produces a non-localhost URL.
 - Playlist carries `Content-Disposition: attachment` and the `audio/x-mpegurl` type.
+- Both endpoints reject a non-loopback peer with `403` when `allow_lan_access` is false, and
+  serve it when true. Tests override the dependency rather than spoofing peer addresses, per
+  the note in `guards.py`. Note that `ASGITransport` defaults the peer to loopback, so the
+  403 branch is only reachable by passing an explicit non-loopback `client=` to the transport.
 
 **Frontend unit** (`Inspector.test.tsx`, vitest + RTL):
 
 - Controls render when the title has a resolvable file.
 - Controls are absent when it has neither path field.
 - Copy writes the expected absolute URL to the clipboard.
+- The standing hint renders whenever the controls do, since it is the only guidance a user
+  gets when the handoff fails silently.
 
 No E2E coverage. The value of the feature is what a native application does after the browser
 hands off, which Playwright cannot observe.
@@ -191,6 +253,9 @@ hands off, which Playwright cannot observe.
 - Contact-sheet thumbnail generation. It was considered and is genuinely useful for "which
   episode is this", but it requires ffmpeg, which this design deliberately avoids depending
   on.
+- Player detection or an install-help prompt, for the reasons set out above. Not deferred
+  pending effort; it is a question the platform cannot answer honestly.
 - Authentication for media endpoints, which would need an app-wide auth model that does not
-  exist yet.
+  exist yet. The token constraint this creates is recorded above so a future auth design
+  accounts for it.
 - Playback position, resume, or any player state round-tripping back into Engram.
