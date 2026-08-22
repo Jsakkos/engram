@@ -19,7 +19,7 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,7 @@ from app.api.guards import require_localhost, require_localhost_or_lan
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.errors import AIProviderError
-from app.core.security import is_allowed_image_url, sanitize_log_value
+from app.core.security import is_allowed_image_url, is_within_configured_roots, sanitize_log_value
 from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
 from app.matcher.coverage_tracker import get_cache_status
@@ -4167,6 +4167,71 @@ async def rematch_title(
         raise HTTPException(status_code=400, detail=str(e)) from None
 
     return {"status": "rematching", "title_id": title_id}
+
+
+async def _resolve_title_media_path(job: DiscJob, title_id: int, session: AsyncSession) -> Path:
+    """Resolve the on-disk media file for a title, or raise the right HTTPException.
+
+    The path is read from the database and never accepted from the client:
+    ``output_filename`` (set at rip time) first, then ``organized_to`` for a
+    track whose staging copy has already been moved into the library.
+
+    Distinguishes three failure modes deliberately, because they need different
+    user-facing fixes: nothing recorded (not ripped yet), recorded but gone
+    (cleaned up or moved externally), and out of bounds (bad data or
+    misconfiguration, which is a 403 rather than a 404 so it is not mistaken
+    for ordinary absence).
+    """
+    from app.services.config_service import get_config
+
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job.id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    recorded = title.output_filename or title.organized_to
+    if not recorded:
+        raise HTTPException(
+            status_code=404,
+            detail="This track has not been ripped yet, so there is nothing to play",
+        )
+
+    config = await get_config()
+    roots = [config.staging_path, config.library_tv_path, config.library_movies_path]
+    if not is_within_configured_roots(recorded, roots):
+        logger.warning(
+            "Refusing to serve media outside the configured roots: %s",
+            sanitize_log_value(recorded),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="This file is outside the configured staging and library folders",
+        )
+
+    path = Path(recorded)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="The file for this track is no longer on disk")
+    return path
+
+
+@router.get(
+    "/jobs/{job_id}/titles/{title_id}/media",
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def stream_title_media(
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """Stream a ripped track for playback in an external player.
+
+    Serves the raw MKV untouched. Browsers cannot decode it (MKV container,
+    MPEG-2/HEVC video, DTS/TrueHD/AC3 audio), so this is consumed by VLC/MPV
+    and friends via the companion playlist endpoint, not by a <video> element.
+    Starlette's FileResponse implements Range/206/416, so seeking works without
+    any handling here.
+    """
+    path = await _resolve_title_media_path(job, title_id, session)
+    return FileResponse(path, media_type="video/x-matroska", filename=path.name)
 
 
 @router.post("/jobs/{job_id}/rematch")
