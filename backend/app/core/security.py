@@ -238,5 +238,13 @@ def sanitize_playlist_field(value: str) -> str:
     """
     if not value:
         return ""
-    collapsed = value.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    # str.splitlines() already knows every boundary Python calls a line break
+    # (LF, CR, CRLF, and the exotics: NEL, U+2028, U+2029), so rejoining its
+    # parts collapses all of them without hardcoding a character class that
+    # would drift from that definition. CRLF counts as one boundary, so a pair
+    # becomes a single space. Mainstream .m3u demuxers only split on 0x0a, so
+    # the exotics are not exploitable against VLC or MPV today; covering them
+    # keeps the guarantee tied to the function's name rather than to which
+    # parser happens to read the output.
+    collapsed = " ".join(value.splitlines())
     return _LOG_CONTROL_CHARS_RE.sub("", collapsed).strip()

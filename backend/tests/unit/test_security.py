@@ -166,6 +166,30 @@ class TestSanitizePlaylistField:
     def test_leaves_ordinary_label_unchanged(self):
         assert sanitize_playlist_field("Arrested Development S1D1") == "Arrested Development S1D1"
 
+    def test_crlf_collapses_to_a_single_space(self):
+        # One boundary, one space. Replacing CR and LF independently would
+        # leave two, which is cosmetic here but signals the pair was not
+        # recognised as a unit.
+        assert sanitize_playlist_field("a\r\nb") == "a b"
+
+    @pytest.mark.parametrize(
+        ("name", "codepoint"),
+        [("NEL", 0x85), ("LINE SEPARATOR", 0x2028), ("PARAGRAPH SEPARATOR", 0x2029)],
+    )
+    def test_strips_exotic_unicode_line_boundaries(self, name, codepoint):
+        """Python treats these as line breaks even though .m3u parsers do not.
+
+        No mainstream demuxer splits on them, so they are not exploitable
+        against VLC or MPV, but the function claims to strip line breaks and
+        that claim should hold against Python's own definition rather than
+        against whichever parser happens to read the output. Written with
+        chr() so the source file never contains a literal separator, which
+        would break the line it sits on.
+        """
+        result = sanitize_playlist_field(f"a{chr(codepoint)}b")
+        assert result == "a b", name
+        assert len(result.splitlines()) == 1, name
+
 
 class TestIsWithinConfiguredRoots:
     """Containment guard for media paths read out of the database."""
