@@ -208,8 +208,25 @@ describe('inferSpan', () => {
         expect(inferSpan(null, segments)).toBe(1);
     });
 
-    it('does not guess when the track is between whole multiples', () => {
-        // 17.5min is neither two nor three 7min segments.
-        expect(inferSpan(17.5 * 60, segments)).toBe(1);
+    it('allows for the credits a DVD track carries and TMDB omits', () => {
+        // The real regression: a 24.6min block of three 7min segments. Rounding
+        // its 3.5 ratio picked 4 and rejected it, so the one track that most
+        // needed a span offered none.
+        expect(inferSpan(24.65 * 60, segments)).toBe(3);
+    });
+
+    it('does not guess for a track shorter than two whole episodes', () => {
+        expect(inferSpan(9.8 * 60, segments)).toBe(1);
+    });
+
+    it('considers every runtime a season lists, not just the commonest', () => {
+        // A season can list 7min segments alongside 11min ones; a 22min track is
+        // two of the latter as readily as three of the former.
+        const mixed: RosterEpisode[] = [
+            { episode_code: 'S01E01', episode_number: 1, name: 'a', runtime: 7 },
+            { episode_code: 'S01E02', episode_number: 2, name: 'b', runtime: 7 },
+            { episode_code: 'S01E03', episode_number: 3, name: 'c', runtime: 11 },
+        ];
+        expect(inferSpan(22.2 * 60, mixed)).toBe(2);
     });
 });

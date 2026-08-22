@@ -202,10 +202,12 @@ export function EpisodePicker({
                 </div>
             )}
 
-            {/* Combined-track stepper. Shown once the span is in play — either the
-                user's current assignment is a range, or the track's runtime says it
-                probably holds several episodes. */}
-            {(span > 1 || selectedSpan > 1 || suggestedSpan > 1) && (
+            {/* Combined-track stepper. Always present: a control that appears only
+                when the runtime heuristic fires is missing from exactly the track
+                whose length the heuristic could not read, which is the track most
+                likely to need setting by hand. It rests at "1 episode", which is
+                what an ordinary track is. */}
+            {(
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
                     <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
                         Spans
