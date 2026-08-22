@@ -1863,6 +1863,23 @@ async def update_config(config: ConfigUpdate) -> dict:
             if error:
                 raise HTTPException(status_code=400, detail=f"{field}: {error}")
 
+    # Tidy every path the user gave us before it is validated or stored: strip the
+    # quotes Windows' "Copy as path" adds, expand ~, settle separators, and put a
+    # UNC path into one canonical spelling so "//server/share" and
+    # "\\server\share" are the same setting rather than two that behave alike.
+    from app.core.paths import normalize_user_path
+
+    for _field in (
+        "library_movies_path",
+        "library_tv_path",
+        "staging_path",
+        "import_watch_path",
+        "subtitles_cache_path",
+        "discdb_export_path",
+    ):
+        if update_data.get(_field):
+            update_data[_field] = normalize_user_path(update_data[_field])
+
     # Validate library paths are actually writable before persisting (#563).
     # A path Engram cannot write to used to be accepted silently and only
     # surfaced as an opaque organize failure after a full rip: the exact

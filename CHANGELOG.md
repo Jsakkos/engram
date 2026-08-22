@@ -4,6 +4,49 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Review every disc before it is organized.** A new setting under *Naming &
+  extras* holds every disc in the Review Queue for confirmation, however
+  confident the match was. The matcher still runs and pre-fills its best guess —
+  you just get the last word before anything moves into the library. Useful for
+  shows the matcher handles badly.
+- **One track can now be assigned several episodes.** Segment-format shows
+  (three ~7 minute cartoon segments in one 22 minute DVD track) list each segment
+  as its own TMDB episode, so a single track really is `S01E01-E03`. The review
+  picker can now say so, and the file is named with the range form Plex and
+  Jellyfin both read.
+- **The manual episode picker is searchable.** Type part of an episode name or
+  its number instead of scrolling a dropdown — which matters for the 40-100
+  episode seasons that segment-numbered shows produce. Episode names come from
+  the TMDB data Engram already caches.
+- **Settings now checks your library and staging folders.** Each path field shows
+  whether the folder exists, whether Engram can actually write to it (a real
+  write test, not a guess at permissions), and how much space is free — so a typo
+  or a permissions problem is visible immediately instead of surfacing as a failed
+  organize after a completed rip.
+- **Network shares are supported as library paths.** A Windows UNC path
+  (`\\server\share\TV`) works wherever a local path does, including the pasted
+  `//server/share` spelling, which is normalized to one canonical form. A share
+  that is offline while you are editing settings is flagged as a warning rather
+  than rejected, and a Windows-style share path entered on Linux or macOS now
+  explains that it needs mounting instead of failing obscurely.
+
+### Fixed
+
+- **Discs whose every track was filed as "extras" are held for review instead of
+  quietly completing.** When TMDB's runtimes don't describe the disc, the
+  duration pre-filter could reject every track on it, so a whole box set could
+  file every one of its episodes into `Extras/` and report success. Such
+  a disc now stops for confirmation, because "nothing on this disc is an episode"
+  is far more often a failed match than a genuine bonus disc.
+- **Episode-length tracks are no longer mistaken for extras on segment-format
+  shows.** When no track on a disc matches a single TMDB runtime but tracks match
+  whole multiples of one, Engram now recognises the disc as segment-numbered and
+  accepts the combined tracks as episodes. If nothing fits under either rule, the
+  runtime filter is disabled for that disc and the audio matcher — which compares
+  content, not clocks — decides.
+
 ## [0.32.0] - 2026-08-19
 
 _Highlights: review jobs stay visible even after they age off the dashboard._

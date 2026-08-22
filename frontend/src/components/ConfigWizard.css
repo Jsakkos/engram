@@ -1107,3 +1107,27 @@
     letter-spacing: 0.08em;
     font-size: 0.78rem;
 }
+
+/* Path check status — the live "will this folder actually work?" line under a
+   library/staging field. Colour carries the verdict at a glance: an offline
+   share is a warning (the path may be right, just not mounted right now), while
+   an unwritable or malformed path is an error. */
+.path-status {
+    display: block;
+}
+
+.path-status-checking {
+    color: var(--color-sv-ink-faint);
+}
+
+.path-status-ok {
+    color: var(--color-sv-cyan);
+}
+
+.path-status-warn {
+    color: var(--color-sv-yellow);
+}
+
+.path-status-error {
+    color: var(--color-sv-red);
+}
