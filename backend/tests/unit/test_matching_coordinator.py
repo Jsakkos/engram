@@ -19,6 +19,9 @@ from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
+    FILTER_MULTIPLES,
+    FILTER_OFF,
+    FILTER_STRICT,
     MatchingCoordinator,
     _duration_matches_episode_runtime,
     episode_curator,
@@ -179,6 +182,93 @@ class TestDurationMatchesEpisodeRuntime:
     def test_empty_runtimes_never_matches(self):
         # No runtimes → the pre-filter caller skips entirely; the predicate is False.
         assert _duration_matches_episode_runtime(45.0, []) is False
+
+
+@pytest.mark.unit
+class TestCombinedTrackTolerance:
+    """``allow_multiples`` accepts a track holding N whole episodes — the
+    segment-format case: TMDB lists a cartoon's ~7min segments while the DVD
+    carries the assembled ~22min block. Opt-in per disc, never the default."""
+
+    def test_three_segment_block_matches_with_multiples(self):
+        assert _duration_matches_episode_runtime(22.3, [7], allow_multiples=True) is True
+
+    def test_three_segment_block_is_an_extra_under_the_strict_rule(self):
+        # The regression itself: strict comparison calls a real episode an extra.
+        assert _duration_matches_episode_runtime(22.3, [7]) is False
+
+    def test_multiples_does_not_swallow_a_play_all(self):
+        # 8 segments' worth exceeds MAX_COMBINED_EPISODES_PER_TRACK — still an extra.
+        assert _duration_matches_episode_runtime(56.0, [7], allow_multiples=True) is False
+
+    def test_multiples_still_rejects_a_short_featurette(self):
+        # 10min against 22min episodes: short of one episode and nowhere near two.
+        assert _duration_matches_episode_runtime(10.0, [22], allow_multiples=True) is False
+
+    def test_combined_window_scales_with_the_block(self):
+        # The tolerance is a fraction of the COMBINED runtime, so a 3 x 11min
+        # block accepts 29.7-41.25min and rejects a 60min bonus documentary that
+        # a flat +/-window around 33min would have let through.
+        assert _duration_matches_episode_runtime(33.0, [11], allow_multiples=True) is True
+        assert _duration_matches_episode_runtime(60.0, [11], allow_multiples=True) is False
+
+
+@pytest.mark.unit
+class TestRuntimeFilterPolicy:
+    """The disc-level verdict on TMDB's runtimes. A per-title decision cannot see
+    that EVERY track was about to be filed as an extra — the tell that the runtime
+    list, not the disc, is wrong — the failure that files a whole box set's
+    episodes into Extras/ and auto-completes every disc."""
+
+    async def _policy(self, durations_min, runtimes, is_selected=None):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, _ = await _seed(session, duration_seconds=durations_min[0] * 60)
+            for i, minutes in enumerate(durations_min[1:], start=1):
+                session.add(
+                    DiscTitle(
+                        job_id=job.id,
+                        title_index=i,
+                        duration_seconds=minutes * 60,
+                        state=TitleState.MATCHING,
+                        is_selected=True if is_selected is None else is_selected[i],
+                    )
+                )
+            await session.commit()
+            return await coord._runtime_filter_policy(job.id, runtimes)
+
+    async def test_ordinary_disc_stays_strict(self):
+        assert await self._policy([44, 43, 45], GILMORE_S1) == FILTER_STRICT
+
+    async def test_disc_with_episodes_and_a_bonus_feature_stays_strict(self):
+        # One 88min bonus feature alongside real episodes must NOT relax the rule
+        # for the whole disc — it is exactly what the pre-filter is for.
+        assert await self._policy([44, 43, 88], GILMORE_S1) == FILTER_STRICT
+
+    async def test_segment_numbered_show_switches_to_multiples(self):
+        # A segment-format disc: seven 22min blocks vs TMDB's 7min segments.
+        assert await self._policy([22, 22, 22, 22, 23, 22, 22], [7, 7, 7]) == FILTER_MULTIPLES
+
+    async def test_runtimes_that_fit_nothing_disable_the_filter(self):
+        # Wrong show / wrong season: no track fits under either rule, so the disc
+        # goes to the matcher instead of wholesale into Extras.
+        assert await self._policy([22, 23, 22], [90, 95]) == FILTER_OFF
+
+    async def test_play_all_track_is_excluded_from_the_verdict(self):
+        # The deselected 156min Play All must not read as a multiple of 7min and
+        # drag the disc into FILTER_MULTIPLES on its own.
+        policy = await self._policy([156, 200], [7], is_selected=[True, False])
+        assert policy == FILTER_OFF
+
+    async def test_verdict_is_cached_per_job(self):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, _ = await _seed(session, duration_seconds=44 * 60)
+            first = await coord._runtime_filter_policy(job.id, GILMORE_S1)
+        assert coord._runtime_filter_policy_cache[job.id] == first
+        # Second call must not re-read the disc (the cached verdict wins even
+        # against runtimes that would decide differently).
+        assert await coord._runtime_filter_policy(job.id, [90]) == first
 
 
 @pytest.mark.unit

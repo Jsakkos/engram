@@ -50,18 +50,62 @@ STRICT_MIN_VOTES = 4
 EPISODE_DURATION_UNDER_TOLERANCE_MIN = 5
 EPISODE_DURATION_OVER_TOLERANCE_MIN = 10
 
+# How many TMDB episodes one physical track may combine, when the disc as a whole
+# says TMDB is numbering segments rather than broadcast episodes (see
+# _runtime_filter_policy). Segment-format cartoons put 2-3 segments in a 22min
+# slot; the cap keeps a "Play All" concatenation from reading as a long episode.
+MAX_COMBINED_EPISODES_PER_TRACK = 4
 
-def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int]) -> bool:
+# Tolerance for a COMBINED track, as a fraction of the combined runtime rather
+# than the flat minutes used for a single episode. The error scales with the
+# number of segments (each carries its own titles/credits), while a flat -5min
+# window around a short segment runtime is so wide it would swallow ordinary
+# featurettes (2 x 7min - 5 = 9min).
+COMBINED_UNDER_TOLERANCE_FRACTION = 0.10
+COMBINED_OVER_TOLERANCE_FRACTION = 0.25
+
+# Duration pre-filter modes, decided ONCE per disc:
+#   strict    - the normal rule: a track matches a single episode runtime.
+#   multiples - no track matched a single runtime but some track matches N x a
+#               runtime, so TMDB is numbering segments; accept combined tracks.
+#   off       - no track matched under either rule, so the runtime list is not
+#               describing this disc at all. Trust the matcher instead of
+#               declaring the entire disc "extras".
+FILTER_STRICT = "strict"
+FILTER_MULTIPLES = "multiples"
+FILTER_OFF = "off"
+
+
+def _duration_matches_episode_runtime(
+    title_minutes: float, runtimes: list[int], *, allow_multiples: bool = False
+) -> bool:
     """True if a track's duration is plausibly an episode for this season.
 
     Asymmetric window: a track may fall up to ``UNDER`` minutes short of an episode
     runtime or run up to ``OVER`` minutes past it (DVD recap + credits padding).
+
+    ``allow_multiples`` additionally accepts a track that is ~N whole episodes
+    long — the segment-format case, where TMDB lists each ~7min segment as its
+    own episode while the DVD carries the assembled ~22min block. It is opt-in
+    per disc, never the default: widening the window for every disc would file
+    genuine double-length bonus features as episodes.
     """
-    return any(
+    if any(
         (rt - EPISODE_DURATION_UNDER_TOLERANCE_MIN)
         <= title_minutes
         <= (rt + EPISODE_DURATION_OVER_TOLERANCE_MIN)
         for rt in runtimes
+    ):
+        return True
+    if not allow_multiples:
+        return False
+    return any(
+        (combined * (1 - COMBINED_UNDER_TOLERANCE_FRACTION))
+        <= title_minutes
+        <= (combined * (1 + COMBINED_OVER_TOLERANCE_FRACTION))
+        for rt in runtimes
+        for n in range(2, MAX_COMBINED_EPISODES_PER_TRACK + 1)
+        if (combined := rt * n)
     )
 
 
@@ -219,6 +263,12 @@ class MatchingCoordinator:
         # Shared state (moved from JobManager)
         self._discdb_mappings: dict[int, list] = {}
         self._episode_runtimes: dict[int, list[int]] = {}
+        # Duration pre-filter mode per job (FILTER_STRICT / FILTER_MULTIPLES /
+        # FILTER_OFF), decided once from the whole disc — see
+        # _runtime_filter_policy. A per-title decision cannot see that EVERY
+        # track was about to be called an extra, which is the tell that the
+        # runtime list, not the disc, is wrong.
+        self._runtime_filter_policy_cache: dict[int, str] = {}
         # Per-job lock guarding the runtimes cache population. Collapses the
         # cold-window stampede where many titles of one job fetch runtimes at
         # once (see _episode_runtimes_for_job). defaultdict creates each lock
@@ -251,6 +301,7 @@ class MatchingCoordinator:
         """
         self._episode_runtimes.pop(job_id, None)
         self._episode_runtimes_locks.pop(job_id, None)
+        self._runtime_filter_policy_cache.pop(job_id, None)
         self._discdb_mappings.pop(job_id, None)
         self._subtitle_ready.pop(job_id, None)
         task = self._subtitle_tasks.pop(job_id, None)
@@ -787,7 +838,11 @@ class MatchingCoordinator:
                 )
                 if runtimes and title_duration:
                     title_minutes = title_duration / 60
-                    if not _duration_matches_episode_runtime(title_minutes, runtimes):
+                    # Decide (once per disc) how far to trust these runtimes.
+                    policy = await self._runtime_filter_policy(job_id, runtimes)
+                    if policy != FILTER_OFF and not _duration_matches_episode_runtime(
+                        title_minutes, runtimes, allow_multiples=policy == FILTER_MULTIPLES
+                    ):
                         # Re-fetch under a fresh session: _handle_extras writes.
                         async with async_session() as session:
                             job = await session.get(DiscJob, job_id)
@@ -855,6 +910,82 @@ class MatchingCoordinator:
             if self._match_semaphore is not None:
                 self._match_semaphore.release()
                 logger.info(f"[MATCH] Title {title_id} (Job {job_id}): released match semaphore")
+
+    async def _runtime_filter_policy(self, job_id: int, runtimes: list[int]) -> str:
+        """How far to trust TMDB's runtimes for this disc — decided once, per job.
+
+        The duration pre-filter is a good servant and a terrible master. It exists
+        to spot bonus features before the matcher forces them onto an episode, and
+        for an ordinary disc it does. But when TMDB's runtime figures describe
+        something other than the disc's tracks, the same rule quietly condemns
+        EVERY track to Extras and the job auto-completes looking successful — the
+        failure mode this method exists to break.
+
+        Two things can be wrong, and the disc as a whole tells them apart:
+
+        * TMDB numbers *segments*, not broadcast episodes (a segment-format cartoon
+          lists three ~7min segments per 22min slot, so every 22min DVD track
+          "matches nothing"). If no track matches a single runtime but some track
+          matches a whole multiple of one, the disc is segment-format →
+          FILTER_MULTIPLES.
+        * The runtimes are simply not about this disc (wrong same-name show,
+          wrong season, a season TMDB has no runtimes for). Nothing matches under
+          either rule → FILTER_OFF: skip the pre-filter entirely and let the
+          audio matcher — which compares content, not clocks — have its say.
+
+        The strict rule stays in force whenever *any* track matches a single
+        runtime: a disc that carries real episodes AND a long bonus feature must
+        keep filing that feature as an extra, so the fallbacks are per-disc
+        escapes, never a general widening of the window.
+        """
+        cached = self._runtime_filter_policy_cache.get(job_id)
+        if cached is not None:
+            return cached
+
+        # Only the tracks that will actually be matched: "Play All" concatenations
+        # are already deselected at identification, and counting one would make a
+        # 156min block look like a legitimate multiple of a 7min segment.
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscTitle).where(
+                    DiscTitle.job_id == job_id,
+                    DiscTitle.is_selected == True,  # noqa: E712 — SQL boolean column
+                )
+            )
+            durations = [
+                t.duration_seconds / 60 for t in result.scalars().all() if t.duration_seconds
+            ]
+
+        if not durations:
+            # Nothing to judge from yet — stay strict rather than caching a verdict
+            # drawn from an empty disc.
+            return FILTER_STRICT
+
+        if any(_duration_matches_episode_runtime(d, runtimes) for d in durations):
+            policy = FILTER_STRICT
+        elif any(
+            _duration_matches_episode_runtime(d, runtimes, allow_multiples=True) for d in durations
+        ):
+            policy = FILTER_MULTIPLES
+            logger.warning(
+                f"[MATCH] Job {job_id}: no track matches a single TMDB runtime "
+                f"{sorted(set(runtimes))[:6]}, but tracks match whole multiples of one "
+                f"(durations {[round(d) for d in durations][:8]}min) — TMDB appears to "
+                f"number segments rather than broadcast episodes. Accepting combined "
+                f"tracks as episodes for this disc; assign the episode range in review."
+            )
+        else:
+            policy = FILTER_OFF
+            logger.warning(
+                f"[MATCH] Job {job_id}: NO track fits TMDB's runtimes "
+                f"{sorted(set(runtimes))[:6]} (durations {[round(d) for d in durations][:8]}min), "
+                f"even allowing combined tracks — the runtime list does not describe this "
+                f"disc. Disabling the duration pre-filter for this job so the matcher "
+                f"decides, rather than filing every track as an extra."
+            )
+
+        self._runtime_filter_policy_cache[job_id] = policy
+        return policy
 
     async def _episode_runtimes_for_job(
         self,
