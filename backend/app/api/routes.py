@@ -33,6 +33,7 @@ from sqlmodel import select
 from app.api.guards import require_localhost, require_localhost_or_lan
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
+from app.core.episode_codes import parse_episode_code
 from app.core.errors import AIProviderError
 from app.core.security import is_allowed_image_url, sanitize_log_value
 from app.core.updater import UpdateError, UpdateStatus, update_checker
@@ -691,15 +692,16 @@ async def get_job_titles(
     return list(result.scalars().all())
 
 
-_EPISODE_CODE_RE = re.compile(r"S(\d+)E(\d+)", re.IGNORECASE)
-
-
 class RosterEpisode(BaseModel):
     """One episode slot in the season roster with cross-disc coverage."""
 
     episode_code: str
     episode_number: int
     name: str
+    # TMDB runtime in minutes (None when TMDB doesn't carry one). Lets review
+    # spot a track holding several episodes: segment-format shows list ~7min
+    # episodes while the DVD track is a ~22min three-segment block.
+    runtime: int | None = None
     status: Literal["assigned", "duplicate", "missing", "off"]
     assigned_title_ids: list[int]
     # Subtitle-reference availability (the source of truth for auto-matching).
@@ -815,12 +817,14 @@ async def get_season_roster(
     )
     assigned: dict[int, list[int]] = {}
     for title in result.scalars().all():
-        if not title.matched_episode:
+        parsed = parse_episode_code(title.matched_episode)
+        if not parsed or parsed[0] != season_num:
             continue
-        match = _EPISODE_CODE_RE.search(title.matched_episode)
-        if not match or int(match.group(1)) != season_num:
-            continue
-        assigned.setdefault(int(match.group(2)), []).append(title.id)
+        # A combined track ("S01E01-E03") occupies EVERY episode it claims,
+        # so the roster shows all three slots filled by that one title rather
+        # than two phantom gaps beside it.
+        for episode_number in parsed[1]:
+            assigned.setdefault(episode_number, []).append(title.id)
 
     present = sorted(assigned)
     lo, hi = (present[0], present[-1]) if present else (0, -1)
@@ -855,6 +859,7 @@ async def get_season_roster(
             episode_code=(code := f"S{season_num:02d}E{ep['episode_number']:02d}"),
             episode_number=ep["episode_number"],
             name=ep.get("name") or "",
+            runtime=ep.get("runtime"),
             status=(
                 "duplicate"
                 if len(assigned.get(ep["episode_number"], [])) > 1

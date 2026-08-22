@@ -1976,7 +1976,25 @@ class JobManager:
         ``source`` defaults to "user" (manual reassignment). When the user
         accepts an LLM suggestion via the review UI, pass source="ai_llm" so
         downstream consumers can distinguish that path.
+
+        ``episode_code`` may be a single episode ("S01E07"), a combined-track
+        range ("S01E01-E03" — one file holding several episodes, as
+        segment-format shows put on DVD), or the pseudo-codes "extra"/"skip".
+        It is canonicalized here so the DB never holds two spellings of one
+        assignment, and rejected up front when it is neither: an unparseable
+        code would otherwise sail through review and only fail at organize time,
+        after the user thinks the disc is resolved.
         """
+        from app.core.episode_codes import normalize_episode_code, parse_episode_code
+
+        if episode_code not in ("extra", "skip"):
+            if not parse_episode_code(episode_code):
+                raise ValueError(
+                    f"Invalid episode code: {episode_code!r} "
+                    "(expected SxxExx, a range like S01E01-E03, 'extra' or 'skip')"
+                )
+            episode_code = normalize_episode_code(episode_code)
+
         async with async_session() as session:
             title = await session.get(DiscTitle, title_id)
             if not title or title.job_id != job_id:
@@ -1989,6 +2007,10 @@ class JobManager:
                 title.edition = edition
             if title.state != TitleState.MATCHED:
                 title.state = TitleState.MATCHED
+            # A track auto-sorted into Extras that the user reassigns to a real
+            # episode must lose the extra flag, or finalize files it back into
+            # Extras/ despite the episode code (mirrors _apply_decision_fields).
+            title.is_extra = episode_code == "extra"
             # Clear stale review-reason flags describing the PRIOR match attempt:
             # a fresh user assignment supersedes them. Leaving error/message would
             # keep the Inspector's "File exists" badge lit on the new episode, and

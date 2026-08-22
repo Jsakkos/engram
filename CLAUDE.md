@@ -220,6 +220,15 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
   `Extras/` and reporting success. "Nothing here is an episode" is far more often a failed
   match than a genuine bonus disc, and the mis-file is invisible until someone browses the
   library. Independent of `always_review` — this is the floor, not the override.
+- **Episode codes are multi-episode capable**: `app/core/episode_codes.py` owns parsing and
+  canonicalization. One track can hold several TMDB episodes (`S01E01-E03`) — real for
+  segment-format shows, where TMDB numbers ~7min segments and the DVD carries the assembled
+  ~22min block. Anything reading `matched_episode` must go through `parse_episode_code` /
+  `episode_parts` rather than a local `S(\d+)E(\d+)`, which would silently truncate a combined
+  code to its first episode. `organize_tv_episode` names the file with the Plex/Jellyfin range
+  form; roster coverage counts the track against every episode it claims. The DiscDB export
+  publishes the range form too (`"1-2"`), which is TheDiscDB's own convention for a combined
+  title — not the first episode alone.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
 - **Import path ownership**: a staging path is owned by an *in-flight* job (hard block, not overridable) and merely recorded by a *completed* one (soft block, overridable via `force_keys`). `FAILED` never blocks. Rules live in `app/services/import_guard.py`; `POST /api/import/start` returns `{job_ids, blocked[]}` and never 409s.
 - **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.

@@ -56,6 +56,59 @@ class TestFormatEpisodeFilename:
         assert result == "Show - S01E01"
 
 
+class TestCombinedEpisodeFilename:
+    """One track holding several episodes is named with the Plex/Jellyfin range
+    form, so both scanners resolve every episode in it instead of only the first
+    (segment-format shows: three ~7min segments in one 22min DVD track)."""
+
+    def test_contiguous_run_collapses_to_a_compact_range(self):
+        result = format_episode_filename(
+            "{show} - S{season:02d}E{episode:02d}",
+            "Segment Show",
+            1,
+            1,
+            extra_episodes=[2, 3],
+        )
+        assert result == "Segment Show - S01E01-E03"
+
+    def test_gapped_set_uses_the_run_on_form(self):
+        # "S01E01-E03" would claim E02, which this file does not contain — the
+        # run-on form says "E01 and E03" and nothing else.
+        result = format_episode_filename(
+            "{show} - S{season:02d}E{episode:02d}", "Show", 1, 1, extra_episodes=[3]
+        )
+        assert result == "Show - S01E01E03"
+
+    def test_no_extras_is_unchanged(self):
+        assert (
+            format_episode_filename(
+                "{show} - S{season:02d}E{episode:02d}", "Show", 1, 5, extra_episodes=[]
+            )
+            == "Show - S01E05"
+        )
+
+    def test_range_is_spliced_before_a_trailing_segment(self):
+        # A format with something AFTER the episode number must keep the range
+        # attached to the number, or a scanner reads the file as one episode.
+        result = format_episode_filename(
+            "{show} - S{season:02d}E{episode:02d} [{year}]",
+            "Show",
+            1,
+            1,
+            year=1996,
+            extra_episodes=[2],
+        )
+        assert result == "Show - S01E01-E02 [1996]"
+
+    def test_custom_format_without_an_e_token_still_carries_the_range(self):
+        # "3x07" has no E-token to splice into; the range must still be recorded
+        # rather than dropped, even if the name reads oddly.
+        result = format_episode_filename(
+            "{show} {season:d}x{episode:02d}", "Show", 3, 7, extra_episodes=[8]
+        )
+        assert result.endswith("-E08")
+
+
 # ---------------------------------------------------------------------------
 # format_movie_folder
 # ---------------------------------------------------------------------------

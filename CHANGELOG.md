@@ -11,6 +11,11 @@ All notable changes to Engram will be documented in this file.
   confident the match was. The matcher still runs and pre-fills its best guess —
   you just get the last word before anything moves into the library. Useful for
   shows the matcher handles badly.
+- **One track can now be assigned several episodes.** Segment-format shows
+  (three ~7 minute cartoon segments in one 22 minute DVD track) list each segment
+  as its own TMDB episode, so a single track really is `S01E01-E03`. The review
+  picker can now say so, and the file is named with the range form Plex and
+  Jellyfin both read.
 
 ### Fixed
 
