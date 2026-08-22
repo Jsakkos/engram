@@ -168,10 +168,16 @@ export function Inspector({
                     {playable && (
                         <div style={{ marginTop: 8 }}>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {/* target=_blank protects unsaved review state: a 404 (staging
+                                    cleaned up since the page loaded) or 403 (LAN gate) would
+                                    otherwise navigate this tab to a raw JSON error body. On
+                                    success the attachment download closes the new tab itself. */}
                                 <SvActionButton
                                     tone="cyan"
                                     size="sm"
                                     href={playlistHref}
+                                    target="_blank"
+                                    rel="noopener"
                                     ariaLabel="Open in player (downloads a playlist file)"
                                     title="Download a playlist that opens this track in your default video player"
                                 >

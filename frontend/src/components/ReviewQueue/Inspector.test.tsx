@@ -206,6 +206,16 @@ describe('Inspector — external player controls', () => {
         expect(link).toHaveAttribute('href', '/api/jobs/7/titles/42/playlist.m3u');
     });
 
+    it('opens the player link in a new tab so an error cannot discard review state', () => {
+        renderInspector({
+            title: makeTitle({ output_filename: 'C:\\staging\\title_01.mkv' }),
+        });
+
+        const link = screen.getByRole('link', { name: /open in player/i });
+        expect(link).toHaveAttribute('target', '_blank');
+        expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+    });
+
     it('copies an absolute media URL to the clipboard', async () => {
         const writeText = vi.fn().mockResolvedValue(undefined);
         const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
