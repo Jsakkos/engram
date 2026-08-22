@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { DiscTitle } from '../../types';
 import {
+    buildRangeCode,
     computeCoverage,
     displayEpisodeCode,
     suggestGapCode,
     collidingCodes,
     buildCandidates,
     episodeParts,
+    inferSpan,
     isMultiEpisode,
     normalizeEpisodeCode,
     parseEpisodeCode,
@@ -160,6 +162,11 @@ describe('combined episode codes', () => {
         expect(collisions.has('S03E02')).toBe(true);
         expect(collisions.has('S03E01')).toBe(false);
     });
+
+    it('builds a range code from a first episode and a span', () => {
+        expect(buildRangeCode(1, 1, 3)).toBe('S01E01-E03');
+        expect(buildRangeCode(12, 7, 1)).toBe('S12E07');
+    });
 });
 
 describe('displayEpisodeCode', () => {
@@ -174,5 +181,35 @@ describe('displayEpisodeCode', () => {
     it('leaves single episodes and pseudo-codes alone', () => {
         expect(displayEpisodeCode('S01E01')).toBe('S01E01');
         expect(displayEpisodeCode('extra')).toBe('extra');
+    });
+});
+
+describe('inferSpan', () => {
+    const segments: RosterEpisode[] = [1, 2, 3, 4].map((n) => ({
+        episode_code: `S01E0${n}`,
+        episode_number: n,
+        name: `Segment ${n}`,
+        runtime: 7,
+    }));
+
+    it('reads a 22min track against 7min segments as three episodes', () => {
+        expect(inferSpan(22.3 * 60, segments)).toBe(3);
+    });
+
+    it('leaves an ordinary episode alone', () => {
+        const normal: RosterEpisode[] = [
+            { episode_code: 'S01E01', episode_number: 1, name: 'One', runtime: 44 },
+        ];
+        expect(inferSpan(46 * 60, normal)).toBe(1);
+    });
+
+    it('claims nothing without runtimes or a duration', () => {
+        expect(inferSpan(1340, episodes)).toBe(1);
+        expect(inferSpan(null, segments)).toBe(1);
+    });
+
+    it('does not guess when the track is between whole multiples', () => {
+        // 17.5min is neither two nor three 7min segments.
+        expect(inferSpan(17.5 * 60, segments)).toBe(1);
     });
 });

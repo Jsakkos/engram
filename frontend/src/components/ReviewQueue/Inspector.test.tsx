@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Inspector } from './Inspector';
 import type { DiscTitle } from '../../types';
@@ -29,8 +29,10 @@ function renderInspector(props: {
     aiEpisodeMatchingEnabled?: boolean;
     aiKeyConfigured?: boolean;
     season?: number;
+    onAssign?: (code: string) => void;
 } = {}) {
-    return render(
+    const onAssign = props.onAssign ?? vi.fn();
+    render(
         <Inspector
             title={props.title ?? makeTitle()}
             candidates={[]}
@@ -47,7 +49,7 @@ function renderInspector(props: {
             aiKeyConfigured={props.aiKeyConfigured ?? true}
             llmFeedback={props.llmFeedback ?? null}
             isLlmMatching={props.isLlmMatching ?? false}
-            onAssign={vi.fn()}
+            onAssign={onAssign}
             onAction={vi.fn()}
             onRematch={vi.fn()}
             onDeepRematch={vi.fn()}
@@ -55,6 +57,7 @@ function renderInspector(props: {
             onAcceptLLMSuggestion={vi.fn()}
         />,
     );
+    return { onAssign };
 }
 
 describe('Inspector — AI match feedback', () => {
@@ -107,16 +110,23 @@ describe('Inspector — AI match feedback', () => {
     });
 });
 
-describe('Inspector — manual dropdown season (#370)', () => {
+describe('Inspector — manual picker season (#370)', () => {
+    // With no roster the picker falls back to a plain numbered list; the codes it
+    // emits must carry the effective season, not a hardcoded S01.
+    function pickFirstEpisode(season: number) {
+        const { onAssign } = renderInspector({ season });
+        const input = screen.getByLabelText('Manual episode for title 1');
+        fireEvent.change(input, { target: { value: '1' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        return onAssign;
+    }
+
     it('generates fallback episode codes for the provided season, not S01', () => {
-        renderInspector({ season: 3 });
-        expect(screen.getByRole('option', { name: 'S03E01' })).toBeInTheDocument();
-        expect(screen.queryByRole('option', { name: 'S01E01' })).not.toBeInTheDocument();
+        expect(pickFirstEpisode(3)).toHaveBeenCalledWith('S03E01');
     });
 
     it('defaults to season 1 codes when season is 1', () => {
-        renderInspector({ season: 1 });
-        expect(screen.getByRole('option', { name: 'S01E01' })).toBeInTheDocument();
+        expect(pickFirstEpisode(1)).toHaveBeenCalledWith('S01E01');
     });
 });
 

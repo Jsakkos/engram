@@ -215,3 +215,34 @@ export function buildCandidates(
 
     return out;
 }
+
+/** How many episodes one track may be declared to hold. */
+export const MAX_SPAN = 6;
+
+/** `S01E01-E03` for a run of `span` episodes starting at `first`. */
+export function buildRangeCode(season: number, first: number, span: number): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const head = `S${pad(season)}E${pad(first)}`;
+    return span > 1 ? `${head}-E${pad(first + span - 1)}` : head;
+}
+
+/**
+ * How many episodes this track most likely holds, from its runtime against the
+ * season's typical episode runtime. Segment-format shows (TMDB lists ~7min
+ * segments; the DVD carries the assembled ~22min block) are the reason a track
+ * can legitimately be several episodes — and the reason the matcher's single-code
+ * guess is only ever the first of them.
+ *
+ * Deliberately conservative: only claims a span when the track is close to a
+ * whole multiple, so ordinary episodes never get a spurious "holds 2" hint.
+ */
+export function inferSpan(trackSeconds: number | null | undefined, episodes: RosterEpisode[]): number {
+    const runtimes = episodes.map((e) => e.runtime).filter((r): r is number => !!r && r > 0);
+    if (!trackSeconds || runtimes.length === 0) return 1;
+    const sorted = [...runtimes].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const ratio = trackSeconds / 60 / median;
+    const nearest = Math.round(ratio);
+    if (nearest < 2 || nearest > MAX_SPAN) return 1;
+    return Math.abs(ratio - nearest) <= 0.25 ? nearest : 1;
+}
