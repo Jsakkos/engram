@@ -5,7 +5,7 @@ import { Save, Package } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, reviewSubtitle, type TitleAction } from './ReviewQueue/utils';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
@@ -772,7 +772,7 @@ function ReviewQueue() {
             <SvAtmosphere>
                 <SvPageHeader
                     title="Select movie version"
-                    subtitle={`› ${job.detected_title || job.volume_label}`}
+                    subtitle={reviewSubtitle(job)}
                     onBack={() => navigate('/')}
                     maxWidth={sv.reviewMovieMaxWidth}
                 />
@@ -885,7 +885,7 @@ function ReviewQueue() {
     }
 
     // ==================== TV REVIEW (inspector layout) ====================
-    const subtitleText = `› ${job.detected_title || job.volume_label}${job.detected_season ? ` / SEASON ${job.detected_season}` : ''}`;
+    const subtitleText = reviewSubtitle(job);
     return (
         <SvAtmosphere>
             <SvPageHeader
