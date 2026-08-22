@@ -9,11 +9,14 @@ These back the hardening of CodeQL-flagged sinks:
   configured staging and library roots.
 - ``sanitize_log_value`` — strips line breaks/control characters from
   disc/user-controlled values before they are written to logs.
+- ``sanitize_playlist_field`` — strips line breaks/control characters from
+  disc-derived text before it is embedded in an ``.m3u`` playlist.
 
 The first three are boolean *predicates* — they return ``True``/``False`` so
 the validation is recognised as a barrier guard by static analysis at the call
-site (``if not guard(x): ...``). ``sanitize_log_value`` instead returns the
-cleaned value, the recognised barrier shape for log injection.
+site (``if not guard(x): ...``). ``sanitize_log_value`` and
+``sanitize_playlist_field`` instead return the cleaned value, the recognised
+barrier shape for log/playlist injection.
 """
 
 from __future__ import annotations
@@ -221,3 +224,19 @@ def sanitize_log_value(value: object) -> str:
     # handled by the explicit replaces below so they remain the recognised barrier.
     text = _LOG_CONTROL_CHARS_RE.sub("", str(value))
     return text.replace("\r", "").replace("\n", "")
+
+
+def sanitize_playlist_field(value: str) -> str:
+    """Strip line breaks and control characters from text embedded in an .m3u.
+
+    Disc volume labels and detected titles reach the playlist body, and an
+    ``.m3u`` is line-oriented: a label carrying CR/LF can terminate the
+    ``#EXTINF`` line and open a second, fully-formed entry pointing anywhere
+    the crafted label likes, which the user's player would then parse as a real
+    track. Returns the cleaned value, the recognised barrier shape for
+    injection into a line-oriented format, mirroring ``sanitize_log_value``.
+    """
+    if not value:
+        return ""
+    collapsed = value.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    return _LOG_CONTROL_CHARS_RE.sub("", collapsed).strip()

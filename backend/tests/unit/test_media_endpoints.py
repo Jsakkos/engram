@@ -292,6 +292,58 @@ class TestPlaylistEndpoint:
 
         assert r.status_code == 403
 
+    async def test_label_cannot_inject_a_second_playlist_entry(self, client, tmp_path, media_file):
+        """A crafted disc label must not forge an extra .m3u entry.
+
+        volume_label comes off the physical disc, and .m3u is line-oriented,
+        so an unsanitised label carrying CR/LF can open a second entry pointing
+        at a URL of the attacker's choosing.
+        """
+        staging, f = media_file
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=str(f))
+        async with _unit_session_factory() as session:
+            seeded = await session.get(DiscJob, job.id)
+            seeded.detected_title = None
+            seeded.volume_label = (
+                "EVIL\n#EXTINF:-1,Fake Entry\nhttp://evil.example.com/malicious.mkv\n#"
+            )
+            await session.commit()
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+
+        assert r.status_code == 200
+        body = r.text
+        lines = body.splitlines()
+        # The sanitizer collapses CR/LF to spaces rather than deleting the
+        # surrounding text (it mirrors sanitize_log_value, which preserves
+        # ordinary text), so the malicious domain and the literal substring
+        # "#EXTINF" can still appear as inert text inside the one legitimate
+        # comment *line*. What must never happen is a second, independently
+        # parseable entry, so this counts lines, not substring occurrences:
+        # exactly one line starting with #EXTINF and exactly one URL line,
+        # and the forged URL must not be that line.
+        extinf_lines = [ln for ln in lines if ln.startswith("#EXTINF")]
+        assert len(extinf_lines) == 1
+        url_lines = [ln for ln in lines if ln.startswith("http")]
+        assert len(url_lines) == 1
+        assert "evil.example.com" not in url_lines[0]
+
+    async def test_label_with_carriage_return_is_flattened(self, client, tmp_path, media_file):
+        staging, f = media_file
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=str(f))
+        async with _unit_session_factory() as session:
+            seeded = await session.get(DiscJob, job.id)
+            seeded.detected_title = "Line1\r\nLine2"
+            await session.commit()
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+
+        assert r.status_code == 200
+        assert r.text.count("#EXTINF") == 1
+        assert "Line1 Line2" in r.text
+
 
 class TestOriginGate:
     """Both endpoints sit behind require_localhost_or_lan.

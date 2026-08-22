@@ -13,6 +13,7 @@ from app.core.security import (
     is_allowed_image_url,
     is_within_configured_roots,
     sanitize_log_value,
+    sanitize_playlist_field,
 )
 
 
@@ -140,6 +141,30 @@ class TestSanitizeLogValue:
 
     def test_coerces_non_str(self):
         assert sanitize_log_value(123) == "123"
+
+
+class TestSanitizePlaylistField:
+    """Playlist-injection guard for disc-derived text embedded in an .m3u."""
+
+    def test_strips_lf(self):
+        assert "\n" not in sanitize_playlist_field("a\nb")
+
+    def test_strips_cr(self):
+        assert "\r" not in sanitize_playlist_field("a\rb")
+
+    def test_strips_crlf(self):
+        result = sanitize_playlist_field("a\r\nb")
+        assert "\r" not in result
+        assert "\n" not in result
+
+    def test_strips_control_chars(self):
+        assert sanitize_playlist_field("a\x1b[31mb\x00c") == "a[31mbc"
+
+    def test_empty_input_returns_empty_string(self):
+        assert sanitize_playlist_field("") == ""
+
+    def test_leaves_ordinary_label_unchanged(self):
+        assert sanitize_playlist_field("Arrested Development S1D1") == "Arrested Development S1D1"
 
 
 class TestIsWithinConfiguredRoots:

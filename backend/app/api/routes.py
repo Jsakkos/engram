@@ -34,7 +34,12 @@ from app.api.guards import require_localhost, require_localhost_or_lan
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.errors import AIProviderError
-from app.core.security import is_allowed_image_url, is_within_configured_roots, sanitize_log_value
+from app.core.security import (
+    is_allowed_image_url,
+    is_within_configured_roots,
+    sanitize_log_value,
+    sanitize_playlist_field,
+)
 from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
 from app.matcher.coverage_tracker import get_cache_status
@@ -4260,7 +4265,9 @@ async def title_playlist(
 
     title = await session.get(DiscTitle, title_id)
     media_url = str(request.url_for("stream_title_media", job_id=job.id, title_id=title_id))
-    label = f"{job.detected_title or job.volume_label} - Title {title.title_index}"
+    label = sanitize_playlist_field(
+        f"{job.detected_title or job.volume_label} - Title {title.title_index}"
+    )
     body = f"#EXTM3U\n#EXTINF:-1,{label}\n{media_url}\n"
     filename = f"engram-job-{job.id}-title-{title.title_index}.m3u"
 
