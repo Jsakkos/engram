@@ -44,6 +44,8 @@ export function Inspector({
     titleIndexById,
     isRematching,
     spansEnabled,
+    seasonCount,
+    loadSeason,
     aiEpisodeMatchingEnabled,
     aiKeyConfigured,
     llmFeedback,
@@ -70,6 +72,10 @@ export function Inspector({
     isRematching: boolean;
     /** Whether this disc offers the combined-track span control. */
     spansEnabled?: boolean;
+    /** How many seasons the show has, for the per-track season chip. */
+    seasonCount?: number | null;
+    /** Loads another season's episodes, for a track from a neighbouring season. */
+    loadSeason?: (season: number) => Promise<RosterEpisode[]>;
     aiEpisodeMatchingEnabled: boolean;
     aiKeyConfigured: boolean;
     llmFeedback: LLMFeedback | null;
@@ -332,6 +338,8 @@ export function Inspector({
                             selection={selection}
                             trackSeconds={title.duration_seconds}
                             spansEnabled={spansEnabled}
+                            seasonCount={seasonCount}
+                            loadSeason={loadSeason}
                             onAssign={onAssign}
                         />
                     </div>

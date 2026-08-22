@@ -80,7 +80,7 @@ export interface SeasonRoster {
     ordering_diverges?: boolean;
     current_ordering?: string;
     ordering_options?: OrderingOption[];
-    /** Total seasons for the show — populated while the season picker is in play (#370). */
+    /** Total seasons for the show, so a track can be assigned to a neighbouring one. */
     season_count?: number | null;
 }
 

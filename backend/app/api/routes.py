@@ -743,8 +743,8 @@ class SeasonRosterResponse(BaseModel):
     show_id: int | None = None
     episodes: list[RosterEpisode] = []
     reason: str | None = None
-    # Season picker (#370): total seasons for the show, populated only while the
-    # job's season is unknown (no extra TMDB call on the normal detected path).
+    # Total seasons for the show, so review can offer a season for a track that
+    # belongs to a neighbouring one (#370 for the unknown-season case).
     season_count: int | None = None
     # Episode ordering (#200)
     ordering_available: bool = False
@@ -771,11 +771,13 @@ async def get_season_roster(
 
     effective_season = season if season is not None else job.detected_season
 
-    # Season-picker support (#370): while the job's season is unknown, report
-    # how many seasons exist so the prompt/picker can render options. The
-    # lookup is best-effort decoration — a TMDB failure must not break review.
+    # Season-picker support: report how many seasons the show has, so review can
+    # offer them. Needed while the job's season is unknown (#370) and also on an
+    # identified disc, since a disc can carry an episode from a neighbouring
+    # season and that track needs a season of its own. Cached at the TMDB layer,
+    # and best-effort decoration either way — a TMDB failure must not break review.
     season_count: int | None = None
-    if job.tmdb_id and job.detected_season is None:
+    if job.tmdb_id:
         try:
             season_count = await asyncio.to_thread(get_number_of_seasons, str(job.tmdb_id))
         except Exception as e:  # noqa: BLE001 — picker is best-effort decoration
@@ -820,6 +822,9 @@ async def get_season_roster(
     assigned: dict[int, list[int]] = {}
     for title in result.scalars().all():
         parsed = parse_episode_code(title.matched_episode)
+        # A track assigned to a neighbouring season holds no slot on THIS roster.
+        # Review surfaces it from its own live selections, which also cover edits
+        # not yet saved.
         if not parsed or parsed[0] != season_num:
             continue
         # A combined track ("S01E01-E03") occupies EVERY episode it claims,
