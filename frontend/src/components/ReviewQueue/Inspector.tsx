@@ -118,9 +118,12 @@ export function Inspector({
     // root-relative path is right and matches every other call site. The copied
     // URL is pasted into a different application, where a relative path means
     // nothing, so it must be absolute. location.origin is the address this
-    // browser actually reached the app on, so it is reachable from this machine
-    // by construction, whether that is localhost, a LAN address, or the Vite dev
-    // port (whose proxy forwards any HTTP client, not just the browser).
+    // browser actually reached the app on, so the copied URL works anywhere
+    // that address does, whether it is localhost, a LAN address, or the Vite
+    // dev port (whose proxy forwards any HTTP client, not just the browser).
+    // The corollary is the known limit: reach the dashboard on localhost and
+    // the copied URL only works in a player on this same machine. Reach it on
+    // a LAN address and it works from anywhere on the LAN.
     const playlistHref = `/api/jobs/${title.job_id}/titles/${title.id}/playlist.m3u`;
     const mediaUrl = `${window.location.origin}/api/jobs/${title.job_id}/titles/${title.id}/media`;
 
