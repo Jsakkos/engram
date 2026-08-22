@@ -7,6 +7,7 @@ guard, and the origin gate.
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlmodel import select
 
 from app.api.guards import require_localhost_or_lan
 from app.database import get_session
@@ -219,6 +220,50 @@ class TestMediaEndpoint:
 
         assert r.status_code == 404
 
+    async def test_serves_an_imported_file_outside_the_configured_staging_root(
+        self, client, tmp_path
+    ):
+        """Imports live where the user picked, not under config.staging_path.
+
+        /api/import/start records that folder on the job, so the job's own
+        staging_path is the file's provenance and has to count as a root.
+        """
+        picked = tmp_path / "downloads" / "Some Show S01"
+        picked.mkdir(parents=True)
+        imported = picked / "episode.mkv"
+        imported.write_bytes(MEDIA_BYTES)
+        await _seed_config(
+            str(tmp_path / "staging"), str(tmp_path / "movies"), str(tmp_path / "tv")
+        )
+        job, title = await _seed_job_and_title(output_filename=str(imported))
+        async with _unit_session_factory() as session:
+            seeded = await session.get(DiscJob, job.id)
+            seeded.staging_path = str(picked)
+            await session.commit()
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
+
+        assert r.status_code == 200
+        assert r.content == MEDIA_BYTES
+
+    async def test_serves_a_file_under_the_import_watch_folder(self, client, tmp_path):
+        watch = tmp_path / "watch"
+        watch.mkdir()
+        watched = watch / "episode.mkv"
+        watched.write_bytes(MEDIA_BYTES)
+        await _seed_config(
+            str(tmp_path / "staging"), str(tmp_path / "movies"), str(tmp_path / "tv")
+        )
+        async with _unit_session_factory() as session:
+            cfg = (await session.execute(select(AppConfig))).scalars().first()
+            cfg.import_watch_path = str(watch)
+            await session.commit()
+        job, title = await _seed_job_and_title(output_filename=str(watched))
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
+
+        assert r.status_code == 200
+
 
 class TestPlaylistEndpoint:
     async def test_returns_m3u_with_absolute_media_url(self, client, tmp_path, media_file):
@@ -291,6 +336,23 @@ class TestPlaylistEndpoint:
         r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
 
         assert r.status_code == 403
+
+    async def test_playlist_404s_when_recorded_file_is_gone_from_disk(
+        self, client, tmp_path, media_file
+    ):
+        """output_filename can outlive the file: CleanupService removes staging
+
+        after organizing, but the DB row keeps the old path. This is the most
+        likely error a real user hits, so the playlist needs its own 404 for
+        it, not just the media endpoint.
+        """
+        staging, _ = media_file
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=str(staging / "gone.mkv"))
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+
+        assert r.status_code == 404
 
     async def test_label_cannot_inject_a_second_playlist_entry(self, client, tmp_path, media_file):
         """A crafted disc label must not forge an extra .m3u entry.
@@ -403,3 +465,24 @@ class TestOriginGate:
         r = await lan_client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
 
         assert r.status_code == 200
+
+    async def test_playlist_blocked_for_lan_peer_when_lan_access_disabled(
+        self, lan_client, tmp_path, media_file
+    ):
+        staging, f = media_file
+        async with _unit_session_factory() as session:
+            session.add(
+                AppConfig(
+                    makemkv_path="/usr/bin/makemkvcon",
+                    staging_path=str(staging),
+                    library_movies_path=str(tmp_path / "movies"),
+                    library_tv_path=str(tmp_path / "tv"),
+                    allow_lan_access=False,
+                )
+            )
+            await session.commit()
+        job, title = await _seed_job_and_title(output_filename=str(f))
+
+        r = await lan_client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+
+        assert r.status_code == 403

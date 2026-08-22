@@ -4201,7 +4201,18 @@ async def _resolve_title_media_path(job: DiscJob, title_id: int, session: AsyncS
         )
 
     config = await get_config()
-    roots = [config.staging_path, config.library_tv_path, config.library_movies_path]
+    roots = [
+        config.staging_path,
+        config.library_tv_path,
+        config.library_movies_path,
+        # Imports live wherever the user picked, not under the configured
+        # staging root: /api/import/start records that folder on the job and
+        # identify_from_staging writes output_filename inside it. Without these
+        # two, every imported job in review answers 403 for a file that is
+        # exactly where it belongs.
+        config.import_watch_path,
+        job.staging_path,
+    ]
     if not is_within_configured_roots(recorded, roots):
         logger.warning(
             "Refusing to serve media outside the configured roots: %s",
@@ -4258,6 +4269,14 @@ async def title_playlist(
     dashboard was actually reached on. Deriving it from settings.host instead
     would emit ``localhost`` for every remote user: correct on the backend
     machine, broken everywhere else, and invisible in local testing.
+
+    Dev-mode note: Vite's dev proxy sets ``changeOrigin: true``
+    (``frontend/vite.config.ts``), which rewrites the ``Host`` header seen
+    here to ``localhost:<backend port>``. So in dev this playlist's media URL
+    points at the backend origin while the frontend's own copied stream URL
+    uses the Vite origin — both work, but they visibly disagree, which is a
+    ``changeOrigin`` artifact of the dev proxy, not a bug. Production serves
+    the dashboard and the API from one origin, so this does not occur there.
     """
     # Resolve first so a missing or out-of-bounds file fails here, rather than
     # handing the user a playlist that errors inside their player.
