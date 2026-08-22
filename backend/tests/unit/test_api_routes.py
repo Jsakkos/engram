@@ -273,7 +273,12 @@ class TestConfigEndpoints:
 
         verify = await client.get("/api/config")
         config = verify.json()
-        assert config["staging_path"] == "/new/staging/path"
+        # Paths are stored normalized (separator style settled, ~ expanded, UNC
+        # canonicalized), so the expectation is the normalized form rather than
+        # the literal input — the same value, spelled one way.
+        from app.core.paths import normalize_user_path
+
+        assert config["staging_path"] == normalize_user_path("/new/staging/path")
         assert config["max_concurrent_matches"] == 8
 
     async def test_update_config_with_new_api_keys(self, client):

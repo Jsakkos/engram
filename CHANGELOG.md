@@ -20,6 +20,17 @@ All notable changes to Engram will be documented in this file.
   its number instead of scrolling a dropdown — which matters for the 40-100
   episode seasons that segment-numbered shows produce. Episode names come from
   the TMDB data Engram already caches.
+- **Settings now checks your library and staging folders.** Each path field shows
+  whether the folder exists, whether Engram can actually write to it (a real
+  write test, not a guess at permissions), and how much space is free — so a typo
+  or a permissions problem is visible immediately instead of surfacing as a failed
+  organize after a completed rip.
+- **Network shares are supported as library paths.** A Windows UNC path
+  (`\\server\share\TV`) works wherever a local path does, including the pasted
+  `//server/share` spelling, which is normalized to one canonical form. A share
+  that is offline while you are editing settings is flagged as a warning rather
+  than rejected, and a Windows-style share path entered on Linux or macOS now
+  explains that it needs mounting instead of failing obscurely.
 
 ### Fixed
 
