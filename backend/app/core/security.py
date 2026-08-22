@@ -20,6 +20,7 @@ import ipaddress
 import os
 import re
 from collections.abc import Sequence
+from pathlib import Path
 from urllib.parse import urlparse
 
 # C0 control characters and DEL, excluding tab (0x09), LF (0x0a) and CR (0x0d).
@@ -92,6 +93,43 @@ def executable_basename_allowed(path: str, allowed_basenames: Sequence[str]) -> 
     """
     name = os.path.basename(path.replace("\\", "/")).lower()
     return name in {allowed.lower() for allowed in allowed_basenames}
+
+
+def is_within_configured_roots(path: os.PathLike[str] | str, roots: Sequence[str]) -> bool:
+    """Return True if ``path`` resolves inside at least one of ``roots``.
+
+    Barrier guard for the media endpoints: the file path comes out of the
+    database (``DiscTitle.output_filename`` / ``organized_to``), so a corrupted
+    or hand-edited row must not become an arbitrary file read.
+
+    Both sides are fully resolved first, so ``..`` segments and symlinks are
+    followed before the comparison. A symlink sitting inside a root but
+    pointing outside it is therefore rejected, not followed into.
+    Comparison uses ``os.path.commonpath``,
+    which compares path *components*: a bare string prefix test would let
+    ``/media/staging-old`` pass a ``/media/staging`` root.
+
+    Empty roots are skipped. Unconfigured ``AppConfig`` paths default to ``""``,
+    which would otherwise resolve to the process working directory and silently
+    authorise it.
+    """
+    try:
+        resolved = Path(path).resolve(strict=False)
+    except (OSError, ValueError):
+        return False
+
+    for root in roots:
+        if not root:
+            continue
+        try:
+            resolved_root = Path(root).resolve(strict=False)
+            if os.path.commonpath([resolved, resolved_root]) == str(resolved_root):
+                return True
+        except (OSError, ValueError):
+            # commonpath raises ValueError for paths on different Windows
+            # drives, which simply means "not contained".
+            continue
+    return False
 
 
 _DISALLOWED_HOSTNAMES: frozenset[str] = frozenset(

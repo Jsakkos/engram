@@ -6,9 +6,12 @@ These cover the CodeQL-flagged sinks:
 - sanitize_log_value: py/log-injection in disc-event logging
 """
 
+import pytest
+
 from app.core.security import (
     executable_basename_allowed,
     is_allowed_image_url,
+    is_within_configured_roots,
     sanitize_log_value,
 )
 
@@ -137,3 +140,87 @@ class TestSanitizeLogValue:
 
     def test_coerces_non_str(self):
         assert sanitize_log_value(123) == "123"
+
+
+class TestIsWithinConfiguredRoots:
+    """Containment guard for media paths read out of the database."""
+
+    def test_accepts_file_directly_in_root(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        target = root / "title_01.mkv"
+        target.touch()
+        assert is_within_configured_roots(target, [str(root)])
+
+    def test_accepts_file_in_nested_subdirectory(self, tmp_path):
+        root = tmp_path / "library"
+        nested = root / "Show" / "Season 01"
+        nested.mkdir(parents=True)
+        target = nested / "Show - S01E01.mkv"
+        target.touch()
+        assert is_within_configured_roots(target, [str(root)])
+
+    def test_accepts_when_any_one_root_matches(self, tmp_path):
+        staging = tmp_path / "staging"
+        library = tmp_path / "library"
+        staging.mkdir()
+        library.mkdir()
+        target = library / "movie.mkv"
+        target.touch()
+        assert is_within_configured_roots(target, [str(staging), str(library)])
+
+    def test_rejects_file_outside_every_root(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        outside = tmp_path / "elsewhere.mkv"
+        outside.touch()
+        assert not is_within_configured_roots(outside, [str(root)])
+
+    def test_rejects_parent_traversal(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        secret = tmp_path / "secret.mkv"
+        secret.touch()
+        traversal = root / ".." / "secret.mkv"
+        assert not is_within_configured_roots(traversal, [str(root)])
+
+    def test_rejects_sibling_root_with_shared_prefix(self, tmp_path):
+        # "staging-old" must not pass a "staging" root via a bare string prefix
+        # comparison. commonpath compares path components, not characters.
+        root = tmp_path / "staging"
+        sibling = tmp_path / "staging-old"
+        root.mkdir()
+        sibling.mkdir()
+        target = sibling / "leak.mkv"
+        target.touch()
+        assert not is_within_configured_roots(target, [str(root)])
+
+    def test_rejects_empty_root_list(self, tmp_path):
+        target = tmp_path / "x.mkv"
+        target.touch()
+        assert not is_within_configured_roots(target, [])
+
+    def test_ignores_unset_roots(self, tmp_path):
+        # Unconfigured paths arrive as "" from AppConfig defaults. An empty
+        # string must never be treated as a root, or it would resolve to the
+        # process CWD and silently authorise it.
+        root = tmp_path / "staging"
+        root.mkdir()
+        target = root / "ok.mkv"
+        target.touch()
+        assert is_within_configured_roots(target, ["", str(root), ""])
+        outside = tmp_path / "nope.mkv"
+        outside.touch()
+        assert not is_within_configured_roots(outside, ["", ""])
+
+    def test_rejects_symlink_escaping_root(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        secret = tmp_path / "secret.mkv"
+        secret.write_bytes(b"x")
+        link = root / "innocent.mkv"
+        try:
+            link.symlink_to(secret)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks unavailable (Windows without developer mode)")
+        assert not is_within_configured_roots(link, [str(root)])
