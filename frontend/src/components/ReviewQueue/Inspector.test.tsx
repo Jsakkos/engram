@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Inspector } from './Inspector';
 import type { DiscTitle } from '../../types';
@@ -154,5 +155,78 @@ describe('Inspector: organize failure (#563)', () => {
         renderInspector({ title: makeTitle() });
         expect(screen.queryByText('Save failed')).not.toBeInTheDocument();
         expect(screen.getByText('Needs review')).toBeInTheDocument();
+    });
+});
+
+describe('Inspector — external player controls', () => {
+    it('renders both controls when the track has a ripped file', () => {
+        renderInspector({
+            title: makeTitle({ output_filename: 'C:\\staging\\title_01.mkv' }),
+        });
+
+        expect(screen.getByRole('link', { name: /open in player/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /copy stream url/i })).toBeInTheDocument();
+    });
+
+    it('renders the controls for an organized track with no staging copy', () => {
+        renderInspector({
+            title: makeTitle({
+                output_filename: null,
+                organized_to: 'C:\\tv\\Show\\Season 01\\Show - S01E01.mkv',
+            }),
+        });
+
+        expect(screen.getByRole('link', { name: /open in player/i })).toBeInTheDocument();
+    });
+
+    it('hides the controls when the track has no file at all', () => {
+        renderInspector({
+            title: makeTitle({ output_filename: null, organized_to: null }),
+        });
+
+        expect(screen.queryByRole('link', { name: /open in player/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /copy stream url/i })).not.toBeInTheDocument();
+    });
+
+    it('points the player link at the playlist endpoint for this job and title', () => {
+        renderInspector({
+            title: makeTitle({
+                id: 42,
+                job_id: 7,
+                output_filename: 'C:\\staging\\title_01.mkv',
+            }),
+        });
+
+        const link = screen.getByRole('link', { name: /open in player/i });
+        expect(link).toHaveAttribute('href', '/api/jobs/7/titles/42/playlist.m3u');
+    });
+
+    it('copies an absolute media URL to the clipboard', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText } });
+
+        renderInspector({
+            title: makeTitle({
+                id: 42,
+                job_id: 7,
+                output_filename: 'C:\\staging\\title_01.mkv',
+            }),
+        });
+
+        await userEvent.click(screen.getByRole('button', { name: /copy stream url/i }));
+
+        expect(writeText).toHaveBeenCalledWith(
+            `${window.location.origin}/api/jobs/7/titles/42/media`,
+        );
+    });
+
+    it('shows the standing hint whenever the controls render', () => {
+        // The hint is permanent, not error-triggered: a failed .m3u handoff
+        // gives the page no signal to react to.
+        renderInspector({
+            title: makeTitle({ output_filename: 'C:\\staging\\title_01.mkv' }),
+        });
+
+        expect(screen.getByText(/open network stream/i)).toBeInTheDocument();
     });
 });

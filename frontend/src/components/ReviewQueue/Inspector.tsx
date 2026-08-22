@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { Trash2, SkipForward } from 'lucide-react';
+import { toast } from 'sonner';
 import { IcoRetry } from '../../app/components/icons';
 import { SvActionButton, SvBadge, SvLabel, SvNotice, SvPanel, sv } from '../../app/components/synapse';
 import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
@@ -22,6 +23,17 @@ const monoFaint: CSSProperties = { fontFamily: sv.mono, fontSize: 11, color: sv.
 
 function pct(value: number): string {
     return `${Math.round(value * 100)}%`;
+}
+
+/**
+ * Ripped file for this track, if one exists on disk.
+ *
+ * `output_filename` is the staging copy written at rip time; `organized_to`
+ * is where it landed after being moved into the library. A track parked in a
+ * pre-rip review has neither, and gets no playback controls.
+ */
+function hasPlayableFile(title: DiscTitle): boolean {
+    return !!(title.output_filename || title.organized_to);
 }
 
 /**
@@ -101,6 +113,22 @@ export function Inspector({
     const conflictWith = selectionIsCode ? takenByOther(selection as string) : [];
     const inConflict = conflictWith.length > 0;
 
+    const playable = hasPlayableFile(title);
+    const playlistHref = `/api/jobs/${title.job_id}/titles/${title.id}/playlist.m3u`;
+    const mediaUrl = `${window.location.origin}/api/jobs/${title.job_id}/titles/${title.id}/media`;
+
+    const copyStreamUrl = async () => {
+        try {
+            await navigator.clipboard.writeText(mediaUrl);
+            toast.success('Stream URL copied');
+        } catch {
+            // Clipboard access is denied in some browsers over plain HTTP. Show the
+            // URL so the operator can still select it by hand rather than getting
+            // a silently dead button.
+            toast.error(`Could not copy. URL: ${mediaUrl}`);
+        }
+    };
+
     const stateBadge = fileExists ? (
         <SvBadge state="warn" dot>File exists</SvBadge>
     ) : organizeFailed ? (
@@ -127,6 +155,34 @@ export function Inspector({
                         {formatDuration(title.duration_seconds)} · {formatSize(title.file_size_bytes)}
                         {title.video_resolution ? ` · ${title.video_resolution}` : ''} · {title.chapter_count} chapters
                     </div>
+                    {playable && (
+                        <div style={{ marginTop: 8 }}>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                <SvActionButton
+                                    tone="cyan"
+                                    size="sm"
+                                    href={playlistHref}
+                                    ariaLabel="Open in player"
+                                    title="Open this track in your system's default video player"
+                                >
+                                    Open in player
+                                </SvActionButton>
+                                <SvActionButton
+                                    tone="neutral"
+                                    size="sm"
+                                    onClick={copyStreamUrl}
+                                    ariaLabel="Copy stream URL"
+                                    title="Copy the stream URL for your player's Open Network Stream"
+                                >
+                                    Copy stream URL
+                                </SvActionButton>
+                            </div>
+                            <div style={{ ...monoFaint, marginTop: 6, fontSize: 10 }}>
+                                Opens in your default player. Nothing happened? Copy the URL and use
+                                your player&apos;s &quot;Open Network Stream&quot;.
+                            </div>
+                        </div>
+                    )}
                 </div>
                 {stateBadge}
             </div>
