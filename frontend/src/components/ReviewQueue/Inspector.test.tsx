@@ -2,9 +2,14 @@ import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { Inspector } from './Inspector';
 import type { DiscTitle } from '../../types';
 import type { LLMFeedback } from './llmFeedback';
+
+vi.mock('sonner', () => ({
+    toast: { success: vi.fn(), error: vi.fn() },
+}));
 
 function makeTitle(overrides: Partial<DiscTitle> = {}): DiscTitle {
     return {
@@ -203,21 +208,60 @@ describe('Inspector — external player controls', () => {
 
     it('copies an absolute media URL to the clipboard', async () => {
         const writeText = vi.fn().mockResolvedValue(undefined);
+        const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
         Object.assign(navigator, { clipboard: { writeText } });
 
-        renderInspector({
-            title: makeTitle({
-                id: 42,
-                job_id: 7,
-                output_filename: 'C:\\staging\\title_01.mkv',
-            }),
-        });
+        try {
+            renderInspector({
+                title: makeTitle({
+                    id: 42,
+                    job_id: 7,
+                    output_filename: 'C:\\staging\\title_01.mkv',
+                }),
+            });
 
-        await userEvent.click(screen.getByRole('button', { name: /copy stream url/i }));
+            await userEvent.click(screen.getByRole('button', { name: /copy stream url/i }));
 
-        expect(writeText).toHaveBeenCalledWith(
-            `${window.location.origin}/api/jobs/7/titles/42/media`,
-        );
+            expect(writeText).toHaveBeenCalledWith(
+                `${window.location.origin}/api/jobs/7/titles/42/media`,
+            );
+        } finally {
+            if (originalClipboard) {
+                Object.defineProperty(navigator, 'clipboard', originalClipboard);
+            } else {
+                delete (navigator as { clipboard?: unknown }).clipboard;
+            }
+        }
+    });
+
+    it('shows an error toast with the URL when the clipboard is unavailable', async () => {
+        // Real-world target case: plain-HTTP LAN access is a non-secure context,
+        // where `navigator.clipboard` is undefined and the call throws
+        // synchronously. The copy control must never fail silently.
+        const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+        delete (navigator as { clipboard?: unknown }).clipboard;
+
+        try {
+            renderInspector({
+                title: makeTitle({
+                    id: 42,
+                    job_id: 7,
+                    output_filename: 'C:\\staging\\title_01.mkv',
+                }),
+            });
+
+            await userEvent.click(screen.getByRole('button', { name: /copy stream url/i }));
+
+            expect(toast.error).toHaveBeenCalledWith(
+                expect.stringContaining(`${window.location.origin}/api/jobs/7/titles/42/media`),
+            );
+        } finally {
+            if (originalClipboard) {
+                Object.defineProperty(navigator, 'clipboard', originalClipboard);
+            } else {
+                delete (navigator as { clipboard?: unknown }).clipboard;
+            }
+        }
     });
 
     it('shows the standing hint whenever the controls render', () => {

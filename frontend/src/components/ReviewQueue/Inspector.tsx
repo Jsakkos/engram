@@ -114,6 +114,13 @@ export function Inspector({
     const inConflict = conflictWith.length > 0;
 
     const playable = hasPlayableFile(title);
+    // Deliberately asymmetric. The href is followed by this browser, so a
+    // root-relative path is right and matches every other call site. The copied
+    // URL is pasted into a different application, where a relative path means
+    // nothing, so it must be absolute. location.origin is the address this
+    // browser actually reached the app on, so it is reachable from this machine
+    // by construction, whether that is localhost, a LAN address, or the Vite dev
+    // port (whose proxy forwards any HTTP client, not just the browser).
     const playlistHref = `/api/jobs/${title.job_id}/titles/${title.id}/playlist.m3u`;
     const mediaUrl = `${window.location.origin}/api/jobs/${title.job_id}/titles/${title.id}/media`;
 
@@ -162,8 +169,8 @@ export function Inspector({
                                     tone="cyan"
                                     size="sm"
                                     href={playlistHref}
-                                    ariaLabel="Open in player"
-                                    title="Open this track in your system's default video player"
+                                    ariaLabel="Open in player (downloads a playlist file)"
+                                    title="Download a playlist that opens this track in your default video player"
                                 >
                                     Open in player
                                 </SvActionButton>
