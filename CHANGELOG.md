@@ -56,6 +56,13 @@ All notable changes to Engram will be documented in this file.
   — a much stronger test, since wrongly discarding one costs a whole episode. A new
   setting under *Naming & extras* turns the whole behaviour off. Discs that report
   no structure keep the old duration-based detection.
+- **A track can be assigned to a neighbouring season.** Some discs are not tidy —
+  most of the disc is one season, but an episode belongs to the next. The review
+  picker gains a season chip, so that one track can be picked from another
+  season's episode list while the rest of the disc is unaffected. Tracks assigned
+  outside the disc's season are listed under the season roster, since they hold no
+  slot on it. Note that such an episode can't be matched automatically: reference
+  subtitles are only fetched for the disc's own season.
 
 ### Fixed
 

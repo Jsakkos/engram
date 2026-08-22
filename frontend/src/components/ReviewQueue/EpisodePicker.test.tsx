@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { EpisodePicker } from './EpisodePicker';
 import type { RosterEpisode } from './types';
@@ -128,5 +128,69 @@ describe('EpisodePicker combined tracks', () => {
         fireEvent.focus(input);
         fireEvent.click(screen.getByText('Sports Day')); // E05, the last one
         expect(onAssign).toHaveBeenCalledWith('S01E05');
+    });
+});
+
+describe('EpisodePicker cross-season assignment', () => {
+    // A disc can carry an episode from a neighbouring season. The chip picks the
+    // season for one track without touching the rest of the disc.
+    const OTHER_SEASON: RosterEpisode[] = [
+        { episode_code: 'S03E01', episode_number: 1, name: 'Return', runtime: 22 },
+        { episode_code: 'S03E02', episode_number: 2, name: 'Departure', runtime: 22 },
+    ];
+
+    function renderWithSeasons(props: Record<string, unknown> = {}) {
+        const onAssign = vi.fn();
+        const loadSeason = vi.fn().mockResolvedValue(OTHER_SEASON);
+        render(
+            <EpisodePicker
+                titleIndex={1}
+                season={2}
+                episodes={SEASON}
+                selection={undefined}
+                spansEnabled
+                seasonCount={4}
+                loadSeason={loadSeason}
+                onAssign={onAssign}
+                {...props}
+            />,
+        );
+        return { onAssign, loadSeason };
+    }
+
+    it('has no season chip when the show has only one season', () => {
+        renderPicker({ seasonCount: 1 });
+        expect(screen.queryByLabelText('Season for title 1')).not.toBeInTheDocument();
+    });
+
+    it("defaults to the disc's own season", () => {
+        renderWithSeasons();
+        expect(screen.getByLabelText('Season for title 1')).toHaveValue('2');
+    });
+
+    it('loads the chosen season and assigns from it', async () => {
+        const { onAssign, loadSeason } = renderWithSeasons();
+        fireEvent.change(screen.getByLabelText('Season for title 1'), { target: { value: '3' } });
+        await waitFor(() => expect(loadSeason).toHaveBeenCalledWith(3));
+        await waitFor(() => expect(screen.getByText(/not this disc/)).toBeInTheDocument());
+
+        const input = screen.getByLabelText('Manual episode for title 1');
+        fireEvent.focus(input);
+        await waitFor(() => expect(screen.getByText('Departure')).toBeInTheDocument());
+        fireEvent.click(screen.getByText('Departure'));
+        expect(onAssign).toHaveBeenCalledWith('S03E02');
+    });
+
+    it('follows an assignment that already belongs to another season', () => {
+        renderWithSeasons({ selection: 'S04E07' });
+        expect(screen.getByLabelText('Season for title 1')).toHaveValue('4');
+    });
+
+    it('says plainly when the pick is off-season', async () => {
+        renderWithSeasons();
+        fireEvent.change(screen.getByLabelText('Season for title 1'), { target: { value: '3' } });
+        await waitFor(() =>
+            expect(screen.getByText(/Assigning from season 3, not this disc's season 2/)).toBeInTheDocument(),
+        );
     });
 });

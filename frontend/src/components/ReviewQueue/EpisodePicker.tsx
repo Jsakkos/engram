@@ -31,7 +31,7 @@ function filterEpisodes(episodes: RosterEpisode[], query: string): RosterEpisode
  * and the episode name (the names come from TMDB via the season roster, so the
  * data is already cached). `Spans` turns the pick into a range for one track that
  * holds several episodes; the assignment is a single canonical code
- * (`S01E01-E02-E03`) and organizes to one correspondingly-named file.
+ * (`S01E01-E03`) and organizes to one correspondingly-named file.
  */
 export function EpisodePicker({
     titleIndex,
@@ -40,6 +40,8 @@ export function EpisodePicker({
     selection,
     trackSeconds,
     spansEnabled = false,
+    seasonCount,
+    loadSeason,
     onAssign,
 }: {
     titleIndex: number;
@@ -56,6 +58,10 @@ export function EpisodePicker({
      * would be backwards. On an ordinary disc it is noise, and stays away.
      */
     spansEnabled?: boolean;
+    /** How many seasons the show has, for the per-track season chip. */
+    seasonCount?: number | null;
+    /** Loads another season's episodes, for a track that belongs to one. */
+    loadSeason?: (season: number) => Promise<RosterEpisode[]>;
     onAssign: (code: string) => void;
 }) {
     const parsed = selection ? parseEpisodeCode(selection) : null;
@@ -67,7 +73,43 @@ export function EpisodePicker({
     const [span, setSpan] = useState(selectedSpan || suggestedSpan);
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState(false);
+    // The season this track is being assigned to. Defaults to the disc's own,
+    // and follows an existing assignment — a disc can carry an episode from a
+    // neighbouring season, and that track is picked from that season's list.
+    const [pickSeason, setPickSeason] = useState(parsed?.season ?? season);
+    const [seasonEpisodes, setSeasonEpisodes] = useState<RosterEpisode[] | null>(null);
+    const [loadingSeason, setLoadingSeason] = useState(false);
     const boxRef = useRef<HTMLDivElement>(null);
+
+    // Follow the assignment's season, so switching tracks never leaves the chip
+    // showing the previous track's season.
+    useEffect(() => {
+        setPickSeason(parsed?.season ?? season);
+    }, [parsed?.season, season, selection]);
+
+    // Fetch the chosen season's episodes when it is not the disc's own. The
+    // roster for the disc's season is already in hand and never re-fetched.
+    useEffect(() => {
+        if (pickSeason === season || !loadSeason) {
+            setSeasonEpisodes(null);
+            return;
+        }
+        let cancelled = false;
+        setLoadingSeason(true);
+        loadSeason(pickSeason)
+            .then((eps: RosterEpisode[]) => {
+                if (!cancelled) setSeasonEpisodes(eps);
+            })
+            .catch(() => {
+                if (!cancelled) setSeasonEpisodes([]);
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingSeason(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [pickSeason, season, loadSeason]);
 
     // Follow the assignment when it changes elsewhere (accepting a suggestion,
     // a re-match landing) so the stepper never contradicts the current pick.
@@ -90,18 +132,19 @@ export function EpisodePicker({
     // Roster episodes when TMDB gave us some; otherwise a plain numbered list so
     // the picker still works on a disc whose show/season isn't identified.
     const options: RosterEpisode[] = useMemo(() => {
-        if (episodes.length > 0) return episodes;
-        return generateEpisodeOptions(season, EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON).map(
+        const source = seasonEpisodes ?? episodes;
+        if (source.length > 0) return source;
+        return generateEpisodeOptions(pickSeason, EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON).map(
             (code, i) => ({ episode_code: code, episode_number: i + 1, name: '' }),
         );
-    }, [episodes, season]);
+    }, [episodes, seasonEpisodes, pickSeason]);
 
     const filtered = useMemo(() => filterEpisodes(options, query), [options, query]);
 
     const assign = (first: number, nextSpan = span) => {
         const maxFirst = options.length ? options[options.length - 1].episode_number : first;
         const clamped = Math.max(1, Math.min(nextSpan, maxFirst - first + 1));
-        onAssign(buildRangeCode(season, first, clamped));
+        onAssign(buildRangeCode(pickSeason, first, clamped));
         setQuery('');
         setOpen(false);
     };
@@ -118,6 +161,30 @@ export function EpisodePicker({
 
     return (
         <div ref={boxRef} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+                {(seasonCount ?? 0) > 1 && (
+                    <select
+                        aria-label={`Season for title ${titleIndex}`}
+                        value={pickSeason}
+                        onChange={(e) => setPickSeason(Number(e.target.value))}
+                        style={{
+                            background: sv.bg0,
+                            border: `1px solid ${pickSeason === season ? sv.lineMid : sv.yellow}`,
+                            color: pickSeason === season ? sv.inkDim : sv.yellow,
+                            fontFamily: sv.mono,
+                            fontSize: 12,
+                            padding: '7px 4px',
+                            outline: 'none',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {Array.from({ length: seasonCount ?? 0 }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>
+                                {`S${String(n).padStart(2, '0')}`}
+                            </option>
+                        ))}
+                    </select>
+                )}
             <input
                 type="text"
                 role="combobox"
@@ -150,6 +217,7 @@ export function EpisodePicker({
                     outline: 'none',
                 }}
             />
+            </div>
 
             {open && (
                 <div
@@ -208,6 +276,14 @@ export function EpisodePicker({
                         );
                     })}
                 </div>
+            )}
+
+            {pickSeason !== season && (
+                <span style={{ ...monoFaint, fontSize: 10.5, color: sv.yellow, marginTop: 6, display: 'block' }}>
+                    {loadingSeason
+                        ? `Loading season ${pickSeason}…`
+                        : `Assigning from season ${pickSeason}, not this disc's season ${season}`}
+                </span>
             )}
 
             {/* Combined-track stepper. Shown when the disc calls for it — some

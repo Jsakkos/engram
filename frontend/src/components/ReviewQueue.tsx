@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Save, Package } from 'lucide-react';
@@ -10,7 +10,8 @@ import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, inferSpan, normalizeEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
+import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, displayEpisodeCode, inferSpan, normalizeEpisodeCode, parseEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
+import type { RosterEpisode, SeasonRoster } from './ReviewQueue/types';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
 import { TitleList } from './ReviewQueue/TitleList';
@@ -626,6 +627,35 @@ function ReviewQueue() {
     const hasConflicts = collisions.size > 0;
 
     const activeTitles = titles.filter((t) => t.state !== 'completed' && t.state !== 'failed');
+    // Tracks assigned to a season other than this disc's. They hold no slot on
+    // the roster above, so without saying so they would read as unassigned while
+    // the roster showed a phantom gap. Derived from live selections, so an edit
+    // shows up before it is saved.
+    const offSeasonPicks = useMemo(() => {
+        return Object.entries(selectedEpisodes)
+            .map(([titleId, code]) => ({
+                titleId: Number(titleId),
+                code,
+                season: parseEpisodeCode(code)?.season,
+            }))
+            .filter((p) => p.season != null && p.season !== effectiveSeason);
+    }, [selectedEpisodes, effectiveSeason]);
+
+    // Fetch another season's episodes for a track that belongs to one. A disc
+    // can carry an episode from a neighbouring season; the roster endpoint takes
+    // the season as a parameter, so the picker asks for it on demand rather than
+    // the page loading every season up front.
+    const loadSeason = useCallback(
+        async (season: number): Promise<RosterEpisode[]> => {
+            if (!jobId) return [];
+            const res = await fetch(`/api/jobs/${jobId}/season-roster?season=${season}`);
+            if (!res.ok) return [];
+            const data = (await res.json()) as SeasonRoster;
+            return data.available ? data.episodes : [];
+        },
+        [jobId],
+    );
+
     // Does this DISC hold combined tracks? Decided across the whole disc, because
     // the tracks whose runtime the heuristic cannot read are exactly the ones
     // needing a hand-set span — hiding the control per-track would withhold it
@@ -1074,6 +1104,14 @@ function ReviewQueue() {
                                 suggestedCode={suggestedForSelected}
                                 titleIndexById={titleIndexById}
                             />
+                            {offSeasonPicks.length > 0 && (
+                                <div style={{ marginTop: 10, fontFamily: sv.mono, fontSize: 11, color: sv.yellow }}>
+                                    {`Assigned outside season ${effectiveSeason}: `}
+                                    {offSeasonPicks
+                                        .map((p) => `#${titleIndexById[p.titleId] ?? p.titleId} → ${displayEpisodeCode(p.code)}`)
+                                        .join(', ')}
+                                </div>
+                            )}
                         </SvPanel>
                     </div>
                 )}
@@ -1236,6 +1274,8 @@ function ReviewQueue() {
                                 titleIndexById={titleIndexById}
                                 isRematching={isRematching}
                                 spansEnabled={spansEnabled}
+                                seasonCount={roster?.season_count ?? null}
+                                loadSeason={loadSeason}
                                 aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
                                 aiKeyConfigured={aiKeyConfigured}
                                 llmFeedback={llmFeedback[selectedTitle.id] ?? null}
