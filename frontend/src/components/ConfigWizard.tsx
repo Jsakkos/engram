@@ -152,6 +152,7 @@ interface ConfigData {
     stagingCleanupDays: number;
     extrasPolicy: string;
     alwaysReview: boolean;
+    alwaysShowEpisodeSpan: boolean;
     namingSeasonFormat: string;
     namingEpisodeFormat: string;
     namingMovieFormat: string;
@@ -241,6 +242,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         stagingCleanupDays: 7,
         extrasPolicy: 'keep',
         alwaysReview: false,
+        alwaysShowEpisodeSpan: false,
         namingSeasonFormat: 'Season {season:02d}',
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
@@ -367,6 +369,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     stagingCleanupDays: data.staging_cleanup_days ?? 7,
                     extrasPolicy: data.extras_policy || 'keep',
                     alwaysReview: data.always_review ?? false,
+                    alwaysShowEpisodeSpan: data.always_show_episode_span ?? false,
                     namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
@@ -584,6 +587,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     staging_cleanup_days: config.stagingCleanupDays,
                     extras_policy: config.extrasPolicy,
                     always_review: config.alwaysReview,
+                    always_show_episode_span: config.alwaysShowEpisodeSpan,
                     naming_season_format: config.namingSeasonFormat,
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
@@ -1710,6 +1714,26 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         the match was. The matcher still runs and pre-fills its best guess — you
                                         get the last word before anything moves into the library. Worth turning
                                         on for shows the matcher struggles with.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label checkbox-plain">
+                                <input
+                                    type="checkbox"
+                                    checked={config.alwaysShowEpisodeSpan}
+                                    onChange={(e) => handleInputChange('alwaysShowEpisodeSpan', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Always offer the combined-episode control</strong>
+                                    <span className="checkbox-hint">
+                                        Some shows put several episodes in one track — three cartoon
+                                        segments in a 22 minute slot, say. Review normally offers the
+                                        &quot;spans N episodes&quot; control only on discs where a track&apos;s
+                                        length says so. Tick this if your discs do it but the runtimes
+                                        are too unreliable to detect.
                                     </span>
                                 </span>
                             </label>

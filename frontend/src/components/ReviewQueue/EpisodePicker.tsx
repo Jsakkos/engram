@@ -39,6 +39,7 @@ export function EpisodePicker({
     episodes,
     selection,
     trackSeconds,
+    spansEnabled = false,
     onAssign,
 }: {
     titleIndex: number;
@@ -48,6 +49,13 @@ export function EpisodePicker({
     selection: string | undefined;
     /** Track length, used to suggest how many episodes it holds. */
     trackSeconds?: number | null;
+    /**
+     * Whether to offer the combined-track control at all. Decided per DISC, not
+     * per track: on a segment-format disc the tracks the heuristic can't read are
+     * precisely the ones needing a hand-set span, so hiding the control there
+     * would be backwards. On an ordinary disc it is noise, and stays away.
+     */
+    spansEnabled?: boolean;
     onAssign: (code: string) => void;
 }) {
     const parsed = selection ? parseEpisodeCode(selection) : null;
@@ -202,44 +210,43 @@ export function EpisodePicker({
                 </div>
             )}
 
-            {/* Combined-track stepper. Always present: a control that appears only
-                when the runtime heuristic fires is missing from exactly the track
-                whose length the heuristic could not read, which is the track most
-                likely to need setting by hand. It rests at "1 episode", which is
-                what an ordinary track is. */}
-            {(
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                    <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-                        Spans
-                    </span>
-                    <SvActionButton
-                        tone="neutral"
-                        size="sm"
-                        onClick={() => changeSpan(span - 1)}
-                        disabled={span <= 1}
-                        title="One fewer episode in this track"
-                        ariaLabel="Fewer episodes"
-                    >
-                        −
-                    </SvActionButton>
-                    <span style={{ fontFamily: sv.mono, fontSize: 12, color: sv.ink, minWidth: 68, textAlign: 'center' }}>
-                        {span === 1 ? '1 episode' : `${span} episodes`}
-                    </span>
-                    <SvActionButton
-                        tone="neutral"
-                        size="sm"
-                        onClick={() => changeSpan(span + 1)}
-                        disabled={span >= MAX_SPAN}
-                        title="One more episode in this track"
-                        ariaLabel="More episodes"
-                    >
-                        +
-                    </SvActionButton>
-                    {suggestedSpan > 1 && selectedSpan !== suggestedSpan && (
-                        <span style={{ ...monoFaint, fontSize: 10.5 }}>
-                            runtime suggests {suggestedSpan}
-                        </span>
-                    )}
+            {/* Combined-track stepper. Shown when the disc calls for it — some
+                track on it reads as combined, or the user has asked for the control
+                on every disc — and also whenever THIS track is already assigned a
+                range, so an existing span can always be seen and changed. */}
+            {(spansEnabled || selectedSpan > 1) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+                    Spans
+                </span>
+                <SvActionButton
+                    tone="neutral"
+                    size="sm"
+                    onClick={() => changeSpan(span - 1)}
+                    disabled={span <= 1}
+                    title="One fewer episode in this track"
+                    ariaLabel="Fewer episodes"
+                >
+                    −
+                </SvActionButton>
+                <span style={{ fontFamily: sv.mono, fontSize: 12, color: sv.ink, minWidth: 68, textAlign: 'center' }}>
+                    {span === 1 ? '1 episode' : `${span} episodes`}
+                </span>
+                <SvActionButton
+                    tone="neutral"
+                    size="sm"
+                    onClick={() => changeSpan(span + 1)}
+                    disabled={span >= MAX_SPAN}
+                    title="One more episode in this track"
+                    ariaLabel="More episodes"
+                >
+                    +
+                </SvActionButton>
+            {suggestedSpan > 1 && selectedSpan !== suggestedSpan && (
+                <span style={{ ...monoFaint, fontSize: 10.5 }}>
+                    runtime suggests {suggestedSpan}
+                </span>
+            )}
                 </div>
             )}
         </div>
