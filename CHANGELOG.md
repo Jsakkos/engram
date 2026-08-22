@@ -4,6 +4,21 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Discs whose every track was filed as "extras" are held for review instead of
+  quietly completing.** When TMDB's runtimes don't describe the disc, the
+  duration pre-filter could reject every track on it, so a whole box set could
+  file every one of its episodes into `Extras/` and report success. Such
+  a disc now stops for confirmation, because "nothing on this disc is an episode"
+  is far more often a failed match than a genuine bonus disc.
+- **Episode-length tracks are no longer mistaken for extras on segment-format
+  shows.** When no track on a disc matches a single TMDB runtime but tracks match
+  whole multiples of one, Engram now recognises the disc as segment-numbered and
+  accepts the combined tracks as episodes. If nothing fits under either rule, the
+  runtime filter is disabled for that disc and the audio matcher — which compares
+  content, not clocks — decides.
+
 ## [0.32.0] - 2026-08-19
 
 _Highlights: review jobs stay visible even after they age off the dashboard._
