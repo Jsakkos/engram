@@ -359,6 +359,10 @@ Components use updated settings
 - **API Keys**: `makemkv_key`, `tmdb_api_key` (redacted in responses)
 - **Matching**: `max_concurrent_matches` (default: 3), threshold constants in Analyst
 - **Conflict resolution**: `conflict_resolution_default` ("skip" | "overwrite" | "ask")
+- **Manual review**: `always_review` (bool, default false) — `check_job_completion` parks
+  every disc in REVIEW_NEEDED instead of finalizing. Checked AFTER the escalation ladders
+  (so the review opens with the matcher's best guess pre-filled) and gated on `has_matched`
+  (a disc with nothing left to organize must not be parked, or the review page can't finish it).
 - **Discord notifications**: `discord_template_completed` / `discord_template_failed` /
   `discord_template_review` (customizable embed description, chevron `{{var}}` mustache
   syntax, see `app/core/discord_notifier.py::ALLOWED_TEMPLATE_VARS`; empty string = built-in
