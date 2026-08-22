@@ -237,12 +237,34 @@ export function buildRangeCode(season: number, first: number, span: number): str
  * whole multiple, so ordinary episodes never get a spurious "holds 2" hint.
  */
 export function inferSpan(trackSeconds: number | null | undefined, episodes: RosterEpisode[]): number {
-    const runtimes = episodes.map((e) => e.runtime).filter((r): r is number => !!r && r > 0);
+    const runtimes = [
+        ...new Set(episodes.map((e) => e.runtime).filter((r): r is number => !!r && r > 0)),
+    ];
     if (!trackSeconds || runtimes.length === 0) return 1;
-    const sorted = [...runtimes].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)];
-    const ratio = trackSeconds / 60 / median;
-    const nearest = Math.round(ratio);
-    if (nearest < 2 || nearest > MAX_SPAN) return 1;
-    return Math.abs(ratio - nearest) <= 0.25 ? nearest : 1;
+    const minutes = trackSeconds / 60;
+
+    // Every plausible (runtime, count) pairing, judged by the same window the
+    // backend uses to accept a combined track: a block may fall 10% short of N
+    // whole episodes or run 25% past them, since a DVD track carries the credits
+    // and recap that TMDB's runtime figure omits. Rounding the ratio instead
+    // rejected exactly the padded tracks this is meant to catch — a 24.6min
+    // block of three 7min segments rounds to 4 and lands nowhere near it.
+    //
+    // A season is not always uniform (a show can list 7min segments alongside
+    // 11min ones), so all distinct runtimes are considered and the closest fit
+    // wins rather than the median deciding for the whole disc.
+    let best = 1;
+    let bestError = Infinity;
+    for (const runtime of runtimes) {
+        for (let n = 2; n <= MAX_SPAN; n++) {
+            const combined = runtime * n;
+            const error = (minutes - combined) / combined;
+            if (error < -0.1 || error > 0.25) continue;
+            if (Math.abs(error) < bestError) {
+                bestError = Math.abs(error);
+                best = n;
+            }
+        }
+    }
+    return best;
 }

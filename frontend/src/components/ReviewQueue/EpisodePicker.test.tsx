@@ -82,9 +82,19 @@ describe('EpisodePicker combined tracks', () => {
         expect(onAssign).toHaveBeenCalledWith('S01E01-E03');
     });
 
-    it('does not offer a span for an ordinary episode-length track', () => {
+    it('rests at one episode for an ordinary track, without suggesting a span', () => {
+        // The stepper is always present — one that appeared only when the runtime
+        // heuristic fired was missing from exactly the track that needed setting
+        // by hand — but it makes no claim about an ordinary episode.
         renderPicker({ trackSeconds: 7 * 60 });
-        expect(screen.queryByText(/episodes?$/)).not.toBeInTheDocument();
+        expect(screen.getByText('1 episode')).toBeInTheDocument();
+        expect(screen.queryByText(/runtime suggests/)).not.toBeInTheDocument();
+    });
+
+    it('suggests a span for a padded combined track', () => {
+        renderPicker({ trackSeconds: 24.65 * 60 });
+        expect(screen.getByText('3 episodes')).toBeInTheDocument();
+        expect(screen.getByText(/runtime suggests 3/)).toBeInTheDocument();
     });
 
     it('re-emits the range when the span changes', () => {
