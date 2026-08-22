@@ -5,13 +5,15 @@ These back the hardening of CodeQL-flagged sinks:
 - ``is_allowed_image_url`` — guards the ``fetch_cover`` outbound HTTP request.
 - ``executable_basename_allowed`` — constrains the tool-validation subprocess
   calls to executables that actually look like the expected tool.
+- ``is_within_configured_roots`` — constrains media-endpoint file paths to the
+  configured staging and library roots.
 - ``sanitize_log_value`` — strips line breaks/control characters from
   disc/user-controlled values before they are written to logs.
 
-The first two are boolean *predicates* — they return ``True``/``False`` so the
-validation is recognised as a barrier guard by static analysis at the call site
-(``if not guard(x): ...``). ``sanitize_log_value`` instead returns the cleaned
-value, the recognised barrier shape for log injection.
+The first three are boolean *predicates* — they return ``True``/``False`` so
+the validation is recognised as a barrier guard by static analysis at the call
+site (``if not guard(x): ...``). ``sanitize_log_value`` instead returns the
+cleaned value, the recognised barrier shape for log injection.
 """
 
 from __future__ import annotations
@@ -95,7 +97,7 @@ def executable_basename_allowed(path: str, allowed_basenames: Sequence[str]) -> 
     return name in {allowed.lower() for allowed in allowed_basenames}
 
 
-def is_within_configured_roots(path: os.PathLike[str] | str, roots: Sequence[str]) -> bool:
+def is_within_configured_roots(path: os.PathLike[str] | str | None, roots: Sequence[str]) -> bool:
     """Return True if ``path`` resolves inside at least one of ``roots``.
 
     Barrier guard for the media endpoints: the file path comes out of the
@@ -112,10 +114,16 @@ def is_within_configured_roots(path: os.PathLike[str] | str, roots: Sequence[str
     Empty roots are skipped. Unconfigured ``AppConfig`` paths default to ``""``,
     which would otherwise resolve to the process working directory and silently
     authorise it.
+
+    A falsy or otherwise unusable ``path`` (``None`` or ``""``, as both
+    ``output_filename`` and ``organized_to`` are before a title is placed)
+    returns False rather than raising, so the guard always fails closed.
     """
+    if not path:
+        return False
     try:
         resolved = Path(path).resolve(strict=False)
-    except (OSError, ValueError):
+    except (OSError, ValueError, TypeError):
         return False
 
     for root in roots:

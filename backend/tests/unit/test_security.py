@@ -213,6 +213,18 @@ class TestIsWithinConfiguredRoots:
         outside.touch()
         assert not is_within_configured_roots(outside, ["", ""])
 
+    def test_rejects_none_path(self, tmp_path):
+        # output_filename/organized_to are both `str | None`. A guard that
+        # raises on the normal unset case is not a barrier guard.
+        root = tmp_path / "staging"
+        root.mkdir()
+        assert not is_within_configured_roots(None, [str(root)])
+
+    def test_rejects_empty_path(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        assert not is_within_configured_roots("", [str(root)])
+
     def test_rejects_symlink_escaping_root(self, tmp_path):
         root = tmp_path / "staging"
         root.mkdir()
