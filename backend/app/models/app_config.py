@@ -134,6 +134,14 @@ class AppConfig(SQLModel, table=True):
     # Extras handling
     extras_policy: str = "keep"  # "keep" | "skip" | "ask"
 
+    # Skip the "Play All" title that concatenates a TV disc's episodes. Detection
+    # requires MakeMKV's segment structure, the chapter counts and the durations to
+    # agree, since wrongly discarding a title costs a whole episode. Disable to rip
+    # every title as the disc presents them.
+    play_all_detection_enabled: bool = Field(
+        default=True, sa_column_kwargs={"server_default": text("1")}
+    )
+
     # Show the combined-episode ("spans N episodes") control on every track,
     # rather than only on discs where some track's runtime suggests one. For
     # libraries where combined tracks are the norm but the runtimes are too

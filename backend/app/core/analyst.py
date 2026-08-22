@@ -176,6 +176,103 @@ def _uncorroborated_review_reason(detected_name: str | None, tmdb_signal) -> str
     )
 
 
+# How far a concatenation's own duration may drift from the sum of its parts.
+# Only rounding and container overhead separate them — MakeMKV reports whole
+# seconds — so this is tight on purpose: it is a corroborating signal, not a
+# search window.
+PLAY_ALL_DURATION_TOLERANCE = 0.02
+
+
+def _parse_segment_groups(segment_map: str | None) -> list[int]:
+    """Sizes of each group in a MakeMKV segment map (TINFO attribute 26).
+
+    ``"1-6,7-11,12-16"`` → ``[6, 5, 5]``: a DVD playlist stitching three sources
+    of 6, 5 and 5 cells. ``"1,2,3"`` → ``[1, 1, 1]``: the Blu-ray form, where each
+    entry is one clip. An unparseable map yields ``[]`` rather than raising — the
+    caller treats "no structure" as "cannot corroborate", never as proof.
+    """
+    if not segment_map:
+        return []
+    groups: list[int] = []
+    for part in segment_map.split(","):
+        part = part.strip()
+        if not part:
+            return []
+        if "-" in part:
+            lo, _, hi = part.partition("-")
+            try:
+                span = int(hi) - int(lo) + 1
+            except ValueError:
+                return []
+            if span < 1:
+                return []
+            groups.append(span)
+        else:
+            if not part.isdigit():
+                return []
+            groups.append(1)
+    return groups
+
+
+def _structural_play_all(titles: list["TitleInfo"]) -> list[int]:
+    """Indices of titles that three independent signals agree are concatenations.
+
+    MakeMKV describes how a title is assembled: ``segment_count`` (how many
+    sources it stitches together) and ``segment_map`` (their shape). A "Play All"
+    is a playlist over the episode titles, so it reports several segments while
+    each episode reports one — a structural fact, not an inference from runtime.
+
+    Being deselected costs the user an entire episode if we are wrong, so all
+    three available signals must agree before a title is called a concatenation:
+
+    * segment count — the title stitches N sources, and its map describes N groups
+    * chapter count — those groups account for exactly its chapters, and match the
+      chapter counts of N consecutive single-segment titles
+    * duration — it runs as long as those N titles put together
+
+    A two-part episode presented as one playlist has several segments too, which
+    is why the chapter and duration agreement is required rather than assumed.
+    """
+    parts = sorted(
+        (t for t in titles if t.segment_count <= 1 and t.chapter_count > 0),
+        key=lambda t: t.index,
+    )
+    play_all: list[int] = []
+
+    for candidate in titles:
+        if candidate.segment_count < 2:
+            continue
+        groups = _parse_segment_groups(candidate.segment_map)
+        # The map has to describe exactly the segments the count claims, or we do
+        # not understand this title well enough to discard it.
+        if len(groups) != candidate.segment_count:
+            continue
+        if candidate.chapter_count != sum(groups):
+            continue
+
+        chapters = [t.chapter_count for t in parts]
+        for start in range(len(parts) - len(groups) + 1):
+            window = parts[start : start + len(groups)]
+            if chapters[start : start + len(groups)] != groups:
+                continue
+            total = sum(t.duration_seconds for t in window)
+            if total <= 0:
+                continue
+            drift = abs(candidate.duration_seconds - total) / total
+            if drift > PLAY_ALL_DURATION_TOLERANCE:
+                continue
+            play_all.append(candidate.index)
+            logger.info(
+                f"Detected 'Play All' title {candidate.index} structurally: "
+                f"{candidate.segment_count} segments matching titles "
+                f"{[t.index for t in window]} — chapters {candidate.chapter_count}, "
+                f"duration {candidate.duration_seconds // 60}min vs {total // 60}min combined"
+            )
+            break
+
+    return play_all
+
+
 def _matches_expected_runtime(duration_seconds: int, expected_runtimes_min: list[int]) -> bool:
     """True if a title duration matches a legitimate expected episode runtime.
 
@@ -853,8 +950,10 @@ class DiscAnalyst:
     ) -> list[int]:
         """Identify 'Play All' concatenation titles on TV discs.
 
-        A Play All title has duration roughly equal to the sum of all episode-cluster
-        titles. It must also be feature-length (>80 min).
+        Uses the disc's own structure when MakeMKV reports it (see
+        ``_structural_play_all``); otherwise falls back to the duration heuristic,
+        where a Play All runs roughly as long as all episode-cluster titles put
+        together and must be feature-length (>80 min).
 
         Args:
             titles: All titles on the disc
@@ -865,6 +964,17 @@ class DiscAnalyst:
         Returns:
             List of title indices that are Play All concatenations
         """
+        if not self._get_config().play_all_detection_enabled:
+            logger.info("Play All detection is disabled; keeping every title")
+            return []
+
+        # Prefer what the disc says about itself. MakeMKV reports how each title
+        # is assembled, and a concatenation is a structural fact there rather than
+        # something inferred from runtime arithmetic. Only when a disc reports no
+        # segment data at all do we fall back to comparing durations.
+        if any(t.segment_count for t in titles):
+            return _structural_play_all(titles)
+
         if not tv_result or "episode_indices" not in tv_result:
             # No episode cluster — try fallback using TV-range titles
             return self._detect_play_all_fallback(titles, expected_runtimes)

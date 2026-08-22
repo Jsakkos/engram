@@ -154,6 +154,7 @@ interface ConfigData {
     extrasPolicy: string;
     alwaysReview: boolean;
     alwaysShowEpisodeSpan: boolean;
+    playAllDetectionEnabled: boolean;
     namingSeasonFormat: string;
     namingEpisodeFormat: string;
     namingMovieFormat: string;
@@ -244,6 +245,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         extrasPolicy: 'keep',
         alwaysReview: false,
         alwaysShowEpisodeSpan: false,
+        playAllDetectionEnabled: true,
         namingSeasonFormat: 'Season {season:02d}',
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
@@ -371,6 +373,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     extrasPolicy: data.extras_policy || 'keep',
                     alwaysReview: data.always_review ?? false,
                     alwaysShowEpisodeSpan: data.always_show_episode_span ?? false,
+                    playAllDetectionEnabled: data.play_all_detection_enabled ?? true,
                     namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
@@ -589,6 +592,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     extras_policy: config.extrasPolicy,
                     always_review: config.alwaysReview,
                     always_show_episode_span: config.alwaysShowEpisodeSpan,
+                    play_all_detection_enabled: config.playAllDetectionEnabled,
                     naming_season_format: config.namingSeasonFormat,
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
@@ -1738,6 +1742,26 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         &quot;spans N episodes&quot; control only on discs where a track&apos;s
                                         length says so. Tick this if your discs do it but the runtimes
                                         are too unreliable to detect.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label checkbox-plain">
+                                <input
+                                    type="checkbox"
+                                    checked={config.playAllDetectionEnabled}
+                                    onChange={(e) => handleInputChange('playAllDetectionEnabled', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Skip &quot;Play All&quot; titles</strong>
+                                    <span className="checkbox-hint">
+                                        TV discs often carry one long title that plays every episode
+                                        back to back — ripping it wastes an hour and duplicates the
+                                        whole disc. A title is only skipped when the disc&apos;s own
+                                        structure, its chapter counts and its duration all agree that
+                                        it is a concatenation. Untick to rip every title as-is.
                                     </span>
                                 </span>
                             </label>

@@ -47,6 +47,15 @@ All notable changes to Engram will be documented in this file.
   exactly the ones needing it set by hand. A new setting under *Naming & extras*
   forces it on for every disc, for libraries whose runtimes are too unreliable to
   detect.
+- **"Play All" titles are identified from the disc's own structure.** A TV disc
+  usually carries one long title that plays every episode back to back; ripping it
+  wastes an hour and duplicates the whole disc. Engram used to spot it by adding up
+  runtimes, which is guesswork. MakeMKV actually reports how each title is
+  assembled, so a title is now skipped only when its segment structure, its chapter
+  counts and its duration all agree that it is a concatenation of the other titles
+  — a much stronger test, since wrongly discarding one costs a whole episode. A new
+  setting under *Naming & extras* turns the whole behaviour off. Discs that report
+  no structure keep the old duration-based detection.
 
 ### Fixed
 

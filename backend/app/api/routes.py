@@ -299,6 +299,7 @@ class ConfigResponse(BaseModel):
     staging_cleanup_days: int
     # Extras & naming
     extras_policy: str
+    play_all_detection_enabled: bool
     always_review: bool
     always_show_episode_span: bool
     naming_season_format: str
@@ -398,6 +399,7 @@ class ConfigUpdate(BaseModel):
     staging_cleanup_days: int | None = None
     # Extras & naming
     extras_policy: str | None = None
+    play_all_detection_enabled: bool | None = None
     always_review: bool | None = None
     always_show_episode_span: bool | None = None
     naming_season_format: str | None = None
@@ -1816,6 +1818,7 @@ async def get_config() -> ConfigResponse:
         staging_cleanup_days=config.staging_cleanup_days,
         # Extras & naming
         extras_policy=config.extras_policy,
+        play_all_detection_enabled=config.play_all_detection_enabled,
         always_review=config.always_review,
         always_show_episode_span=config.always_show_episode_span,
         naming_season_format=config.naming_season_format,
