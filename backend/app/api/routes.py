@@ -4207,7 +4207,7 @@ async def _resolve_title_media_path(job: DiscJob, title_id: int, session: AsyncS
             detail="This file is outside the configured staging and library folders",
         )
 
-    path = Path(recorded)
+    path = Path(recorded).resolve(strict=False)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="The file for this track is no longer on disk")
     return path

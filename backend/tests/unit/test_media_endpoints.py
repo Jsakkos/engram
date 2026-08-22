@@ -1,8 +1,10 @@
 """Unit tests for the external-player media endpoints.
 
-Covers GET /api/jobs/{job_id}/titles/{title_id}/media and .../playlist.m3u:
-range handling, path resolution and its fallback, the containment guard, and
-the origin gate.
+Covers GET /api/jobs/{job_id}/titles/{title_id}/media: range handling, path
+resolution and its organized_to fallback, and the containment guard.
+
+The origin gate (require_localhost_or_lan) is overridden in the client fixture
+here and is covered separately alongside the playlist endpoint.
 """
 
 import pytest
@@ -78,8 +80,8 @@ def media_file(tmp_path):
 async def client(tmp_path):
     """Async client with the patched DB session and the origin gate disabled.
 
-    The gate is exercised explicitly in TestOriginGate; every other test
-    overrides it so it cannot mask an unrelated failure.
+    The gate is overridden so a gate failure cannot masquerade as a routing or
+    resolution bug in these tests; it is covered by its own tests.
     """
 
     async def override_get_session():
