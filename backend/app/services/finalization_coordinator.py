@@ -7,13 +7,13 @@ import asyncio
 import json
 import logging
 import math
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
+from app.core.episode_codes import normalize_episode_code
 from app.core.organizer import check_library_writable
 from app.database import async_session
 from app.models import DiscJob, JobState
@@ -174,7 +174,6 @@ _MAX_SCAN_POINTS = 200  # bound the RAW count even for very long tracks (realize
 # realize onto a different grid — requested != realized — causing ladder dedup and
 # exhaustion bookkeeping to operate on the wrong depth and pass counters to lie.
 _CONFLICT_FIXED_DEPTHS = (37, 73)
-_EP_CODE_RE = re.compile(r"[Ss](\d+)[Ee](\d+)")
 
 
 def _normalize_episode_code(code: str | None) -> str:
@@ -183,11 +182,15 @@ def _normalize_episode_code(code: str | None) -> str:
     The matcher's fallback path can emit unpadded codes ("S1E14") while its
     main path emits "S01E14"; without normalizing, a real collision would be
     grouped under two different keys and missed.
+
+    Multi-episode codes ("S01E01-E03", a user-assigned combined track)
+    canonicalize whole: they group as one distinct claim rather than collapsing
+    onto their first episode, so the auto-resolver never treats a combined track
+    as a rival for a single episode and re-matches it behind the user's back.
+    Per-episode overlap is surfaced where the decision is made — the review
+    roster's coverage strip.
     """
-    match = _EP_CODE_RE.search(code or "")
-    if not match:
-        return (code or "").upper()
-    return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}"
+    return normalize_episode_code(code)
 
 
 def _detect_conflicts(titles) -> dict[str, list]:
@@ -1602,7 +1605,13 @@ class FinalizationCoordinator:
         record decisions identically. Does not organize or change job state.
         """
         if episode_code:
-            title.matched_episode = episode_code
+            # Canonicalize so padded/unpadded and hyphen/run-on spellings of one
+            # assignment ("S1E3", "S01E03"; "S01E01E02", "S01E01-E02") can't land
+            # in the DB as distinct claims. Pseudo-codes pass through untouched.
+            if episode_code not in ("extra", "skip"):
+                title.matched_episode = normalize_episode_code(episode_code)
+            else:
+                title.matched_episode = episode_code
             if episode_code == "extra":
                 title.is_extra = True
             elif episode_code != "skip":

@@ -215,6 +215,13 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
 - **Database migration**: Alembic with async SQLModel metadata. `render_as_batch=True` for SQLite. Existing databases auto-stamped at head on first startup. `app_config` always preserves data via backup/restore (independent of Alembic).
 - **DiscDB mapping persistence**: `discdb_mappings_json` column on `DiscJob` stores serialized `DiscDbTitleMapping` list. Persisted during identification, restored from DB on server startup via `_restore_discdb_mappings()`.
 - **CI caching**: Playwright browsers cached by version, uv packages cached by lockfile hash, apt packages cached via `cache-apt-pkgs-action`.
+- **Episode codes are multi-episode capable**: `app/core/episode_codes.py` owns parsing and
+  canonicalization. One track can hold several TMDB episodes (`S01E01-E03`) — real for
+  segment-format shows, where TMDB numbers ~7min segments and the DVD carries the assembled
+  ~22min block. Anything reading `matched_episode` must go through `parse_episode_code` /
+  `episode_parts` rather than a local `S(\d+)E(\d+)`, which would silently truncate a combined
+  code to its first episode. `organize_tv_episode` names the file with the Plex/Jellyfin range
+  form; roster coverage counts the track against every episode it claims.
 - **Duration pre-filter trust is per disc**: `MatchingCoordinator._runtime_filter_policy`
   decides ONCE per job whether TMDB's runtimes describe the disc — `strict` (some track matches
   a single runtime), `multiples` (none do, but tracks match whole multiples → segment-numbered

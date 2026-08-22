@@ -46,6 +46,39 @@ def format_season_folder(fmt: str, season: int) -> str:
     return sanitize_filename(result)
 
 
+def _append_extra_episodes(stem: str, episode: int, extra_episodes) -> str:
+    """Extend a rendered stem's episode token into a Plex/Jellyfin range.
+
+    ``"The Office - S01E01"`` + ``[2, 3]`` → ``"The Office - S01E01-E03"``. A
+    contiguous run collapses to the compact first-to-last range — the form Plex
+    and Jellyfin document, and the one hand-organized libraries use. A gapped set
+    (E01 + E03, no E02) uses the run-on form ``"S01E01E03"`` instead: writing it
+    as a hyphenated range would claim an episode the file doesn't contain, and
+    the two forms are indistinguishable once written.
+
+    The tail is spliced in after the *episode* token (matched on the rendered
+    number, padded or not) rather than appended blindly, so a format that puts
+    something after the number — ``"{show} - S{season:02d}E{episode:02d} [{year}]"``
+    — still yields a filename scanners can parse. If the number can't be located
+    (an exotic custom format), the tail goes at the end: a slightly odd name is
+    better than a file that claims only its first episode.
+    """
+    extras = [int(e) for e in extra_episodes]
+    if not extras:
+        tail = ""
+    elif extras == list(range(episode + 1, episode + 1 + len(extras))):
+        tail = f"-E{extras[-1]:02d}"
+    else:
+        tail = "".join(f"E{e:02d}" for e in extras)
+    if not tail:
+        return stem
+    matches = list(re.finditer(rf"E0*{episode}(?!\d)", stem, re.IGNORECASE))
+    if not matches:
+        return stem + tail
+    end = matches[-1].end()
+    return stem[:end] + tail + stem[end:]
+
+
 def format_episode_filename(
     fmt: str,
     show: str,
@@ -54,6 +87,7 @@ def format_episode_filename(
     *,
     year: int | None = None,
     tmdb_id: str | int | None = None,
+    extra_episodes: list[int] | tuple[int, ...] = (),
 ) -> str:
     """Format an episode filename from a config format string.
 
@@ -61,6 +95,11 @@ def format_episode_filename(
     chosen format omits them they are ignored; when year is missing, an empty
     ``()`` left behind is stripped (mirrors ``format_movie_folder``). The default
     format ("{show} - SxxExx") is unaffected.
+
+    ``extra_episodes`` carries the additional episodes of a combined track (one
+    file holding several episodes); they extend the episode token into the
+    ``S01E01-E03`` range form. The format string itself stays single-episode, so a
+    user's custom format needs no change to support combined tracks.
     """
     # format_map keeps an unknown placeholder raising KeyError → safe fallback,
     # while avoiding CodeQL's missing-named-argument false positive on the
@@ -78,6 +117,7 @@ def format_episode_filename(
     except (KeyError, ValueError, IndexError):
         result = f"{show} - S{season:02d}E{episode:02d}"
     result = _strip_empty_name_groups(result)
+    result = _append_extra_episodes(result, episode, extra_episodes)
     return sanitize_filename(result)
 
 
@@ -613,7 +653,10 @@ def organize_tv_episode(
         source_file: Path to the MKV file to move
         show_name: Name of the TV show (e.g., "The Office")
         episode_code: CANONICAL (TMDB aired-order) episode code (e.g., "S01E01").
-            Always the canonical identity — never a projected number.
+            Always the canonical identity — never a projected number. May be a
+            multi-episode code ("S01E01-E03") when one track holds several
+            episodes (segment-format shows); the file is then named with the
+            Plex/Jellyfin range form so both scanners resolve every episode.
         library_path: Override for library path (defaults to settings)
         conflict_resolution: How to handle file conflicts: "ask", "overwrite", "rename", "skip"
         tmdb_id: Show's TMDB id; required to project a non-aired ordering.
@@ -630,9 +673,8 @@ def organize_tv_episode(
     Returns:
         dict with 'success', 'final_path', 'error' keys
     """
-    import re
-
     # Imported function-locally to avoid a circular import with config_service.
+    from app.core.episode_codes import parse_episode_code
     from app.services.config_service import get_config_sync
 
     if library_path is None:
@@ -646,17 +688,18 @@ def organize_tv_episode(
             "error": "Library path not configured. Please set TV Library path in Settings.",
         }
 
-    # Parse episode code to extract season and episode numbers
-    ep_match = re.match(r"S(\d+)E(\d+)", episode_code, re.IGNORECASE)
-    if not ep_match:
+    # Parse episode code to extract the season and its episode number(s). Anchored
+    # parsing: a multi-episode code yields every part, so a combined track can
+    # never be silently filed under its first episode alone.
+    parsed = parse_episode_code(episode_code)
+    if not parsed:
         return {
             "success": False,
             "final_path": None,
             "error": f"Invalid episode code format: {episode_code}",
         }
 
-    season_num = int(ep_match.group(1))
-    episode_num = int(ep_match.group(2))
+    season_num, episode_nums = parsed
 
     # Load naming format from config
     cfg = get_config_sync()
@@ -664,13 +707,19 @@ def organize_tv_episode(
     # Project the CANONICAL (aired) number to the chosen output ordering for the
     # filename only (#200). This is the one and only projection seam: matched_episode
     # in the DB and the fingerprint key stay canonical. Aired/no-tmdb_id is a no-op.
-    out_season, out_episode = season_num, episode_num
+    # Every part of a multi-episode code is projected, so a range stays contiguous
+    # in the output ordering rather than mixing orderings within one filename.
+    out_season, out_episodes = season_num, list(episode_nums)
     if ordering != "aired" and tmdb_id:
         from app.core.episode_ordering import project_episode
 
-        out_season, out_episode = project_episode(
-            tmdb_id, ordering, season_num, episode_num, cfg.tmdb_api_key
-        )
+        projected: list[int] = []
+        for episode_num in episode_nums:
+            out_season, projected_episode = project_episode(
+                tmdb_id, ordering, season_num, episode_num, cfg.tmdb_api_key
+            )
+            projected.append(projected_episode)
+        out_episodes = projected
 
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())
@@ -680,9 +729,10 @@ def organize_tv_episode(
         cfg.naming_episode_format,
         clean_show,
         out_season,
-        out_episode,
+        out_episodes[0],
         year=year,
         tmdb_id=tmdb_id,
+        extra_episodes=out_episodes[1:],
     )
     filename = f"{ep_stem}.mkv"
 

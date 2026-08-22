@@ -4,6 +4,7 @@ import { IcoRetry } from '../../app/components/icons';
 import { SvActionButton, SvBadge, SvLabel, SvNotice, SvPanel, sv } from '../../app/components/synapse';
 import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
 import type { DiscTitle } from '../../types';
+import { displayEpisodeCode, episodeParts, isRealCode } from './coverage';
 import type { Candidate, CoverageEntry } from './coverage';
 import type { LLMSuggestion, RosterEpisode } from './types';
 import type { LLMFeedback } from './llmFeedback';
@@ -96,9 +97,13 @@ export function Inspector({
     const takenByOther = (code: string): number[] =>
         (holders.get(code) ?? []).filter((id) => id !== title.id);
 
-    // This title's current pick collides with another title's pick.
-    const selectionIsCode = !!selection && /^S\d+E\d+$/i.test(selection);
-    const conflictWith = selectionIsCode ? takenByOther(selection as string) : [];
+    // This title's current pick collides with another title's pick. A combined
+    // track ("S01E01-E02-E03") is checked episode by episode: it collides if ANY
+    // of the episodes it claims is also claimed elsewhere.
+    const selectionIsCode = !!selection && isRealCode(selection);
+    const selectionParts = selectionIsCode ? episodeParts(selection as string) : [];
+    const contestedPart = selectionParts.find((code) => takenByOther(code).length > 0) ?? null;
+    const conflictWith = [...new Set(selectionParts.flatMap((code) => takenByOther(code)))];
     const inConflict = conflictWith.length > 0;
 
     const stateBadge = fileExists ? (
@@ -145,7 +150,7 @@ export function Inspector({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', marginBottom: 14, border: `1px solid ${sv.red}`, background: `${sv.red}12` }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontFamily: sv.display, fontSize: 13, color: sv.red }}>
-                                ⚠ {selection} also claimed by {conflictWith.map((id) => `#${titleIndexById[id] ?? id}`).join(', ')}
+                                ⚠ {contestedPart ?? displayEpisodeCode(selection as string)} also claimed by {conflictWith.map((id) => `#${titleIndexById[id] ?? id}`).join(', ')}
                             </div>
                             <div style={{ ...monoFaint, marginTop: 2, fontSize: 10.5 }}>
                                 Deep re-match re-runs every claiming title with denser sampling + stricter votes to break the tie.
@@ -154,7 +159,7 @@ export function Inspector({
                         <SvActionButton
                             tone="magenta"
                             size="sm"
-                            onClick={() => onDeepRematch(selection as string)}
+                            onClick={() => onDeepRematch((contestedPart ?? selection) as string)}
                             disabled={isMatching}
                         >
                             <IcoRetry size={11} className={isMatching ? 'animate-spin' : ''} />
