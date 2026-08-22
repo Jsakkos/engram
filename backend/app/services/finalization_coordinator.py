@@ -850,6 +850,7 @@ class FinalizationCoordinator:
         # report COMPLETED for each disc. Hold it for a human, who
         # can confirm "yes, this really is a bonus disc" in one click; the
         # alternative is discovering the mis-file weeks later in the library.
+        # Runs regardless of always_review — this is the floor, not the override.
         if job.content_type == ContentType.TV and not has_review:
             extras = [t for t in matchable if t.is_extra]
             episodes = [
@@ -870,6 +871,29 @@ class FinalizationCoordinator:
                     f"content and none matched an episode. That usually means the episode "
                     f"match failed rather than the disc being a bonus disc — assign the "
                     f"episodes below, or organize as-is if it really is extras.",
+                )
+                return
+
+        # Manual-review override: hold every disc for confirmation, however
+        # confident the matcher was. Placed AFTER the escalation ladders on
+        # purpose — the user still wants the machine's best guess pre-filled,
+        # they just want the last word before anything moves into the library.
+        # Nothing here is unresolved by definition, so the review page opens with
+        # every track already assigned and the user confirms or corrects.
+        # Gated on has_matched — something is still waiting to be organized, so
+        # there is a decision left to hold. A disc whose titles are already all
+        # COMPLETED/FAILED has nothing left to confirm; parking it would strand a
+        # job the review page can't finish.
+        if not has_review and has_matched:
+            from app.services.config_service import get_config as get_db_config
+
+            if (await get_db_config()).always_review:
+                logger.info(f"Job {job_id}: always_review enabled — holding disc for confirmation")
+                await self._park_in_review(
+                    session,
+                    job,
+                    "Manual review is on for every disc — confirm the assignments below, "
+                    "then organize.",
                 )
                 return
 

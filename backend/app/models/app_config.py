@@ -134,6 +134,12 @@ class AppConfig(SQLModel, table=True):
     # Extras handling
     extras_policy: str = "keep"  # "keep" | "skip" | "ask"
 
+    # Manual review override: hold EVERY disc in the review queue before anything
+    # is organized, however confident the matcher was. For libraries the matcher
+    # handles badly (segment-format cartoons, DVD orderings TMDB doesn't carry)
+    # confirming each disc by hand beats discovering a mis-file after the move.
+    always_review: bool = Field(default=False, sa_column_kwargs={"server_default": text("0")})
+
     # Naming conventions (Python format strings)
     naming_season_format: str = "Season {season:02d}"
     naming_episode_format: str = "{show} - S{season:02d}E{episode:02d}"

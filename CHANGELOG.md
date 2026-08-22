@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Review every disc before it is organized.** A new setting under *Naming &
+  extras* holds every disc in the Review Queue for confirmation, however
+  confident the match was. The matcher still runs and pre-fills its best guess —
+  you just get the last word before anything moves into the library. Useful for
+  shows the matcher handles badly.
+
 ### Fixed
 
 - **Discs whose every track was filed as "extras" are held for review instead of
