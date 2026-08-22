@@ -843,6 +843,36 @@ class FinalizationCoordinator:
             await self._park_in_review(session, job, reason)
             return
 
+        # An all-extras TV disc is a matching failure wearing a success costume.
+        # Every track auto-sorted into Extras and nothing matched an episode means
+        # the duration pre-filter (or the matcher) rejected the whole disc. That is
+        # how a whole box set can file every one of its episodes into Extras/ and
+        # report COMPLETED for each disc. Hold it for a human, who
+        # can confirm "yes, this really is a bonus disc" in one click; the
+        # alternative is discovering the mis-file weeks later in the library.
+        if job.content_type == ContentType.TV and not has_review:
+            extras = [t for t in matchable if t.is_extra]
+            episodes = [
+                t
+                for t in matchable
+                if not t.is_extra and t.matched_episode and t.matched_episode != "skip"
+            ]
+            if extras and not episodes:
+                logger.warning(
+                    f"Job {job_id}: all {len(extras)} track(s) were classified as extras and "
+                    f"nothing matched an episode — routing to review instead of filing the "
+                    f"whole disc into Extras/."
+                )
+                await self._park_in_review(
+                    session,
+                    job,
+                    f"Every track on this disc ({len(extras)}) was classified as bonus "
+                    f"content and none matched an episode. That usually means the episode "
+                    f"match failed rather than the disc being a bonus disc — assign the "
+                    f"episodes below, or organize as-is if it really is extras.",
+                )
+                return
+
         # Review takes priority: while ANY title still needs manual review, do
         # not organize anything — hold the whole disc in staging until it is
         # fully resolved. (finalize_disc_job also guards against conflicts it
