@@ -18,7 +18,7 @@ from typing import Literal
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_
@@ -4232,6 +4232,43 @@ async def stream_title_media(
     """
     path = await _resolve_title_media_path(job, title_id, session)
     return FileResponse(path, media_type="video/x-matroska", filename=path.name)
+
+
+@router.get(
+    "/jobs/{job_id}/titles/{title_id}/playlist.m3u",
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def title_playlist(
+    request: Request,
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Return a one-entry .m3u pointing at this track's media URL.
+
+    The browser downloads this and the OS hands it to whatever owns .m3u,
+    which is how the track reaches a native player.
+
+    The media URL is built from the *request* URL, so it carries the host the
+    dashboard was actually reached on. Deriving it from settings.host instead
+    would emit ``localhost`` for every remote user: correct on the backend
+    machine, broken everywhere else, and invisible in local testing.
+    """
+    # Resolve first so a missing or out-of-bounds file fails here, rather than
+    # handing the user a playlist that errors inside their player.
+    await _resolve_title_media_path(job, title_id, session)
+
+    title = await session.get(DiscTitle, title_id)
+    media_url = str(request.url_for("stream_title_media", job_id=job.id, title_id=title_id))
+    label = f"{job.detected_title or job.volume_label} - Title {title.title_index}"
+    body = f"#EXTM3U\n#EXTINF:-1,{label}\n{media_url}\n"
+    filename = f"engram-job-{job.id}-title-{title.title_index}.m3u"
+
+    return Response(
+        content=body,
+        media_type="audio/x-mpegurl",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/jobs/{job_id}/rematch")

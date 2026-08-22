@@ -1,10 +1,8 @@
 """Unit tests for the external-player media endpoints.
 
-Covers GET /api/jobs/{job_id}/titles/{title_id}/media: range handling, path
-resolution and its organized_to fallback, and the containment guard.
-
-The origin gate (require_localhost_or_lan) is overridden in the client fixture
-here and is covered separately alongside the playlist endpoint.
+Covers GET /api/jobs/{job_id}/titles/{title_id}/media and .../playlist.m3u:
+range handling, path resolution and its organized_to fallback, the containment
+guard, and the origin gate.
 """
 
 import pytest
@@ -80,8 +78,8 @@ def media_file(tmp_path):
 async def client(tmp_path):
     """Async client with the patched DB session and the origin gate disabled.
 
-    The gate is overridden so a gate failure cannot masquerade as a routing or
-    resolution bug in these tests; it is covered by its own tests.
+    The gate is exercised explicitly in TestOriginGate; every other test
+    overrides it so it cannot mask an unrelated failure.
     """
 
     async def override_get_session():
@@ -220,3 +218,136 @@ class TestMediaEndpoint:
         r = await client.get("/api/jobs/99999/titles/1/media")
 
         assert r.status_code == 404
+
+
+class TestPlaylistEndpoint:
+    async def test_returns_m3u_with_absolute_media_url(self, client, tmp_path, media_file):
+        staging, f = media_file
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=str(f))
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+
+        assert r.status_code == 200
+        body = r.text
+        assert body.startswith("#EXTM3U")
+        assert f"/api/jobs/{job.id}/titles/{title.id}/media" in body
+        assert "http://test/" in body
+
+    async def test_url_uses_request_host_not_localhost(self, tmp_path, media_file):
+        """A playlist opened on another machine must not point at localhost.
+
+        This is the failure that passes local testing and breaks every remote
+        user, so it is asserted against an explicit non-loopback Host.
+        """
+        staging, f = media_file
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=str(f))
+
+        async def override_get_session():
+            async with _unit_session_factory() as session:
+                yield session
+
+        app.dependency_overrides[get_session] = override_get_session
+        app.dependency_overrides[require_localhost_or_lan] = lambda: None
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://192.168.1.50:8000") as ac:
+            r = await ac.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+        app.dependency_overrides.clear()
+
+        assert r.status_code == 200
+        assert "192.168.1.50:8000" in r.text
+        assert "localhost" not in r.text
+        assert "127.0.0.1" not in r.text
+
+    async def test_served_as_attachment_with_playlist_type(self, client, tmp_path, media_file):
+        staging, f = media_file
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=str(f))
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+
+        assert "audio/x-mpegurl" in r.headers["content-type"]
+        disposition = r.headers["content-disposition"]
+        assert disposition.startswith("attachment")
+        assert f"engram-job-{job.id}-title-{title.title_index}.m3u" in disposition
+
+    async def test_playlist_404s_when_track_not_ripped(self, client, tmp_path, media_file):
+        staging, _ = media_file
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=None, organized_to=None)
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+
+        assert r.status_code == 404
+
+    async def test_playlist_403s_for_out_of_bounds_path(self, client, tmp_path, media_file):
+        staging, _ = media_file
+        outside = tmp_path / "elsewhere.mkv"
+        outside.write_bytes(MEDIA_BYTES)
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=str(outside))
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/playlist.m3u")
+
+        assert r.status_code == 403
+
+
+class TestOriginGate:
+    """Both endpoints sit behind require_localhost_or_lan.
+
+    ASGITransport defaults the peer address to loopback, so the 403 branch is
+    only reachable by passing an explicit non-loopback client= to the transport.
+    """
+
+    @pytest.fixture
+    async def lan_client(self):
+        async def override_get_session():
+            async with _unit_session_factory() as session:
+                yield session
+
+        app.dependency_overrides[get_session] = override_get_session
+        transport = ASGITransport(app=app, client=("192.168.1.50", 51234))
+        async with AsyncClient(transport=transport, base_url="http://192.168.1.50:8000") as ac:
+            yield ac
+        app.dependency_overrides.clear()
+
+    async def test_lan_peer_blocked_when_lan_access_disabled(
+        self, lan_client, tmp_path, media_file
+    ):
+        staging, f = media_file
+        async with _unit_session_factory() as session:
+            session.add(
+                AppConfig(
+                    makemkv_path="/usr/bin/makemkvcon",
+                    staging_path=str(staging),
+                    library_movies_path=str(tmp_path / "movies"),
+                    library_tv_path=str(tmp_path / "tv"),
+                    allow_lan_access=False,
+                )
+            )
+            await session.commit()
+        job, title = await _seed_job_and_title(output_filename=str(f))
+
+        r = await lan_client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
+
+        assert r.status_code == 403
+
+    async def test_lan_peer_allowed_when_lan_access_enabled(self, lan_client, tmp_path, media_file):
+        staging, f = media_file
+        async with _unit_session_factory() as session:
+            session.add(
+                AppConfig(
+                    makemkv_path="/usr/bin/makemkvcon",
+                    staging_path=str(staging),
+                    library_movies_path=str(tmp_path / "movies"),
+                    library_tv_path=str(tmp_path / "tv"),
+                    allow_lan_access=True,
+                )
+            )
+            await session.commit()
+        job, title = await _seed_job_and_title(output_filename=str(f))
+
+        r = await lan_client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
+
+        assert r.status_code == 200
