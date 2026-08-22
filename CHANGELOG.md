@@ -16,6 +16,10 @@ All notable changes to Engram will be documented in this file.
   as its own TMDB episode, so a single track really is `S01E01-E03`. The review
   picker can now say so, and the file is named with the range form Plex and
   Jellyfin both read.
+- **The manual episode picker is searchable.** Type part of an episode name or
+  its number instead of scrolling a dropdown — which matters for the 40-100
+  episode seasons that segment-numbered shows produce. Episode names come from
+  the TMDB data Engram already caches.
 
 ### Fixed
 
