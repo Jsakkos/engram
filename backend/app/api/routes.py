@@ -300,6 +300,7 @@ class ConfigResponse(BaseModel):
     # Extras & naming
     extras_policy: str
     always_review: bool
+    always_show_episode_span: bool
     naming_season_format: str
     naming_episode_format: str
     naming_movie_format: str
@@ -398,6 +399,7 @@ class ConfigUpdate(BaseModel):
     # Extras & naming
     extras_policy: str | None = None
     always_review: bool | None = None
+    always_show_episode_span: bool | None = None
     naming_season_format: str | None = None
     naming_episode_format: str | None = None
     naming_movie_format: str | None = None
@@ -1815,6 +1817,7 @@ async def get_config() -> ConfigResponse:
         # Extras & naming
         extras_policy=config.extras_policy,
         always_review=config.always_review,
+        always_show_episode_span=config.always_show_episode_span,
         naming_season_format=config.naming_season_format,
         naming_episode_format=config.naming_episode_format,
         naming_movie_format=config.naming_movie_format,

@@ -10,7 +10,7 @@ import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
+import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, inferSpan, normalizeEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
 import { TitleList } from './ReviewQueue/TitleList';
@@ -180,6 +180,7 @@ function ReviewQueue() {
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
     const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
+    const [alwaysShowSpan, setAlwaysShowSpan] = useState(false);
 
     // Bulk multiselect — ids checked for bulk actions (independent of the
     // single inspected title). `lastBulkClickRef` anchors shift-click ranges.
@@ -263,6 +264,9 @@ function ReviewQueue() {
                 // "***" is the redacted stand-in for a stored key; "" means unset.
                 if (data?.ai_api_key === '***') {
                     setAiKeyConfigured(true);
+                }
+                if (data?.always_show_episode_span) {
+                    setAlwaysShowSpan(true);
                 }
             })
             .catch(() => {/* non-critical */});
@@ -622,6 +626,17 @@ function ReviewQueue() {
     const hasConflicts = collisions.size > 0;
 
     const activeTitles = titles.filter((t) => t.state !== 'completed' && t.state !== 'failed');
+    // Does this DISC hold combined tracks? Decided across the whole disc, because
+    // the tracks whose runtime the heuristic cannot read are exactly the ones
+    // needing a hand-set span — hiding the control per-track would withhold it
+    // where it is most needed. Extras are excluded: a "Play All" concatenation is
+    // a whole disc long and would read as a combined track on any show.
+    const spansEnabled =
+        alwaysShowSpan ||
+        activeTitles.some(
+            (t) => !t.is_extra && inferSpan(t.duration_seconds, rosterEpisodes) > 1,
+        );
+
     const completedTitles = titles.filter((t) => t.state === 'completed' || t.state === 'failed');
     const selectedTitle =
         activeTitles.find((t) => t.id === selectedTitleId) ?? activeTitles[0] ?? null;
@@ -1220,6 +1235,7 @@ function ReviewQueue() {
                                 holders={holders}
                                 titleIndexById={titleIndexById}
                                 isRematching={isRematching}
+                                spansEnabled={spansEnabled}
                                 aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
                                 aiKeyConfigured={aiKeyConfigured}
                                 llmFeedback={llmFeedback[selectedTitle.id] ?? null}

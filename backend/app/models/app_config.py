@@ -134,6 +134,14 @@ class AppConfig(SQLModel, table=True):
     # Extras handling
     extras_policy: str = "keep"  # "keep" | "skip" | "ask"
 
+    # Show the combined-episode ("spans N episodes") control on every track,
+    # rather than only on discs where some track's runtime suggests one. For
+    # libraries where combined tracks are the norm but the runtimes are too
+    # unreliable to detect them.
+    always_show_episode_span: bool = Field(
+        default=False, sa_column_kwargs={"server_default": text("0")}
+    )
+
     # Manual review override: hold EVERY disc in the review queue before anything
     # is organized, however confident the matcher was. For libraries the matcher
     # handles badly (segment-format cartoons, DVD orderings TMDB doesn't carry)

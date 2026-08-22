@@ -142,6 +142,25 @@ class TestAlwaysReviewParking:
 
 
 @pytest.mark.unit
+class TestEpisodeSpanConfigField:
+    """The escape hatch for discs whose combined tracks the runtime heuristic
+    cannot detect: force review's span control on for every disc."""
+
+    def test_defaults_off(self):
+        assert AppConfig().always_show_episode_span is False
+
+    def test_config_update_accepts_and_carries_the_field(self):
+        assert (
+            ConfigUpdate(always_show_episode_span=True).model_dump()["always_show_episode_span"]
+            is True
+        )
+        assert ConfigUpdate().model_dump()["always_show_episode_span"] is None
+
+    def test_config_response_exposes_the_field(self):
+        assert "always_show_episode_span" in ConfigResponse.model_fields
+
+
+@pytest.mark.unit
 class TestAlwaysReviewConfigField:
     """A new AppConfig field must reach ConfigUpdate (PUT accepts it) and
     ConfigResponse (GET returns it), or the toggle silently does nothing."""

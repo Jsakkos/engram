@@ -41,6 +41,12 @@ All notable changes to Engram will be documented in this file.
   the show and season, which every disc in a box set shares — so reviewing disc 8
   looked exactly like reviewing disc 7. It now carries the disc's own label, the
   same way the dashboard card does.
+- **The combined-episode control appears where it is useful.** Review offers the
+  "spans N episodes" control on discs where some track's length says it holds
+  several — not per track, since the tracks whose runtime can't be read are
+  exactly the ones needing it set by hand. A new setting under *Naming & extras*
+  forces it on for every disc, for libraries whose runtimes are too unreliable to
+  detect.
 
 ### Fixed
 

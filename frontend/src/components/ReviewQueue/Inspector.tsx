@@ -44,6 +44,7 @@ export function Inspector({
     holders,
     titleIndexById,
     isRematching,
+    spansEnabled,
     aiEpisodeMatchingEnabled,
     aiKeyConfigured,
     llmFeedback,
@@ -69,6 +70,8 @@ export function Inspector({
     holders: Map<string, number[]>;
     titleIndexById: Record<number, number>;
     isRematching: boolean;
+    /** Whether this disc offers the combined-track span control. */
+    spansEnabled?: boolean;
     aiEpisodeMatchingEnabled: boolean;
     aiKeyConfigured: boolean;
     llmFeedback: LLMFeedback | null;
@@ -332,6 +335,7 @@ export function Inspector({
                             episodes={episodes}
                             selection={selection}
                             trackSeconds={title.duration_seconds}
+                            spansEnabled={spansEnabled}
                             onAssign={onAssign}
                         />
                     </div>

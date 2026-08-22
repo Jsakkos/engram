@@ -21,6 +21,7 @@ function renderPicker(props: Partial<Parameters<typeof EpisodePicker>[0]> = {}) 
             episodes={SEASON}
             selection={undefined}
             trackSeconds={null}
+            spansEnabled
             onAssign={onAssign}
             {...props}
         />,
@@ -83,12 +84,25 @@ describe('EpisodePicker combined tracks', () => {
     });
 
     it('rests at one episode for an ordinary track, without suggesting a span', () => {
-        // The stepper is always present — one that appeared only when the runtime
-        // heuristic fired was missing from exactly the track that needed setting
-        // by hand — but it makes no claim about an ordinary episode.
+        // On a disc that offers the control, a track the heuristic reads as a
+        // single episode still gets it — the tracks it cannot read are the ones
+        // most in need of a hand-set span — but it makes no claim of its own.
         renderPicker({ trackSeconds: 7 * 60 });
         expect(screen.getByText('1 episode')).toBeInTheDocument();
         expect(screen.queryByText(/runtime suggests/)).not.toBeInTheDocument();
+    });
+
+    it('is absent on a disc with no combined tracks', () => {
+        renderPicker({ trackSeconds: 7 * 60, spansEnabled: false });
+        expect(screen.queryByText('1 episode')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('More episodes')).not.toBeInTheDocument();
+    });
+
+    it('still shows an existing range even when the disc would not offer one', () => {
+        // Whatever the disc looks like now, an assignment already made must stay
+        // visible and adjustable.
+        renderPicker({ selection: 'S01E01-E03', spansEnabled: false });
+        expect(screen.getByText('3 episodes')).toBeInTheDocument();
     });
 
     it('suggests a span for a padded combined track', () => {
