@@ -1208,6 +1208,7 @@ function ReviewQueue() {
                                 ) : null;
                             })()}
                             <Inspector
+                                jobId={jobId}
                                 title={selectedTitle}
                                 candidates={candidates}
                                 suggestion={inspectorSuggestion}

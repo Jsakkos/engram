@@ -6,6 +6,7 @@ import { FEATURES } from '../../config/constants';
 import type { DiscTitle } from '../../types';
 import { displayEpisodeCode, episodeParts, isRealCode } from './coverage';
 import { EpisodePicker } from './EpisodePicker';
+import { TrackPreview } from './TrackPreview';
 import type { Candidate, CoverageEntry } from './coverage';
 import type { LLMSuggestion, RosterEpisode } from './types';
 import type { LLMFeedback } from './llmFeedback';
@@ -53,6 +54,7 @@ export function Inspector({
     onDeepRematch,
     onTryLLMMatch,
     onAcceptLLMSuggestion,
+    jobId,
 }: {
     title: DiscTitle;
     candidates: Candidate[];
@@ -77,6 +79,8 @@ export function Inspector({
     onDeepRematch: (episodeCode: string) => void;
     onTryLLMMatch: (titleId: number) => void;
     onAcceptLLMSuggestion: (titleId: number, episodeNumber: number) => void;
+    /** Job id for the preview endpoints; omitted in contexts without a job route. */
+    jobId?: string;
 }) {
     const details = parseMatchDetails(title);
     const fileExists = details.error === 'file_exists';
@@ -331,6 +335,12 @@ export function Inspector({
                             onAssign={onAssign}
                         />
                     </div>
+                    {jobId && (
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <TrackPreview jobId={jobId} titleId={title.id} />
+                        </div>
+                    )}
+
                     {/* row 2: action buttons */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
                         <SvActionButton

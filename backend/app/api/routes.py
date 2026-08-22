@@ -1188,6 +1188,151 @@ async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
     return {"status": "advanced", "job_id": job.id}
 
 
+class PreviewChapter(BaseModel):
+    """One chapter mark on a ripped track, in seconds."""
+
+    index: int
+    start: float
+    end: float
+    title: str
+
+
+class TrackPreviewResponse(BaseModel):
+    """What the review page needs to offer a preview of one track."""
+
+    available: bool
+    reason: str | None = None
+    duration: float | None = None
+    chapters: list[PreviewChapter] = []
+    # True when the clip is a straight repackage (source already browser-playable)
+    # rather than a re-encode — the UI can promise an instant preview.
+    direct: bool = False
+
+
+async def _preview_source(job: DiscJob, title_id: int, session: AsyncSession) -> "Path":
+    """The file a preview should play for this title.
+
+    Resolved from the DB, never from the request: the client names a title, not a
+    path. A track under review is still in staging (``output_filename``); one on a
+    finished job has already moved to the library (``organized_to``).
+    """
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job.id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    candidate = title.output_filename or title.organized_to
+    if not candidate:
+        raise HTTPException(status_code=409, detail="This track has not been ripped yet")
+
+    path = Path(candidate)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="The ripped file is no longer where it was")
+    return path
+
+
+@router.get(
+    "/jobs/{job_id}/titles/{title_id}/preview",
+    response_model=TrackPreviewResponse,
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def get_track_preview(
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> TrackPreviewResponse:
+    """Chapter marks and playability for one track's preview.
+
+    Chapters are the seek points the review UI offers. MakeMKV preserves the
+    disc's own marks, and on a segment-format show they land on the segment
+    boundaries — so they answer "what else is in this track?" directly.
+    """
+    from app.core.preview import probe_media, resolve_ffmpeg_binary
+    from app.services.config_service import get_config
+
+    path = await _preview_source(job, title_id, session)
+
+    config = await get_config()
+    ffprobe = resolve_ffmpeg_binary(config.ffmpeg_path, "ffprobe")
+    if not ffprobe:
+        return TrackPreviewResponse(
+            available=False,
+            reason="ffprobe was not found. Set the FFmpeg path in Settings to enable previews.",
+        )
+
+    probe = await probe_media(path, ffprobe)
+    return TrackPreviewResponse(
+        available=True,
+        duration=probe.duration,
+        direct=probe.can_copy,
+        chapters=[
+            PreviewChapter(index=c.index, start=c.start, end=c.end, title=c.title)
+            for c in probe.chapters
+        ],
+    )
+
+
+@router.get(
+    "/jobs/{job_id}/titles/{title_id}/preview/clip",
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def stream_track_preview(
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+    t: float = Query(default=0, ge=0, description="Clip start, seconds into the track"),
+    d: float = Query(default=0, ge=0, description="Clip length in seconds (0 = default)"),
+) -> StreamingResponse:
+    """Stream a short, browser-playable clip of a track.
+
+    A rip is not directly playable — DVD tracks are MPEG-2 + AC3, which no browser
+    decodes — so the clip is transcoded on the fly and streamed straight from
+    ffmpeg's stdout. Nothing touches disk, and ffmpeg is killed as soon as the
+    client goes away.
+    """
+    from app.core.preview import (
+        DEFAULT_CLIP_SECONDS,
+        MAX_CLIP_SECONDS,
+        build_preview_command,
+        probe_media,
+        resolve_ffmpeg_binary,
+        stream_preview,
+    )
+    from app.services.config_service import get_config
+
+    path = await _preview_source(job, title_id, session)
+
+    config = await get_config()
+    ffmpeg = resolve_ffmpeg_binary(config.ffmpeg_path, "ffmpeg")
+    if not ffmpeg:
+        raise HTTPException(
+            status_code=503,
+            detail="FFmpeg was not found. Set the FFmpeg path in Settings to enable previews.",
+        )
+
+    ffprobe = resolve_ffmpeg_binary(config.ffmpeg_path, "ffprobe")
+    copy_streams = False
+    if ffprobe:
+        copy_streams = (await probe_media(path, ffprobe)).can_copy
+
+    length = min(d or DEFAULT_CLIP_SECONDS, MAX_CLIP_SECONDS)
+    cmd = build_preview_command(ffmpeg, path, t, length, copy_streams=copy_streams)
+    logger.info(
+        "Preview clip: job %s title %s at %ss for %ss (%s)",
+        sanitize_log_value(job.id),
+        sanitize_log_value(title_id),
+        sanitize_log_value(f"{t:.0f}"),
+        sanitize_log_value(f"{length:.0f}"),
+        "copy" if copy_streams else "transcode",
+    )
+    return StreamingResponse(
+        stream_preview(cmd),
+        media_type="video/mp4",
+        # The clip is derived state, cheap to regenerate and tied to a file that
+        # may be re-ripped mid-review — never let a proxy or the browser keep it.
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 class SkipTitleRequest(BaseModel):
     """Request model for skipping a single stuck title."""
 

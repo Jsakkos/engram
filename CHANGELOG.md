@@ -31,6 +31,12 @@ All notable changes to Engram will be documented in this file.
   that is offline while you are editing settings is flagged as a warning rather
   than rejected, and a Windows-style share path entered on Linux or macOS now
   explains that it needs mounting instead of failing obscurely.
+- **Preview a track from the review page.** Watch a few seconds of any ripped
+  track to see which episode it is, jumping by the disc's own chapter marks — on
+  segment-format shows those land on the segment boundaries, so they show what
+  else is inside a combined track. Rips can't be played by a browser directly
+  (DVD tracks are MPEG-2 with AC3 audio), so clips are transcoded on demand and
+  streamed; nothing is written to disk and nothing is transcoded until you ask.
 
 ### Fixed
 
