@@ -37,6 +37,10 @@ All notable changes to Engram will be documented in this file.
   else is inside a combined track. Rips can't be played by a browser directly
   (DVD tracks are MPEG-2 with AC3 audio), so clips are transcoded on demand and
   streamed; nothing is written to disk and nothing is transcoded until you ask.
+- **The review page names the disc you are reviewing.** The header showed only
+  the show and season, which every disc in a box set shares — so reviewing disc 8
+  looked exactly like reviewing disc 7. It now carries the disc's own label, the
+  same way the dashboard card does.
 
 ### Fixed
 

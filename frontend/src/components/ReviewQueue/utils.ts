@@ -87,6 +87,26 @@ export function generateEpisodeOptions(season: number, maxEpisodes: number): str
     return options;
 }
 
+/**
+ * The header line for a review page: show, season, and the disc's own label.
+ *
+ * Every disc in a box set shares a show and a season, so those two alone cannot
+ * tell you which disc is on screen — the volume label is the part that does, and
+ * it is what the dashboard card identifies the job by. It is left off only when
+ * it is already the headline, which happens when the disc was never identified
+ * and the label is standing in for the show name.
+ */
+export function reviewSubtitle(job: {
+    detected_title?: string;
+    volume_label: string;
+    detected_season?: number;
+}): string {
+    const name = job.detected_title || job.volume_label;
+    const season = job.detected_season ? ` / SEASON ${job.detected_season}` : '';
+    const disc = job.volume_label && job.volume_label !== name ? ` · ${job.volume_label}` : '';
+    return `› ${name}${season}${disc}`;
+}
+
 /** A staged review decision for a single title. */
 export type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
