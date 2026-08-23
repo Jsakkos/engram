@@ -50,9 +50,22 @@ def is_unc_path(value: str) -> bool:
 
     Accepts the forward-slash spelling too (``//server/share``): it is what a
     browser address bar and most shells produce, and Windows itself accepts it.
+
+    The slash spelling is recognised on Windows only. POSIX allows a leading
+    ``//`` on an ordinary absolute path — ``//mnt/media`` names the same
+    directory as ``/mnt/media`` — so reading it as a UNC path on Linux rejected a
+    working path with advice to mount a share that was already mounted. The
+    backslash spelling stays UNC everywhere, since it cannot be a POSIX path.
     """
     stripped = value.strip()
-    return len(stripped) > 2 and stripped[0] in "\\/" and stripped[1] in "\\/"
+    if len(stripped) <= 2:
+        return False
+    first, second = stripped[0], stripped[1]
+    if first == "\\" and second == "\\":
+        return True
+    if first not in "\\/" or second not in "\\/":
+        return False
+    return IS_WINDOWS
 
 
 def normalize_user_path(value: str | None) -> str:

@@ -625,7 +625,10 @@ class PathCheckResponse(BaseModel):
 
 
 @router.post("/validate/path", response_model=PathCheckResponse)
-async def validate_path(request: ValidationRequest) -> PathCheckResponse:
+async def validate_path(
+    request: ValidationRequest,
+    _: None = Depends(require_localhost_or_lan),
+) -> PathCheckResponse:
     """Check that a library/staging folder exists and Engram can write to it.
 
     Settings paths are the ones most likely to be quietly wrong — a typo, an
@@ -633,6 +636,10 @@ async def validate_path(request: ValidationRequest) -> PathCheckResponse:
     surfaces as an organize error hours later, after a full rip. The write test is
     a real touch/unlink, because on network shares and container mounts the
     permission bits regularly disagree with what the server can actually do.
+
+    Gated like the other side-effecting validators in this module: the caller
+    chooses the path, and the answer reports existence, writability and free
+    space after really touching and unlinking a probe file there.
     """
     from app.core.paths import describe_path
 

@@ -9,18 +9,51 @@ reporting honestly whether Engram can actually use it.
 from unittest.mock import patch
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from app.core import paths as paths_mod
 from app.core.paths import describe_path, is_unc_path, normalize_user_path
+from app.main import app
 
 
 @pytest.mark.unit
 class TestIsUncPath:
-    @pytest.mark.parametrize(
-        "value", [r"\\server\share", "//server/share", r"\\server\share\Media", "//server/share/"]
+    @pytest.mark.parametrize("value", [r"\\server\share", r"\\server\share\Media"])
+    def test_a_backslash_share_reads_as_unc_on_any_platform(self, value):
+        """A backslash pair cannot be a POSIX path, so it means UNC everywhere."""
+        for windows in (True, False):
+            with patch.object(paths_mod, "IS_WINDOWS", windows):
+                assert is_unc_path(value) is True
+
+    @pytest.mark.parametrize("value", ["//server/share", "//server/share/"])
+    def test_a_slash_share_reads_as_unc_only_on_windows(self, value):
+        with patch.object(paths_mod, "IS_WINDOWS", True):
+            assert is_unc_path(value) is True
+        with patch.object(paths_mod, "IS_WINDOWS", False):
+            assert is_unc_path(value) is False
+
+    @pytest.mark.parametrize("value", ["//mnt/media", "//srv/library/TV"])
+    def test_a_double_slash_posix_path_is_not_a_share(self, value):
+        """POSIX allows a leading '//' on an ordinary absolute path.
+
+        ``//mnt/media`` names the same directory as ``/mnt/media``. Reading it as
+        a Windows share on Linux rejected a working path with advice to mount
+        something that was already mounted.
+        """
+        with patch.object(paths_mod, "IS_WINDOWS", False):
+            assert is_unc_path(value) is False
+
+    @pytest.mark.skipif(
+        paths_mod.IS_WINDOWS,
+        reason="normalize_user_path leans on os.path.normpath, which is platform-specific",
     )
-    def test_network_paths(self, value):
-        assert is_unc_path(value) is True
+    def test_a_double_slash_posix_path_is_checked_as_an_ordinary_folder(self, tmp_path):
+        """End to end on POSIX: '//tmp/...' must not be rejected as a share."""
+        target = tmp_path / "library"
+        target.mkdir()
+        status = describe_path(f"/{target}")
+        assert status.is_network is False
+        assert status.ok is True
 
     @pytest.mark.parametrize("value", [r"C:\Media", "/mnt/media", "media", "", "/"])
     def test_local_paths(self, value):
@@ -145,3 +178,31 @@ class TestNetworkShares:
             status = describe_path(r"\\server\share")
         assert status.ok is False
         assert "mount" in status.reason.lower()
+
+
+@pytest.mark.unit
+class TestValidatePathGuard:
+    """``POST /api/validate/path`` is reachable from the host, or an opted-in LAN.
+
+    The endpoint takes a caller-chosen path, really touches and unlinks a probe
+    file there, and reports back existence, writability and free space. That is
+    filesystem reconnaissance plus a write, so it is gated like the other
+    side-effecting validators rather than left open.
+    """
+
+    @staticmethod
+    def _client(host: str) -> AsyncClient:
+        transport = ASGITransport(app=app, client=(host, 12345))
+        return AsyncClient(transport=transport, base_url="http://test")
+
+    async def test_lan_client_rejected_by_default(self, tmp_path):
+        async with self._client("10.0.0.5") as client:
+            resp = await client.post("/api/validate/path", json={"path": str(tmp_path)})
+        assert resp.status_code == 403
+
+    async def test_loopback_client_allowed(self, tmp_path):
+        """Positive control: same request, only the client IP differs."""
+        async with self._client("127.0.0.1") as client:
+            resp = await client.post("/api/validate/path", json={"path": str(tmp_path)})
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
