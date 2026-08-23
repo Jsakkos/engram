@@ -133,7 +133,15 @@ def is_within_configured_roots(path: os.PathLike[str] | str | None, roots: Seque
         if not root:
             continue
         try:
-            resolved_root = Path(root).resolve(strict=False)
+            # codeql[py/path-injection] flags this Path() because `root` derives from
+            # config and job rows, which trace back to HTTP input. It is a false
+            # positive on the barrier itself: nothing here opens, reads, writes or
+            # deletes. `resolved_root` reaches only commonpath() and a string compare,
+            # and resolving is precisely what makes the comparison sound (it collapses
+            # `..` and symlinks before the components are matched). Suppressed narrowly
+            # on this line rather than excluding the module, which would blind the
+            # scanner to the rest of this file's guards.
+            resolved_root = Path(root).resolve(strict=False)  # codeql[py/path-injection]
             if os.path.commonpath([resolved, resolved_root]) == str(resolved_root):
                 return True
         except (OSError, ValueError):
