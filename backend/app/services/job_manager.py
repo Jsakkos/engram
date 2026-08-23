@@ -1167,7 +1167,7 @@ class JobManager:
             self._active_jobs[job_id] = task
 
     async def drain_active_tasks(self) -> int:
-        """Cancel every registered job task and wait for it to unwind.
+        """Cancel every live job task and wait for it to unwind.
 
         Used by the DEBUG-only ``reset-all-jobs`` endpoint, which deletes every
         ``disc_jobs``/``disc_titles`` row. Deleting those rows while a task
@@ -1177,31 +1177,74 @@ class JobManager:
         orphan keeps broadcasting job/title updates for a job the client can no
         longer resolve. Stopping the tasks first removes both.
 
-        Returns the number of tasks that were cancelled.
+        Covers all three registries that own row-writing tasks: ``_active_jobs``
+        (rip/simulation), ``_rematch_tasks`` (detached mid-rip re-match), and
+        ``_match_tasks`` (per-title matching). The latter two are deliberately
+        NOT in ``_active_jobs`` (see their declarations), so draining only the
+        first would leave real matching tasks committing into deleted rows.
+
+        Returns the number of tasks that were live when cancelled.
+        ``_active_jobs`` keeps finished tasks around (nothing prunes on
+        success), so a plain ``len()`` of the registries would over-report.
         """
-        tasks = list(self._active_jobs.items())
-        for job_id, task in tasks:
+        live: list[asyncio.Task] = []
+
+        for job_id, task in list(self._active_jobs.items()):
+            if not task.done():
+                live.append(task)
+                logger.info(f"Cancelled job {sanitize_log_value(job_id)} for reset")
             task.cancel()
-            logger.info(f"Cancelled job {sanitize_log_value(job_id)} for reset")
         self._active_jobs.clear()
 
-        if tasks:
-            # return_exceptions keeps one task's CancelledError (or a failure
-            # raised while unwinding) from aborting the drain of the rest. The
-            # timeout bounds the endpoint: a coroutine that swallows
-            # CancelledError must not be able to hang the caller forever.
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*(t for _, t in tasks), return_exceptions=True),
-                    timeout=DRAIN_TASKS_TIMEOUT_SECONDS,
-                )
-            except TimeoutError:
-                logger.warning(
-                    f"Drain timed out after {DRAIN_TASKS_TIMEOUT_SECONDS}s with "
-                    f"{sum(1 for _, t in tasks if not t.done())} task(s) still unwinding"
-                )
+        # Detached mid-rip re-match passes. _on_rematch_task_done treats a
+        # cancellation as a no-op, so these need no suppression.
+        for task in list(self._rematch_tasks.values()):
+            if not task.done():
+                live.append(task)
+            task.cancel()
+        self._rematch_tasks.clear()
 
-        return len(tasks)
+        # Per-title match tasks MUST be suppressed before being cancelled:
+        # _on_match_dispatch_done hands an unsuppressed cancellation to
+        # on_match_task_done, which fires a DETACHED _handle_match_failure that
+        # writes the very DiscTitle row the caller is about to delete. Cancelling
+        # these naively would recreate the race this method exists to close.
+        # Same suppress/cancel/gather/drain shape as _rematch_ripped_titles; the
+        # loop has no awaits, so it is atomic on the event loop.
+        suppressed: list[int] = []
+        for title_id, task in list(self._match_tasks.items()):
+            self._suppress_match_done.add(title_id)
+            suppressed.append(title_id)
+            if not task.done():
+                live.append(task)
+            task.cancel()
+        self._match_tasks.clear()
+
+        try:
+            if live:
+                # return_exceptions keeps one task's CancelledError (or a failure
+                # raised while unwinding) from aborting the drain of the rest. The
+                # timeout bounds the endpoint: a coroutine that swallows
+                # CancelledError must not be able to hang the caller forever.
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*live, return_exceptions=True),
+                        timeout=DRAIN_TASKS_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    logger.warning(
+                        f"Drain timed out after {DRAIN_TASKS_TIMEOUT_SECONDS}s with "
+                        f"{sum(1 for t in live if not t.done())} task(s) still unwinding"
+                    )
+        finally:
+            # Every cancelled task's done-callback has already run (the gather
+            # waited for them), so holding the ids past this point would only
+            # swallow failures of tasks dispatched later. On the timeout path a
+            # straggler can still slip through unsuppressed, but leaking the set
+            # forever is the worse trade.
+            self._suppress_match_done.difference_update(suppressed)
+
+        return len(live)
 
     async def cancel_job(self, job_id: int) -> None:
         """Cancel a running job."""

@@ -636,6 +636,9 @@ async def test_reset_all_jobs_cancels_in_flight_simulated_rip(client):
 
     reset = await client.delete("/api/simulate/reset-all-jobs")
     assert reset.status_code == 200
+    # The count reports tasks that were LIVE, not the size of the registry:
+    # _active_jobs keeps finished tasks around (nothing prunes on success).
+    assert reset.json()["cancelled_tasks"] == 1
 
     # The reset must have stopped the task, not merely deleted its rows.
     assert job_id not in job_manager._active_jobs
@@ -647,3 +650,44 @@ async def test_reset_all_jobs_cancels_in_flight_simulated_rip(client):
     # Nothing survives to write to the deleted rows afterwards.
     await asyncio.sleep(0.5)
     assert not job_manager._active_jobs
+
+
+@pytest.mark.asyncio
+async def test_drain_cancels_match_tasks_without_routing_them_to_review():
+    """Draining a per-title match task must not fire _handle_match_failure.
+
+    _on_match_dispatch_done hands an unsuppressed cancellation to
+    on_match_task_done, which spawns a DETACHED _handle_match_failure that
+    writes the DiscTitle row. Since the only caller of the drain is
+    reset-all-jobs, which deletes that row moments later, cancelling these
+    without going through _suppress_match_done would recreate the exact
+    write-into-deleted-rows race the drain exists to close.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from app.services.job_manager import job_manager
+
+    async def _sleep_forever():
+        await asyncio.sleep(3600)
+
+    job_id, title_id = 4242, 987654
+    task = asyncio.create_task(_sleep_forever())
+    job_manager._match_tasks[title_id] = task
+    task.add_done_callback(lambda t: job_manager._on_match_dispatch_done(t, job_id, title_id))
+
+    with patch.object(
+        job_manager._matching, "_handle_match_failure", new=AsyncMock()
+    ) as handle_failure:
+        cancelled = await job_manager.drain_active_tasks()
+        # Let any detached ensure_future scheduled by the done-callback run.
+        await asyncio.sleep(0.05)
+
+    assert cancelled == 1
+    assert task.cancelled()
+    handle_failure.assert_not_called()
+
+    # Registries are left clean: a leaked suppression id would swallow a real
+    # failure of whatever match task is dispatched next.
+    assert title_id not in job_manager._match_tasks
+    assert title_id not in job_manager._suppress_match_done
