@@ -2755,10 +2755,19 @@ async def reset_all_jobs(session: AsyncSession = Depends(get_session)) -> dict:
     """Delete ALL jobs and titles regardless of state. Debug mode only."""
     from sqlalchemy import delete
 
+    from app.services.job_manager import job_manager
+
+    # Stop in-flight tasks BEFORE the rows go away. A live simulated rip holds
+    # ORM objects for these rows; deleting underneath it makes its next commit
+    # emit an UPDATE that matches zero rows (StaleDataError) and, until then,
+    # broadcast job/title updates for a job that no longer exists, which bleeds
+    # into whichever E2E test runs next.
+    cancelled = await job_manager.drain_active_tasks()
+
     await session.execute(delete(DiscTitle))
     result = await session.execute(delete(DiscJob))
     await session.commit()
-    return {"status": "reset", "deleted_count": result.rowcount}
+    return {"status": "reset", "deleted_count": result.rowcount, "cancelled_tasks": cancelled}
 
 
 @router.post("/simulate/seed-incomplete-rip", dependencies=[Depends(require_debug)])
