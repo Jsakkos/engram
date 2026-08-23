@@ -217,10 +217,16 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
 - **CI caching**: Playwright browsers cached by version, uv packages cached by lockfile hash, apt packages cached via `cache-apt-pkgs-action`.
 - **Duration pre-filter trust is per disc**: `MatchingCoordinator._runtime_filter_policy`
   decides ONCE per job whether TMDB's runtimes describe the disc — `strict` (some track matches
-  a single runtime), `multiples` (none do, but tracks match whole multiples → segment-numbered
-  show), or `off` (nothing fits either way → skip the pre-filter, let the matcher decide). The
-  per-title check cannot see that EVERY track was about to be called an extra, which is the tell
-  that the runtime list is wrong.
+  a single runtime) or `multiples` (none do, but tracks match whole multiples → segment-numbered
+  show). The per-title check cannot see that EVERY track was about to be called an extra, which
+  is the tell that the runtime list is wrong. There is deliberately no third "skip the filter"
+  mode: when the runtimes belong to another show the matcher shares that wrong identification and
+  fails too, so the disc stops at the all-extras hold either way. A season TMDB carries no
+  runtimes for arrives as `[0, 0, ...]`, so the call site requires a *usable* runtime rather than
+  a truthy list. The combined-track window is bounded by half an episode runtime as well as by a
+  fraction of the block, keeping consecutive multiples' windows disjoint. Both the runtimes cache
+  and the policy derived from it are cleared on re-identify (`clear_runtime_caches`), since a
+  corrected show must not be matched against the previous one's numbers.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
 - **Import path ownership**: a staging path is owned by an *in-flight* job (hard block, not overridable) and merely recorded by a *completed* one (soft block, overridable via `force_keys`). `FAILED` never blocks. Rules live in `app/services/import_guard.py`; `POST /api/import/start` returns `{job_ids, blocked[]}` and never 409s.
 - **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.

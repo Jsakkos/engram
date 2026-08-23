@@ -20,7 +20,6 @@ from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     FILTER_MULTIPLES,
-    FILTER_OFF,
     FILTER_STRICT,
     MatchingCoordinator,
     _duration_matches_episode_runtime,
@@ -212,6 +211,23 @@ class TestCombinedTrackTolerance:
         assert _duration_matches_episode_runtime(33.0, [11], allow_multiples=True) is True
         assert _duration_matches_episode_runtime(60.0, [11], allow_multiples=True) is False
 
+    def test_the_combined_window_stops_widening_with_the_part_count(self):
+        # A pure 25% tolerance on 4 x 7min reached 35min — which IS 5 x 7min, so
+        # the window for four segments ran into the window for five and a
+        # half-hour featurette read as corroboration of something.
+        assert _duration_matches_episode_runtime(35.0, [7], allow_multiples=True) is False
+        # The legitimate block itself still fits, padding included.
+        assert _duration_matches_episode_runtime(28.0, [7], allow_multiples=True) is True
+        assert _duration_matches_episode_runtime(30.0, [7], allow_multiples=True) is True
+
+    def test_windows_around_consecutive_multiples_stay_disjoint(self):
+        # 2 x 7 accepts up to 17.5; 3 x 7 opens again at 18.9. The gap between
+        # them is real, so a match names one part count rather than a vague
+        # range — and it is the gap, not the endpoints, that matters here.
+        assert _duration_matches_episode_runtime(17.5, [7], allow_multiples=True) is True
+        assert _duration_matches_episode_runtime(18.0, [7], allow_multiples=True) is False
+        assert _duration_matches_episode_runtime(19.0, [7], allow_multiples=True) is True
+
 
 @pytest.mark.unit
 class TestRuntimeFilterPolicy:
@@ -249,16 +265,19 @@ class TestRuntimeFilterPolicy:
         # A segment-format disc: seven 22min blocks vs TMDB's 7min segments.
         assert await self._policy([22, 22, 22, 22, 23, 22, 22], [7, 7, 7]) == FILTER_MULTIPLES
 
-    async def test_runtimes_that_fit_nothing_disable_the_filter(self):
-        # Wrong show / wrong season: no track fits under either rule, so the disc
-        # goes to the matcher instead of wholesale into Extras.
-        assert await self._policy([22, 23, 22], [90, 95]) == FILTER_OFF
+    async def test_runtimes_that_fit_nothing_do_not_relax_the_rule(self):
+        # Wrong show / wrong season: no track fits under either rule. There is
+        # deliberately no third mode for this — the matcher is working from the
+        # same wrong identification, so relaxing the filter buys nothing. Staying
+        # strict files every track as an extra, which is the shape the all-extras
+        # hold catches, and the disc stops for a human.
+        assert await self._policy([22, 23, 22], [90, 95]) == FILTER_STRICT
 
     async def test_play_all_track_is_excluded_from_the_verdict(self):
         # The deselected 156min Play All must not read as a multiple of 7min and
         # drag the disc into FILTER_MULTIPLES on its own.
         policy = await self._policy([156, 200], [7], is_selected=[True, False])
-        assert policy == FILTER_OFF
+        assert policy == FILTER_STRICT
 
     async def test_verdict_is_cached_per_job(self):
         coord = _make_coord()
@@ -269,6 +288,58 @@ class TestRuntimeFilterPolicy:
         # Second call must not re-read the disc (the cached verdict wins even
         # against runtimes that would decide differently).
         assert await coord._runtime_filter_policy(job.id, [90]) == first
+
+    async def test_re_identify_clears_the_cached_verdict_and_runtimes(self):
+        """A corrected show must not be matched against the old one's runtimes.
+
+        Both caches are keyed by job id alone, so without this a re-identify
+        would keep the previous show's runtimes and the trust policy derived from
+        them — the stale verdict outliving the correction meant to fix it.
+        """
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, _ = await _seed(session, duration_seconds=44 * 60)
+            job_id = job.id
+        await coord._runtime_filter_policy(job_id, GILMORE_S1)
+        coord._episode_runtimes[job_id] = GILMORE_S1
+        assert job_id in coord._runtime_filter_policy_cache
+
+        coord.clear_runtime_caches(job_id)
+
+        assert job_id not in coord._runtime_filter_policy_cache
+        assert job_id not in coord._episode_runtimes
+        # And the next verdict is computed fresh from the new runtimes.
+        assert await coord._runtime_filter_policy(job_id, [22, 22]) == FILTER_MULTIPLES
+
+
+@pytest.mark.unit
+class TestUsableRuntimeGuard:
+    """TMDB reports a null runtime for episodes it has no figure for.
+
+    Those arrive as ``[0, 0, 0, ...]`` — a truthy list that nothing can match. A
+    bare ``if runtimes`` guard let that list through and the pre-filter then
+    condemned every track on the disc to Extras, which is the all-extras failure
+    this work exists to eliminate.
+    """
+
+    def test_a_list_of_zeroes_matches_nothing(self):
+        assert _duration_matches_episode_runtime(22.0, [0, 0, 0]) is False
+        assert _duration_matches_episode_runtime(22.0, [0, 0, 0], allow_multiples=True) is False
+
+    def test_a_list_of_zeroes_is_not_a_usable_runtime_list(self):
+        # The predicate the call site now gates on, stated directly: a truthy
+        # list is not the same question as a usable one.
+        assert bool([0, 0, 0]) is True
+        assert any(rt > 0 for rt in [0, 0, 0]) is False
+        assert any(rt > 0 for rt in [0, 44, 0]) is True
+
+    async def test_a_partially_populated_list_still_filters(self):
+        # One real runtime is enough to judge the disc by; the zeroes are inert.
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, _ = await _seed(session, duration_seconds=44 * 60)
+            job_id = job.id
+        assert await coord._runtime_filter_policy(job_id, [0, 44, 0]) == FILTER_STRICT
 
 
 @pytest.mark.unit

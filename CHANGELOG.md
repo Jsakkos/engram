@@ -9,9 +9,16 @@ All notable changes to Engram will be documented in this file.
 - **Episode-length tracks are no longer mistaken for extras on segment-format
   shows.** When no track on a disc matches a single TMDB runtime but tracks match
   whole multiples of one, Engram now recognises the disc as segment-numbered and
-  accepts the combined tracks as episodes. If nothing fits under either rule, the
-  runtime filter is disabled for that disc and the audio matcher — which compares
-  content, not clocks — decides.
+  accepts the combined tracks as episodes — so a cartoon that TMDB numbers by
+  its ~7-minute segments stops filing its ~22-minute DVD tracks as bonus content.
+- **A season TMDB has no runtimes for no longer sends the whole disc to
+  `Extras/`.** TMDB reports a missing runtime as null, which arrived as a list of
+  zeroes that every track failed to match. Engram now requires a usable runtime
+  before applying the duration filter at all.
+- **A re-identify no longer reuses the previous show's episode runtimes.**
+  Correcting the show or season now clears the cached runtimes and the trust
+  decision made from them, instead of re-matching the disc against numbers that
+  belong to the show you just corrected away from.
 
 ## [0.32.0] - 2026-08-19
 

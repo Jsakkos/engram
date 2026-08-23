@@ -64,16 +64,20 @@ MAX_COMBINED_EPISODES_PER_TRACK = 4
 COMBINED_UNDER_TOLERANCE_FRACTION = 0.10
 COMBINED_OVER_TOLERANCE_FRACTION = 0.25
 
+# ...but the fraction cannot be the only bound, because it grows with the part
+# count until neighbouring multiples touch. At 4 x 7min a flat 25% reached 35min
+# — which is 5 x 7min exactly, so the window for "four segments" swallowed the
+# whole of "five segments" and everything between. Capping the overshoot at half
+# a single runtime keeps consecutive multiples' windows disjoint, so a match
+# still means one specific number of parts rather than "somewhere up there".
+COMBINED_OVER_TOLERANCE_MAX_EPISODE_FRACTION = 0.5
+
 # Duration pre-filter modes, decided ONCE per disc:
 #   strict    - the normal rule: a track matches a single episode runtime.
 #   multiples - no track matched a single runtime but some track matches N x a
 #               runtime, so TMDB is numbering segments; accept combined tracks.
-#   off       - no track matched under either rule, so the runtime list is not
-#               describing this disc at all. Trust the matcher instead of
-#               declaring the entire disc "extras".
 FILTER_STRICT = "strict"
 FILTER_MULTIPLES = "multiples"
-FILTER_OFF = "off"
 
 
 def _duration_matches_episode_runtime(
@@ -89,6 +93,9 @@ def _duration_matches_episode_runtime(
     own episode while the DVD carries the assembled ~22min block. It is opt-in
     per disc, never the default: widening the window for every disc would file
     genuine double-length bonus features as episodes.
+
+    The combined window is bounded both ways — a fraction of the combined runtime
+    AND an absolute ceiling — so it cannot keep widening as the part count grows.
     """
     if any(
         (rt - EPISODE_DURATION_UNDER_TOLERANCE_MIN)
@@ -102,7 +109,11 @@ def _duration_matches_episode_runtime(
     return any(
         (combined * (1 - COMBINED_UNDER_TOLERANCE_FRACTION))
         <= title_minutes
-        <= (combined * (1 + COMBINED_OVER_TOLERANCE_FRACTION))
+        <= combined
+        + min(
+            combined * COMBINED_OVER_TOLERANCE_FRACTION,
+            rt * COMBINED_OVER_TOLERANCE_MAX_EPISODE_FRACTION,
+        )
         for rt in runtimes
         for n in range(2, MAX_COMBINED_EPISODES_PER_TRACK + 1)
         if (combined := rt * n)
@@ -263,11 +274,11 @@ class MatchingCoordinator:
         # Shared state (moved from JobManager)
         self._discdb_mappings: dict[int, list] = {}
         self._episode_runtimes: dict[int, list[int]] = {}
-        # Duration pre-filter mode per job (FILTER_STRICT / FILTER_MULTIPLES /
-        # FILTER_OFF), decided once from the whole disc — see
-        # _runtime_filter_policy. A per-title decision cannot see that EVERY
-        # track was about to be called an extra, which is the tell that the
-        # runtime list, not the disc, is wrong.
+        # Duration pre-filter mode per job (FILTER_STRICT / FILTER_MULTIPLES),
+        # decided once from the whole disc — see _runtime_filter_policy. A
+        # per-title decision cannot see that EVERY track was about to be called
+        # an extra, which is the tell that the runtime list, not the disc, is
+        # wrong.
         self._runtime_filter_policy_cache: dict[int, str] = {}
         # Per-job lock guarding the runtimes cache population. Collapses the
         # cold-window stampede where many titles of one job fetch runtimes at
@@ -299,14 +310,26 @@ class MatchingCoordinator:
         ``_state`` is unused but kept to satisfy the JobStateMachine
         ``on_terminal_state`` callback signature.
         """
-        self._episode_runtimes.pop(job_id, None)
-        self._episode_runtimes_locks.pop(job_id, None)
-        self._runtime_filter_policy_cache.pop(job_id, None)
+        self.clear_runtime_caches(job_id)
         self._discdb_mappings.pop(job_id, None)
         self._subtitle_ready.pop(job_id, None)
         task = self._subtitle_tasks.pop(job_id, None)
         if task is not None and not task.done():
             task.cancel()
+
+    def clear_runtime_caches(self, job_id: int) -> None:
+        """Forget the TMDB runtimes for a job, and the policy derived from them.
+
+        Both are keyed by job id alone, so they outlive the identification they
+        were fetched for. A re-identify changes the show or the season underneath
+        them, which would otherwise re-match the disc against the previous show's
+        runtimes — and against a trust policy decided from them — silently
+        undoing the correction. Also called on terminal states, where it is a
+        plain memory-leak guard.
+        """
+        self._episode_runtimes.pop(job_id, None)
+        self._episode_runtimes_locks.pop(job_id, None)
+        self._runtime_filter_policy_cache.pop(job_id, None)
 
     def get_discdb_mappings(self, job_id: int) -> list:
         """Get DiscDB mappings for a job."""
@@ -836,11 +859,16 @@ class MatchingCoordinator:
                 runtimes = await self._episode_runtimes_for_job(
                     job_id, job_tmdb_id, job_detected_title, job_detected_season
                 )
-                if runtimes and title_duration:
+                # At least one USABLE runtime, not merely a list. TMDB returns a
+                # runtime of null for episodes it has no figure for, which arrives
+                # here as [0, 0, 0, ...] — truthy, but nothing any track can match.
+                # Left as a bare `if runtimes`, a season TMDB carries no runtimes
+                # for condemned every track on the disc to Extras.
+                if any(rt > 0 for rt in runtimes) and title_duration:
                     title_minutes = title_duration / 60
                     # Decide (once per disc) how far to trust these runtimes.
                     policy = await self._runtime_filter_policy(job_id, runtimes)
-                    if policy != FILTER_OFF and not _duration_matches_episode_runtime(
+                    if not _duration_matches_episode_runtime(
                         title_minutes, runtimes, allow_multiples=policy == FILTER_MULTIPLES
                     ):
                         # Re-fetch under a fresh session: _handle_extras writes.
@@ -921,22 +949,30 @@ class MatchingCoordinator:
         EVERY track to Extras and the job auto-completes looking successful — the
         failure mode this method exists to break.
 
-        Two things can be wrong, and the disc as a whole tells them apart:
-
-        * TMDB numbers *segments*, not broadcast episodes (a segment-format cartoon
-          lists three ~7min segments per 22min slot, so every 22min DVD track
-          "matches nothing"). If no track matches a single runtime but some track
-          matches a whole multiple of one, the disc is segment-format →
-          FILTER_MULTIPLES.
-        * The runtimes are simply not about this disc (wrong same-name show,
-          wrong season, a season TMDB has no runtimes for). Nothing matches under
-          either rule → FILTER_OFF: skip the pre-filter entirely and let the
-          audio matcher — which compares content, not clocks — have its say.
+        The one thing the disc as a whole can tell us apart is segment numbering:
+        TMDB numbers *segments*, not broadcast episodes (a segment-format cartoon
+        lists three ~7min segments per 22min slot, so every 22min DVD track
+        "matches nothing"). If no track matches a single runtime but some track
+        matches a whole multiple of one, the disc is segment-format →
+        FILTER_MULTIPLES.
 
         The strict rule stays in force whenever *any* track matches a single
         runtime: a disc that carries real episodes AND a long bonus feature must
-        keep filing that feature as an extra, so the fallbacks are per-disc
-        escapes, never a general widening of the window.
+        keep filing that feature as an extra, so multiples is a per-disc escape,
+        never a general widening of the window.
+
+        There is deliberately no third "give up on the pre-filter" mode. When the
+        runtimes are simply not about this disc — wrong same-name show, wrong
+        season — the audio matcher is working from that same wrong identification
+        and fails too, so skipping the check bought nothing but a mode. The disc
+        stops in review either way, via the all-extras hold in
+        ``check_job_completion``. The one case that mode really did rescue, a
+        season TMDB has no runtimes for, is handled at the call site instead by
+        requiring a usable runtime before the filter runs at all.
+
+        No lock guards the cache: the verdict is a pure function of the same
+        runtimes and the same selected durations, so two coroutines racing here
+        compute the same answer and the later write is a no-op.
         """
         cached = self._runtime_filter_policy_cache.get(job_id)
         if cached is not None:
@@ -975,13 +1011,18 @@ class MatchingCoordinator:
                 f"tracks as episodes for this disc; assign the episode range in review."
             )
         else:
-            policy = FILTER_OFF
+            # Nothing fits under either rule, so the runtime list is probably not
+            # about this disc at all. Staying strict means every track is filed as
+            # an extra — which is exactly the shape the all-extras hold catches, so
+            # the disc stops for a human instead of completing wrong. Logged loudly
+            # because this line is the explanation the user needs in the review.
+            policy = FILTER_STRICT
             logger.warning(
                 f"[MATCH] Job {job_id}: NO track fits TMDB's runtimes "
                 f"{sorted(set(runtimes))[:6]} (durations {[round(d) for d in durations][:8]}min), "
-                f"even allowing combined tracks — the runtime list does not describe this "
-                f"disc. Disabling the duration pre-filter for this job so the matcher "
-                f"decides, rather than filing every track as an extra."
+                f"even allowing combined tracks — the runtime list does not appear to "
+                f"describe this disc. Every track will be classified as an extra, which "
+                f"routes the disc to review rather than completing it."
             )
 
         self._runtime_filter_policy_cache[job_id] = policy
