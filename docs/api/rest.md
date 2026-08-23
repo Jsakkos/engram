@@ -163,6 +163,54 @@ Run the LLM episode matcher for a single title and persist the suggestion to `ma
 
 When no suggestion is available (feature disabled, no transcript, no synopses, AI returned zero confidence, or any internal error), `suggestion` is `null` and `reason` describes why (`"no_suggestion"`, `"cached"`, or `"internal_error"`). On a cached hit (the suggestion was already computed for this title), the existing suggestion is returned with `reason: "cached"` to avoid duplicate Whisper transcription.
 
+### `GET /api/jobs/{job_id}/titles/{title_id}/media`
+
+Streams the ripped file for one title, byte for byte, with HTTP range support
+(`206`/`416` come from Starlette's `FileResponse`). Served as
+`video/x-matroska`.
+
+**The file is never transcoded, and this is deliberate.** MakeMKV remuxes
+losslessly, so a rip carries disc-native codecs that no browser decodes, and
+the endpoint exists to hand the file to a native player (VLC, MPV, IINA) rather
+than to feed a `<video>` element. Engram has no ffmpeg dependency for playback
+and should not grow one here. See
+`docs/superpowers/specs/2026-08-22-review-external-player-design.md` for why
+in-browser playback was ruled out.
+
+The path is read from the database (`DiscTitle.output_filename`, falling back to
+`organized_to`) and never accepted from the client. It must resolve inside one
+of the configured roots: staging, the TV library, the movie library, the import
+watch folder, or the job's own `staging_path` (which is where manual imports
+live).
+
+**Status codes:**
+
+| Code | Meaning |
+|------|---------|
+| `200` / `206` | The file, whole or ranged. |
+| `403` | Origin gate refused the peer, or the path resolved outside every configured root. |
+| `404` | Title not found, the track has not been ripped, or the recorded file is gone from disk. |
+
+### `GET /api/jobs/{job_id}/titles/{title_id}/playlist.m3u`
+
+Returns a one-entry `.m3u` naming the media URL above, as
+`audio/x-mpegurl` with `Content-Disposition: attachment`, so the browser hands
+it to whatever owns the extension. Same status codes as the media endpoint; the
+path is resolved *before* the body is built, so a broken track fails as HTTP
+rather than inside the user's player.
+
+The URL inside the playlist is derived from the request's `Host` header, so it
+carries the address the dashboard was actually reached on. Deriving it from
+`settings.host` would emit `localhost` for every remote user: correct on the
+backend machine, broken everywhere else, and invisible to local testing.
+
+Disc-derived text in the playlist label passes through
+`sanitize_playlist_field`, because `.m3u` is line-oriented and a crafted volume
+label containing a line break could otherwise forge a second entry.
+
+Both endpoints sit behind `require_localhost_or_lan`: loopback always, LAN peers
+only when `allow_lan_access` is set.
+
 ---
 
 ## Configuration

@@ -539,10 +539,10 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "alembic", specifier = ">=1.18.5" },
-    { name = "beautifulsoup4", specifier = ">=4.12.0" },
+    { name = "beautifulsoup4", specifier = ">=4.15.0" },
     { name = "chardet", specifier = ">=5.2.0" },
     { name = "chevron", specifier = ">=0.14.0" },
-    { name = "ctranslate2", specifier = ">=4.0.0" },
+    { name = "ctranslate2", specifier = ">=4.8.1" },
     { name = "fastapi", specifier = ">=0.109.0" },
     { name = "faster-whisper", specifier = ">=1.2.1" },
     { name = "gputil", marker = "extra == 'gpu'", specifier = ">=1.4.0" },
