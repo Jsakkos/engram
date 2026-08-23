@@ -284,6 +284,50 @@ class TestTVOrderingProjection:
         assert result["final_path"].name == "Firefly - S01E11.mkv"
         assert proj.call_count == 0
 
+    def test_a_combined_track_projects_every_part(self, tmp_path):
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 16)
+        # Canonical S01E01-E02 -> DVD S01E05-E06: both parts projected, one season.
+        with patch(
+            "app.core.episode_ordering.project_episode", side_effect=[(1, 5), (1, 6)]
+        ) as proj:
+            result = organize_tv_episode(
+                source_file=source,
+                show_name="Show",
+                episode_code="S01E01-E02",
+                library_path=tmp_path / "library",
+                tmdb_id="42",
+                ordering="dvd",
+            )
+        assert result["success"] is True
+        assert result["final_path"].name == "Show - S01E05-E06.mkv"
+        assert proj.call_count == 2
+
+    def test_a_projection_splitting_seasons_keeps_the_canonical_numbering(self, tmp_path):
+        """A filename carries one season, so a split projection is not usable.
+
+        The loop used to reassign the season on every part, leaving whichever
+        season the LAST episode landed in to name the whole file — quietly filing
+        a combined track under a season most of its episodes are not in.
+        """
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 16)
+        with patch("app.core.episode_ordering.project_episode", side_effect=[(1, 12), (2, 1)]):
+            result = organize_tv_episode(
+                source_file=source,
+                show_name="Show",
+                episode_code="S01E01-E02",
+                library_path=tmp_path / "library",
+                tmdb_id="42",
+                ordering="dvd",
+            )
+        assert result["success"] is True
+        dest = result["final_path"]
+        # Neither the last part's season (2) nor its numbering — the canonical
+        # code, which at least describes the file honestly.
+        assert dest.name == "Show - S01E01-E02.mkv"
+        assert "Season 01" in str(dest)
+
     def test_projection_identity_when_no_group(self, tmp_path):
         source = tmp_path / "source.mkv"
         source.write_bytes(b"x" * 16)

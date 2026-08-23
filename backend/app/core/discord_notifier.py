@@ -1,6 +1,5 @@
 """Discord webhook notifications for job lifecycle events."""
 
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import urlsplit, urlunsplit
@@ -11,6 +10,7 @@ from chevron.tokenizer import ChevronError, tokenize
 from loguru import logger
 
 from app import __version__
+from app.core.episode_codes import parse_episode_code
 from app.core.security import is_safe_dashboard_url
 from app.models.disc_job import ContentType, DiscJob, JobState, TitleState
 
@@ -193,29 +193,41 @@ def _field(name: str, value: str, inline: bool = True) -> dict | None:
     )
 
 
-_EPISODE_CODE = re.compile(r"^S(\d+)E(\d+)$", re.IGNORECASE)
-
-
 def summarize_episodes(titles: list) -> str:
     """One-line manifest of what actually landed, e.g. "S01E01-E04 (4 episodes)".
 
     Counts every completed, non-extra title, but only ranges the ones whose
-    matched_episode parses as SxxEyy. Ranges never span a season boundary.
+    matched_episode parses as an episode code. Ranges never span a season
+    boundary.
+
+    A combined track contributes every episode it claims. Parsing used to be an
+    anchored SxxEyy, which a range like ``S01E02-E03`` failed outright: the track
+    still counted toward the total but vanished from the range, so a disc read
+    ``S01E04 (4 episodes)`` — a summary contradicting itself.
     """
     landed = [t for t in titles if t.state == TitleState.COMPLETED and not t.is_extra]
     if not landed:
         return ""
 
     parsed: list[tuple[int, int]] = []
+    uncoded = 0
     for title in landed:
-        match = _EPISODE_CODE.match((title.matched_episode or "").strip())
-        if match:
-            parsed.append((int(match.group(1)), int(match.group(2))))
+        code = parse_episode_code(title.matched_episode)
+        if code:
+            season, episodes = code
+            parsed.extend((season, episode) for episode in episodes)
+        else:
+            uncoded += 1
 
-    count = len(landed)
-    noun = "episode" if count == 1 else "episodes"
     if not parsed:
         return ""
+
+    # Count EPISODES, not tracks: one combined track carries several, and a
+    # manifest that lists S01E01-E04 while claiming "2 episodes" contradicts
+    # itself. Landed titles with no parseable code still count, so nothing that
+    # reached the library goes unmentioned in the total.
+    count = len(set(parsed)) + uncoded
+    noun = "episode" if count == 1 else "episodes"
 
     parsed = sorted(set(parsed))
     runs: list[list[tuple[int, int]]] = [[parsed[0]]]

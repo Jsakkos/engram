@@ -74,6 +74,19 @@ All notable changes to Engram will be documented in this file.
   is far more often a failed match than a genuine bonus disc.
 
 
+- **Combined episode tracks are published correctly to TheDiscDB.** A track
+  holding several episodes now contributes the range form the database itself
+  uses for such a title (`"17-18"`), instead of claiming only its first episode
+  or being dropped from the contribution entirely.
+- **Discord notifications count the episodes on a combined track.** A disc whose
+  tracks each hold two episodes reported "S01E04 (4 episodes)" — the combined
+  codes counted toward the total but fell out of the range. The manifest now
+  reads "S01E01-E04 (4 episodes)".
+- **A combined track is no longer filed under the wrong season.** When a DVD or
+  absolute ordering projected a track's episodes across a season boundary, the
+  filename took whichever season the last episode landed in. It now keeps the
+  aired numbering, which names one season honestly.
+
 ## [0.32.0] - 2026-08-19
 
 _Highlights: review jobs stay visible even after they age off the dashboard._

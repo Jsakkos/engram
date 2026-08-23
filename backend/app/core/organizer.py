@@ -714,12 +714,27 @@ def organize_tv_episode(
         from app.core.episode_ordering import project_episode
 
         projected: list[int] = []
+        seasons: set[int] = set()
         for episode_num in episode_nums:
-            out_season, projected_episode = project_episode(
+            projected_season, projected_episode = project_episode(
                 tmdb_id, ordering, season_num, episode_num, cfg.tmdb_api_key
             )
+            seasons.add(projected_season)
             projected.append(projected_episode)
-        out_episodes = projected
+        # A filename carries ONE season number. If the chosen ordering scatters a
+        # combined track's episodes across seasons there is no honest projection
+        # of it, and taking whichever season the loop happened to end on would
+        # file the whole file under a season most of its episodes are not in.
+        # Fall back to the canonical numbering, which at least describes the file.
+        if len(seasons) == 1:
+            out_season = seasons.pop()
+            out_episodes = projected
+        else:
+            logger.warning(
+                f"{ordering} ordering splits {episode_code} across seasons "
+                f"{sorted(seasons)}; keeping the aired numbering for the filename "
+                f"so it names one season honestly."
+            )
 
     # Clean and sanitize names
     clean_show = sanitize_filename(show_name.strip())

@@ -142,6 +142,47 @@ class TestTVExportSchema:
         assert t["season"] == 1
         assert t["episode"] == 5
 
+    def test_a_combined_track_exports_the_range_form(self, config, tmp_path):
+        """One track holding several episodes publishes "1-2", not 1.
+
+        TheDiscDB records a combined title with the range in its episode field
+        (its own data carries "17-18", "9-10", "7-8" and so on), and the ingest
+        endpoint types season/episode as strings, so the range serializes as it
+        stands. Exporting the first episode alone would publish a truncated claim
+        into a shared database.
+        """
+        job = DiscJob(
+            id=1,
+            drive_id="E:",
+            volume_label="CARTOON_S2D2",
+            content_type=ContentType.TV,
+            state="completed",
+            content_hash="ABCDEF1234567890",
+            detected_title="Segment Show",
+            detected_season=2,
+            tmdb_id=12345,
+        )
+        titles = [
+            DiscTitle(
+                id=1,
+                job_id=1,
+                title_index=0,
+                duration_seconds=1363,
+                file_size_bytes=2000000000,
+                chapter_count=2,
+                matched_episode="S02E17-E18",
+                match_confidence=0.95,
+                match_details=json.dumps({"source": "subtitle"}),
+            ),
+        ]
+
+        result = generate_export(job, titles, config)
+        data = json.loads((result / "disc_data.json").read_text())
+
+        t = data["titles"][0]
+        assert t["season"] == 2
+        assert t["episode"] == "17-18"
+
 
 class TestMovieExportSchema:
     def test_movie_schema_has_all_required_keys(self, config, tmp_path):
