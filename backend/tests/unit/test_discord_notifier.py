@@ -760,6 +760,32 @@ def test_summarize_episodes_ignores_extras_and_incomplete_titles():
     assert summarize_episodes(titles) == "S01E01 (1 episode)"
 
 
+def test_summarize_episodes_ranges_a_combined_track():
+    """A combined track contributes every episode it claims.
+
+    The old anchored SxxEyy failed such a code outright, so the track counted
+    toward the total but vanished from the range — a disc reading
+    "S01E04 (4 episodes)", a summary contradicting itself.
+    """
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title("S01E01-E02"), _title("S01E03-E04")]
+    assert summarize_episodes(titles) == "S01E01-E04 (4 episodes)"
+
+
+def test_summarize_episodes_counts_episodes_not_tracks():
+    from app.core.discord_notifier import summarize_episodes
+
+    assert summarize_episodes([_title("S01E01-E03")]) == "S01E01-E03 (3 episodes)"
+
+
+def test_summarize_episodes_handles_a_gapped_combined_track():
+    from app.core.discord_notifier import summarize_episodes
+
+    titles = [_title("S01E01E03")]
+    assert summarize_episodes(titles) == "S01E01, S01E03 (2 episodes)"
+
+
 def test_summarize_episodes_empty_when_nothing_matched():
     from app.core.discord_notifier import summarize_episodes
 

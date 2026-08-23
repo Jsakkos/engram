@@ -1,16 +1,17 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Save, Package } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, reviewSubtitle, type TitleAction } from './ReviewQueue/utils';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
+import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, displayEpisodeCode, inferSpan, normalizeEpisodeCode, parseEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
+import type { RosterEpisode, SeasonRoster } from './ReviewQueue/types';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
 import { TitleList } from './ReviewQueue/TitleList';
@@ -180,6 +181,7 @@ function ReviewQueue() {
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
     const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
+    const [alwaysShowSpan, setAlwaysShowSpan] = useState(false);
 
     // Bulk multiselect — ids checked for bulk actions (independent of the
     // single inspected title). `lastBulkClickRef` anchors shift-click ranges.
@@ -263,6 +265,9 @@ function ReviewQueue() {
                 // "***" is the redacted stand-in for a stored key; "" means unset.
                 if (data?.ai_api_key === '***') {
                     setAiKeyConfigured(true);
+                }
+                if (data?.always_show_episode_span) {
+                    setAlwaysShowSpan(true);
                 }
             })
             .catch(() => {/* non-critical */});
@@ -622,6 +627,46 @@ function ReviewQueue() {
     const hasConflicts = collisions.size > 0;
 
     const activeTitles = titles.filter((t) => t.state !== 'completed' && t.state !== 'failed');
+    // Tracks assigned to a season other than this disc's. They hold no slot on
+    // the roster above, so without saying so they would read as unassigned while
+    // the roster showed a phantom gap. Derived from live selections, so an edit
+    // shows up before it is saved.
+    const offSeasonPicks = useMemo(() => {
+        return Object.entries(selectedEpisodes)
+            .map(([titleId, code]) => ({
+                titleId: Number(titleId),
+                code,
+                season: parseEpisodeCode(code)?.season,
+            }))
+            .filter((p) => p.season != null && p.season !== effectiveSeason);
+    }, [selectedEpisodes, effectiveSeason]);
+
+    // Fetch another season's episodes for a track that belongs to one. A disc
+    // can carry an episode from a neighbouring season; the roster endpoint takes
+    // the season as a parameter, so the picker asks for it on demand rather than
+    // the page loading every season up front.
+    const loadSeason = useCallback(
+        async (season: number): Promise<RosterEpisode[]> => {
+            if (!jobId) return [];
+            const res = await fetch(`/api/jobs/${jobId}/season-roster?season=${season}`);
+            if (!res.ok) return [];
+            const data = (await res.json()) as SeasonRoster;
+            return data.available ? data.episodes : [];
+        },
+        [jobId],
+    );
+
+    // Does this DISC hold combined tracks? Decided across the whole disc, because
+    // the tracks whose runtime the heuristic cannot read are exactly the ones
+    // needing a hand-set span — hiding the control per-track would withhold it
+    // where it is most needed. Extras are excluded: a "Play All" concatenation is
+    // a whole disc long and would read as a combined track on any show.
+    const spansEnabled =
+        alwaysShowSpan ||
+        activeTitles.some(
+            (t) => !t.is_extra && inferSpan(t.duration_seconds, rosterEpisodes) > 1,
+        );
+
     const completedTitles = titles.filter((t) => t.state === 'completed' || t.state === 'failed');
     const selectedTitle =
         activeTitles.find((t) => t.id === selectedTitleId) ?? activeTitles[0] ?? null;
@@ -772,7 +817,7 @@ function ReviewQueue() {
             <SvAtmosphere>
                 <SvPageHeader
                     title="Select movie version"
-                    subtitle={`› ${job.detected_title || job.volume_label}`}
+                    subtitle={reviewSubtitle(job)}
                     onBack={() => navigate('/')}
                     maxWidth={sv.reviewMovieMaxWidth}
                 />
@@ -885,7 +930,7 @@ function ReviewQueue() {
     }
 
     // ==================== TV REVIEW (inspector layout) ====================
-    const subtitleText = `› ${job.detected_title || job.volume_label}${job.detected_season ? ` / SEASON ${job.detected_season}` : ''}`;
+    const subtitleText = reviewSubtitle(job);
     return (
         <SvAtmosphere>
             <SvPageHeader
@@ -1059,6 +1104,14 @@ function ReviewQueue() {
                                 suggestedCode={suggestedForSelected}
                                 titleIndexById={titleIndexById}
                             />
+                            {offSeasonPicks.length > 0 && (
+                                <div style={{ marginTop: 10, fontFamily: sv.mono, fontSize: 11, color: sv.yellow }}>
+                                    {`Assigned outside season ${effectiveSeason}: `}
+                                    {offSeasonPicks
+                                        .map((p) => `#${titleIndexById[p.titleId] ?? p.titleId} → ${displayEpisodeCode(p.code)}`)
+                                        .join(', ')}
+                                </div>
+                            )}
                         </SvPanel>
                     </div>
                 )}
@@ -1219,6 +1272,9 @@ function ReviewQueue() {
                                 holders={holders}
                                 titleIndexById={titleIndexById}
                                 isRematching={isRematching}
+                                spansEnabled={spansEnabled}
+                                seasonCount={roster?.season_count ?? null}
+                                loadSeason={loadSeason}
                                 aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
                                 aiKeyConfigured={aiKeyConfigured}
                                 llmFeedback={llmFeedback[selectedTitle.id] ?? null}

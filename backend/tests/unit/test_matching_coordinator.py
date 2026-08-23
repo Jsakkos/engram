@@ -21,6 +21,7 @@ from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     MatchingCoordinator,
     _duration_matches_episode_runtime,
+    _same_episode_code,
     episode_curator,
 )
 from tests.unit.conftest import _unit_session_factory
@@ -1146,3 +1147,43 @@ class TestTryDiscdbAssignmentSource:
             t = await session.get(DiscTitle, title_id)
             assert t.match_source == "discdb"
             assert json.loads(t.match_details)["source"] == "discdb"
+
+
+@pytest.mark.unit
+class TestSameEpisodeCode:
+    """Overlap, not equality — the caller asks "has another track taken this?".
+
+    A prefix-anchored regex compared only the FIRST episode of each code, so a
+    combined track hid every episode after its first from that question and a
+    second track could claim one of them unchallenged.
+    """
+
+    def test_identical_codes_overlap(self):
+        assert _same_episode_code("S01E01", "S01E01") is True
+
+    def test_zero_padding_is_ignored(self):
+        assert _same_episode_code("S1E9", "S01E09") is True
+
+    def test_different_episodes_do_not_overlap(self):
+        assert _same_episode_code("S01E01", "S01E02") is False
+
+    def test_different_seasons_do_not_overlap(self):
+        assert _same_episode_code("S01E01", "S02E01") is False
+
+    def test_a_combined_track_overlaps_each_episode_it_claims(self):
+        assert _same_episode_code("S01E01-E03", "S01E01") is True
+        # The bug: E02 sits inside the range but is not its first episode.
+        assert _same_episode_code("S01E01-E03", "S01E02") is True
+        assert _same_episode_code("S01E01-E03", "S01E03") is True
+
+    def test_a_combined_track_does_not_overlap_outside_its_range(self):
+        assert _same_episode_code("S01E01-E03", "S01E04") is False
+
+    def test_two_combined_tracks_overlap_on_a_shared_episode(self):
+        assert _same_episode_code("S01E01-E03", "S01E03-E05") is True
+        assert _same_episode_code("S01E01-E02", "S01E03-E04") is False
+
+    def test_non_codes_fall_back_to_string_equality(self):
+        assert _same_episode_code("extra", "extra") is True
+        assert _same_episode_code("extra", "skip") is False
+        assert _same_episode_code(None, "S01E01") is False

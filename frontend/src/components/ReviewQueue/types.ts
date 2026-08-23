@@ -38,6 +38,12 @@ export interface RosterEpisode {
     episode_code: string;
     episode_number: number;
     name: string;
+    /**
+     * TMDB runtime in minutes, when TMDB carries one. Lets review recognise a
+     * track holding several episodes: a segment-format show lists ~7min episodes
+     * while its DVD track is a ~22min three-segment block.
+     */
+    runtime?: number | null;
     /** Persisted coverage from the server; the UI recomputes live while editing. */
     status?: 'assigned' | 'duplicate' | 'missing' | 'off';
     assigned_title_ids?: number[];
@@ -74,7 +80,7 @@ export interface SeasonRoster {
     ordering_diverges?: boolean;
     current_ordering?: string;
     ordering_options?: OrderingOption[];
-    /** Total seasons for the show — populated while the season picker is in play (#370). */
+    /** Total seasons for the show, so a track can be assigned to a neighbouring one. */
     season_count?: number | null;
 }
 

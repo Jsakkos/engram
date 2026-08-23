@@ -4,6 +4,100 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Review every disc before it is organized.** A new setting under *Naming &
+  extras* holds every disc in the Review Queue for confirmation, however
+  confident the match was. The matcher still runs and pre-fills its best guess —
+  you just get the last word before anything moves into the library. Useful for
+  shows the matcher handles badly.
+- **One track can now be assigned several episodes.** Segment-format shows
+  (three ~7 minute cartoon segments in one 22 minute DVD track) list each segment
+  as its own TMDB episode, so a single track really is `S01E01-E03`. The review
+  picker can now say so, and the file is named with the range form Plex and
+  Jellyfin both read.
+- **The manual episode picker is searchable.** Type part of an episode name or
+  its number instead of scrolling a dropdown — which matters for the 40-100
+  episode seasons that segment-numbered shows produce. Episode names come from
+  the TMDB data Engram already caches.
+- **Settings now checks your library and staging folders.** Each path field shows
+  whether the folder exists, whether Engram can actually write to it (a real
+  write test, not a guess at permissions), and how much space is free — so a typo
+  or a permissions problem is visible immediately instead of surfacing as a failed
+  organize after a completed rip.
+- **Network shares are supported as library paths.** A Windows UNC path
+  (`\\server\share\TV`) works wherever a local path does, including the pasted
+  `//server/share` spelling, which is normalized to one canonical form. A share
+  that is offline while you are editing settings is flagged as a warning rather
+  than rejected, and a Windows-style share path entered on Linux or macOS now
+  explains that it needs mounting instead of failing obscurely.
+- **Preview a track from the review page.** Watch a few seconds of any ripped
+  track to see which episode it is, jumping by the disc's own chapter marks — on
+  segment-format shows those land on the segment boundaries, so they show what
+  else is inside a combined track. Rips can't be played by a browser directly
+  (DVD tracks are MPEG-2 with AC3 audio), so clips are transcoded on demand and
+  streamed; nothing is written to disk and nothing is transcoded until you ask.
+- **The review page names the disc you are reviewing.** The header showed only
+  the show and season, which every disc in a box set shares — so reviewing disc 8
+  looked exactly like reviewing disc 7. It now carries the disc's own label, the
+  same way the dashboard card does.
+- **The combined-episode control appears where it is useful.** Review offers the
+  "spans N episodes" control on discs where some track's length says it holds
+  several — not per track, since the tracks whose runtime can't be read are
+  exactly the ones needing it set by hand. A new setting under *Naming & extras*
+  forces it on for every disc, for libraries whose runtimes are too unreliable to
+  detect.
+- **"Play All" titles are identified from the disc's own structure.** A TV disc
+  usually carries one long title that plays every episode back to back; ripping it
+  wastes an hour and duplicates the whole disc. Engram used to spot it by adding up
+  runtimes, which is guesswork. MakeMKV actually reports how each title is
+  assembled, so a title is now skipped only when its segment structure, its chapter
+  counts and its duration all agree that it is a concatenation of the other titles
+  — a much stronger test, since wrongly discarding one costs a whole episode. A new
+  setting under *Naming & extras* turns the whole behaviour off. Discs that report
+  no structure keep the old duration-based detection.
+- **A track can be assigned to a neighbouring season.** Some discs are not tidy —
+  most of the disc is one season, but an episode belongs to the next. The review
+  picker gains a season chip, so that one track can be picked from another
+  season's episode list while the rest of the disc is unaffected. Tracks assigned
+  outside the disc's season are listed under the season roster, since they hold no
+  slot on it. Note that such an episode can't be matched automatically: reference
+  subtitles are only fetched for the disc's own season.
+
+### Fixed
+
+- **Discs whose every track was filed as "extras" are held for review instead of
+  quietly completing.** When TMDB's runtimes don't describe the disc, the
+  duration pre-filter could reject every track on it, so a whole box set could
+  file every one of its episodes into `Extras/` and report success. Such
+  a disc now stops for confirmation, because "nothing on this disc is an episode"
+  is far more often a failed match than a genuine bonus disc.
+
+
+- **Combined episode tracks are published correctly to TheDiscDB.** A track
+  holding several episodes now contributes the range form the database itself
+  uses for such a title (`"17-18"`), instead of claiming only its first episode
+  or being dropped from the contribution entirely.
+- **Discord notifications count the episodes on a combined track.** A disc whose
+  tracks each hold two episodes reported "S01E04 (4 episodes)" — the combined
+  codes counted toward the total but fell out of the range. The manifest now
+  reads "S01E01-E04 (4 episodes)".
+- **Combined episodes from TheDiscDB are no longer discarded.** TheDiscDB records
+  a combined title with a range in its episode field (`"17-18"`), which Engram
+  read as an integer and threw away — losing a known-good answer for exactly the
+  tracks that are hardest to guess. Those mappings now apply.
+- **A combined track no longer contributes a mislabelled fingerprint.** Its audio
+  covers several episodes while a fingerprint names one, so it was being
+  published to the shared network under its first episode's number. Such tracks
+  are now left out of fingerprint contributions entirely.
+- **The review page warns when a track overlaps an episode another track already
+  claims.** Overlap was compared on first episodes only, so assigning `S01E02`
+  beside an existing `S01E01-E03` raised nothing.
+- **A combined track is no longer filed under the wrong season.** When a DVD or
+  absolute ordering projected a track's episodes across a season boundary, the
+  filename took whichever season the last episode landed in. It now keeps the
+  aired numbering, which names one season honestly.
+
 ## [0.32.0] - 2026-08-19
 
 _Highlights: review jobs stay visible even after they age off the dashboard._

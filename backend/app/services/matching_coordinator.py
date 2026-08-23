@@ -17,6 +17,11 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
+from app.core.episode_codes import (
+    format_episode_code,
+    is_multi_episode,
+    parse_episode_code,
+)
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.database import async_session
@@ -81,18 +86,26 @@ _SEASON_FROM_EP_CODE_RE = re.compile(r"[Ss](\d{1,3})[Ee]\d{1,3}")
 
 
 def _same_episode_code(a: str | None, b: str | None) -> bool:
-    """True if two codes denote the same SxxEyy, tolerant of zero-padding.
+    """True if two codes claim any episode in common, tolerant of zero-padding.
 
     The matcher emits canonical "S01E09" but user/discdb codes may be unpadded
-    ("S1E9"), so compare the parsed (season, episode) integers rather than strings.
+    ("S1E9"), so compare parsed ``(season, episode)`` pairs rather than strings.
+
+    Overlap, not equality, because a code can name several episodes. "S01E02" and
+    "S01E01-E03" are not the same code, but they do claim E02 between them, and
+    the caller is asking "has another track on this disc already taken this?".
+    A prefix-anchored regex compared only the FIRST episode of each, so a
+    combined track hid every episode after its first from that question.
     """
     if not a or not b:
         return False
-    pa = re.match(r"[Ss](\d{1,3})[Ee](\d{1,3})", a.strip())
-    pb = re.match(r"[Ss](\d{1,3})[Ee](\d{1,3})", b.strip())
-    if not pa or not pb:
+    pa = parse_episode_code(a)
+    pb = parse_episode_code(b)
+    if pa is None or pb is None:
         return a.strip().upper() == b.strip().upper()
-    return (int(pa.group(1)), int(pa.group(2))) == (int(pb.group(1)), int(pb.group(2)))
+    if pa[0] != pb[0]:
+        return False
+    return bool(set(pa[1]) & set(pb[1]))
 
 
 # Module-level cache for fpcalc detection results.
@@ -362,7 +375,11 @@ class MatchingCoordinator:
         # Old persisted mappings predate the field; getattr keeps them on "discdb".
         source = getattr(mapping, "source", "discdb") or "discdb"
         origin = "disc network" if source == "network_disc" else "TheDiscDB"
-        episode_code = f"S{mapping.season:02d}E{mapping.episode:02d}"
+        # A DiscDB title can claim several episodes (a combined block); build the
+        # code from the whole claim rather than its first number. getattr keeps
+        # mappings persisted before `episodes` existed working off `episode`.
+        _eps = getattr(mapping, "episodes", None) or [mapping.episode]
+        episode_code = format_episode_code(mapping.season, _eps)
         logger.info(
             f"Job {job_id}: {origin} applying disc-order fallback mapping for title "
             f"{title.title_index}: {episode_code} ({mapping.episode_title!r})"
@@ -492,7 +509,8 @@ class MatchingCoordinator:
                     mappings = self._discdb_mappings.get(job_id, [])
                     for m in mappings:
                         if m.index == title.title_index and m.season and m.episode:
-                            title.matched_episode = f"S{m.season:02d}E{m.episode:02d}"
+                            _eps = getattr(m, "episodes", None) or [m.episode]
+                            title.matched_episode = format_episode_code(m.season, _eps)
                             break
                 title.state = TitleState.MATCHED
                 session.add(title)
@@ -1308,17 +1326,14 @@ class MatchingCoordinator:
                     # Phase 1: enqueue contribution if extraction produced a fingerprint
                     if title.chromaprint_blob and title.matched_episode:
                         try:
-                            import re as _re
-
                             from app.services.config_service import get_config as _get_config
                             from app.services.contribution_queue import ContributionQueue
 
                             _cfg = await _get_config()
                             if _cfg.contribution_pseudonym:
-                                # Parse "S01E07" → (season, episode)
-                                _m = _re.match(r"S(\d{1,2})E(\d{1,3})", title.matched_episode or "")
-                                season_num = int(_m.group(1)) if _m else None
-                                episode_num = int(_m.group(2)) if _m else None
+                                _parsed = parse_episode_code(title.matched_episode)
+                                season_num = _parsed[0] if _parsed else None
+                                episode_num = _parsed[1][0] if _parsed else None
                                 disc_hash = None
                                 if getattr(job, "content_hash", None):
                                     try:
@@ -1338,6 +1353,20 @@ class MatchingCoordinator:
                                     logger.debug(
                                         f"Skipping contribution for title {title.id}: "
                                         "no usable tmdb_id on parent job"
+                                    )
+                                elif is_multi_episode(title.matched_episode):
+                                    # A combined track's audio spans several episodes
+                                    # and a fingerprint row names exactly one. Under
+                                    # the first episode's number, the network would
+                                    # learn that this audio IS that episode, and every
+                                    # later ripper of the disc would inherit the wrong
+                                    # identity from us. There is no honest one-episode
+                                    # label for it, so contribute nothing.
+                                    logger.debug(
+                                        f"Skipping contribution for title {title.id}: "
+                                        f"{title.matched_episode} covers several "
+                                        f"episodes, and a fingerprint "
+                                        f"contribution names one."
                                     )
                                 else:
                                     # Map DiscTitle.match_source onto FingerprintContribution's

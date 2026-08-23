@@ -7,13 +7,13 @@ import asyncio
 import json
 import logging
 import math
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
+from app.core.episode_codes import normalize_episode_code
 from app.core.organizer import check_library_writable
 from app.database import async_session
 from app.models import DiscJob, JobState
@@ -174,7 +174,6 @@ _MAX_SCAN_POINTS = 200  # bound the RAW count even for very long tracks (realize
 # realize onto a different grid — requested != realized — causing ladder dedup and
 # exhaustion bookkeeping to operate on the wrong depth and pass counters to lie.
 _CONFLICT_FIXED_DEPTHS = (37, 73)
-_EP_CODE_RE = re.compile(r"[Ss](\d+)[Ee](\d+)")
 
 
 def _normalize_episode_code(code: str | None) -> str:
@@ -183,11 +182,15 @@ def _normalize_episode_code(code: str | None) -> str:
     The matcher's fallback path can emit unpadded codes ("S1E14") while its
     main path emits "S01E14"; without normalizing, a real collision would be
     grouped under two different keys and missed.
+
+    Multi-episode codes ("S01E01-E03", a user-assigned combined track)
+    canonicalize whole: they group as one distinct claim rather than collapsing
+    onto their first episode, so the auto-resolver never treats a combined track
+    as a rival for a single episode and re-matches it behind the user's back.
+    Per-episode overlap is surfaced where the decision is made — the review
+    roster's coverage strip.
     """
-    match = _EP_CODE_RE.search(code or "")
-    if not match:
-        return (code or "").upper()
-    return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}"
+    return normalize_episode_code(code)
 
 
 def _detect_conflicts(titles) -> dict[str, list]:
@@ -842,6 +845,60 @@ class FinalizationCoordinator:
             await self._clear_review_state(session, job)
             await self._park_in_review(session, job, reason)
             return
+
+        # An all-extras TV disc is a matching failure wearing a success costume.
+        # Every track auto-sorted into Extras and nothing matched an episode means
+        # the duration pre-filter (or the matcher) rejected the whole disc. That is
+        # how a whole box set can file every one of its episodes into Extras/ and
+        # report COMPLETED for each disc. Hold it for a human, who
+        # can confirm "yes, this really is a bonus disc" in one click; the
+        # alternative is discovering the mis-file weeks later in the library.
+        # Runs regardless of always_review — this is the floor, not the override.
+        if job.content_type == ContentType.TV and not has_review:
+            extras = [t for t in matchable if t.is_extra]
+            episodes = [
+                t
+                for t in matchable
+                if not t.is_extra and t.matched_episode and t.matched_episode != "skip"
+            ]
+            if extras and not episodes:
+                logger.warning(
+                    f"Job {job_id}: all {len(extras)} track(s) were classified as extras and "
+                    f"nothing matched an episode — routing to review instead of filing the "
+                    f"whole disc into Extras/."
+                )
+                await self._park_in_review(
+                    session,
+                    job,
+                    f"Every track on this disc ({len(extras)}) was classified as bonus "
+                    f"content and none matched an episode. That usually means the episode "
+                    f"match failed rather than the disc being a bonus disc — assign the "
+                    f"episodes below, or organize as-is if it really is extras.",
+                )
+                return
+
+        # Manual-review override: hold every disc for confirmation, however
+        # confident the matcher was. Placed AFTER the escalation ladders on
+        # purpose — the user still wants the machine's best guess pre-filled,
+        # they just want the last word before anything moves into the library.
+        # Nothing here is unresolved by definition, so the review page opens with
+        # every track already assigned and the user confirms or corrects.
+        # Gated on has_matched — something is still waiting to be organized, so
+        # there is a decision left to hold. A disc whose titles are already all
+        # COMPLETED/FAILED has nothing left to confirm; parking it would strand a
+        # job the review page can't finish.
+        if not has_review and has_matched:
+            from app.services.config_service import get_config as get_db_config
+
+            if (await get_db_config()).always_review:
+                logger.info(f"Job {job_id}: always_review enabled — holding disc for confirmation")
+                await self._park_in_review(
+                    session,
+                    job,
+                    "Manual review is on for every disc — confirm the assignments below, "
+                    "then organize.",
+                )
+                return
 
         # Review takes priority: while ANY title still needs manual review, do
         # not organize anything — hold the whole disc in staging until it is
@@ -1548,7 +1605,13 @@ class FinalizationCoordinator:
         record decisions identically. Does not organize or change job state.
         """
         if episode_code:
-            title.matched_episode = episode_code
+            # Canonicalize so padded/unpadded and hyphen/run-on spellings of one
+            # assignment ("S1E3", "S01E03"; "S01E01E02", "S01E01-E02") can't land
+            # in the DB as distinct claims. Pseudo-codes pass through untouched.
+            if episode_code not in ("extra", "skip"):
+                title.matched_episode = normalize_episode_code(episode_code)
+            else:
+                title.matched_episode = episode_code
             if episode_code == "extra":
                 title.is_extra = True
             elif episode_code != "skip":

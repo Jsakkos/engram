@@ -128,6 +128,29 @@ def test_build_rows_movie_main_feature():
     assert by_idx[5]["assignment"] == "extra"
 
 
+def test_build_rows_combined_episode_track():
+    """A track holding several episodes is an episode row, with the range form.
+
+    It used to fall through to "discarded" on the theory that under-counting was
+    the safe error. But publishing a real episode track as not-an-episode is a
+    claim of its own, and TheDiscDB records combined titles with the range in the
+    episode field ("17-18" and friends appear throughout its data).
+    """
+    titles = [_title(3, matched_episode="S02E17-E18", match_source="engram")]
+    rows = build_title_rows(_tv_job(), titles)
+    assert rows[0]["assignment"] == "episode"
+    assert rows[0]["season"] == 2
+    assert rows[0]["episode"] == "17-18"
+
+
+def test_build_rows_gapped_combination_does_not_claim_the_gap():
+    titles = [_title(4, matched_episode="S01E01E03", match_source="engram")]
+    rows = build_title_rows(_tv_job(), titles)
+    assert rows[0]["assignment"] == "episode"
+    # Not "1-3": the track does not contain E02.
+    assert rows[0]["episode"] == "1,3"
+
+
 def test_build_rows_discarded_track():
     # Unmatched / not-organized track on a TV disc → discarded.
     titles = [

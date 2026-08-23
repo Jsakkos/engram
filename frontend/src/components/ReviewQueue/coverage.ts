@@ -30,40 +30,95 @@ export interface Candidate {
     isBest: boolean;
 }
 
-const CODE_RE = /^S(\d+)E(\d+)$/i;
+// A code is a season plus one or more episodes: "S01E05", and the combined form
+// "S01E01-E03" for one track holding several episodes (segment-format shows put
+// three ~7min segments in a single 22min DVD track). Anchored so a pseudo value
+// ('extra'/'skip') or a corrupted string is never read as a partial code.
+const CODE_RE = /^S(\d+)((?:-?E\d+)+)$/i;
+// Each episode token with the separator before it: a leading hyphen means
+// "…through this episode" (the Plex/Jellyfin range form, and what hand-organized
+// libraries mean by it); no hyphen means "and also this episode".
+const PART_RE = /(-?)E(\d+)/gi;
 
 /** Real "S03E05"-style codes only — excludes pseudo values like extra/skip/''. */
-function isRealCode(code: string): boolean {
+export function isRealCode(code: string): boolean {
     return CODE_RE.test(code);
 }
 
-function episodeNumber(code: string): number | null {
-    const m = CODE_RE.exec(code);
-    return m ? parseInt(m[2], 10) : null;
+/** `(season, [episodes…])` for any accepted spelling, or null for a non-code. */
+export function parseEpisodeCode(code: string): { season: number; episodes: number[] } | null {
+    const m = CODE_RE.exec(code ?? '');
+    if (!m) return null;
+    const episodes: number[] = [];
+    for (const part of m[2].matchAll(PART_RE)) {
+        const n = parseInt(part[2], 10);
+        const prev = episodes[episodes.length - 1];
+        // A backwards range ("E05-E02") is taken as a bare addition rather than
+        // silently inverted — better to look odd than to invent episodes.
+        const start = part[1] && prev !== undefined && n > prev ? prev + 1 : n;
+        for (let i = start; i <= n; i++) if (!episodes.includes(i)) episodes.push(i);
+    }
+    return episodes.length ? { season: parseInt(m[1], 10), episodes } : null;
+}
+
+/** Every single-episode code a (possibly combined) code claims. */
+export function episodeParts(code: string): string[] {
+    const parsed = parseEpisodeCode(code);
+    if (!parsed) return [];
+    return parsed.episodes.map(
+        (n) => `S${String(parsed.season).padStart(2, '0')}E${String(n).padStart(2, '0')}`,
+    );
+}
+
+/** True when one track is assigned several episodes. */
+export function isMultiEpisode(code: string): boolean {
+    return (parseEpisodeCode(code)?.episodes.length ?? 0) > 1;
 }
 
 /**
- * Canonicalize an episode code to zero-padded `SxxExx`. The matcher's main path
- * emits padded codes, but a fallback path can produce unpadded ones (e.g.
- * "S1E14"); without normalizing, "S1E14" and "S01E14" wouldn't dedupe/collide
- * against each other or the (always-padded) season roster. Non-codes
- * ('extra'/'skip'/'') pass through unchanged.
+ * Canonicalize an episode code: zero-padded, a contiguous run as the compact
+ * `S01E01-E03` range, a gapped set as the run-on `S01E01E03` (a hyphen there
+ * would claim an episode the track doesn't hold). The matcher's main path emits
+ * padded codes, but a fallback path can produce unpadded ones (e.g. "S1E14");
+ * without normalizing, "S1E14" and "S01E14" wouldn't dedupe/collide against each
+ * other or the (always-padded) season roster. Non-codes ('extra'/'skip'/'') pass
+ * through unchanged.
  */
 export function normalizeEpisodeCode(code: string): string {
-    const m = CODE_RE.exec(code);
-    if (!m) return code;
-    return `S${m[1].padStart(2, '0')}E${m[2].padStart(2, '0')}`;
+    const parsed = parseEpisodeCode(code);
+    if (!parsed) return code;
+    const { season, episodes } = parsed;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const head = `S${pad(season)}E${pad(episodes[0])}`;
+    if (episodes.length === 1) return head;
+    const contiguous = episodes.every((n, i) => n === episodes[0] + i);
+    return contiguous
+        ? `${head}-E${pad(episodes[episodes.length - 1])}`
+        : head + episodes.slice(1).map((n) => `E${pad(n)}`).join('');
 }
 
-/** Group the live selections by episode code → the title ids claiming it. */
+/**
+ * How a code is shown to the user. Identical to its canonical form — which is
+ * also how the organizer names the file — so the review label and the filename
+ * can never disagree.
+ */
+export const displayEpisodeCode = normalizeEpisodeCode;
+
+/**
+ * Group the live selections by episode code → the title ids claiming it.
+ * A combined track is counted against EVERY episode it claims, so the roster
+ * shows all of its slots filled — and a second track claiming one of them reads
+ * as the collision it is.
+ */
 export function assignmentsByCode(selections: Record<number, string>): Map<string, number[]> {
     const map = new Map<string, number[]>();
     for (const [titleId, code] of Object.entries(selections)) {
         if (!code || !isRealCode(code)) continue;
-        const key = normalizeEpisodeCode(code);
-        const ids = map.get(key) ?? [];
-        ids.push(Number(titleId));
-        map.set(key, ids);
+        for (const key of episodeParts(code)) {
+            const ids = map.get(key) ?? [];
+            ids.push(Number(titleId));
+            map.set(key, ids);
+        }
     }
     return map;
 }
@@ -81,7 +136,7 @@ export function computeCoverage(
 
     const presentNums: number[] = [];
     for (const code of byCode.keys()) {
-        const n = episodeNumber(code);
+        const n = parseEpisodeCode(code)?.episodes[0];
         if (n != null) presentNums.push(n);
     }
     const lo = presentNums.length ? Math.min(...presentNums) : 0;
@@ -159,4 +214,57 @@ export function buildCandidates(
     }
 
     return out;
+}
+
+/** How many episodes one track may be declared to hold. */
+export const MAX_SPAN = 6;
+
+/** `S01E01-E03` for a run of `span` episodes starting at `first`. */
+export function buildRangeCode(season: number, first: number, span: number): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const head = `S${pad(season)}E${pad(first)}`;
+    return span > 1 ? `${head}-E${pad(first + span - 1)}` : head;
+}
+
+/**
+ * How many episodes this track most likely holds, from its runtime against the
+ * season's typical episode runtime. Segment-format shows (TMDB lists ~7min
+ * segments; the DVD carries the assembled ~22min block) are the reason a track
+ * can legitimately be several episodes — and the reason the matcher's single-code
+ * guess is only ever the first of them.
+ *
+ * Deliberately conservative: only claims a span when the track is close to a
+ * whole multiple, so ordinary episodes never get a spurious "holds 2" hint.
+ */
+export function inferSpan(trackSeconds: number | null | undefined, episodes: RosterEpisode[]): number {
+    const runtimes = [
+        ...new Set(episodes.map((e) => e.runtime).filter((r): r is number => !!r && r > 0)),
+    ];
+    if (!trackSeconds || runtimes.length === 0) return 1;
+    const minutes = trackSeconds / 60;
+
+    // Every plausible (runtime, count) pairing, judged by the same window the
+    // backend uses to accept a combined track: a block may fall 10% short of N
+    // whole episodes or run 25% past them, since a DVD track carries the credits
+    // and recap that TMDB's runtime figure omits. Rounding the ratio instead
+    // rejected exactly the padded tracks this is meant to catch — a 24.6min
+    // block of three 7min segments rounds to 4 and lands nowhere near it.
+    //
+    // A season is not always uniform (a show can list 7min segments alongside
+    // 11min ones), so all distinct runtimes are considered and the closest fit
+    // wins rather than the median deciding for the whole disc.
+    let best = 1;
+    let bestError = Infinity;
+    for (const runtime of runtimes) {
+        for (let n = 2; n <= MAX_SPAN; n++) {
+            const combined = runtime * n;
+            const error = (minutes - combined) / combined;
+            if (error < -0.1 || error > 0.25) continue;
+            if (Math.abs(error) < bestError) {
+                bestError = Math.abs(error);
+                best = n;
+            }
+        }
+    }
+    return best;
 }

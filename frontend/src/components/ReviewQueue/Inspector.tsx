@@ -2,8 +2,10 @@ import type { CSSProperties } from 'react';
 import { Trash2, SkipForward } from 'lucide-react';
 import { IcoRetry } from '../../app/components/icons';
 import { SvActionButton, SvBadge, SvLabel, SvNotice, SvPanel, sv } from '../../app/components/synapse';
-import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
+import { FEATURES } from '../../config/constants';
 import type { DiscTitle } from '../../types';
+import { displayEpisodeCode, episodeParts, isRealCode } from './coverage';
+import { EpisodePicker } from './EpisodePicker';
 import type { Candidate, CoverageEntry } from './coverage';
 import type { LLMSuggestion, RosterEpisode } from './types';
 import type { LLMFeedback } from './llmFeedback';
@@ -11,7 +13,6 @@ import {
     confidenceColor,
     formatDuration,
     formatSize,
-    generateEpisodeOptions,
     parseMatchDetails,
     titleDisplayName,
 } from './utils';
@@ -42,6 +43,9 @@ export function Inspector({
     holders,
     titleIndexById,
     isRematching,
+    spansEnabled,
+    seasonCount,
+    loadSeason,
     aiEpisodeMatchingEnabled,
     aiKeyConfigured,
     llmFeedback,
@@ -66,6 +70,12 @@ export function Inspector({
     holders: Map<string, number[]>;
     titleIndexById: Record<number, number>;
     isRematching: boolean;
+    /** Whether this disc offers the combined-track span control. */
+    spansEnabled?: boolean;
+    /** How many seasons the show has, for the per-track season chip. */
+    seasonCount?: number | null;
+    /** Loads another season's episodes, for a track from a neighbouring season. */
+    loadSeason?: (season: number) => Promise<RosterEpisode[]>;
     aiEpisodeMatchingEnabled: boolean;
     aiKeyConfigured: boolean;
     llmFeedback: LLMFeedback | null;
@@ -96,9 +106,13 @@ export function Inspector({
     const takenByOther = (code: string): number[] =>
         (holders.get(code) ?? []).filter((id) => id !== title.id);
 
-    // This title's current pick collides with another title's pick.
-    const selectionIsCode = !!selection && /^S\d+E\d+$/i.test(selection);
-    const conflictWith = selectionIsCode ? takenByOther(selection as string) : [];
+    // This title's current pick collides with another title's pick. A combined
+    // track ("S01E01-E02-E03") is checked episode by episode: it collides if ANY
+    // of the episodes it claims is also claimed elsewhere.
+    const selectionIsCode = !!selection && isRealCode(selection);
+    const selectionParts = selectionIsCode ? episodeParts(selection as string) : [];
+    const contestedPart = selectionParts.find((code) => takenByOther(code).length > 0) ?? null;
+    const conflictWith = [...new Set(selectionParts.flatMap((code) => takenByOther(code)))];
     const inConflict = conflictWith.length > 0;
 
     const stateBadge = fileExists ? (
@@ -145,7 +159,7 @@ export function Inspector({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', marginBottom: 14, border: `1px solid ${sv.red}`, background: `${sv.red}12` }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontFamily: sv.display, fontSize: 13, color: sv.red }}>
-                                ⚠ {selection} also claimed by {conflictWith.map((id) => `#${titleIndexById[id] ?? id}`).join(', ')}
+                                ⚠ {contestedPart ?? displayEpisodeCode(selection as string)} also claimed by {conflictWith.map((id) => `#${titleIndexById[id] ?? id}`).join(', ')}
                             </div>
                             <div style={{ ...monoFaint, marginTop: 2, fontSize: 10.5 }}>
                                 Deep re-match re-runs every claiming title with denser sampling + stricter votes to break the tie.
@@ -154,7 +168,7 @@ export function Inspector({
                         <SvActionButton
                             tone="magenta"
                             size="sm"
-                            onClick={() => onDeepRematch(selection as string)}
+                            onClick={() => onDeepRematch((contestedPart ?? selection) as string)}
                             disabled={isMatching}
                         >
                             <IcoRetry size={11} className={isMatching ? 'animate-spin' : ''} />
@@ -317,39 +331,17 @@ export function Inspector({
                     {/* row 1: label + episode picker */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Manual</span>
-                        <select
-                            value={selection && /^S\d+E\d+$/i.test(selection) ? selection : ''}
-                            onChange={(e) => e.target.value && onAssign(e.target.value)}
-                            aria-label={`Manual episode for title ${title.title_index}`}
-                            style={{
-                                flex: 1,
-                                background: sv.bg0,
-                                border: `1px solid ${sv.lineMid}`,
-                                color: sv.ink,
-                                fontFamily: sv.mono,
-                                fontSize: 12,
-                                padding: '7px 9px',
-                                outline: 'none',
-                                cursor: 'pointer',
-                            }}
-                        >
-                            <option value="">Pick episode…</option>
-                            {episodes.length > 0
-                                ? episodes.map((ep) => (
-                                      <option key={ep.episode_code} value={ep.episode_code}>
-                                          {`E${String(ep.episode_number).padStart(2, '0')}`}
-                                          {ep.name ? ` — ${ep.name}` : ''}
-                                      </option>
-                                  ))
-                                : generateEpisodeOptions(
-                                      season,
-                                      EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON,
-                                  ).map((code) => (
-                                      <option key={code} value={code}>
-                                          {code}
-                                      </option>
-                                  ))}
-                        </select>
+                        <EpisodePicker
+                            titleIndex={title.title_index}
+                            season={season}
+                            episodes={episodes}
+                            selection={selection}
+                            trackSeconds={title.duration_seconds}
+                            spansEnabled={spansEnabled}
+                            seasonCount={seasonCount}
+                            loadSeason={loadSeason}
+                            onAssign={onAssign}
+                        />
                     </div>
                     {/* row 2: action buttons */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>

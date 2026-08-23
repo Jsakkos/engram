@@ -8,7 +8,6 @@ import pytest
 
 from app.core.discdb_exporter import (
     EXPORT_SCHEMA_VERSION,
-    _parse_episode_code,
     generate_export,
     get_export_directory,
     get_makemkv_log_dir,
@@ -16,6 +15,7 @@ from app.core.discdb_exporter import (
     mark_exported,
     mark_skipped,
 )
+from app.core.episode_codes import discdb_episode_fields
 from app.models.app_config import AppConfig
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState
 
@@ -131,26 +131,45 @@ def movie_titles():
 
 
 class TestParseEpisodeCode:
+    """The (season, episode) pair published to TheDiscDB.
+
+    Single episodes stay integers. A combined track publishes the range form the
+    database itself uses for such a title, rather than its first episode alone —
+    a truncated claim in a shared public database is worse than the same mistake
+    kept local.
+    """
+
     def test_standard_code(self):
-        assert _parse_episode_code("S01E01") == (1, 1)
+        assert discdb_episode_fields("S01E01") == (1, 1)
 
     def test_high_numbers(self):
-        assert _parse_episode_code("S12E24") == (12, 24)
+        assert discdb_episode_fields("S12E24") == (12, 24)
 
     def test_none_input(self):
-        assert _parse_episode_code(None) == (None, None)
+        assert discdb_episode_fields(None) == (None, None)
 
     def test_empty_string(self):
-        assert _parse_episode_code("") == (None, None)
+        assert discdb_episode_fields("") == (None, None)
 
     def test_malformed(self):
-        assert _parse_episode_code("Episode 5") == (None, None)
+        assert discdb_episode_fields("Episode 5") == (None, None)
 
-    def test_multi_episode_returns_first(self):
-        assert _parse_episode_code("S01E01E02") == (1, 1)
+    def test_junk_around_a_code_is_rejected(self):
+        # Anchored, unlike the old unanchored search which found a number in the
+        # middle of anything.
+        assert discdb_episode_fields("disc 2 S01E01 play all") == (None, None)
+
+    def test_combined_track_publishes_the_range(self):
+        assert discdb_episode_fields("S01E01-E02") == (1, "1-2")
+        assert discdb_episode_fields("S02E17-E18") == (2, "17-18")
+
+    def test_gapped_combination_does_not_claim_the_gap(self):
+        # E01 + E03 is not "1-3": that would claim an episode the file lacks,
+        # and the two forms are indistinguishable once published.
+        assert discdb_episode_fields("S01E01E03") == (1, "1,3")
 
     def test_case_insensitive(self):
-        assert _parse_episode_code("s03e07") == (3, 7)
+        assert discdb_episode_fields("s03e07") == (3, 7)
 
 
 class TestGenerateExport:

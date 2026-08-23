@@ -33,6 +33,7 @@ from sqlmodel import select
 from app.api.guards import require_localhost, require_localhost_or_lan
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
+from app.core.episode_codes import parse_episode_code
 from app.core.errors import AIProviderError
 from app.core.security import is_allowed_image_url, sanitize_log_value
 from app.core.updater import UpdateError, UpdateStatus, update_checker
@@ -298,6 +299,8 @@ class ConfigResponse(BaseModel):
     staging_cleanup_days: int
     # Extras & naming
     extras_policy: str
+    always_review: bool
+    always_show_episode_span: bool
     naming_season_format: str
     naming_episode_format: str
     naming_movie_format: str
@@ -395,6 +398,8 @@ class ConfigUpdate(BaseModel):
     staging_cleanup_days: int | None = None
     # Extras & naming
     extras_policy: str | None = None
+    always_review: bool | None = None
+    always_show_episode_span: bool | None = None
     naming_season_format: str | None = None
     naming_episode_format: str | None = None
     naming_movie_format: str | None = None
@@ -689,15 +694,16 @@ async def get_job_titles(
     return list(result.scalars().all())
 
 
-_EPISODE_CODE_RE = re.compile(r"S(\d+)E(\d+)", re.IGNORECASE)
-
-
 class RosterEpisode(BaseModel):
     """One episode slot in the season roster with cross-disc coverage."""
 
     episode_code: str
     episode_number: int
     name: str
+    # TMDB runtime in minutes (None when TMDB doesn't carry one). Lets review
+    # spot a track holding several episodes: segment-format shows list ~7min
+    # episodes while the DVD track is a ~22min three-segment block.
+    runtime: int | None = None
     status: Literal["assigned", "duplicate", "missing", "off"]
     assigned_title_ids: list[int]
     # Subtitle-reference availability (the source of truth for auto-matching).
@@ -737,8 +743,8 @@ class SeasonRosterResponse(BaseModel):
     show_id: int | None = None
     episodes: list[RosterEpisode] = []
     reason: str | None = None
-    # Season picker (#370): total seasons for the show, populated only while the
-    # job's season is unknown (no extra TMDB call on the normal detected path).
+    # Total seasons for the show, so review can offer a season for a track that
+    # belongs to a neighbouring one (#370 for the unknown-season case).
     season_count: int | None = None
     # Episode ordering (#200)
     ordering_available: bool = False
@@ -765,11 +771,13 @@ async def get_season_roster(
 
     effective_season = season if season is not None else job.detected_season
 
-    # Season-picker support (#370): while the job's season is unknown, report
-    # how many seasons exist so the prompt/picker can render options. The
-    # lookup is best-effort decoration — a TMDB failure must not break review.
+    # Season-picker support: report how many seasons the show has, so review can
+    # offer them. Needed while the job's season is unknown (#370) and also on an
+    # identified disc, since a disc can carry an episode from a neighbouring
+    # season and that track needs a season of its own. Cached at the TMDB layer,
+    # and best-effort decoration either way — a TMDB failure must not break review.
     season_count: int | None = None
-    if job.tmdb_id and job.detected_season is None:
+    if job.tmdb_id:
         try:
             season_count = await asyncio.to_thread(get_number_of_seasons, str(job.tmdb_id))
         except Exception as e:  # noqa: BLE001 — picker is best-effort decoration
@@ -813,12 +821,17 @@ async def get_season_roster(
     )
     assigned: dict[int, list[int]] = {}
     for title in result.scalars().all():
-        if not title.matched_episode:
+        parsed = parse_episode_code(title.matched_episode)
+        # A track assigned to a neighbouring season holds no slot on THIS roster.
+        # Review surfaces it from its own live selections, which also cover edits
+        # not yet saved.
+        if not parsed or parsed[0] != season_num:
             continue
-        match = _EPISODE_CODE_RE.search(title.matched_episode)
-        if not match or int(match.group(1)) != season_num:
-            continue
-        assigned.setdefault(int(match.group(2)), []).append(title.id)
+        # A combined track ("S01E01-E03") occupies EVERY episode it claims,
+        # so the roster shows all three slots filled by that one title rather
+        # than two phantom gaps beside it.
+        for episode_number in parsed[1]:
+            assigned.setdefault(episode_number, []).append(title.id)
 
     present = sorted(assigned)
     lo, hi = (present[0], present[-1]) if present else (0, -1)
@@ -853,6 +866,7 @@ async def get_season_roster(
             episode_code=(code := f"S{season_num:02d}E{ep['episode_number']:02d}"),
             episode_number=ep["episode_number"],
             name=ep.get("name") or "",
+            runtime=ep.get("runtime"),
             status=(
                 "duplicate"
                 if len(assigned.get(ep["episode_number"], [])) > 1
@@ -1662,6 +1676,8 @@ async def get_config() -> ConfigResponse:
         staging_cleanup_days=config.staging_cleanup_days,
         # Extras & naming
         extras_policy=config.extras_policy,
+        always_review=config.always_review,
+        always_show_episode_span=config.always_show_episode_span,
         naming_season_format=config.naming_season_format,
         naming_episode_format=config.naming_episode_format,
         naming_movie_format=config.naming_movie_format,
@@ -3351,6 +3367,7 @@ async def _collect_environment() -> dict:
             "max_concurrent_matches": config.max_concurrent_matches,
             "conflict_resolution_default": config.conflict_resolution_default,
             "extras_policy": config.extras_policy,
+            "always_review": config.always_review,
             "discdb_enabled": config.discdb_enabled,
         },
     }
