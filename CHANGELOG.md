@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-08-23
+
+_Highlights: watch a track in your own video player, straight from manual review._
+
 ### Added
 
 - **Watch a track in your own video player, straight from manual review.** When
