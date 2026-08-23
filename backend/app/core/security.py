@@ -5,13 +5,18 @@ These back the hardening of CodeQL-flagged sinks:
 - ``is_allowed_image_url`` — guards the ``fetch_cover`` outbound HTTP request.
 - ``executable_basename_allowed`` — constrains the tool-validation subprocess
   calls to executables that actually look like the expected tool.
+- ``is_within_configured_roots`` — constrains media-endpoint file paths to the
+  configured staging and library roots.
 - ``sanitize_log_value`` — strips line breaks/control characters from
   disc/user-controlled values before they are written to logs.
+- ``sanitize_playlist_field`` — strips line breaks/control characters from
+  disc-derived text before it is embedded in an ``.m3u`` playlist.
 
-The first two are boolean *predicates* — they return ``True``/``False`` so the
-validation is recognised as a barrier guard by static analysis at the call site
-(``if not guard(x): ...``). ``sanitize_log_value`` instead returns the cleaned
-value, the recognised barrier shape for log injection.
+The first three are boolean *predicates* — they return ``True``/``False`` so
+the validation is recognised as a barrier guard by static analysis at the call
+site (``if not guard(x): ...``). ``sanitize_log_value`` and
+``sanitize_playlist_field`` instead return the cleaned value, the recognised
+barrier shape for log/playlist injection.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import ipaddress
 import os
 import re
 from collections.abc import Sequence
+from pathlib import Path
 from urllib.parse import urlparse
 
 # C0 control characters and DEL, excluding tab (0x09), LF (0x0a) and CR (0x0d).
@@ -92,6 +98,63 @@ def executable_basename_allowed(path: str, allowed_basenames: Sequence[str]) -> 
     """
     name = os.path.basename(path.replace("\\", "/")).lower()
     return name in {allowed.lower() for allowed in allowed_basenames}
+
+
+def is_within_configured_roots(path: os.PathLike[str] | str | None, roots: Sequence[str]) -> bool:
+    """Return True if ``path`` resolves inside at least one of ``roots``.
+
+    Barrier guard for the media endpoints: the file path comes out of the
+    database (``DiscTitle.output_filename`` / ``organized_to``), so a corrupted
+    or hand-edited row must not become an arbitrary file read.
+
+    Both sides are fully resolved first, so ``..`` segments and symlinks are
+    followed before the comparison. A symlink sitting inside a root but
+    pointing outside it is therefore rejected, not followed into.
+    Comparison uses ``os.path.commonpath``,
+    which compares path *components*: a bare string prefix test would let
+    ``/media/staging-old`` pass a ``/media/staging`` root.
+
+    Empty roots are skipped. Unconfigured ``AppConfig`` paths default to ``""``,
+    which would otherwise resolve to the process working directory and silently
+    authorise it.
+
+    A falsy or otherwise unusable ``path`` (``None`` or ``""``, as both
+    ``output_filename`` and ``organized_to`` are before a title is placed)
+    returns False rather than raising, so the guard always fails closed.
+    """
+    if not path:
+        return False
+    try:
+        resolved = Path(path).resolve(strict=False)
+    except (OSError, ValueError, TypeError):
+        return False
+
+    for root in roots:
+        if not root:
+            continue
+        try:
+            # CodeQL py/path-injection flags this Path() because `root` derives
+            # from config and job rows, which trace back to HTTP input. It is a
+            # false positive on the barrier itself: nothing in this function
+            # opens, reads, writes or deletes. `resolved_root` reaches only
+            # commonpath() and a string compare, and resolving is precisely what
+            # makes that compare sound, since it collapses `..` and symlinks
+            # before the components are matched. Removing the resolve() to quiet
+            # the scanner would weaken the guard rather than fix anything.
+            #
+            # An inline `# codeql[py/path-injection]` marker does NOT suppress it
+            # in this repo's code-scanning setup (tried; the alert simply moved to
+            # the new line number), so the alert is handled by dismissal in the
+            # Security tab. Excluding the module via paths-ignore was rejected:
+            # that would blind the scanner to the other guards in this file.
+            resolved_root = Path(root).resolve(strict=False)
+            if os.path.commonpath([resolved, resolved_root]) == str(resolved_root):
+                return True
+        except (OSError, ValueError):
+            # commonpath raises ValueError for paths on different Windows
+            # drives, which simply means "not contained".
+            continue
+    return False
 
 
 _DISALLOWED_HOSTNAMES: frozenset[str] = frozenset(
@@ -175,3 +238,27 @@ def sanitize_log_value(value: object) -> str:
     # handled by the explicit replaces below so they remain the recognised barrier.
     text = _LOG_CONTROL_CHARS_RE.sub("", str(value))
     return text.replace("\r", "").replace("\n", "")
+
+
+def sanitize_playlist_field(value: str) -> str:
+    """Strip line breaks and control characters from text embedded in an .m3u.
+
+    Disc volume labels and detected titles reach the playlist body, and an
+    ``.m3u`` is line-oriented: a label carrying CR/LF can terminate the
+    ``#EXTINF`` line and open a second, fully-formed entry pointing anywhere
+    the crafted label likes, which the user's player would then parse as a real
+    track. Returns the cleaned value, the recognised barrier shape for
+    injection into a line-oriented format, mirroring ``sanitize_log_value``.
+    """
+    if not value:
+        return ""
+    # str.splitlines() already knows every boundary Python calls a line break
+    # (LF, CR, CRLF, and the exotics: NEL, U+2028, U+2029), so rejoining its
+    # parts collapses all of them without hardcoding a character class that
+    # would drift from that definition. CRLF counts as one boundary, so a pair
+    # becomes a single space. Mainstream .m3u demuxers only split on 0x0a, so
+    # the exotics are not exploitable against VLC or MPV today; covering them
+    # keeps the guarantee tied to the function's name rather than to which
+    # parser happens to read the output.
+    collapsed = " ".join(value.splitlines())
+    return _LOG_CONTROL_CHARS_RE.sub("", collapsed).strip()
