@@ -133,15 +133,21 @@ def is_within_configured_roots(path: os.PathLike[str] | str | None, roots: Seque
         if not root:
             continue
         try:
-            # codeql[py/path-injection] flags this Path() because `root` derives from
-            # config and job rows, which trace back to HTTP input. It is a false
-            # positive on the barrier itself: nothing here opens, reads, writes or
-            # deletes. `resolved_root` reaches only commonpath() and a string compare,
-            # and resolving is precisely what makes the comparison sound (it collapses
-            # `..` and symlinks before the components are matched). Suppressed narrowly
-            # on this line rather than excluding the module, which would blind the
-            # scanner to the rest of this file's guards.
-            resolved_root = Path(root).resolve(strict=False)  # codeql[py/path-injection]
+            # CodeQL py/path-injection flags this Path() because `root` derives
+            # from config and job rows, which trace back to HTTP input. It is a
+            # false positive on the barrier itself: nothing in this function
+            # opens, reads, writes or deletes. `resolved_root` reaches only
+            # commonpath() and a string compare, and resolving is precisely what
+            # makes that compare sound, since it collapses `..` and symlinks
+            # before the components are matched. Removing the resolve() to quiet
+            # the scanner would weaken the guard rather than fix anything.
+            #
+            # An inline `# codeql[py/path-injection]` marker does NOT suppress it
+            # in this repo's code-scanning setup (tried; the alert simply moved to
+            # the new line number), so the alert is handled by dismissal in the
+            # Security tab. Excluding the module via paths-ignore was rejected:
+            # that would blind the scanner to the other guards in this file.
+            resolved_root = Path(root).resolve(strict=False)
             if os.path.commonpath([resolved, resolved_root]) == str(resolved_root):
                 return True
         except (OSError, ValueError):
