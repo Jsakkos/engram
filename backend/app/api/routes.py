@@ -4177,15 +4177,32 @@ async def rematch_title(
 async def _resolve_title_media_path(job: DiscJob, title_id: int, session: AsyncSession) -> Path:
     """Resolve the on-disk media file for a title, or raise the right HTTPException.
 
-    The path is read from the database and never accepted from the client:
-    ``output_filename`` (set at rip time) first, then ``organized_to`` for a
-    track whose staging copy has already been moved into the library.
+    Paths are read from the database and never accepted from the client. A title
+    records two of them, ``output_filename`` (the staging copy written at rip
+    time) and ``organized_to`` (where it landed in the library), and **neither is
+    authoritative on its own**, because they go stale in opposite directions:
+
+    * Organizing ``shutil.move``s the file to ``organized_to`` and leaves
+      ``output_filename`` pointing at a staging path that no longer exists.
+      Nothing clears it (``organizer.py`` moves; the finalization and
+      job-manager call sites only add ``organized_to`` alongside it).
+    * Re-ripping clears ``output_filename`` and writes a fresh one, but does
+      **not** clear a previously set ``organized_to``
+      (``job_manager.py`` around the re-rip reset).
+
+    So a fixed preference order is wrong in one direction or the other. Existence
+    on disk is the only reliable tiebreak; ``organized_to`` wins when both are
+    present, being the final location.
 
     Distinguishes three failure modes deliberately, because they need different
     user-facing fixes: nothing recorded (not ripped yet), recorded but gone
     (cleaned up or moved externally), and out of bounds (bad data or
     misconfiguration, which is a 403 rather than a 404 so it is not mistaken
     for ordinary absence).
+
+    Containment is checked on **every** candidate before any existence check, so
+    the 403-versus-404 split can never be used as a file-existence oracle for a
+    path outside the configured roots.
     """
     from app.services.config_service import get_config
 
@@ -4193,8 +4210,8 @@ async def _resolve_title_media_path(job: DiscJob, title_id: int, session: AsyncS
     if not title or title.job_id != job.id:
         raise HTTPException(status_code=404, detail="Title not found")
 
-    recorded = title.output_filename or title.organized_to
-    if not recorded:
+    candidates = [p for p in (title.organized_to, title.output_filename) if p]
+    if not candidates:
         raise HTTPException(
             status_code=404,
             detail="This track has not been ripped yet, so there is nothing to play",
@@ -4213,20 +4230,23 @@ async def _resolve_title_media_path(job: DiscJob, title_id: int, session: AsyncS
         config.import_watch_path,
         job.staging_path,
     ]
-    if not is_within_configured_roots(recorded, roots):
-        logger.warning(
-            "Refusing to serve media outside the configured roots: %s",
-            sanitize_log_value(recorded),
-        )
+    in_bounds = [p for p in candidates if is_within_configured_roots(p, roots)]
+    if not in_bounds:
+        for rejected in candidates:
+            logger.warning(
+                "Refusing to serve media outside the configured roots: %s",
+                sanitize_log_value(rejected),
+            )
         raise HTTPException(
             status_code=403,
             detail="This file is outside the configured staging and library folders",
         )
 
-    path = Path(recorded).resolve(strict=False)
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="The file for this track is no longer on disk")
-    return path
+    for candidate in in_bounds:
+        path = Path(candidate).resolve(strict=False)
+        if path.is_file():
+            return path
+    raise HTTPException(status_code=404, detail="The file for this track is no longer on disk")
 
 
 @router.get(

@@ -146,19 +146,93 @@ class TestMediaEndpoint:
         assert r.status_code == 200
         assert r.content == MEDIA_BYTES
 
-    async def test_prefers_output_filename_over_organized_to(self, client, tmp_path, media_file):
+    async def test_serves_the_organized_file_when_the_staging_path_is_stale(
+        self, client, tmp_path, media_file
+    ):
+        """The real shape of an organized title, which a naive fallback misses.
+
+        Organizing ``shutil.move``s the file into the library and sets
+        ``organized_to``, but nothing clears ``output_filename``, so it is left
+        pointing at a staging path that no longer exists. Preferring a non-empty
+        ``output_filename`` therefore 404s a file that is sitting right there.
+        Seeding ``output_filename=None`` would not catch this, because that is
+        not how the row looks after an organize.
+        """
+        staging, stale = media_file
+        stale.unlink()  # organize moved it away; the column still names it
+        library = tmp_path / "tv"
+        library.mkdir()
+        organized = library / "Show - S01E01.mkv"
+        organized.write_bytes(MEDIA_BYTES)
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(library))
+        job, title = await _seed_job_and_title(
+            output_filename=str(stale), organized_to=str(organized)
+        )
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
+
+        assert r.status_code == 200
+        assert r.content == MEDIA_BYTES
+
+    async def test_serves_the_fresh_rip_when_the_organized_path_is_stale(
+        self, client, tmp_path, media_file
+    ):
+        """The mirror case, which is why a fixed preference order cannot work.
+
+        Re-ripping clears ``output_filename`` and writes a fresh one but does not
+        clear ``organized_to``, so the staleness runs the other way. Existence on
+        disk is the only tiebreak that is right in both directions.
+        """
+        staging, fresh = media_file
+        library = tmp_path / "tv"
+        library.mkdir()
+        gone = library / "Show - S01E01.mkv"  # organized once, since removed
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(library))
+        job, title = await _seed_job_and_title(output_filename=str(fresh), organized_to=str(gone))
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
+
+        assert r.status_code == 200
+        assert r.content == MEDIA_BYTES
+
+    async def test_prefers_the_organized_location_when_both_exist(
+        self, client, tmp_path, media_file
+    ):
+        """Should not happen in practice, since organizing moves the file.
+
+        If it does, the library copy is the finished artefact and wins.
+        """
         staging, f = media_file
         library = tmp_path / "tv"
         library.mkdir()
-        organized = library / "other.mkv"
-        organized.write_bytes(b"WRONGFILE")
+        organized = library / "Show - S01E01.mkv"
+        organized.write_bytes(b"ORGANIZEDCOPY")
         await _seed_config(str(staging), str(tmp_path / "movies"), str(library))
         job, title = await _seed_job_and_title(output_filename=str(f), organized_to=str(organized))
 
         r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
 
         assert r.status_code == 200
-        assert r.content == MEDIA_BYTES
+        assert r.content == b"ORGANIZEDCOPY"
+
+    async def test_out_of_bounds_candidate_403s_even_when_the_other_exists(
+        self, client, tmp_path, media_file
+    ):
+        """403 must not become a file-existence oracle.
+
+        Containment runs on every candidate before any existence check, so a
+        path outside the roots cannot have its presence on disk probed by
+        watching the status code flip between 403 and 404.
+        """
+        staging, f = media_file
+        outside = tmp_path / "elsewhere.mkv"
+        outside.write_bytes(MEDIA_BYTES)
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=None, organized_to=str(outside))
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
+
+        assert r.status_code == 403
 
     async def test_no_recorded_path_returns_404(self, client, tmp_path, media_file):
         staging, _ = media_file
