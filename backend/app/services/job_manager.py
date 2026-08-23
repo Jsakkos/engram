@@ -73,6 +73,10 @@ from app.services.transcription_prewarm import TranscriptionPrewarmer
 _DISC_HASH_RETRY_ATTEMPTS = 3
 _DISC_HASH_RETRY_DELAY = 0.5  # seconds between attempts
 
+# Upper bound on how long the DEBUG reset endpoint waits for cancelled job
+# tasks to unwind before it gives up and proceeds with the delete.
+DRAIN_TASKS_TIMEOUT_SECONDS = 10.0
+
 logger = logging.getLogger(__name__)
 
 # match_details keys that describe a PRIOR match attempt's review reason. A fresh
@@ -1161,6 +1165,43 @@ class JobManager:
             task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
             task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
             self._active_jobs[job_id] = task
+
+    async def drain_active_tasks(self) -> int:
+        """Cancel every registered job task and wait for it to unwind.
+
+        Used by the DEBUG-only ``reset-all-jobs`` endpoint, which deletes every
+        ``disc_jobs``/``disc_titles`` row. Deleting those rows while a task
+        still holds the corresponding ORM objects makes its next flush emit an
+        ``UPDATE ... WHERE id = <deleted>`` that matches zero rows, which
+        SQLAlchemy raises as ``StaleDataError``. Worse, until that happens the
+        orphan keeps broadcasting job/title updates for a job the client can no
+        longer resolve. Stopping the tasks first removes both.
+
+        Returns the number of tasks that were cancelled.
+        """
+        tasks = list(self._active_jobs.items())
+        for job_id, task in tasks:
+            task.cancel()
+            logger.info(f"Cancelled job {sanitize_log_value(job_id)} for reset")
+        self._active_jobs.clear()
+
+        if tasks:
+            # return_exceptions keeps one task's CancelledError (or a failure
+            # raised while unwinding) from aborting the drain of the rest. The
+            # timeout bounds the endpoint: a coroutine that swallows
+            # CancelledError must not be able to hang the caller forever.
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*(t for _, t in tasks), return_exceptions=True),
+                    timeout=DRAIN_TASKS_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    f"Drain timed out after {DRAIN_TASKS_TIMEOUT_SECONDS}s with "
+                    f"{sum(1 for _, t in tasks if not t.done())} task(s) still unwinding"
+                )
+
+        return len(tasks)
 
     async def cancel_job(self, job_id: int) -> None:
         """Cancel a running job."""

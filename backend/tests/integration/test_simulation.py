@@ -591,3 +591,59 @@ async def test_identity_pending_ws_broadcast_carries_prompt(client):
     assert "identity_prompt_json" in ripping
     prompt = stdlib_json.loads(ripping["identity_prompt_json"])
     assert prompt["kind"] == "name"
+
+
+@pytest.mark.asyncio
+async def test_reset_all_jobs_cancels_in_flight_simulated_rip(client):
+    """reset-all-jobs must stop running sim tasks BEFORE deleting their rows.
+
+    Regression for the E2E flake: ``DELETE /api/simulate/reset-all-jobs`` used
+    to delete ``disc_jobs``/``disc_titles`` out from under a live
+    ``_simulate_ripping`` loop. The loop's next ``session.commit()`` then
+    updated a row that no longer existed and blew up with
+    ``StaleDataError: ... expected to update 1 row(s); 0 were matched``, and
+    until it did, the orphan kept broadcasting job/title updates for a deleted
+    job into the *next* Playwright test.
+    """
+    import asyncio
+
+    from app.services.job_manager import job_manager
+
+    response = await client.post(
+        "/api/simulate/insert-disc",
+        json={
+            "drive_id": "E:",
+            "volume_label": "RESET_RACE_S1D1",
+            "content_type": "tv",
+            "detected_title": "Reset Race",
+            "detected_season": 1,
+            "simulate_ripping": True,
+            # Slowest rip (~2s per title) so the loop is guaranteed to still be
+            # mid-flight when the reset lands.
+            "rip_speed_multiplier": 1,
+            "titles": [
+                {"duration_seconds": 1300, "file_size_bytes": 1050000000, "chapter_count": 5}
+                for _ in range(8)
+            ],
+        },
+    )
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    task = job_manager._active_jobs.get(job_id)
+    assert task is not None, "simulated rip task should be registered while running"
+    assert not task.done()
+
+    reset = await client.delete("/api/simulate/reset-all-jobs")
+    assert reset.status_code == 200
+
+    # The reset must have stopped the task, not merely deleted its rows.
+    assert job_id not in job_manager._active_jobs
+    assert task.done(), "reset-all-jobs left a simulated rip task running"
+    assert task.cancelled() or task.exception() is None, (
+        f"orphaned rip task died on its own instead of being cancelled: {task.exception()!r}"
+    )
+
+    # Nothing survives to write to the deleted rows afterwards.
+    await asyncio.sleep(0.5)
+    assert not job_manager._active_jobs
