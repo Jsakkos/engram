@@ -82,6 +82,17 @@ All notable changes to Engram will be documented in this file.
   tracks each hold two episodes reported "S01E04 (4 episodes)" — the combined
   codes counted toward the total but fell out of the range. The manifest now
   reads "S01E01-E04 (4 episodes)".
+- **Combined episodes from TheDiscDB are no longer discarded.** TheDiscDB records
+  a combined title with a range in its episode field (`"17-18"`), which Engram
+  read as an integer and threw away — losing a known-good answer for exactly the
+  tracks that are hardest to guess. Those mappings now apply.
+- **A combined track no longer contributes a mislabelled fingerprint.** Its audio
+  covers several episodes while a fingerprint names one, so it was being
+  published to the shared network under its first episode's number. Such tracks
+  are now left out of fingerprint contributions entirely.
+- **The review page warns when a track overlaps an episode another track already
+  claims.** Overlap was compared on first episodes only, so assigning `S01E02`
+  beside an existing `S01E01-E03` raised nothing.
 - **A combined track is no longer filed under the wrong season.** When a DVD or
   absolute ordering projected a track's episodes across a season boundary, the
   filename took whichever season the last episode landed in. It now keeps the

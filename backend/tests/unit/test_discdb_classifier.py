@@ -3,6 +3,8 @@
 import re
 from unittest.mock import patch
 
+import pytest
+
 from app.core.analyst import TitleInfo
 from app.core.discdb_classifier import (
     HASH_LOOKUP_QUERY,
@@ -10,6 +12,7 @@ from app.core.discdb_classifier import (
     DiscDbTitleMapping,
     _find_best_disc_by_durations,
     _find_matching_disc,
+    _parse_discdb_episodes,
     _parse_duration,
     _parse_name_from_label,
     classify_from_discdb,
@@ -323,3 +326,48 @@ class TestDiscDbSignal:
         )
         assert "tv" in repr(s)
         assert "98%" in repr(s)
+
+
+@pytest.mark.unit
+class TestCombinedEpisodeMappings:
+    """TheDiscDB records a combined title's whole claim in its episode field.
+
+    A plain int() raised on "17-18", so those mappings used to arrive with no
+    episode at all — the database knew the answer for exactly the tracks that are
+    hardest to guess, and we threw it away.
+    """
+
+    def test_a_plain_number_is_one_episode(self):
+        assert _parse_discdb_episodes("7") == [7]
+        assert _parse_discdb_episodes(7) == [7]
+
+    def test_a_range_expands_through_its_end(self):
+        # "17-18" is Courage the Cowardly Dog S2D2's two-segment block.
+        assert _parse_discdb_episodes("17-18") == [17, 18]
+        assert _parse_discdb_episodes("5-7") == [5, 6, 7]
+
+    def test_a_comma_list_keeps_every_part(self):
+        assert _parse_discdb_episodes("1,3") == [1, 3]
+
+    def test_a_mixed_list_from_real_data(self):
+        # "22,24,23,25-28" appears verbatim in TheDiscDb/data.
+        assert _parse_discdb_episodes("22,24,23,25-28") == [22, 24, 23, 25, 26, 27, 28]
+
+    def test_the_ampersand_spelling(self):
+        assert _parse_discdb_episodes("1 & 2 & 3") == [1, 2, 3]
+
+    def test_missing_or_unparseable_is_empty(self):
+        assert _parse_discdb_episodes(None) == []
+        assert _parse_discdb_episodes("") == []
+        assert _parse_discdb_episodes("Play All") == []
+
+    def test_a_backwards_range_is_not_invented(self):
+        assert _parse_discdb_episodes("9-3") == []
+
+    def test_episode_stays_the_first_for_legacy_readers(self):
+        mapping = DiscDbTitleMapping(index=0, title_type="Episode", season=2, episodes=[17, 18])
+        assert mapping.episodes == [17, 18]
+        # A mapping persisted before `episodes` existed still deserializes.
+        legacy = DiscDbTitleMapping(index=0, title_type="Episode", season=1, episode=4)
+        assert legacy.episodes == []
+        assert legacy.episode == 4

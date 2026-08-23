@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, amendTitle } from "../api/client";
 import { AmendTitleModal } from "./HistoryPage/AmendTitleModal";
+import { parseEpisodeCode } from "./ReviewQueue/coverage";
 import {
   CheckCircle2,
   XCircle,
@@ -853,14 +854,15 @@ function JobDetailPanel({
           seasonEpisodes={(() => {
             // Build episode list from sibling matched_episode codes on the disc's
             // season, or fall back to a 1..26 range when that's not available.
-            const seasonCode = String(effectiveAmendSeason).padStart(2, "0");
+            // A combined track contributes EVERY episode it claims: matching
+            // "E(\d+)$" took only the last one, so S01E01-E03 offered E03 alone
+            // and the amend picker silently lost the episodes before it.
             const eps = detail.titles
-              .filter((t) => t.matched_episode?.startsWith(`S${seasonCode}E`))
-              .map((t) => {
-                const m = t.matched_episode?.match(/E(\d{2,})$/);
-                return m ? parseInt(m[1], 10) : null;
-              })
-              .filter((n): n is number => n !== null);
+              .flatMap((t) => {
+                const parsed = t.matched_episode ? parseEpisodeCode(t.matched_episode) : null;
+                if (!parsed || parsed.season !== effectiveAmendSeason) return [];
+                return parsed.episodes;
+              });
             const unique = Array.from(new Set(eps)).sort((a, b) => a - b);
             if (unique.length > 0) return unique;
             return Array.from({ length: 26 }, (_, i) => i + 1);

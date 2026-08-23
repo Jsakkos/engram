@@ -68,3 +68,17 @@ async def test_resolve_tmdb_id_returns_none_on_miss():
     result = await resolve_tmdb_id("Unknown Show", "tv", search_fn=fake_search, cache=cache)
     assert result is None
     assert cache == {}  # nothing cached
+
+
+def test_a_combined_episode_file_is_not_bootstrapped():
+    """Engram writes 'Show - S01E01-E03.mkv' for a track holding several episodes.
+
+    A fingerprint contribution names exactly one episode, and a combined file's
+    audio is several, so there is no honest number to file it under. It must stay
+    excluded — loosening the pattern would publish the first episode's number
+    against audio that is not only that episode.
+    """
+    assert parse_episode_filename("Show - S01E01-E03.mkv") is None
+    assert parse_episode_filename("Show - S01E01E03.mkv") is None
+    # The single-episode case is unaffected.
+    assert parse_episode_filename("Show - S01E01.mkv") == ("Show", 1, 1)
