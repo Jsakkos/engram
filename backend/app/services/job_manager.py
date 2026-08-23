@@ -926,6 +926,12 @@ class JobManager:
         # cancel_for_job prevents future chunks; the in-flight thread still
         # finishes its current chunk (~60 s).
         self._prewarmer.cancel_for_job(job_id)
+        # The show or season is about to change underneath the per-job runtime
+        # caches, and both are keyed only by job id. Left in place, the disc would
+        # be re-matched against the PREVIOUS show's episode runtimes and the trust
+        # policy derived from them — a stale verdict surviving the correction that
+        # was supposed to fix it.
+        self._matching.clear_runtime_caches(job_id)
         result = await self._identification.re_identify(
             job_id, title, content_type_str, season, tmdb_id
         )
