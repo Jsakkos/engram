@@ -70,12 +70,14 @@ blob-report/
 .DS_Store
 Thumbs.db
 
-# Backend - Database (contains API keys)
-backend/engram.db
-backend/engram.db-shm
-backend/engram.db-wal
-backend/engram.db.bak
-backend/engram_e2e.db
+# Backend - Database (contains API keys). Glob rather than a list: parallel
+# sessions and worktrees each need their own DB file (see CLAUDE.md), and every
+# one of them holds credentials — a name nobody thought to list must not be
+# committable.
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/*.db.bak
 backend/engram_e2e.db-shm
 backend/engram_e2e.db-wal
 

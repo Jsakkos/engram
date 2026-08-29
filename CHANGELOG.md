@@ -17,6 +17,22 @@ All notable changes to Engram will be documented in this file.
   episodes it found rather than discarding it. Combined tracks still need you to
   assign them by hand, because writing a single file out under two episode
   numbers is a separate change. (#622)
+### Added
+
+- **Review every disc before it is organized.** A new setting under *Naming &
+  extras* holds every disc in the Review Queue for confirmation, however
+  confident the match was. The matcher still runs and pre-fills its best guess —
+  you just get the last word before anything moves into the library. Useful for
+  shows the matcher handles badly.
+
+### Fixed
+
+- **Discs whose every track was filed as "extras" are held for review instead of
+  quietly completing.** When TMDB's runtimes don't describe the disc, the
+  duration pre-filter could reject every track on it, so a whole box set could
+  file every one of its episodes into `Extras/` and report success. Such
+  a disc now stops for confirmation, because "nothing on this disc is an episode"
+  is far more often a failed match than a genuine bonus disc.
 
 ## [0.33.0] - 2026-08-23
 
