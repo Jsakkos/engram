@@ -217,6 +217,7 @@ class AppConfig(SQLModel, table=True):
     discord_template_completed: str = ""
     discord_template_failed: str = ""
     discord_template_review: str = ""
+    discord_template_ripped: str = ""
     # Per-event enable toggles. Stored NOT NULL with a server_default of 1, but
     # the notifier treats None as enabled anyway (see _send_discord_notification)
     # so a NULL left by an out-of-band schema change can never silently mute
@@ -229,6 +230,16 @@ class AppConfig(SQLModel, table=True):
     )
     discord_notify_review: bool = Field(
         default=True, sa_column_kwargs={"server_default": text("1")}
+    )
+    # The one toggle that defaults OFF, and the one whose server_default is 0.
+    # The three above read a NULL as enabled (see _send_discord_notification's
+    # `is False` check) so an out-of-band schema change can never silently mute
+    # a user's notifications. This event is new and opt-in, so that rationale
+    # inverts: a NULL here must read as off, or upgrading switches it on for
+    # everyone and doubles the message volume of anyone already using
+    # discord_notify_completed.
+    discord_notify_ripped: bool = Field(
+        default=False, sa_column_kwargs={"server_default": text("0")}
     )
     # Message `content` sent alongside the embed on review events, e.g. "<@1234>"
     # or "@here". Embeds do not resolve mentions; only `content` does, which is

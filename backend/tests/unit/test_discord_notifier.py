@@ -538,6 +538,26 @@ def test_app_config_notification_defaults():
     assert config.dashboard_base_url == ""
 
 
+def test_ripped_notification_defaults_off():
+    """The one toggle that defaults OFF: an existing user's channel must not
+    double in volume just because they upgraded."""
+    from app.models.app_config import AppConfig
+
+    config = AppConfig()
+    assert config.discord_notify_ripped is False
+    assert config.discord_template_ripped == ""
+
+
+def test_ripped_column_server_default_is_zero():
+    """The other three toggles carry server_default 1 so a NULL reads as
+    enabled and can never silently mute someone. For a new opt-in event that
+    rationale inverts: a NULL must read as OFF, or upgrading turns it on."""
+    from app.models.app_config import AppConfig
+
+    column = AppConfig.__table__.columns["discord_notify_ripped"]
+    assert str(column.server_default.arg) == "0"
+
+
 # --------------------------------------------------------------------------- #
 # format_disc_identity / build_embed_fields
 # --------------------------------------------------------------------------- #
