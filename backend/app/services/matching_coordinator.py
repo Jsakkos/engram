@@ -19,6 +19,7 @@ from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
+from app.core.security import sanitize_log_value
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
@@ -917,8 +918,14 @@ class MatchingCoordinator:
                         # positional vote runs decide what it actually holds.
                         conjoined_hint = _conjoined_episode_count(title_minutes, runtimes)
                         if conjoined_hint:
+                            # ids are sanitized because CodeQL traces them back to
+                            # HTTP path params (py/log-injection). FastAPI coerces
+                            # them to int so they cannot actually carry CR/LF, but
+                            # the barrier is cheap and matches how the rest of the
+                            # codebase clears this taint.
                             logger.info(
-                                f"[MATCH] Title {title_id} (Job {job_id}): duration "
+                                f"[MATCH] Title {sanitize_log_value(title_id)} "
+                                f"(Job {sanitize_log_value(job_id)}): duration "
                                 f"{title_minutes:.0f}min matches no single episode runtime "
                                 f"but fits ~{conjoined_hint} conjoined episodes. Proceeding "
                                 f"with matching; vote runs will confirm."
@@ -1596,8 +1603,10 @@ class MatchingCoordinator:
 
                 # A conjoined track must not be auto-organized under a single code.
                 if _apply_multi_episode_review(title, conjoined_hint):
+                    # ids sanitized for the same reason as the pre-filter log above.
                     logger.info(
-                        f"[MATCH] Title {title_id} (Job {job_id}): routed to review "
+                        f"[MATCH] Title {sanitize_log_value(title_id)} "
+                        f"(Job {sanitize_log_value(job_id)}): routed to review "
                         f"as multi-episode (hint={conjoined_hint})"
                     )
 
