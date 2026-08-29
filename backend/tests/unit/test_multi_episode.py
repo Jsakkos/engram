@@ -10,6 +10,8 @@ straddling the seam abstains (see select_chunk_vote's rank+margin rule).
 CI-safe: pure functions over synthetic vote lists. No MKV/audio/Whisper.
 """
 
+import json
+
 import pytest
 
 from app.matcher.multi_episode import decompose_vote_runs
@@ -104,6 +106,84 @@ class TestDecomposeVoteRuns:
         verdict = decompose_vote_runs(v, total_scan_points=14)
         assert verdict.is_multi_episode is True
         assert verdict.codes == ("S01E01", "S01E02", "S01E03")
+
+    def test_recap_at_head_is_not_a_second_episode(self):
+        # A "previously on" recap wins two votes for the PRIOR episode at the head.
+        # By vote count it is indistinguishable from a real segment (2 vs 6 clears
+        # any mean-relative balance rule); by TERRITORY it owns a sliver, so it is
+        # rejected. This is the false positive a vote-count balance check admits.
+        v = _votes(
+            ("S01E04", [120, 250]),
+            ("S01E05", [380, 510, 640, 770, 900, 1030]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=10)
+        assert verdict.is_multi_episode is False
+        assert verdict.reason == "unbalanced_runs"
+
+    def test_recap_and_preview_are_not_three_episodes(self):
+        # Recap at the head plus a "next time on" preview at the tail around one
+        # real episode. A mean-relative balance rule can NEVER fire for 3 runs at
+        # 10 scan points (its threshold falls below MIN_RUN_VOTES), so this case
+        # pins the territory rule specifically.
+        v = _votes(
+            ("S01E04", [120, 250]),
+            ("S01E05", [380, 510, 640, 770]),
+            ("S01E06", [1210, 1330]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=10)
+        assert verdict.is_multi_episode is False
+        assert verdict.reason == "unbalanced_runs"
+
+    def test_low_vote_yield_pair_is_still_accepted(self):
+        # Near-wordless cartoons are both the target content AND the lowest
+        # vote-yield content, so the coverage floor must not reject them. Exactly
+        # at MIN_TIMELINE_COVERAGE (5 of 10): accepted, since the bound is strict.
+        v = _votes(("S01E01", [120, 250, 380]), ("S01E02", [820, 950]))
+        verdict = decompose_vote_runs(v, total_scan_points=10)
+        assert verdict.is_multi_episode is True
+        assert verdict.reason == "contiguous_runs"
+
+    def test_more_votes_than_scan_points_is_refused(self):
+        # A caller that double-counts a chunk across two coverages would otherwise
+        # push coverage above 1.0 and silently STRENGTHEN the verdict. Refuse.
+        v = _votes(("S01E01", [1, 2, 3]), ("S01E02", [4, 5, 6]))
+        verdict = decompose_vote_runs(v, total_scan_points=4)
+        assert verdict.is_multi_episode is False
+        assert verdict.reason == "invalid_input"
+
+    def test_conjoined_pair_at_default_scan_depth(self):
+        # canonical_scan_points snaps to the lattice (10/19/37/73/145), so 10 is
+        # the depth this actually runs at. The other pair tests use 11, which no
+        # real scan produces.
+        v = _votes(
+            ("S01E01", [120, 250, 380, 510]),
+            ("S01E02", [820, 950, 1080, 1210]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=10)
+        assert verdict.is_multi_episode is True
+
+    def test_three_segments_at_realistic_scan_depth(self):
+        # 12 votes is impossible at 10 scan points; 19 is the next lattice level.
+        v = _votes(
+            ("S01E01", [120, 250, 380, 510]),
+            ("S01E02", [700, 830, 960, 1090]),
+            ("S01E03", [1280, 1410, 1540, 1670]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=19)
+        assert verdict.is_multi_episode is True
+
+    def test_to_dict_is_json_safe_and_playback_ordered(self):
+        # to_dict lands in DiscTitle.match_details and is read back by the UI.
+        v = _votes(
+            ("S01E04", [120, 250, 380, 510]),
+            ("S01E03", [820, 950, 1080, 1210]),
+        )
+        d = decompose_vote_runs(v, total_scan_points=10).to_dict()
+        assert json.loads(json.dumps(d)) == d
+        assert d["is_multi_episode"] is True
+        assert d["codes"] == ["S01E04", "S01E03"]
+        assert [r["code"] for r in d["runs"]] == ["S01E04", "S01E03"]
+        assert d["runs"][0]["votes"] == 4
 
     def test_no_votes_is_not_multi(self):
         verdict = decompose_vote_runs([], total_scan_points=10)

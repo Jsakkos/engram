@@ -28,12 +28,15 @@ MIN_RUN_VOTES = 2
 # The runs must jointly account for this fraction of scan points. Below it, some
 # unexplained content occupies the file (bonus features, a third unmatched
 # segment), so "N episodes end to end" is the wrong description of the track.
-MIN_TIMELINE_COVERAGE = 0.6
+# Kept at half rather than higher because near-wordless cartoons are exactly the
+# content this feature targets AND the content that yields the fewest votes.
+MIN_TIMELINE_COVERAGE = 0.5
 
-# Each run must hold at least this fraction of an equal share of the votes.
-# Conjoined segments are near-equal length, so a lopsided run is a recap or a
-# "next time on" preview bleeding across the boundary, not a real episode.
-MIN_RUN_BALANCE = 0.5
+# Each run must own at least this fraction of an equal share of the TIMELINE.
+# Deliberately positional rather than a vote-count ratio: by vote count a 2-vote
+# recap at the head and a 2-vote genuine segment are identical, but by territory
+# the recap owns a sliver and the segment owns roughly 1/N of the file.
+MIN_RUN_TERRITORY = 0.5
 
 
 @dataclass(frozen=True)
@@ -60,7 +63,10 @@ class MultiEpisodeVerdict:
         return tuple(r.code for r in self.runs)
 
     def to_dict(self) -> dict:
-        """JSON-safe form for DiscTitle.match_details."""
+        """JSON-safe form for DiscTitle.match_details.
+
+        ``codes`` and ``runs`` are in PLAYBACK order, not TMDB numbering order.
+        """
         return {
             "is_multi_episode": self.is_multi_episode,
             "reason": self.reason,
@@ -77,7 +83,8 @@ class MultiEpisodeVerdict:
         }
 
 
-def _verdict(runs: tuple[EpisodeRun, ...], reason: str) -> MultiEpisodeVerdict:
+def _rejected(runs: tuple[EpisodeRun, ...], reason: str) -> MultiEpisodeVerdict:
+    """Build a negative verdict. Only ever False; the accepting path builds inline."""
     return MultiEpisodeVerdict(runs=runs, is_multi_episode=False, reason=reason)
 
 
@@ -99,7 +106,7 @@ def decompose_vote_runs(
         carries a ``reason`` so the decision is legible in logs and match_details.
     """
     if not votes or total_scan_points <= 0:
-        return _verdict((), "no_votes")
+        return _rejected((), "no_votes")
 
     # 1. Group votes by code and drop noise singletons.
     by_code: dict[str, list[float]] = {}
@@ -117,7 +124,7 @@ def decompose_vote_runs(
         if len(starts) >= MIN_RUN_VOTES
     ]
     if not runs:
-        return _verdict((), "no_votes")
+        return _rejected((), "no_votes")
 
     # Playback order: a disc may pair segments TMDB does not number consecutively,
     # so position on the timeline is the ordering that reflects the file.
@@ -125,23 +132,41 @@ def decompose_vote_runs(
     ordered = tuple(runs)
 
     if len(ordered) == 1:
-        return _verdict(ordered, "single_episode")
+        return _rejected(ordered, "single_episode")
 
     # 2. Contiguity: each run must occupy its own stretch of the timeline. Any
     # overlap means the codes interleave, which is ASR confusion between similar
-    # episodes rather than two episodes stored end to end.
+    # episodes rather than two episodes stored end to end. Adjacent pairs suffice:
+    # runs are sorted by first_start, so if every neighbour clears the previous
+    # run's last_start, every non-adjacent pair does too (and a nested run is
+    # always caught against its immediate predecessor).
     for earlier, later in zip(ordered, ordered[1:], strict=False):
         if later.first_start <= earlier.last_start:
-            return _verdict(ordered, "interleaved_runs")
+            return _rejected(ordered, "interleaved_runs")
 
-    # 3. Coverage: the runs must explain most of what was scanned.
+    # 3. Coverage: the runs must explain most of what was scanned. A caller that
+    # reports more votes than chunks has double-counted; refuse rather than let a
+    # broken caller silently strengthen the verdict.
     counted = sum(r.votes for r in ordered)
+    if counted > total_scan_points:
+        return _rejected(ordered, "invalid_input")
     if counted / total_scan_points < MIN_TIMELINE_COVERAGE:
-        return _verdict(ordered, "sparse_coverage")
+        return _rejected(ordered, "sparse_coverage")
 
-    # 4. Balance: no run may be a sliver against the others.
-    fair_share = counted / len(ordered)
-    if any(r.votes < fair_share * MIN_RUN_BALANCE for r in ordered):
-        return _verdict(ordered, "unbalanced_runs")
+    # 4. Territory: each run owns the stretch from its midpoint with the previous
+    # run to its midpoint with the next. A recap or a "next time on" preview wins
+    # votes but owns almost no timeline, so this rejects what a vote-count ratio
+    # cannot: by vote count a 2-vote recap and a 2-vote real segment are identical.
+    edges = [ordered[0].first_start]
+    for earlier, later in zip(ordered, ordered[1:], strict=False):
+        edges.append((earlier.last_start + later.first_start) / 2)
+    edges.append(ordered[-1].last_start)
+    span = edges[-1] - edges[0]
+    if span <= 0:
+        return _rejected(ordered, "degenerate_span")
+    fair_share = 1.0 / len(ordered)
+    for i in range(len(ordered)):
+        if (edges[i + 1] - edges[i]) / span < fair_share * MIN_RUN_TERRITORY:
+            return _rejected(ordered, "unbalanced_runs")
 
     return MultiEpisodeVerdict(runs=ordered, is_multi_episode=True, reason="contiguous_runs")
