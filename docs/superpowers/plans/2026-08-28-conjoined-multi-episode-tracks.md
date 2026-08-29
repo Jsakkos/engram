@@ -1006,8 +1006,11 @@ class TestConjoinedAdmission:
 
     def test_featurette_still_files_as_extra(self):
         # Neither a single runtime nor any sum: must still reach _handle_extras.
-        assert _duration_matches_episode_runtime(6.0, self.WEEKENDERS_S1) is False
-        assert _conjoined_episode_count(6.0, self.WEEKENDERS_S1) is None
+        # 5.0 not 6.0: the single-episode window for an 11-minute runtime is
+        # [11-5, 11+10] = [6, 21] and its lower bound is INCLUSIVE, so 6.0 is a
+        # match. A genuine featurette has to sit below that bound.
+        assert _duration_matches_episode_runtime(5.0, self.WEEKENDERS_S1) is False
+        assert _conjoined_episode_count(5.0, self.WEEKENDERS_S1) is None
 
 
 @pytest.mark.unit
