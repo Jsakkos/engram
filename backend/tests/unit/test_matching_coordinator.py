@@ -20,6 +20,7 @@ from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     MatchingCoordinator,
+    _apply_multi_episode_review,
     _conjoined_episode_count,
     _duration_matches_episode_runtime,
     episode_curator,
@@ -1197,3 +1198,93 @@ class TestConjoinedEpisodeCount:
 
     def test_empty_runtimes_never_matches(self):
         assert _conjoined_episode_count(23.0, []) is None
+
+
+@pytest.mark.unit
+class TestConjoinedAdmission:
+    """The duration pre-filter must ADMIT a plausibly-conjoined track to matching
+    instead of filing it as an extra (issue #622), and must still file a genuine
+    extra. These cover the branch decision only; the wiring is exercised by the
+    integration path.
+    """
+
+    WEEKENDERS_S1 = [11] * 16
+
+    def test_conjoined_track_is_admitted_not_filed(self):
+        # 23min against [11]*16: no single runtime matches, but 2 x 11 does, so
+        # the track proceeds to ASR instead of reaching _handle_extras.
+        assert _duration_matches_episode_runtime(23.0, self.WEEKENDERS_S1) is False
+        assert _conjoined_episode_count(23.0, self.WEEKENDERS_S1) == 2
+
+    def test_featurette_still_files_as_extra(self):
+        # Neither a single runtime nor any sum: must still reach _handle_extras.
+        # (Note: 11 - EPISODE_DURATION_UNDER_TOLERANCE_MIN(5) = 6, so the single-
+        # episode window's lower bound is inclusive at 6.0 minutes; 5.0 sits
+        # clearly below every window instead.)
+        assert _duration_matches_episode_runtime(5.0, self.WEEKENDERS_S1) is False
+        assert _conjoined_episode_count(5.0, self.WEEKENDERS_S1) is None
+
+
+@pytest.mark.unit
+class TestMultiEpisodeReviewRouting:
+    """A track that is, or might be, several conjoined episodes must land in REVIEW
+    rather than MATCHED. Auto-organizing it under one code silently loses the rest,
+    which is the failure this whole change exists to prevent.
+    """
+
+    def _title(self, details: dict | None):
+        return SimpleNamespace(
+            state=TitleState.MATCHED,
+            match_details=json.dumps(details) if details is not None else None,
+            match_source="engram",
+        )
+
+    def test_confirmed_multi_episode_goes_to_review(self):
+        from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE
+
+        details = {
+            "multi_episode": {
+                "is_multi_episode": True,
+                "reason": "contiguous_runs",
+                "codes": ["S01E01", "S01E02"],
+            }
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=2)
+        assert title.state == TitleState.REVIEW
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        assert "S01E01, S01E02" in parsed["message"]
+
+    def test_admitted_but_unconfirmed_goes_to_review(self):
+        # The votes could not confirm it (insufficient scan depth). ASR still
+        # returned one confident episode, so naming the file would drop the rest.
+        from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE
+
+        details = {
+            "multi_episode": {
+                "is_multi_episode": False,
+                "reason": "insufficient_scan_depth",
+                "codes": [],
+            }
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=3)
+        assert title.state == TitleState.REVIEW
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        assert "insufficient_scan_depth" in parsed["message"]
+
+    def test_ordinary_single_episode_is_untouched(self):
+        details = {"multi_episode": {"is_multi_episode": False, "reason": "single_episode"}}
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.state == TitleState.MATCHED
+        assert "error" not in json.loads(title.match_details)
+
+    def test_malformed_match_details_does_not_raise(self):
+        title = SimpleNamespace(
+            state=TitleState.MATCHED, match_details="not json", match_source="engram"
+        )
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.state == TitleState.MATCHED

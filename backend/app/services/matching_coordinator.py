@@ -239,6 +239,57 @@ RERIP_MAX_ATTEMPTS = 2
 # are eligible for single-track re-rip after a clean & reinsert.
 RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_ejected"})
 
+# A track that is, or might be, several conjoined episodes. Parked for a human
+# because Engram cannot yet NAME a multi-episode file (S01E01-E02 organizing is a
+# separate change): auto-organizing it under one of its codes would silently lose
+# the others.
+MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
+
+
+def _apply_multi_episode_review(title, conjoined_hint: int | None) -> bool:
+    """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
+
+    A track the chunk votes show is several conjoined episodes must not be
+    auto-organized under a single code: the other episodes would vanish from the
+    library. The same applies to a track the DURATION admitted as conjoined whose
+    votes could NOT confirm it (too few scan points for the run count, sparse
+    coverage) -- ASR still returns one confident episode, so the silent-drop risk is
+    identical. Only the reviewer-facing message differs.
+    """
+    multi_detail = {}
+    if title.match_details:
+        try:
+            multi_detail = (json.loads(title.match_details) or {}).get("multi_episode") or {}
+        except (json.JSONDecodeError, TypeError):
+            multi_detail = {}
+    confirmed_multi = bool(multi_detail.get("is_multi_episode"))
+    if not (confirmed_multi or conjoined_hint):
+        return False
+
+    try:
+        details = json.loads(title.match_details) if title.match_details else {}
+    except (json.JSONDecodeError, TypeError):
+        details = {}
+    codes = multi_detail.get("codes") or []
+    title.state = TitleState.REVIEW
+    details["error"] = MULTI_EPISODE_ERROR_CODE
+    if confirmed_multi:
+        details["message"] = (
+            f"This track appears to contain {len(codes)} episodes "
+            f"({', '.join(codes)}). Engram cannot name a combined file yet. "
+            "Assign one episode, or mark it as an Extra."
+        )
+    else:
+        details["message"] = (
+            f"This track's runtime suggests about {conjoined_hint} episodes joined "
+            "together, but the audio match could not confirm it "
+            f"({multi_detail.get('reason', 'no verdict')}). "
+            "Check it before assigning an episode."
+        )
+    title.match_details = json.dumps(details)
+    return True
+
+
 # Shown verbatim in the review queue for a track the user's mid-rip eject cut
 # short (or never reached). Deliberately states that nothing was lost, because
 # the alarming case is a user who thinks ejecting discarded the whole disc.
@@ -809,6 +860,7 @@ class MatchingCoordinator:
         # job — is what exhausted the connection pool. Mirror the rip path: read
         # the scalars under a brief session, release it, do the network work,
         # then reopen only to act on the result.
+        conjoined_hint: int | None = None
         try:
             job_tmdb_id: int | None = None
             job_detected_title: str | None = None
@@ -831,23 +883,36 @@ class MatchingCoordinator:
                 if runtimes and title_duration:
                     title_minutes = title_duration / 60
                     if not _duration_matches_episode_runtime(title_minutes, runtimes):
-                        # Re-fetch under a fresh session: _handle_extras writes.
-                        async with async_session() as session:
-                            job = await session.get(DiscJob, job_id)
-                            title = await session.get(DiscTitle, title_id)
-                            if job and title:
-                                handled = await self._handle_extras(
-                                    job_id,
-                                    title_id,
-                                    title,
-                                    job,
-                                    file_path,
-                                    title_minutes,
-                                    runtimes,
-                                    session,
-                                )
-                                if handled:
-                                    return
+                        # Before filing this as an extra, check whether it looks
+                        # like several conjoined episodes (cartoon segment discs).
+                        # If so it is ADMITTED to matching, not filed: the
+                        # positional vote runs decide what it actually holds.
+                        conjoined_hint = _conjoined_episode_count(title_minutes, runtimes)
+                        if conjoined_hint:
+                            logger.info(
+                                f"[MATCH] Title {title_id} (Job {job_id}): duration "
+                                f"{title_minutes:.0f}min matches no single episode runtime "
+                                f"but fits ~{conjoined_hint} conjoined episodes. Proceeding "
+                                f"with matching; vote runs will confirm."
+                            )
+                        else:
+                            # Re-fetch under a fresh session: _handle_extras writes.
+                            async with async_session() as session:
+                                job = await session.get(DiscJob, job_id)
+                                title = await session.get(DiscTitle, title_id)
+                                if job and title:
+                                    handled = await self._handle_extras(
+                                        job_id,
+                                        title_id,
+                                        title,
+                                        job,
+                                        file_path,
+                                        title_minutes,
+                                        runtimes,
+                                        session,
+                                    )
+                                    if handled:
+                                        return
         except Exception as e:
             # Surface the full traceback: a silently-failing TMDB runtime
             # fetch here disables automatic extras detection (the pre-filter
@@ -887,7 +952,13 @@ class MatchingCoordinator:
         # 7. Run matching
         try:
             await self._match_single_file_inner(
-                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
+                job_id,
+                title_id,
+                file_path,
+                num_points,
+                min_vote_count,
+                advisory=advisory,
+                conjoined_hint=conjoined_hint,
             )
         except Exception as e:
             logger.exception(
@@ -1083,6 +1154,7 @@ class MatchingCoordinator:
         num_points: int | None = None,
         min_vote_count: int | None = None,
         advisory: bool = False,
+        conjoined_hint: int | None = None,
     ) -> None:
         """Inner matching logic, called under the match semaphore.
 
@@ -1090,6 +1162,12 @@ class MatchingCoordinator:
         REVIEW with ``forced_review`` and the contribution enqueue is skipped, so
         nothing is auto-organized and an unconfirmed match never poisons the
         fingerprint corpus.
+
+        ``conjoined_hint`` is the episode count the duration pre-filter admitted this
+        track on (see ``_conjoined_episode_count``), or None for an ordinary track. A
+        hinted track is parked for review even when the vote runs cannot confirm it,
+        because ASR still returns one confident episode and naming the file after it
+        would silently drop the rest.
         """
         match_start = time.monotonic()
 
@@ -1462,6 +1540,19 @@ class MatchingCoordinator:
                             )
 
                     title.match_details = json.dumps(_md)
+
+                # A track the chunk votes show is several conjoined episodes must
+                # not be auto-organized under a single code: the other episodes
+                # would vanish from the library. The same applies to a track the
+                # DURATION admitted as conjoined whose votes could NOT confirm it
+                # (too few scan points for the run count, sparse coverage) -- ASR
+                # still returns one confident episode, so the silent-drop risk is
+                # identical. Park both for a human; only the message differs.
+                if _apply_multi_episode_review(title, conjoined_hint):
+                    logger.info(
+                        f"[MATCH] Title {title_id} (Job {job_id}): routed to review "
+                        f"as multi-episode (hint={conjoined_hint})"
+                    )
 
                 # Only attribute the match to Engram when an episode match was
                 # actually recorded. A title routed to REVIEW with no episode must
