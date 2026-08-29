@@ -303,6 +303,7 @@ class ConfigResponse(BaseModel):
     staging_cleanup_days: int
     # Extras & naming
     extras_policy: str
+    always_review: bool
     naming_season_format: str
     naming_episode_format: str
     naming_movie_format: str
@@ -400,6 +401,7 @@ class ConfigUpdate(BaseModel):
     staging_cleanup_days: int | None = None
     # Extras & naming
     extras_policy: str | None = None
+    always_review: bool | None = None
     naming_season_format: str | None = None
     naming_episode_format: str | None = None
     naming_movie_format: str | None = None
@@ -1667,6 +1669,7 @@ async def get_config() -> ConfigResponse:
         staging_cleanup_days=config.staging_cleanup_days,
         # Extras & naming
         extras_policy=config.extras_policy,
+        always_review=config.always_review,
         naming_season_format=config.naming_season_format,
         naming_episode_format=config.naming_episode_format,
         naming_movie_format=config.naming_movie_format,
@@ -3365,6 +3368,7 @@ async def _collect_environment() -> dict:
             "max_concurrent_matches": config.max_concurrent_matches,
             "conflict_resolution_default": config.conflict_resolution_default,
             "extras_policy": config.extras_policy,
+            "always_review": config.always_review,
             "discdb_enabled": config.discdb_enabled,
         },
     }
