@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from app.core.discord_notifier import NotificationEvent
     from app.services.contribution_correction import NewTarget
 
 from sqlmodel import select
@@ -1415,7 +1416,7 @@ class JobManager:
         """
         if state != JobState.REVIEW_NEEDED or from_state == JobState.REVIEW_NEEDED:
             return
-        asyncio.create_task(self._send_discord_notification(job_id, state))
+        asyncio.create_task(self._send_discord_notification_for_state(job_id, state))
 
     async def _enqueue_disc_contribution_on_terminal(self, job_id: int, state: JobState) -> None:
         """on_terminal_state hook: enqueue a whole-disc contribution on COMPLETED.
@@ -1458,19 +1459,44 @@ class JobManager:
         Fire-and-forget via create_task so a slow or unreachable webhook never
         delays job finalization — the 10s httpx timeout stays off the critical path.
         """
-        asyncio.create_task(self._send_discord_notification(job_id, state))
+        asyncio.create_task(self._send_discord_notification_for_state(job_id, state))
 
-    async def _send_discord_notification(self, job_id: int, state: JobState) -> None:
+    async def _send_discord_notification_for_state(self, job_id: int, state: JobState) -> None:
+        """Resolve a JobState to its NotificationEvent and send.
+
+        Kept separate from _send_discord_notification because the ripped event
+        has no JobState to resolve from: it is a hardware milestone, not a
+        state. Both state-driven hooks funnel through here.
+        """
+        from app.core.discord_notifier import EVENTS
+
+        event = EVENTS.get(state)
+        if event is None:
+            logger.warning(
+                f"Job {job_id}: Discord notification requested for non-notifiable state {state}"
+            )
+            return
+        await self._send_discord_notification(job_id, event)
+
+    async def _send_discord_notification(
+        self,
+        job_id: int,
+        event: "NotificationEvent",
+        *,
+        extra_context: dict[str, str] | None = None,
+    ) -> None:
         """Send the Discord notification for one job event.
 
-        Single path for completed, failed and review. Runs as a background task;
-        all errors are swallowed so a slow or unreachable webhook can never
-        affect the pipeline.
+        Single path for completed, failed, review and ripped. Runs as a
+        background task; all errors are swallowed so a slow or unreachable
+        webhook can never affect the pipeline.
+
+        ``extra_context`` supplies template vars the DiscJob row cannot provide.
+        Today that is ``rip_outcome``, which is known only at the eject site.
         """
         try:
             from app.core.discord_notifier import (
                 DEFAULT_TEMPLATES,
-                EVENTS,
                 build_dashboard_link,
                 build_embed,
                 build_template_context,
@@ -1484,13 +1510,6 @@ class JobManager:
             if not config.discord_webhook_url:
                 return
 
-            event = EVENTS.get(state)
-            if event is None:
-                logger.warning(
-                    f"Job {job_id}: Discord notification requested for non-notifiable state {state}"
-                )
-                return
-
             # `is False` rather than falsy: a NULL column left by an out-of-band
             # schema change must read as enabled, never as "user muted this".
             toggles = {
@@ -1499,6 +1518,10 @@ class JobManager:
                 "review": config.discord_notify_review,
             }
             if toggles.get(event.key) is False:
+                return
+            # Opt-in event: only an explicit True enables it, so a NULL or a
+            # missing column reads as off rather than as on.
+            if event.key == "ripped" and config.discord_notify_ripped is not True:
                 return
 
             async with async_session() as session:
@@ -1510,18 +1533,28 @@ class JobManager:
                 "completed": config.discord_template_completed,
                 "failed": config.discord_template_failed,
                 "review": config.discord_template_review,
+                "ripped": config.discord_template_ripped,
             }
             template = templates.get(event.key) or DEFAULT_TEMPLATES[event.key]
 
             context = build_template_context(job, job_id, titles)
+            if extra_context:
+                context.update(extra_context)
             description = render_discord_template(template, context)
 
+            outcome = (extra_context or {}).get("rip_outcome", "")
             poster_url = await resolve_poster_url(job) if job else None
             link_url = build_dashboard_link(config.dashboard_base_url, job_id)
             content = config.discord_mention_review if event.key == "review" else ""
 
             embed = build_embed(
-                job, titles, event, description, poster_url=poster_url, link_url=link_url
+                job,
+                titles,
+                event,
+                description,
+                poster_url=poster_url,
+                link_url=link_url,
+                rip_outcome=outcome,
             )
             await notify_discord(config.discord_webhook_url, job_id, embed, content=content or "")
         except Exception as e:

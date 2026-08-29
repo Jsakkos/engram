@@ -282,7 +282,7 @@ async def test_send_notification_noop_when_no_webhook():
     await update_config(discord_webhook_url="")
 
     with patch("app.core.discord_notifier.notify_discord") as mock_notify:
-        await job_manager._send_discord_notification(99, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(99, JobState.COMPLETED)
         mock_notify.assert_not_called()
 
 
@@ -297,7 +297,7 @@ async def test_send_notification_noop_for_non_notifiable_state():
     await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(99, JobState.RIPPING)
+        await job_manager._send_discord_notification_for_state(99, JobState.RIPPING)
         mock_notify.assert_not_called()
 
 
@@ -324,7 +324,7 @@ async def test_send_notification_fires_on_completed():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     mock_notify.assert_called_once()
     embed = mock_notify.call_args[0][2]
@@ -354,7 +354,7 @@ async def test_send_notification_fires_on_failed():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.FAILED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.FAILED)
 
     mock_notify.assert_called_once()
     embed = mock_notify.call_args[0][2]
@@ -385,7 +385,7 @@ async def test_send_notification_falls_back_to_volume_label():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     assert mock_notify.call_args[0][2]["description"] == "**UNKNOWN_DISC**"
 
@@ -416,7 +416,7 @@ async def test_send_notification_uses_configured_completed_template():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     assert mock_notify.call_args[0][2]["description"] == "Done: Breaking Bad (BREAKING_BAD_S1D1)"
 
@@ -449,7 +449,7 @@ async def test_send_notification_uses_configured_failed_template():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.FAILED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.FAILED)
 
     assert mock_notify.call_args[0][2]["description"] == "Failed: BAD_DISC: disc unreadable"
 
@@ -470,17 +470,17 @@ async def test_send_notification_swallows_internal_errors():
         new_callable=AsyncMock,
         side_effect=RuntimeError("network dead"),
     ):
-        await job_manager._send_discord_notification(999, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(999, JobState.COMPLETED)
 
 
 @pytest.mark.asyncio
 async def test_terminal_callback_schedules_task():
-    """_notify_discord_on_terminal fires _send_discord_notification as a background task."""
+    """_notify_discord_on_terminal fires the state-keyed sender as a background task."""
     from app.models import JobState
     from app.services.job_manager import job_manager
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         await job_manager._notify_discord_on_terminal(1, JobState.COMPLETED)
         await asyncio.sleep(0)  # yield to let the task start
@@ -512,7 +512,7 @@ async def test_advance_job_via_state_machine_fires_notification():
         job_id = job.id
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         new_state = await job_manager.advance_job_via_state_machine(job_id)
         await asyncio.sleep(0)
@@ -1148,7 +1148,7 @@ async def test_review_observer_fires_on_entry_to_review():
     from app.services.job_manager import job_manager
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         job_manager._notify_discord_on_review(7, JobState.REVIEW_NEEDED, JobState.MATCHING)
         await asyncio.sleep(0)
@@ -1163,7 +1163,7 @@ async def test_review_observer_suppresses_same_state_rebroadcast():
     from app.services.job_manager import job_manager
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         job_manager._notify_discord_on_review(7, JobState.REVIEW_NEEDED, JobState.REVIEW_NEEDED)
         await asyncio.sleep(0)
@@ -1177,7 +1177,7 @@ async def test_review_observer_ignores_other_states():
     from app.services.job_manager import job_manager
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         job_manager._notify_discord_on_review(7, JobState.RIPPING, JobState.IDENTIFYING)
         await asyncio.sleep(0)
@@ -1209,7 +1209,7 @@ async def test_review_notification_uses_review_event_and_mention():
         with patch(
             "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
         ):
-            await job_manager._send_discord_notification(job_id, JobState.REVIEW_NEEDED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.REVIEW_NEEDED)
 
     embed = mock_notify.call_args[0][2]
     assert "Review Needed" in embed["title"]
@@ -1238,7 +1238,7 @@ async def test_mention_not_attached_to_completed_event():
         with patch(
             "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
         ):
-            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     assert mock_notify.call_args.kwargs["content"] == ""
 
@@ -1262,9 +1262,9 @@ async def test_per_event_toggle_suppresses_only_its_own_event():
         with patch(
             "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
         ):
-            await job_manager._send_discord_notification(job_id, JobState.REVIEW_NEEDED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.REVIEW_NEEDED)
             assert mock_notify.call_count == 0
-            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
             assert mock_notify.call_count == 1
 
     await update_config(discord_notify_review=True)
@@ -1301,7 +1301,7 @@ async def test_completion_notification_includes_episode_manifest():
         with patch(
             "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
         ):
-            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     by_name = {f["name"]: f["value"] for f in mock_notify.call_args[0][2]["fields"]}
     assert by_name["Episodes"] == "S01E01-E03 (3 episodes)"
@@ -1422,3 +1422,69 @@ def test_build_embed_threads_rip_outcome_into_status_field():
 
     embed = build_embed(job, [], RIPPED_EVENT, "desc", rip_outcome=RIP_OUTCOME_COMPLETE)
     assert {"name": "Status", "value": RIP_OUTCOME_COMPLETE, "inline": True} in embed["fields"]
+
+
+@pytest.mark.asyncio
+async def test_send_notification_accepts_an_event_and_extra_context():
+    """The generalized signature: callers pass a NotificationEvent, and
+    extra_context supplies vars the DiscJob row cannot provide."""
+    from app.core.discord_notifier import RIP_OUTCOME_STOPPED_EARLY, RIPPED_EVENT
+    from app.database import async_session
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_notify_ripped=True,
+        discord_template_ripped="{{title}} was {{rip_outcome}}",
+    )
+
+    async with async_session() as session:
+        job = DiscJob(
+            drive_id="E:",
+            content_type=ContentType.TV,
+            detected_title="The Wire",
+            volume_label="THE_WIRE_S1D1",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(
+            job_id, RIPPED_EVENT, extra_context={"rip_outcome": RIP_OUTCOME_STOPPED_EARLY}
+        )
+
+    mock_notify.assert_called_once()
+    embed = mock_notify.call_args[0][2]
+    assert embed["description"] == "The Wire was Stopped early"
+    assert {"name": "Status", "value": "Stopped early", "inline": True} in embed["fields"]
+
+
+@pytest.mark.asyncio
+async def test_ripped_notification_suppressed_when_toggle_off():
+    """Default-off means an upgraded user gets nothing until they opt in."""
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE, RIPPED_EVENT
+    from app.database import async_session
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_notify_ripped=False,
+    )
+
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(
+            job_id, RIPPED_EVENT, extra_context={"rip_outcome": RIP_OUTCOME_COMPLETE}
+        )
+
+    mock_notify.assert_not_called()
