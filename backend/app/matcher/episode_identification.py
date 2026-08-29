@@ -1931,10 +1931,13 @@ class EpisodeMatcher:
             # decompose_vote_runs normalizes against the VOTED span, so a stretch
             # of the file that never voted is invisible to it (a third segment
             # missing from the TMDB reference set, say). Record the unexplained
-            # head and tail here, where the scan offsets are in scope, so a
-            # reviewer looking at a two-code suggestion for a three-segment file
-            # has a signal that something is unaccounted for. Under-listing is
-            # otherwise silent: a short code list looks complete.
+            # SCANNED head and tail here (scan_points[0]/[-1] sit inside the file,
+            # not at its true start/end — skip_initial trims the head and the last
+            # scan point sits before EOF, so this measures the un-voted portion of
+            # the scanned range, not the whole file), where the scan offsets are in
+            # scope, so a reviewer looking at a two-code suggestion for a
+            # three-segment file has a signal that something is unaccounted for.
+            # Under-listing is otherwise silent: a short code list looks complete.
             if positional_votes and scan_points:
                 multi_detail["head_gap_seconds"] = round(
                     min(v[0] for v in positional_votes) - scan_points[0], 1

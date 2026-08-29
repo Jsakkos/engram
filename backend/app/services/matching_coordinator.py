@@ -246,7 +246,20 @@ RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_eject
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
 
 
-def _apply_multi_episode_review(title, conjoined_hint: int | None) -> bool:
+def _is_multi_episode_result(match_details: dict | None) -> bool:
+    """True when the ASR verdict says this file holds several conjoined episodes.
+
+    Reads the matcher's own result dict rather than the persisted column, so
+    callers can consult it before ``title.match_details`` is written and after a
+    fallback has overwritten it.
+    """
+    if not isinstance(match_details, dict):
+        return False
+    verdict = match_details.get("multi_episode")
+    return bool(isinstance(verdict, dict) and verdict.get("is_multi_episode"))
+
+
+def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) -> bool:
     """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
 
     A track the chunk votes show is several conjoined episodes must not be
@@ -256,20 +269,20 @@ def _apply_multi_episode_review(title, conjoined_hint: int | None) -> bool:
     coverage) -- ASR still returns one confident episode, so the silent-drop risk is
     identical. Only the reviewer-facing message differs.
     """
-    multi_detail = {}
+    details: dict = {}
     if title.match_details:
         try:
-            multi_detail = (json.loads(title.match_details) or {}).get("multi_episode") or {}
+            parsed = json.loads(title.match_details)
         except (json.JSONDecodeError, TypeError):
-            multi_detail = {}
+            parsed = None
+        if isinstance(parsed, dict):
+            details = parsed
+    multi_detail = details.get("multi_episode")
+    if not isinstance(multi_detail, dict):
+        multi_detail = {}
     confirmed_multi = bool(multi_detail.get("is_multi_episode"))
     if not (confirmed_multi or conjoined_hint):
         return False
-
-    try:
-        details = json.loads(title.match_details) if title.match_details else {}
-    except (json.JSONDecodeError, TypeError):
-        details = {}
     codes = multi_detail.get("codes") or []
     title.state = TitleState.REVIEW
     details["error"] = MULTI_EPISODE_ERROR_CODE
@@ -1350,7 +1363,22 @@ class MatchingCoordinator:
                     # low-confidence result, so a confidence below the floor implies
                     # we are inside this branch. The fallback can therefore only
                     # auto-organize via a DiscDB mapping, never by confidence alone.
-                    if not advisory and result.confidence < DISCDB_FALLBACK_ASR_FLOOR:
+                    #
+                    # A conjoined track must never take the DiscDB disc-order
+                    # fallback. That mapping assigns ONE episode per physical title,
+                    # so it cannot describe a title holding two, and
+                    # try_discdb_assignment commits MATCHED at 0.99 and overwrites
+                    # match_details, destroying the verdict on the way out. Worse,
+                    # the bypass is CORRELATED with what it would bypass: a conjoined
+                    # track splits its votes between two episodes, and that split is
+                    # exactly what drags confidence below this floor. Skipping the
+                    # fallback leaves the track to the review routing below.
+                    if (
+                        not advisory
+                        and not conjoined_hint
+                        and not _is_multi_episode_result(result.match_details)
+                        and result.confidence < DISCDB_FALLBACK_ASR_FLOOR
+                    ):
                         if await self.try_discdb_assignment(job_id, title, session):
                             logger.info(
                                 f"[MATCH] Title {title_id} (Job {job_id}): ASR confidence "
@@ -1426,8 +1454,18 @@ class MatchingCoordinator:
                     if (result.match_details or {}).get("chromaprint_accepted"):
                         title.match_source = "engram_chromaprint"
 
-                    # Phase 1: enqueue contribution if extraction produced a fingerprint
-                    if title.chromaprint_blob and title.matched_episode:
+                    # Phase 1: enqueue contribution if extraction produced a
+                    # fingerprint. Never contribute a conjoined track: its
+                    # fingerprint spans two episodes but would be published under
+                    # the single winning code, poisoning the shared corpus for every
+                    # other user. Mirrors the advisory path, which skips the enqueue
+                    # for the weaker reason that the match is merely unconfirmed.
+                    if (
+                        title.chromaprint_blob
+                        and title.matched_episode
+                        and not conjoined_hint
+                        and not _is_multi_episode_result(result.match_details)
+                    ):
                         try:
                             import re as _re
 
@@ -1541,13 +1579,7 @@ class MatchingCoordinator:
 
                     title.match_details = json.dumps(_md)
 
-                # A track the chunk votes show is several conjoined episodes must
-                # not be auto-organized under a single code: the other episodes
-                # would vanish from the library. The same applies to a track the
-                # DURATION admitted as conjoined whose votes could NOT confirm it
-                # (too few scan points for the run count, sparse coverage) -- ASR
-                # still returns one confident episode, so the silent-drop risk is
-                # identical. Park both for a human; only the message differs.
+                # A conjoined track must not be auto-organized under a single code.
                 if _apply_multi_episode_review(title, conjoined_hint):
                     logger.info(
                         f"[MATCH] Title {title_id} (Job {job_id}): routed to review "

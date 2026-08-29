@@ -19,6 +19,7 @@ from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
+    MULTI_EPISODE_ERROR_CODE,
     MatchingCoordinator,
     _apply_multi_episode_review,
     _conjoined_episode_count,
@@ -1288,3 +1289,94 @@ class TestMultiEpisodeReviewRouting:
         )
         _apply_multi_episode_review(title, conjoined_hint=None)
         assert title.state == TitleState.MATCHED
+
+
+@pytest.mark.unit
+class TestConjoinedDiscDbBypass:
+    """A conjoined track must not escape review via the DiscDB disc-order fallback
+    or the fingerprint contribution enqueue. Both run inside _match_single_file_inner
+    BEFORE the review routing at the end of that function, so this exercises the
+    real call, not just the extracted helper (issue #622, code-review Critical).
+    """
+
+    async def test_conjoined_track_does_not_take_discdb_fallback(self, monkeypatch, tmp_path):
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+
+        mapping = DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Segment A",
+            season=1,
+            episode=1,
+            duration_seconds=600,
+            size_bytes=1024**3,
+        )
+        coord._discdb_mappings = {job.id: [mapping]}
+
+        mock_result = SimpleNamespace(
+            episode_code="S01E01",
+            confidence=0.3,  # below DISCDB_FALLBACK_ASR_FLOOR
+            needs_review=True,
+            match_details={"score": 0.3},
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=2
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.REVIEW
+            parsed = json.loads(title.match_details)
+            assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+            # Not the DiscDB fallback's fingerprint (source/episode_title keys).
+            assert "source" not in parsed
+
+    async def test_ordinary_low_confidence_track_still_takes_discdb_fallback(
+        self, monkeypatch, tmp_path
+    ):
+        """Regression guard: an ordinary (non-conjoined) low-confidence track must
+        still take the DiscDB disc-order fallback exactly as before."""
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+
+        mapping = DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Pilot",
+            season=1,
+            episode=1,
+            duration_seconds=600,
+            size_bytes=1024**3,
+        )
+        coord._discdb_mappings = {job.id: [mapping]}
+
+        mock_result = SimpleNamespace(
+            episode_code="S01E07",
+            confidence=0.3,
+            needs_review=True,
+            match_details={"score": 0.3},
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=None
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.MATCHED
+            assert title.matched_episode == "S01E01"
+            assert title.match_source == "discdb"
