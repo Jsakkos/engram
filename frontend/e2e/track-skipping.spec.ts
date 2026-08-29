@@ -80,10 +80,22 @@ test.describe('Track skipping — skip / un-skip a not-yet-ripped track', () => 
         // Regression for the 0.28.2 report: skipping FUTURE tracks stopped the
         // track being ripped, and the disc either ejected "successfully" with
         // work outstanding or froze with no progress. Rip slowly enough that
-        // several tracks are still PENDING when we click.
+        // several tracks are still PENDING when we act on them.
+        //
+        // rip_speed_multiplier is a SPEED multiplier, so 1 is the SLOWEST
+        // setting, not a mild one. The simulated loop runs
+        // `max(5, 20 // multiplier)` steps of `0.1 / multiplier` seconds per
+        // title, so on this 8-title disc: multiplier 1 -> ~2.1s per title,
+        // ~17s of rip and a ~10s window in which the trailing tracks are still
+        // PENDING; multiplier 2 -> ~0.5s per title, the whole rip is over in
+        // ~4s and the trailing tracks leave PENDING almost immediately. This
+        // test used to run at 2 and lost the race on CI both ways: the
+        // skip-rip POST 400'd ("not skippable") once the target had flipped to
+        // RIPPING, and the click timed out on a button that detached when its
+        // track left PENDING.
         await simulateInsertDisc({
             ...TV_DISC_ARRESTED_DEVELOPMENT,
-            rip_speed_multiplier: 2,
+            rip_speed_multiplier: 1,
         });
 
         await expect(page.locator(SELECTORS.trackGrid).first()).toBeVisible({ timeout: 15000 });
@@ -113,9 +125,17 @@ test.describe('Track skipping — skip / un-skip a not-yet-ripped track', () => 
         const ids = allIds.slice(-3);
         expect(ids.length).toBe(3);
 
-        const [clickedId, ...apiIds] = ids;
-        await page.getByTestId(`skip-track-${clickedId}`).click();
-        await expect(page.getByTestId(`unskip-track-${clickedId}`)).toBeVisible({ timeout: 10000 });
+        // Order matters. The rip loop reaches these three in ascending order, so
+        // ids[0] is the first to leave PENDING and ids[2] the last. Spend the
+        // cheap operation on the tracks with the least runway and the expensive
+        // one on the track with the most: the two HTTP skips land in
+        // milliseconds, while the click re-runs Playwright's actionability
+        // checks against a grid that re-renders on every rip-progress push.
+        // Doing it the other way round (click ids[0] first, then POST) meant the
+        // slowest step raced the shortest deadline, which is how CI produced
+        // both a 400 from skip-rip and a 30s timeout on skip-track-6.
+        const apiIds = ids.slice(0, -1);
+        const clickedId = ids[ids.length - 1];
 
         const jobId = (await page.request.get(`${API}/api/jobs`).then((r) => r.json()))[0].id;
         for (const trackId of apiIds) {
@@ -123,6 +143,11 @@ test.describe('Track skipping — skip / un-skip a not-yet-ripped track', () => 
                 `${API}/api/jobs/${jobId}/titles/${trackId}/skip-rip`,
             );
             expect(res.ok()).toBe(true);
+        }
+
+        await page.getByTestId(`skip-track-${clickedId}`).click();
+
+        for (const trackId of [...apiIds, clickedId]) {
             await expect(page.getByTestId(`unskip-track-${trackId}`)).toBeVisible({ timeout: 10000 });
         }
 

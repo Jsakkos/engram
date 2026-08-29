@@ -6,10 +6,14 @@ These cover the CodeQL-flagged sinks:
 - sanitize_log_value: py/log-injection in disc-event logging
 """
 
+import pytest
+
 from app.core.security import (
     executable_basename_allowed,
     is_allowed_image_url,
+    is_within_configured_roots,
     sanitize_log_value,
+    sanitize_playlist_field,
 )
 
 
@@ -137,3 +141,147 @@ class TestSanitizeLogValue:
 
     def test_coerces_non_str(self):
         assert sanitize_log_value(123) == "123"
+
+
+class TestSanitizePlaylistField:
+    """Playlist-injection guard for disc-derived text embedded in an .m3u."""
+
+    def test_strips_lf(self):
+        assert "\n" not in sanitize_playlist_field("a\nb")
+
+    def test_strips_cr(self):
+        assert "\r" not in sanitize_playlist_field("a\rb")
+
+    def test_strips_crlf(self):
+        result = sanitize_playlist_field("a\r\nb")
+        assert "\r" not in result
+        assert "\n" not in result
+
+    def test_strips_control_chars(self):
+        assert sanitize_playlist_field("a\x1b[31mb\x00c") == "a[31mbc"
+
+    def test_empty_input_returns_empty_string(self):
+        assert sanitize_playlist_field("") == ""
+
+    def test_leaves_ordinary_label_unchanged(self):
+        assert sanitize_playlist_field("Arrested Development S1D1") == "Arrested Development S1D1"
+
+    def test_crlf_collapses_to_a_single_space(self):
+        # One boundary, one space. Replacing CR and LF independently would
+        # leave two, which is cosmetic here but signals the pair was not
+        # recognised as a unit.
+        assert sanitize_playlist_field("a\r\nb") == "a b"
+
+    @pytest.mark.parametrize(
+        ("name", "codepoint"),
+        [("NEL", 0x85), ("LINE SEPARATOR", 0x2028), ("PARAGRAPH SEPARATOR", 0x2029)],
+    )
+    def test_strips_exotic_unicode_line_boundaries(self, name, codepoint):
+        """Python treats these as line breaks even though .m3u parsers do not.
+
+        No mainstream demuxer splits on them, so they are not exploitable
+        against VLC or MPV, but the function claims to strip line breaks and
+        that claim should hold against Python's own definition rather than
+        against whichever parser happens to read the output. Written with
+        chr() so the source file never contains a literal separator, which
+        would break the line it sits on.
+        """
+        result = sanitize_playlist_field(f"a{chr(codepoint)}b")
+        assert result == "a b", name
+        assert len(result.splitlines()) == 1, name
+
+
+class TestIsWithinConfiguredRoots:
+    """Containment guard for media paths read out of the database."""
+
+    def test_accepts_file_directly_in_root(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        target = root / "title_01.mkv"
+        target.touch()
+        assert is_within_configured_roots(target, [str(root)])
+
+    def test_accepts_file_in_nested_subdirectory(self, tmp_path):
+        root = tmp_path / "library"
+        nested = root / "Show" / "Season 01"
+        nested.mkdir(parents=True)
+        target = nested / "Show - S01E01.mkv"
+        target.touch()
+        assert is_within_configured_roots(target, [str(root)])
+
+    def test_accepts_when_any_one_root_matches(self, tmp_path):
+        staging = tmp_path / "staging"
+        library = tmp_path / "library"
+        staging.mkdir()
+        library.mkdir()
+        target = library / "movie.mkv"
+        target.touch()
+        assert is_within_configured_roots(target, [str(staging), str(library)])
+
+    def test_rejects_file_outside_every_root(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        outside = tmp_path / "elsewhere.mkv"
+        outside.touch()
+        assert not is_within_configured_roots(outside, [str(root)])
+
+    def test_rejects_parent_traversal(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        secret = tmp_path / "secret.mkv"
+        secret.touch()
+        traversal = root / ".." / "secret.mkv"
+        assert not is_within_configured_roots(traversal, [str(root)])
+
+    def test_rejects_sibling_root_with_shared_prefix(self, tmp_path):
+        # "staging-old" must not pass a "staging" root via a bare string prefix
+        # comparison. commonpath compares path components, not characters.
+        root = tmp_path / "staging"
+        sibling = tmp_path / "staging-old"
+        root.mkdir()
+        sibling.mkdir()
+        target = sibling / "leak.mkv"
+        target.touch()
+        assert not is_within_configured_roots(target, [str(root)])
+
+    def test_rejects_empty_root_list(self, tmp_path):
+        target = tmp_path / "x.mkv"
+        target.touch()
+        assert not is_within_configured_roots(target, [])
+
+    def test_ignores_unset_roots(self, tmp_path):
+        # Unconfigured paths arrive as "" from AppConfig defaults. An empty
+        # string must never be treated as a root, or it would resolve to the
+        # process CWD and silently authorise it.
+        root = tmp_path / "staging"
+        root.mkdir()
+        target = root / "ok.mkv"
+        target.touch()
+        assert is_within_configured_roots(target, ["", str(root), ""])
+        outside = tmp_path / "nope.mkv"
+        outside.touch()
+        assert not is_within_configured_roots(outside, ["", ""])
+
+    def test_rejects_none_path(self, tmp_path):
+        # output_filename/organized_to are both `str | None`. A guard that
+        # raises on the normal unset case is not a barrier guard.
+        root = tmp_path / "staging"
+        root.mkdir()
+        assert not is_within_configured_roots(None, [str(root)])
+
+    def test_rejects_empty_path(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        assert not is_within_configured_roots("", [str(root)])
+
+    def test_rejects_symlink_escaping_root(self, tmp_path):
+        root = tmp_path / "staging"
+        root.mkdir()
+        secret = tmp_path / "secret.mkv"
+        secret.write_bytes(b"x")
+        link = root / "innocent.mkv"
+        try:
+            link.symlink_to(secret)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks unavailable (Windows without developer mode)")
+        assert not is_within_configured_roots(link, [str(root)])
