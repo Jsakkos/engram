@@ -558,6 +558,67 @@ def test_ripped_column_server_default_is_zero():
     assert str(column.server_default.arg) == "0"
 
 
+async def test_reconciler_backfills_ripped_columns_as_disabled(tmp_path):
+    """The invariant that actually matters isn't the model declaration above,
+    it's what a frozen PyInstaller build does. Frozen builds ship no
+    alembic.ini and skip Alembic entirely, converging schema through
+    _add_missing_columns / _drop_extra_columns / _migrate_app_config in
+    app/database.py instead. If that path ever added these two columns
+    without their defaults, discord_notify_ripped would silently switch on
+    for every upgrading user. Exercise the real reconciler functions, in the
+    order init_db() runs them, against a disposable on-disk SQLite DB under
+    tmp_path (never the app's real DB)."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import app.database as db_mod
+    from app.models.app_config import AppConfig
+
+    db_path = tmp_path / "reconcile.db"
+    migration_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    migration_factory = sessionmaker(migration_engine, class_=AsyncSession, expire_on_commit=False)
+
+    original_engine = db_mod.engine
+    db_mod.engine = migration_engine
+    try:
+        # Full current schema, with a real row in it...
+        async with migration_engine.begin() as conn:
+            await conn.run_sync(
+                lambda sync_conn: AppConfig.__table__.create(sync_conn, checkfirst=True)
+            )
+        async with migration_factory() as session:
+            session.add(AppConfig())
+            await session.commit()
+
+        # ...then strip the two new columns to simulate a pre-upgrade database.
+        async with migration_engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE app_config DROP COLUMN discord_notify_ripped"))
+            await conn.execute(text("ALTER TABLE app_config DROP COLUMN discord_template_ripped"))
+
+        # The same reconciler call order init_db() uses (minus _run_alembic_upgrade,
+        # which frozen builds skip because they ship no alembic.ini).
+        await db_mod._add_missing_columns()
+        await db_mod._drop_extra_columns()
+        await db_mod._migrate_app_config(migration_engine)
+
+        async with migration_engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT discord_notify_ripped, discord_template_ripped "
+                        "FROM app_config WHERE id = 1"
+                    )
+                )
+            ).fetchone()
+
+        assert row[0] == 0, "discord_notify_ripped must backfill to 0, not NULL"
+        assert row[1] == "", "discord_template_ripped must backfill to '', not NULL"
+    finally:
+        db_mod.engine = original_engine
+        await migration_engine.dispose()
+
+
 # --------------------------------------------------------------------------- #
 # format_disc_identity / build_embed_fields
 # --------------------------------------------------------------------------- #

@@ -218,10 +218,10 @@ class AppConfig(SQLModel, table=True):
     discord_template_failed: str = ""
     discord_template_review: str = ""
     discord_template_ripped: str = ""
-    # Per-event enable toggles. Stored NOT NULL with a server_default of 1, but
-    # the notifier treats None as enabled anyway (see _send_discord_notification)
-    # so a NULL left by an out-of-band schema change can never silently mute
-    # notifications.
+    # The three below are per-event enable toggles, stored NOT NULL with a
+    # server_default of 1; the notifier treats None as enabled anyway (see
+    # _send_discord_notification) so a NULL left by an out-of-band schema
+    # change can never silently mute notifications.
     discord_notify_completed: bool = Field(
         default=True, sa_column_kwargs={"server_default": text("1")}
     )
