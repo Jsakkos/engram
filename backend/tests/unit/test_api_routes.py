@@ -879,7 +879,7 @@ async def test_config_round_trips_ripped_notification_fields(client):
     is dropped silently, so assert it survives a PUT and comes back on GET."""
     resp = await client.put(
         "/api/config",
-        json={"discord_notify_ripped": True, "discord_template_ripped": "**{{title}}** ripped"},
+        json={"discord_notify_ripped": True, "discord_template_ripped": "**{{{title}}}** ripped"},
     )
     assert resp.status_code == 200
 
@@ -887,7 +887,7 @@ async def test_config_round_trips_ripped_notification_fields(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["discord_notify_ripped"] is True
-    assert body["discord_template_ripped"] == "**{{title}}** ripped"
+    assert body["discord_template_ripped"] == "**{{{title}}}** ripped"
 
     # Restore defaults so later tests in this module see a clean config.
     await client.put(
