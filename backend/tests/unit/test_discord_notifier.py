@@ -1329,3 +1329,63 @@ async def test_notify_discord_reraises_only_when_asked():
             await notify_discord(
                 "https://discord.com/api/webhooks/1/a", job_id=1, embed={}, raise_on_error=True
             )
+
+
+# --------------------------------------------------------------------------- #
+# Ripped event
+# --------------------------------------------------------------------------- #
+
+
+def test_ripped_event_is_not_in_the_state_keyed_table():
+    """RIPPED_EVENT lives beside EVENTS, not in it: "ripped" is a hardware
+    milestone, not a JobState, and EVENTS means "notifiable job states"."""
+    from app.core.discord_notifier import EVENTS, RIPPED_EVENT
+    from app.models.disc_job import JobState
+
+    assert RIPPED_EVENT not in EVENTS.values()
+    assert set(EVENTS) == {JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED}
+    assert RIPPED_EVENT.key == "ripped"
+    assert RIPPED_EVENT.label == "Disc Ripped"
+
+
+def test_default_template_exists_for_ripped():
+    from app.core.discord_notifier import DEFAULT_TEMPLATES
+
+    assert DEFAULT_TEMPLATES["ripped"] == "**{{{title}}}**"
+
+
+def test_rip_outcome_is_an_allowed_template_var():
+    from app.core.discord_notifier import ALLOWED_TEMPLATE_VARS, validate_discord_template
+
+    assert "rip_outcome" in ALLOWED_TEMPLATE_VARS
+    assert validate_discord_template("{{title}} was {{rip_outcome}}") is None
+
+
+def test_build_template_context_renders_rip_outcome_empty_by_default():
+    """The outcome is knowledge the call site has and the DiscJob row does not,
+    so the row-derived context leaves it blank."""
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+    context = build_template_context(job, 1)
+    assert context["rip_outcome"] == ""
+
+
+def test_status_field_appears_only_on_the_ripped_event():
+    from app.core.discord_notifier import EVENTS, RIPPED_EVENT, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.MOVIE, detected_title="Inception")
+
+    ripped = build_embed_fields(job, [], RIPPED_EVENT, rip_outcome="Stopped early")
+    assert {"name": "Status", "value": "Stopped early", "inline": True} in ripped
+
+    completed = build_embed_fields(job, [], EVENTS[JobState.COMPLETED], rip_outcome="Complete")
+    assert not [f for f in completed if f["name"] == "Status"]
+
+
+def test_status_field_dropped_when_outcome_is_blank():
+    """Empty values drop, matching how Season, Reason and Library behave."""
+    from app.core.discord_notifier import RIPPED_EVENT, build_embed_fields
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.MOVIE, detected_title="Inception")
+    fields = build_embed_fields(job, [], RIPPED_EVENT, rip_outcome="")
+    assert not [f for f in fields if f["name"] == "Status"]

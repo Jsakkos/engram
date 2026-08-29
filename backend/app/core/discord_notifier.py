@@ -36,6 +36,12 @@ EVENTS: dict[JobState, NotificationEvent] = {
     JobState.REVIEW_NEEDED: NotificationEvent("review", "Review Needed", "🔍", 0xF59E0B),
 }
 
+# Deliberately NOT in EVENTS: "the disc is copied and out of the drive" is a
+# hardware milestone, not a JobState, and it must fire for a disc that goes on
+# to park in REVIEW_NEEDED. Delivered from JobManager._release_drive rather than
+# from a state-machine callback.
+RIPPED_EVENT = NotificationEvent("ripped", "Disc Ripped", "💿", 0x3B82F6)
+
 ALLOWED_TEMPLATE_VARS = frozenset(
     {
         "title",
@@ -63,17 +69,20 @@ ALLOWED_TEMPLATE_VARS = frozenset(
         "subtitles_failed",
         "path",
         "total_titles",
+        "rip_outcome",
     }
 )
 
 DEFAULT_TEMPLATE_COMPLETED = "**{{{title}}}**"
 DEFAULT_TEMPLATE_FAILED = "**{{{title}}}**"
 DEFAULT_TEMPLATE_REVIEW = "**{{{title}}}**"
+DEFAULT_TEMPLATE_RIPPED = "**{{{title}}}**"
 
 DEFAULT_TEMPLATES = {
     "completed": DEFAULT_TEMPLATE_COMPLETED,
     "failed": DEFAULT_TEMPLATE_FAILED,
     "review": DEFAULT_TEMPLATE_REVIEW,
+    "ripped": DEFAULT_TEMPLATE_RIPPED,
 }
 
 
@@ -142,6 +151,10 @@ def build_template_context(
         "subtitles_failed": str(job.subtitles_failed),
         "path": job.final_path or "",
         "total_titles": str(job.total_titles),
+        # Filled by the caller via extra_context, not derived from the row:
+        # whether this was a clean rip, a mid-rip abort or a re-rip is known
+        # only at the eject site.
+        "rip_outcome": "",
     }
 
 
@@ -238,7 +251,9 @@ def summarize_episodes(titles: list) -> str:
     return f"{', '.join(parts)} ({count} {noun})"
 
 
-def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEvent) -> list[dict]:
+def build_embed_fields(
+    job: DiscJob | None, titles: list, event: NotificationEvent, *, rip_outcome: str = ""
+) -> list[dict]:
     """Structured embed fields for one notification. Empty values are dropped."""
     if job is None:
         return []
@@ -253,6 +268,7 @@ def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEve
             subtitles += f", {job.subtitles_failed} failed"
 
     candidates = [
+        _field("Status", rip_outcome if event.key == "ripped" else ""),
         _field("Disc", format_disc_identity(job)),
         _field(
             "Season",
@@ -303,6 +319,7 @@ def build_embed(
     *,
     poster_url: str | None = None,
     link_url: str | None = None,
+    rip_outcome: str = "",
 ) -> dict:
     """Assemble the Discord embed for one notification.
 
@@ -315,7 +332,7 @@ def build_embed(
         "color": event.color,
         "timestamp": datetime.now(UTC).isoformat(),
         "footer": {"text": f"Engram v{__version__}"},
-        "fields": build_embed_fields(job, titles, event),
+        "fields": build_embed_fields(job, titles, event, rip_outcome=rip_outcome),
     }
     if link_url:
         embed["url"] = link_url
