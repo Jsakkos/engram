@@ -103,7 +103,7 @@ class TestDecomposeVoteRuns:
             ("S01E02", [700, 830, 960, 1090]),
             ("S01E03", [1280, 1410, 1540, 1670]),
         )
-        verdict = decompose_vote_runs(v, total_scan_points=14)
+        verdict = decompose_vote_runs(v, total_scan_points=19)
         assert verdict.is_multi_episode is True
         assert verdict.codes == ("S01E01", "S01E02", "S01E03")
 
@@ -120,19 +120,44 @@ class TestDecomposeVoteRuns:
         assert verdict.is_multi_episode is False
         assert verdict.reason == "unbalanced_runs"
 
-    def test_recap_and_preview_are_not_three_episodes(self):
+    def test_three_runs_are_refused_at_default_scan_depth(self):
         # Recap at the head plus a "next time on" preview at the tail around one
-        # real episode. A mean-relative balance rule can NEVER fire for 3 runs at
-        # 10 scan points (its threshold falls below MIN_RUN_VOTES), so this case
-        # pins the territory rule specifically.
+        # real episode. At 10 scan points the territory rule cannot discriminate
+        # 3 runs at all (it needs N > 3R + 1), so the verdict is refused for want
+        # of evidence rather than guessed. Every point votes here deliberately:
+        # an abstention gap would let this pass on a rounding margin.
         v = _votes(
-            ("S01E04", [120, 250]),
-            ("S01E05", [380, 510, 640, 770]),
-            ("S01E06", [1210, 1330]),
+            ("S01E04", [0, 100]),
+            ("S01E05", [200, 300, 400, 500, 600, 700]),
+            ("S01E06", [800, 900]),
         )
         verdict = decompose_vote_runs(v, total_scan_points=10)
         assert verdict.is_multi_episode is False
+        assert verdict.reason == "insufficient_scan_depth"
+
+    def test_recap_and_preview_rejected_once_depth_supports_it(self):
+        # The same shape at the next lattice level (19), where the territory rule
+        # IS live: now it rejects on the merits rather than on scan depth.
+        v = _votes(
+            ("S01E04", [0, 100]),
+            ("S01E05", [200 + 100 * i for i in range(15)]),
+            ("S01E06", [1700, 1800]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=19)
+        assert verdict.is_multi_episode is False
         assert verdict.reason == "unbalanced_runs"
+
+    def test_genuine_three_segments_accepted_at_sufficient_depth(self):
+        # A real 3-segment track at depth 19: each run owns about a third of the
+        # timeline, so it survives every guard.
+        v = _votes(
+            ("S01E01", [0, 100, 200, 300]),
+            ("S01E02", [500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500]),
+            ("S01E03", [1700, 1800, 1900, 2000]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=19)
+        assert verdict.is_multi_episode is True
+        assert verdict.reason == "contiguous_runs"
 
     def test_low_vote_yield_pair_is_still_accepted(self):
         # Near-wordless cartoons are both the target content AND the lowest

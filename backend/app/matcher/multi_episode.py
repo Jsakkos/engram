@@ -15,6 +15,13 @@ timeline; ASR confusion appears as interleaved singletons.
 
 Pure stdlib by design (no app.models, no app.services): the whole decision is
 testable with synthetic vote lists, no MKV or Whisper required.
+
+Known limitation: the span is measured between the first and last VOTE, not across
+the scanned range, so a file with a large unexplained head or tail (e.g. a third
+segment absent from the TMDB reference set) can still yield a confident two-episode
+verdict. Closing it needs the scan offsets, not just their count. Accepted for now
+because a positive verdict routes the track to REVIEW rather than naming it, so the
+cost is an incomplete suggestion a human corrects, not a wrong filename on disk.
 """
 
 from __future__ import annotations
@@ -37,6 +44,16 @@ MIN_TIMELINE_COVERAGE = 0.5
 # recap at the head and a 2-vote genuine segment are identical, but by territory
 # the recap owns a sliver and the segment owns roughly 1/N of the file.
 MIN_RUN_TERRITORY = 0.5
+
+# A run needs roughly this many scan points before its share of the timeline is
+# measurable at all. With N evenly spaced points split into R runs, an edge run of
+# k votes owns (k - 0.5)/(N - 1) of the span, so the territory rule can only reject
+# the smallest admissible run (k = MIN_RUN_VOTES = 2) when N > 3R + 1. Below that
+# the rule is not merely lenient, it is mathematically incapable of discriminating,
+# so refuse the verdict rather than return a guess the evidence cannot support.
+# At the default 10 scan points this caps a confident verdict at two episodes;
+# canonical_scan_points' next lattice level (19) supports three.
+MIN_SCAN_POINTS_PER_RUN = 3
 
 
 @dataclass(frozen=True)
@@ -150,6 +167,9 @@ def decompose_vote_runs(
     counted = sum(r.votes for r in ordered)
     if counted > total_scan_points:
         return _rejected(ordered, "invalid_input")
+    if total_scan_points <= MIN_SCAN_POINTS_PER_RUN * len(ordered) + 1:
+        return _rejected(ordered, "insufficient_scan_depth")
+
     if counted / total_scan_points < MIN_TIMELINE_COVERAGE:
         return _rejected(ordered, "sparse_coverage")
 
@@ -162,7 +182,11 @@ def decompose_vote_runs(
         edges.append((earlier.last_start + later.first_start) / 2)
     edges.append(ordered[-1].last_start)
     span = edges[-1] - edges[0]
-    if span <= 0:
+    # `not span > 0` rather than `span <= 0`: a NaN timestamp makes every
+    # comparison False, so it would otherwise pass contiguity, pass this guard,
+    # fail every territory test, and return a confident verdict serializing to
+    # invalid JSON.
+    if not span > 0:
         return _rejected(ordered, "degenerate_span")
     fair_share = 1.0 / len(ordered)
     for i in range(len(ordered)):
