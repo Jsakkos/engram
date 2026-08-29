@@ -1277,6 +1277,32 @@ class TestMultiEpisodeReviewRouting:
         assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
         assert "insufficient_scan_depth" in parsed["message"]
 
+    def test_prior_warning_is_carried_forward_not_clobbered(self):
+        """The advisory path can flag "file_exists" (a sibling already organized
+        this code) before the multi-episode check runs. Multi-episode takes the
+        error slot because it drives the non-rematchable routing, but dropping the
+        earlier warning would leave the reviewer with no hint that a sibling
+        already claimed the code.
+        """
+        from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE
+
+        details = {
+            "error": "file_exists",
+            "message": "S01E01 is already organized by another track on this disc.",
+            "multi_episode": {
+                "is_multi_episode": True,
+                "reason": "contiguous_runs",
+                "codes": ["S01E01", "S01E02"],
+            },
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        assert parsed["superseded_error"] == "file_exists"
+        assert "already organized by another track" in parsed["message"]
+        assert "S01E01, S01E02" in parsed["message"]
+
     def test_ordinary_single_episode_is_untouched(self):
         details = {"multi_episode": {"is_multi_episode": False, "reason": "single_episode"}}
         title = self._title(details)

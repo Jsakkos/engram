@@ -285,20 +285,35 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
         return False
     codes = multi_detail.get("codes") or []
     title.state = TitleState.REVIEW
+
+    # A prior pass may already have written a warning here -- on the advisory
+    # (manual re-match) path a track can be flagged "file_exists" because a
+    # sibling already organized the same episode code. Multi-episode takes the
+    # error slot because it drives the non-rematchable routing, but the earlier
+    # message is CARRIED FORWARD rather than dropped: both facts are true of the
+    # track, and a reviewer who loses the duplicate warning has no other hint
+    # that a sibling already claimed the code.
+    prior_error = details.get("error")
+    prior_message = details.get("message")
+
     details["error"] = MULTI_EPISODE_ERROR_CODE
     if confirmed_multi:
-        details["message"] = (
+        message = (
             f"This track appears to contain {len(codes)} episodes "
             f"({', '.join(codes)}). Engram cannot name a combined file yet. "
             "Assign one episode, or mark it as an Extra."
         )
     else:
-        details["message"] = (
+        message = (
             f"This track's runtime suggests about {conjoined_hint} episodes joined "
             "together, but the audio match could not confirm it "
             f"({multi_detail.get('reason', 'no verdict')}). "
             "Check it before assigning an episode."
         )
+    if prior_error and prior_error != MULTI_EPISODE_ERROR_CODE and prior_message:
+        message = f"{message} Also: {prior_message}"
+        details["superseded_error"] = prior_error
+    details["message"] = message
     title.match_details = json.dumps(details)
     return True
 
