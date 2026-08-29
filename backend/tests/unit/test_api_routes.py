@@ -906,6 +906,50 @@ async def test_config_rejects_unknown_var_in_ripped_template(client):
     assert "nonsense_variable" in resp.json()["detail"]
 
 
+@pytest.mark.asyncio
+async def test_null_notify_columns_read_as_off_for_ripped_and_on_for_the_rest(client):
+    """Pins the deliberate asymmetry in GET /api/config's notify-toggle
+    coalescing.
+
+    The three original toggles (completed/failed/review) read a NULL column
+    as enabled, so an out-of-band schema change can never silently mute
+    notifications a user already relies on. discord_notify_ripped is new and
+    opt-in, so the rationale inverts: a NULL there must read as disabled, or
+    an upgrade would switch it on for everyone and double the notification
+    volume for anyone already using discord_notify_completed.
+
+    Forces NULL into all four notify columns directly via SQL, since the ORM
+    refuses to write NULL into a non-optional field. Both halves of the
+    asymmetry are asserted together so that "fixing the inconsistency" by
+    unifying either expression fails this test, whichever direction it goes.
+    """
+    from sqlalchemy import text as sa_text
+
+    await _seed_config()
+    # These columns are NOT NULL with a server_default (see app_config.py), so
+    # a plain UPDATE ... = NULL is rejected by SQLite. Rebuild each as a
+    # nullable BOOLEAN first, matching how an out-of-band schema change (or an
+    # old ADD COLUMN migration) could actually leave a NULL in production.
+    async with _unit_session_factory() as session:
+        for col in (
+            "discord_notify_completed",
+            "discord_notify_failed",
+            "discord_notify_review",
+            "discord_notify_ripped",
+        ):
+            await session.execute(sa_text(f"ALTER TABLE app_config DROP COLUMN {col}"))
+            await session.execute(sa_text(f"ALTER TABLE app_config ADD COLUMN {col} BOOLEAN"))
+        await session.commit()
+
+    response = await client.get("/api/config")
+    assert response.status_code == 200
+    config = response.json()
+    assert config["discord_notify_completed"] is True
+    assert config["discord_notify_failed"] is True
+    assert config["discord_notify_review"] is True
+    assert config["discord_notify_ripped"] is False
+
+
 # ---------------------------------------------------------------------------
 # Job visibility invariant
 # ---------------------------------------------------------------------------
