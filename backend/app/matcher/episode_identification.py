@@ -19,6 +19,7 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
+from app.matcher.multi_episode import decompose_vote_runs
 from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
@@ -1909,10 +1910,54 @@ class EpisodeMatcher:
                     }
 
             # Prepare detailed stats for return
+            # Positional vote runs: a track holding two conjoined ~11-minute
+            # segments votes for E01 across the first half and E02 across the
+            # second, with the seam chunk abstaining. coverages already carries
+            # every vote's timestamp, so this costs no extra transcription.
+            # extract_season_episode returns (None, None) for a reference name it
+            # cannot parse, so filter before formatting: an unguarded
+            # "S{:02d}".format(None) raises ValueError and would abort the match.
+            positional_votes: list[tuple[float, str]] = []
+            for cov in coverages.values():
+                cov_season, cov_episode = extract_season_episode(cov.episode_name)
+                if cov_season is None or cov_episode is None:
+                    continue
+                cov_code = f"S{cov_season:02d}E{cov_episode:02d}"
+                positional_votes.extend((c["start"], cov_code) for c in cov.matched_chunks)
+
+            multi_verdict = decompose_vote_runs(positional_votes, len(scan_points))
+            multi_detail = multi_verdict.to_dict()
+
+            # decompose_vote_runs normalizes against the VOTED span, so a stretch
+            # of the file that never voted is invisible to it (a third segment
+            # missing from the TMDB reference set, say). Record the unexplained
+            # SCANNED head and tail here (scan_points[0]/[-1] sit inside the file,
+            # not at its true start/end — skip_initial trims the head and the last
+            # scan point sits before EOF, so this measures the un-voted portion of
+            # the scanned range, not the whole file), where the scan offsets are in
+            # scope, so a reviewer looking at a two-code suggestion for a
+            # three-segment file has a signal that something is unaccounted for.
+            # Under-listing is otherwise silent: a short code list looks complete.
+            if positional_votes and scan_points:
+                multi_detail["head_gap_seconds"] = round(
+                    min(v[0] for v in positional_votes) - scan_points[0], 1
+                )
+                multi_detail["tail_gap_seconds"] = round(
+                    scan_points[-1] - max(v[0] for v in positional_votes), 1
+                )
+
+            if multi_verdict.is_multi_episode:
+                logger.info(
+                    f"[Matcher] {video_file}: chunk votes describe "
+                    f"{len(multi_verdict.runs)} conjoined episodes "
+                    f"{multi_verdict.codes}, routing to review"
+                )
+
             match_stats = {
                 "matches_found": matches_found_count,
                 "matches_rejected": matches_rejected_count,
                 "total_chunks": len(scan_points),
+                "multi_episode": multi_detail,
             }
 
             if best_match:

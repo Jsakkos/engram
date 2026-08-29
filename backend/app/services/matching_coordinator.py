@@ -19,6 +19,7 @@ from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
+from app.core.security import sanitize_log_value
 from app.database import async_session
 from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
@@ -63,6 +64,49 @@ def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int])
         <= (rt + EPISODE_DURATION_OVER_TOLERANCE_MIN)
         for rt in runtimes
     )
+
+
+# Cartoon and anthology discs put several short segments in one physical track:
+# TMDB catalogues each ~11-minute segment as its own episode, so a 23-minute track
+# matches no SINGLE runtime and was filed as an extra un-transcribed (issue #622).
+# The cap is set by evidence density, not taste: the positional vote runs that
+# actually decide the count need ~2 votes per run plus a seam, and the default scan
+# is 10 points, so 3 is the most a default scan can resolve. It also sits far below
+# the 80-minute Play All floor (analyst_movie_min_duration), and Play All titles are
+# deselected pre-rip anyway (identification_coordinator), so they never arrive here.
+MAX_CONJOINED_EPISODES = 3
+
+
+def _conjoined_episode_count(title_minutes: float, runtimes: list[int]) -> int | None:
+    """Smallest ``n`` in 2..MAX for which the track looks like n conjoined episodes.
+
+    Tests the duration against the sum of each run of ``n`` CONSECUTIVE runtimes,
+    since a conjoined track holds adjacent segments, reusing the same asymmetric
+    padding window as the single-episode gate (the recap/credits padding applies
+    once to the whole track, not once per segment).
+
+    This is an ADMISSION hint, not a verdict: windows for adjacent ``n`` can overlap,
+    and the authoritative count comes from the positional vote runs in
+    ``app.matcher.multi_episode``. Returns None when the track is not plausibly a
+    small concatenation, i.e. it is a genuine extra.
+
+    Callers must test ``_duration_matches_episode_runtime`` first; a track that is a
+    plain single episode is never reported here.
+    """
+    if not runtimes:
+        return None
+    for n in range(2, MAX_CONJOINED_EPISODES + 1):
+        if n > len(runtimes):
+            break
+        for i in range(len(runtimes) - n + 1):
+            total = sum(runtimes[i : i + n])
+            if (
+                (total - EPISODE_DURATION_UNDER_TOLERANCE_MIN)
+                <= title_minutes
+                <= (total + EPISODE_DURATION_OVER_TOLERANCE_MIN)
+            ):
+                return n
+    return None
 
 
 # ASR-preferred episode precedence: ASR always runs and is authoritative at or
@@ -195,6 +239,85 @@ RERIP_MAX_ATTEMPTS = 2
 # match_details["error"] codes that mean "the rip itself failed" — these titles
 # are eligible for single-track re-rip after a clean & reinsert.
 RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_ejected"})
+
+# A track that is, or might be, several conjoined episodes. Parked for a human
+# because Engram cannot yet NAME a multi-episode file (S01E01-E02 organizing is a
+# separate change): auto-organizing it under one of its codes would silently lose
+# the others.
+MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
+
+
+def _is_multi_episode_result(match_details: dict | None) -> bool:
+    """True when the ASR verdict says this file holds several conjoined episodes.
+
+    Reads the matcher's own result dict rather than the persisted column, so
+    callers can consult it before ``title.match_details`` is written and after a
+    fallback has overwritten it.
+    """
+    if not isinstance(match_details, dict):
+        return False
+    verdict = match_details.get("multi_episode")
+    return bool(isinstance(verdict, dict) and verdict.get("is_multi_episode"))
+
+
+def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) -> bool:
+    """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
+
+    A track the chunk votes show is several conjoined episodes must not be
+    auto-organized under a single code: the other episodes would vanish from the
+    library. The same applies to a track the DURATION admitted as conjoined whose
+    votes could NOT confirm it (too few scan points for the run count, sparse
+    coverage) -- ASR still returns one confident episode, so the silent-drop risk is
+    identical. Only the reviewer-facing message differs.
+    """
+    details: dict = {}
+    if title.match_details:
+        try:
+            parsed = json.loads(title.match_details)
+        except (json.JSONDecodeError, TypeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            details = parsed
+    multi_detail = details.get("multi_episode")
+    if not isinstance(multi_detail, dict):
+        multi_detail = {}
+    confirmed_multi = bool(multi_detail.get("is_multi_episode"))
+    if not (confirmed_multi or conjoined_hint):
+        return False
+    codes = multi_detail.get("codes") or []
+    title.state = TitleState.REVIEW
+
+    # A prior pass may already have written a warning here -- on the advisory
+    # (manual re-match) path a track can be flagged "file_exists" because a
+    # sibling already organized the same episode code. Multi-episode takes the
+    # error slot because it drives the non-rematchable routing, but the earlier
+    # message is CARRIED FORWARD rather than dropped: both facts are true of the
+    # track, and a reviewer who loses the duplicate warning has no other hint
+    # that a sibling already claimed the code.
+    prior_error = details.get("error")
+    prior_message = details.get("message")
+
+    details["error"] = MULTI_EPISODE_ERROR_CODE
+    if confirmed_multi:
+        message = (
+            f"This track appears to contain {len(codes)} episodes "
+            f"({', '.join(codes)}). Engram cannot name a combined file yet. "
+            "Assign one episode, or mark it as an Extra."
+        )
+    else:
+        message = (
+            f"This track's runtime suggests about {conjoined_hint} episodes joined "
+            "together, but the audio match could not confirm it "
+            f"({multi_detail.get('reason', 'no verdict')}). "
+            "Check it before assigning an episode."
+        )
+    if prior_error and prior_error != MULTI_EPISODE_ERROR_CODE and prior_message:
+        message = f"{message} Also: {prior_message}"
+        details["superseded_error"] = prior_error
+    details["message"] = message
+    title.match_details = json.dumps(details)
+    return True
+
 
 # Shown verbatim in the review queue for a track the user's mid-rip eject cut
 # short (or never reached). Deliberately states that nothing was lost, because
@@ -766,6 +889,7 @@ class MatchingCoordinator:
         # job — is what exhausted the connection pool. Mirror the rip path: read
         # the scalars under a brief session, release it, do the network work,
         # then reopen only to act on the result.
+        conjoined_hint: int | None = None
         try:
             job_tmdb_id: int | None = None
             job_detected_title: str | None = None
@@ -788,23 +912,42 @@ class MatchingCoordinator:
                 if runtimes and title_duration:
                     title_minutes = title_duration / 60
                     if not _duration_matches_episode_runtime(title_minutes, runtimes):
-                        # Re-fetch under a fresh session: _handle_extras writes.
-                        async with async_session() as session:
-                            job = await session.get(DiscJob, job_id)
-                            title = await session.get(DiscTitle, title_id)
-                            if job and title:
-                                handled = await self._handle_extras(
-                                    job_id,
-                                    title_id,
-                                    title,
-                                    job,
-                                    file_path,
-                                    title_minutes,
-                                    runtimes,
-                                    session,
-                                )
-                                if handled:
-                                    return
+                        # Before filing this as an extra, check whether it looks
+                        # like several conjoined episodes (cartoon segment discs).
+                        # If so it is ADMITTED to matching, not filed: the
+                        # positional vote runs decide what it actually holds.
+                        conjoined_hint = _conjoined_episode_count(title_minutes, runtimes)
+                        if conjoined_hint:
+                            # ids are sanitized because CodeQL traces them back to
+                            # HTTP path params (py/log-injection). FastAPI coerces
+                            # them to int so they cannot actually carry CR/LF, but
+                            # the barrier is cheap and matches how the rest of the
+                            # codebase clears this taint.
+                            logger.info(
+                                f"[MATCH] Title {sanitize_log_value(title_id)} "
+                                f"(Job {sanitize_log_value(job_id)}): duration "
+                                f"{title_minutes:.0f}min matches no single episode runtime "
+                                f"but fits ~{conjoined_hint} conjoined episodes. Proceeding "
+                                f"with matching; vote runs will confirm."
+                            )
+                        else:
+                            # Re-fetch under a fresh session: _handle_extras writes.
+                            async with async_session() as session:
+                                job = await session.get(DiscJob, job_id)
+                                title = await session.get(DiscTitle, title_id)
+                                if job and title:
+                                    handled = await self._handle_extras(
+                                        job_id,
+                                        title_id,
+                                        title,
+                                        job,
+                                        file_path,
+                                        title_minutes,
+                                        runtimes,
+                                        session,
+                                    )
+                                    if handled:
+                                        return
         except Exception as e:
             # Surface the full traceback: a silently-failing TMDB runtime
             # fetch here disables automatic extras detection (the pre-filter
@@ -844,7 +987,13 @@ class MatchingCoordinator:
         # 7. Run matching
         try:
             await self._match_single_file_inner(
-                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
+                job_id,
+                title_id,
+                file_path,
+                num_points,
+                min_vote_count,
+                advisory=advisory,
+                conjoined_hint=conjoined_hint,
             )
         except Exception as e:
             logger.exception(
@@ -1040,6 +1189,7 @@ class MatchingCoordinator:
         num_points: int | None = None,
         min_vote_count: int | None = None,
         advisory: bool = False,
+        conjoined_hint: int | None = None,
     ) -> None:
         """Inner matching logic, called under the match semaphore.
 
@@ -1047,6 +1197,12 @@ class MatchingCoordinator:
         REVIEW with ``forced_review`` and the contribution enqueue is skipped, so
         nothing is auto-organized and an unconfirmed match never poisons the
         fingerprint corpus.
+
+        ``conjoined_hint`` is the episode count the duration pre-filter admitted this
+        track on (see ``_conjoined_episode_count``), or None for an ordinary track. A
+        hinted track is parked for review even when the vote runs cannot confirm it,
+        because ASR still returns one confident episode and naming the file after it
+        would silently drop the rest.
         """
         match_start = time.monotonic()
 
@@ -1229,7 +1385,22 @@ class MatchingCoordinator:
                     # low-confidence result, so a confidence below the floor implies
                     # we are inside this branch. The fallback can therefore only
                     # auto-organize via a DiscDB mapping, never by confidence alone.
-                    if not advisory and result.confidence < DISCDB_FALLBACK_ASR_FLOOR:
+                    #
+                    # A conjoined track must never take the DiscDB disc-order
+                    # fallback. That mapping assigns ONE episode per physical title,
+                    # so it cannot describe a title holding two, and
+                    # try_discdb_assignment commits MATCHED at 0.99 and overwrites
+                    # match_details, destroying the verdict on the way out. Worse,
+                    # the bypass is CORRELATED with what it would bypass: a conjoined
+                    # track splits its votes between two episodes, and that split is
+                    # exactly what drags confidence below this floor. Skipping the
+                    # fallback leaves the track to the review routing below.
+                    if (
+                        not advisory
+                        and not conjoined_hint
+                        and not _is_multi_episode_result(result.match_details)
+                        and result.confidence < DISCDB_FALLBACK_ASR_FLOOR
+                    ):
                         if await self.try_discdb_assignment(job_id, title, session):
                             logger.info(
                                 f"[MATCH] Title {title_id} (Job {job_id}): ASR confidence "
@@ -1305,8 +1476,18 @@ class MatchingCoordinator:
                     if (result.match_details or {}).get("chromaprint_accepted"):
                         title.match_source = "engram_chromaprint"
 
-                    # Phase 1: enqueue contribution if extraction produced a fingerprint
-                    if title.chromaprint_blob and title.matched_episode:
+                    # Phase 1: enqueue contribution if extraction produced a
+                    # fingerprint. Never contribute a conjoined track: its
+                    # fingerprint spans two episodes but would be published under
+                    # the single winning code, poisoning the shared corpus for every
+                    # other user. Mirrors the advisory path, which skips the enqueue
+                    # for the weaker reason that the match is merely unconfirmed.
+                    if (
+                        title.chromaprint_blob
+                        and title.matched_episode
+                        and not conjoined_hint
+                        and not _is_multi_episode_result(result.match_details)
+                    ):
                         try:
                             import re as _re
 
@@ -1419,6 +1600,15 @@ class MatchingCoordinator:
                             )
 
                     title.match_details = json.dumps(_md)
+
+                # A conjoined track must not be auto-organized under a single code.
+                if _apply_multi_episode_review(title, conjoined_hint):
+                    # ids sanitized for the same reason as the pre-filter log above.
+                    logger.info(
+                        f"[MATCH] Title {sanitize_log_value(title_id)} "
+                        f"(Job {sanitize_log_value(job_id)}): routed to review "
+                        f"as multi-episode (hint={conjoined_hint})"
+                    )
 
                 # Only attribute the match to Engram when an episode match was
                 # actually recorded. A title routed to REVIEW with no episode must
