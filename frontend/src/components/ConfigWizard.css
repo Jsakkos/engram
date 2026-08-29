@@ -481,6 +481,23 @@
     border-color: rgba(255, 61, 127, 0.4);
 }
 
+/* An ordinary preference toggle. The tinted treatment above reads as a callout —
+   right for a privacy opt-in, wrong for a setting that simply has an on and an
+   off, which should sit as quietly as the fields around it. */
+.checkbox-label.checkbox-plain {
+    background: transparent;
+    border: 1px solid var(--color-sv-line);
+}
+
+.checkbox-label.checkbox-plain:hover {
+    background: rgba(94, 234, 212, 0.04);
+    border-color: var(--color-sv-line-hi);
+}
+
+.checkbox-label.checkbox-plain input[type="checkbox"] {
+    accent-color: var(--color-sv-cyan);
+}
+
 .checkbox-label input[type="checkbox"] {
     width: 18px;
     height: 18px;

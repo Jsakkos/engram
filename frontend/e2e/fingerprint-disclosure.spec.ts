@@ -96,6 +96,16 @@ test("Decline disables contributions", async ({ page }) => {
     // Decline — disables contributions
     await page.getByRole("button", { name: /disable contributions/i }).click();
 
+    // The handler awaits the PUT /api/config and only dismisses the modal once
+    // it comes back ok (App.tsx onDecline). Waiting for the dialog to close is
+    // therefore the signal that the write has landed. Reading the config the
+    // instant after the click is a read-after-write race, and on a busy backend
+    // the GET won it and saw the pre-decline value. The Accept test above
+    // already waits for this; the Decline test did not.
+    await expect(
+        page.getByRole("dialog", { name: /contributing audio fingerprints/i }),
+    ).toBeHidden();
+
     // Config must reflect contributions disabled
     const cfg = await page.request.get(`${API}/api/config`).then((r) => r.json());
     expect(cfg.enable_fingerprint_contributions).toBe(false);

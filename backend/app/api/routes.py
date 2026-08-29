@@ -18,8 +18,8 @@ from typing import Literal
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,12 @@ from app.api.guards import require_localhost, require_localhost_or_lan
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.errors import AIProviderError
-from app.core.security import is_allowed_image_url, sanitize_log_value
+from app.core.security import (
+    is_allowed_image_url,
+    is_within_configured_roots,
+    sanitize_log_value,
+    sanitize_playlist_field,
+)
 from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
 from app.matcher.coverage_tracker import get_cache_status
@@ -298,6 +303,7 @@ class ConfigResponse(BaseModel):
     staging_cleanup_days: int
     # Extras & naming
     extras_policy: str
+    always_review: bool
     naming_season_format: str
     naming_episode_format: str
     naming_movie_format: str
@@ -395,6 +401,7 @@ class ConfigUpdate(BaseModel):
     staging_cleanup_days: int | None = None
     # Extras & naming
     extras_policy: str | None = None
+    always_review: bool | None = None
     naming_season_format: str | None = None
     naming_episode_format: str | None = None
     naming_movie_format: str | None = None
@@ -1662,6 +1669,7 @@ async def get_config() -> ConfigResponse:
         staging_cleanup_days=config.staging_cleanup_days,
         # Extras & naming
         extras_policy=config.extras_policy,
+        always_review=config.always_review,
         naming_season_format=config.naming_season_format,
         naming_episode_format=config.naming_episode_format,
         naming_movie_format=config.naming_movie_format,
@@ -2767,10 +2775,19 @@ async def reset_all_jobs(session: AsyncSession = Depends(get_session)) -> dict:
     """Delete ALL jobs and titles regardless of state. Debug mode only."""
     from sqlalchemy import delete
 
+    from app.services.job_manager import job_manager
+
+    # Stop in-flight tasks BEFORE the rows go away. A live simulated rip holds
+    # ORM objects for these rows; deleting underneath it makes its next commit
+    # emit an UPDATE that matches zero rows (StaleDataError) and, until then,
+    # broadcast job/title updates for a job that no longer exists, which bleeds
+    # into whichever E2E test runs next.
+    cancelled = await job_manager.drain_active_tasks()
+
     await session.execute(delete(DiscTitle))
     result = await session.execute(delete(DiscJob))
     await session.commit()
-    return {"status": "reset", "deleted_count": result.rowcount}
+    return {"status": "reset", "deleted_count": result.rowcount, "cancelled_tasks": cancelled}
 
 
 @router.post("/simulate/seed-incomplete-rip", dependencies=[Depends(require_debug)])
@@ -3368,6 +3385,7 @@ async def _collect_environment() -> dict:
             "max_concurrent_matches": config.max_concurrent_matches,
             "conflict_resolution_default": config.conflict_resolution_default,
             "extras_policy": config.extras_policy,
+            "always_review": config.always_review,
             "discdb_enabled": config.discdb_enabled,
         },
     }
@@ -4184,6 +4202,149 @@ async def rematch_title(
         raise HTTPException(status_code=400, detail=str(e)) from None
 
     return {"status": "rematching", "title_id": title_id}
+
+
+async def _resolve_title_media_path(job: DiscJob, title_id: int, session: AsyncSession) -> Path:
+    """Resolve the on-disk media file for a title, or raise the right HTTPException.
+
+    Paths are read from the database and never accepted from the client. A title
+    records two of them, ``output_filename`` (the staging copy written at rip
+    time) and ``organized_to`` (where it landed in the library), and **neither is
+    authoritative on its own**, because they go stale in opposite directions:
+
+    * Organizing ``shutil.move``s the file to ``organized_to`` and leaves
+      ``output_filename`` pointing at a staging path that no longer exists.
+      Nothing clears it (``organizer.py`` moves; the finalization and
+      job-manager call sites only add ``organized_to`` alongside it).
+    * Re-ripping clears ``output_filename`` and writes a fresh one, but does
+      **not** clear a previously set ``organized_to``
+      (``job_manager.py`` around the re-rip reset).
+
+    So a fixed preference order is wrong in one direction or the other. Existence
+    on disk is the only reliable tiebreak; ``organized_to`` wins when both are
+    present, being the final location.
+
+    Distinguishes three failure modes deliberately, because they need different
+    user-facing fixes: nothing recorded (not ripped yet), recorded but gone
+    (cleaned up or moved externally), and out of bounds (bad data or
+    misconfiguration, which is a 403 rather than a 404 so it is not mistaken
+    for ordinary absence).
+
+    Containment is checked on **every** candidate before any existence check, so
+    the 403-versus-404 split can never be used as a file-existence oracle for a
+    path outside the configured roots.
+    """
+    from app.services.config_service import get_config
+
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job.id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    candidates = [p for p in (title.organized_to, title.output_filename) if p]
+    if not candidates:
+        raise HTTPException(
+            status_code=404,
+            detail="This track has not been ripped yet, so there is nothing to play",
+        )
+
+    config = await get_config()
+    roots = [
+        config.staging_path,
+        config.library_tv_path,
+        config.library_movies_path,
+        # Imports live wherever the user picked, not under the configured
+        # staging root: /api/import/start records that folder on the job and
+        # identify_from_staging writes output_filename inside it. Without these
+        # two, every imported job in review answers 403 for a file that is
+        # exactly where it belongs.
+        config.import_watch_path,
+        job.staging_path,
+    ]
+    in_bounds = [p for p in candidates if is_within_configured_roots(p, roots)]
+    if not in_bounds:
+        for rejected in candidates:
+            logger.warning(
+                "Refusing to serve media outside the configured roots: %s",
+                sanitize_log_value(rejected),
+            )
+        raise HTTPException(
+            status_code=403,
+            detail="This file is outside the configured staging and library folders",
+        )
+
+    for candidate in in_bounds:
+        path = Path(candidate).resolve(strict=False)
+        if path.is_file():
+            return path
+    raise HTTPException(status_code=404, detail="The file for this track is no longer on disk")
+
+
+@router.get(
+    "/jobs/{job_id}/titles/{title_id}/media",
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def stream_title_media(
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """Stream a ripped track for playback in an external player.
+
+    Serves the raw MKV untouched. Browsers cannot decode it (MKV container,
+    MPEG-2/HEVC video, DTS/TrueHD/AC3 audio), so this is consumed by VLC/MPV
+    and friends via the companion playlist endpoint, not by a <video> element.
+    Starlette's FileResponse implements Range/206/416, so seeking works without
+    any handling here.
+    """
+    path = await _resolve_title_media_path(job, title_id, session)
+    return FileResponse(path, media_type="video/x-matroska", filename=path.name)
+
+
+@router.get(
+    "/jobs/{job_id}/titles/{title_id}/playlist.m3u",
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def title_playlist(
+    request: Request,
+    title_id: int,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Return a one-entry .m3u pointing at this track's media URL.
+
+    The browser downloads this and the OS hands it to whatever owns .m3u,
+    which is how the track reaches a native player.
+
+    The media URL is built from the *request* URL, so it carries the host the
+    dashboard was actually reached on. Deriving it from settings.host instead
+    would emit ``localhost`` for every remote user: correct on the backend
+    machine, broken everywhere else, and invisible in local testing.
+
+    Dev-mode note: Vite's dev proxy sets ``changeOrigin: true``
+    (``frontend/vite.config.ts``), which rewrites the ``Host`` header seen
+    here to ``localhost:<backend port>``. So in dev this playlist's media URL
+    points at the backend origin while the frontend's own copied stream URL
+    uses the Vite origin — both work, but they visibly disagree, which is a
+    ``changeOrigin`` artifact of the dev proxy, not a bug. Production serves
+    the dashboard and the API from one origin, so this does not occur there.
+    """
+    # Resolve first so a missing or out-of-bounds file fails here, rather than
+    # handing the user a playlist that errors inside their player.
+    await _resolve_title_media_path(job, title_id, session)
+
+    title = await session.get(DiscTitle, title_id)
+    media_url = str(request.url_for("stream_title_media", job_id=job.id, title_id=title_id))
+    label = sanitize_playlist_field(
+        f"{job.detected_title or job.volume_label} - Title {title.title_index}"
+    )
+    body = f"#EXTM3U\n#EXTINF:-1,{label}\n{media_url}\n"
+    filename = f"engram-job-{job.id}-title-{title.title_index}.m3u"
+
+    return Response(
+        content=body,
+        media_type="audio/x-mpegurl",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/jobs/{job_id}/rematch")

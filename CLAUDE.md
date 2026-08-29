@@ -178,7 +178,7 @@ Integrated from standalone `mkv-episode-matcher` project. Flattened directory st
 
 ### API (`backend/app/api/`)
 
-- `routes.py` — REST endpoints under `/api` prefix (job CRUD, review actions, config, simulation, staging management, job history with `GET /api/jobs/history`, job detail with `GET /api/jobs/{job_id}/detail`, stats with `GET /api/jobs/stats`, diagnostics with `GET /api/diagnostics/report` and a downloadable per-job diagnostic `.zip` at `GET /api/diagnostics/report/{job_id}/bundle` — report.md + job-detail.json + job-tagged logs + raw MakeMKV scan/rip logs + subtitle cache/coverage, all sanitized via `_sanitize_obj`/`_sanitize_line`. Job-detail assembly is shared via `build_job_detail`; env/markdown via `_collect_environment`/`_build_markdown_summary`)
+- `routes.py` — REST endpoints under `/api` prefix (job CRUD, review actions, config, simulation, staging management, job history with `GET /api/jobs/history`, job detail with `GET /api/jobs/{job_id}/detail`, stats with `GET /api/jobs/stats`, diagnostics with `GET /api/diagnostics/report` and a downloadable per-job diagnostic `.zip` at `GET /api/diagnostics/report/{job_id}/bundle` — report.md + job-detail.json + job-tagged logs + raw MakeMKV scan/rip logs + subtitle cache/coverage, all sanitized via `_sanitize_obj`/`_sanitize_line`. Job-detail assembly is shared via `build_job_detail`; env/markdown via `_collect_environment`/`_build_markdown_summary`. External-player handoff for manual review at `GET /api/jobs/{job_id}/titles/{title_id}/media` + `.../playlist.m3u`, both gated by `require_localhost_or_lan`)
 - `validation.py` — Tool validation endpoints (`POST /api/validate/makemkv`, `POST /api/validate/ffmpeg`, `GET /api/detect-tools`)
 - `test_routes.py` — Standalone testing endpoints for subtitle download, transcription, matching
 - `websocket.py` — `ConnectionManager` singleton for broadcasting real-time updates to all connected clients
@@ -215,9 +215,30 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
 - **Database migration**: Alembic with async SQLModel metadata. `render_as_batch=True` for SQLite. Existing databases auto-stamped at head on first startup. `app_config` always preserves data via backup/restore (independent of Alembic).
 - **DiscDB mapping persistence**: `discdb_mappings_json` column on `DiscJob` stores serialized `DiscDbTitleMapping` list. Persisted during identification, restored from DB on server startup via `_restore_discdb_mappings()`.
 - **CI caching**: Playwright browsers cached by version, uv packages cached by lockfile hash, apt packages cached via `cache-apt-pkgs-action`.
+- **All-extras TV discs are held, not filed**: `check_job_completion` routes a TV disc whose
+  every track was classified as an extra to REVIEW_NEEDED rather than filing the lot into
+  `Extras/` and reporting success. "Nothing here is an episode" is far more often a failed
+  match than a genuine bonus disc, and the mis-file is invisible until someone browses the
+  library. Independent of `always_review` — this is the floor, not the override.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
 - **Import path ownership**: a staging path is owned by an *in-flight* job (hard block, not overridable) and merely recorded by a *completed* one (soft block, overridable via `force_keys`). `FAILED` never blocks. Rules live in `app/services/import_guard.py`; `POST /api/import/start` returns `{job_ids, blocked[]}` and never 409s.
 - **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.
+- **Review playback is a handoff, never a transcode.** The media endpoint serves
+  the raw MKV untouched and the `.m3u` hands it to a native player. **Do not
+  "fix" this by adding ffmpeg.** MakeMKV remuxes losslessly, so a rip holds
+  disc-native codecs (MKV container, MPEG-2/HEVC video, DTS/TrueHD/AC3 audio)
+  that no browser decodes, and the VLC browser plugin died with NPAPI, so
+  in-browser playback would require transcoding. ffmpeg is auto-detected
+  but **not bundled** (`engram.spec` ships only `fpcalc`), so it cannot be
+  depended on. Path resolution is `output_filename` then `organized_to`, always
+  from the DB and never from the client, constrained by
+  `is_within_configured_roots` to staging + both library roots +
+  `import_watch_path` + the job's own `staging_path` (manual imports live
+  wherever the user picked, so omitting the last two 403s every import).
+  Disc-derived label text goes through `sanitize_playlist_field` because `.m3u`
+  is line-oriented and a crafted volume label can otherwise forge a second
+  entry. The playlist URL comes from the request `Host`, never `settings.host`.
+  Rationale: `docs/superpowers/specs/2026-08-22-review-external-player-design.md`.
 - **Notification events**: `EVENTS` in `app/core/discord_notifier.py` maps `JobState` to
   presentation. Terminal events arrive via `on_terminal_state`; `REVIEW_NEEDED` arrives via
   `on_transition`, which receives `(job_id, to_state, from_state)` so a same-state
@@ -354,6 +375,10 @@ Components use updated settings
 - **API Keys**: `makemkv_key`, `tmdb_api_key` (redacted in responses)
 - **Matching**: `max_concurrent_matches` (default: 3), threshold constants in Analyst
 - **Conflict resolution**: `conflict_resolution_default` ("skip" | "overwrite" | "ask")
+- **Manual review**: `always_review` (bool, default false) — `check_job_completion` parks
+  every disc in REVIEW_NEEDED instead of finalizing. Checked AFTER the escalation ladders
+  (so the review opens with the matcher's best guess pre-filled) and gated on `has_matched`
+  (a disc with nothing left to organize must not be parked, or the review page can't finish it).
 - **Discord notifications**: `discord_template_completed` / `discord_template_failed` /
   `discord_template_review` (customizable embed description, chevron `{{var}}` mustache
   syntax, see `app/core/discord_notifier.py::ALLOWED_TEMPLATE_VARS`; empty string = built-in

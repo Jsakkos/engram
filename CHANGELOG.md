@@ -47,6 +47,23 @@ All notable changes to Engram will be documented in this file.
   runtime filter is disabled for that disc and the audio matcher — which compares
   content, not clocks — decides.
 
+## [0.33.0] - 2026-08-23
+
+_Highlights: watch a track in your own video player, straight from manual review._
+
+### Added
+
+- **Watch a track in your own video player, straight from manual review.** When
+  a disc is waiting on you and the evidence is ambiguous, the fastest way to
+  settle which episode a track is has always been to go and watch it, which
+  meant leaving the dashboard and hunting through the staging folder for a file
+  named `title_01.mkv`. Each track in the review inspector now offers **Open in
+  player**, which hands the file to VLC, MPV, IINA, or whatever owns playlists
+  on your system, and **Copy stream URL** for players that prefer an Open
+  Network Stream. Nothing is re-encoded, so you get the original picture with
+  every audio and subtitle track intact. This works from another machine too,
+  though only if you have turned on LAN access.
+
 ## [0.32.0] - 2026-08-19
 
 _Highlights: review jobs stay visible even after they age off the dashboard._
