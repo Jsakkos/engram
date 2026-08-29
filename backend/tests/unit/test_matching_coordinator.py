@@ -20,6 +20,7 @@ from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     MatchingCoordinator,
+    _conjoined_episode_count,
     _duration_matches_episode_runtime,
     episode_curator,
 )
@@ -1146,3 +1147,53 @@ class TestTryDiscdbAssignmentSource:
             t = await session.get(DiscTitle, title_id)
             assert t.match_source == "discdb"
             assert json.loads(t.match_details)["source"] == "discdb"
+
+
+@pytest.mark.unit
+class TestConjoinedEpisodeCount:
+    """Cartoon discs put two or three ~11-minute segments in one physical track.
+    TMDB lists each segment as its own episode, so the track only matches a SUM of
+    runtimes, never a single one. This predicate admits such a track to ASR; the
+    positional vote runs (app/matcher/multi_episode.py) make the real call.
+    """
+
+    WEEKENDERS_S1 = [11] * 16
+
+    def test_two_segment_track_admits_as_two(self):
+        # The reported bug: job 60, a 23-minute track of two 11-minute segments.
+        assert _conjoined_episode_count(23.0, self.WEEKENDERS_S1) == 2
+
+    def test_three_segment_track_admits_as_three(self):
+        # 3 x 11 = 33, window [28, 43].
+        assert _conjoined_episode_count(34.0, self.WEEKENDERS_S1) == 3
+
+    def test_single_episode_is_not_conjoined(self):
+        # 11 minutes is one segment. Callers test the single-episode window first;
+        # this predicate must not claim it.
+        assert _conjoined_episode_count(11.0, self.WEEKENDERS_S1) is None
+
+    def test_smallest_n_wins_when_windows_overlap(self):
+        # N=2 window [17, 32] and N=3 window [28, 43] overlap at [28, 32].
+        # Return the smaller; the vote runs correct it if wrong.
+        assert _conjoined_episode_count(30.0, self.WEEKENDERS_S1) == 2
+
+    def test_play_all_track_is_not_conjoined(self):
+        # Gilmore t00: 11515s = 191.9min. Above every N<=3 window, so it stays an
+        # extra. This is the existing test_play_all_track_is_an_extra invariant.
+        assert _conjoined_episode_count(11515 / 60, GILMORE_S1) is None
+
+    def test_four_segments_exceeds_the_cap(self):
+        # 4 x 11 = 44. Beyond MAX_CONJOINED_EPISODES: 10 scan points cannot
+        # resolve 4 runs (needs ~2 votes/run + seams), so refuse rather than guess.
+        assert _conjoined_episode_count(44.0, self.WEEKENDERS_S1) is None
+
+    def test_short_featurette_is_not_conjoined(self):
+        # 10 minutes against 22/44-minute episodes: below every sum window.
+        assert _conjoined_episode_count(10.0, [22, 44]) is None
+
+    def test_uses_consecutive_runtime_windows(self):
+        # A season whose runtimes vary: 22+22 = 44, window [39, 54].
+        assert _conjoined_episode_count(45.0, [22, 22, 44, 44]) == 2
+
+    def test_empty_runtimes_never_matches(self):
+        assert _conjoined_episode_count(23.0, []) is None
