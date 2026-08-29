@@ -42,6 +42,14 @@ EVENTS: dict[JobState, NotificationEvent] = {
 # from a state-machine callback.
 RIPPED_EVENT = NotificationEvent("ripped", "Disc Ripped", "💿", 0x3B82F6)
 
+# The three ways Engram finishes with a drive, rendered into {{rip_outcome}} and
+# the Status field. Constants rather than literals because Task 5 produces them
+# from three separate call sites in job_manager, where casing drift would show
+# up as two different-looking messages for the same event.
+RIP_OUTCOME_COMPLETE = "Complete"
+RIP_OUTCOME_STOPPED_EARLY = "Stopped early"
+RIP_OUTCOME_RERIP = "Re-rip"
+
 ALLOWED_TEMPLATE_VARS = frozenset(
     {
         "title",
@@ -259,7 +267,14 @@ def build_embed_fields(
         return []
 
     is_tv = job.content_type == ContentType.TV
-    reason = job.review_reason if event.key == "review" else job.error_message
+    # The ripped embed reports a hardware milestone, not a diagnosis: Status
+    # already says how the rip ended, and a genuine problem gets its own
+    # Failed or Review Needed notification afterwards. Surfacing a possibly
+    # stale error_message here would just be noise next to Status.
+    if event.key == "ripped":
+        reason = ""
+    else:
+        reason = job.review_reason if event.key == "review" else job.error_message
 
     subtitles = ""
     if job.subtitle_status:

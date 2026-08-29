@@ -8,6 +8,8 @@ import pytest
 
 from app.core.discord_notifier import (
     DEFAULT_TEMPLATE_COMPLETED,
+    RIP_OUTCOME_COMPLETE,
+    RIP_OUTCOME_STOPPED_EARLY,
     build_template_context,
     notify_discord,
     render_discord_template,
@@ -1389,3 +1391,34 @@ def test_status_field_dropped_when_outcome_is_blank():
     job = DiscJob(drive_id="E:", content_type=ContentType.MOVIE, detected_title="Inception")
     fields = build_embed_fields(job, [], RIPPED_EVENT, rip_outcome="")
     assert not [f for f in fields if f["name"] == "Status"]
+
+
+def test_reason_field_suppressed_on_ripped_but_not_failed():
+    """Status already says how the rip ended; error_message may be stale or
+    unrelated, so the ripped embed must not surface it as Reason."""
+    from app.core.discord_notifier import EVENTS, RIPPED_EVENT, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.MOVIE,
+        detected_title="Inception",
+        error_message="Cancelled by user",
+    )
+
+    ripped = build_embed_fields(job, [], RIPPED_EVENT, rip_outcome=RIP_OUTCOME_STOPPED_EARLY)
+    assert not [f for f in ripped if f["name"] == "Reason"]
+
+    failed = build_embed_fields(job, [], EVENTS[JobState.FAILED])
+    assert [f for f in failed if f["name"] == "Reason"]
+
+
+def test_build_embed_threads_rip_outcome_into_status_field():
+    """build_embed must actually pass rip_outcome down to build_embed_fields;
+    a deleted keyword here would ship a ripped embed with no Status field."""
+    from app.core.discord_notifier import RIPPED_EVENT, build_embed
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.MOVIE, detected_title="Inception")
+
+    embed = build_embed(job, [], RIPPED_EVENT, "desc", rip_outcome=RIP_OUTCOME_COMPLETE)
+    assert {"name": "Status", "value": RIP_OUTCOME_COMPLETE, "inline": True} in embed["fields"]
