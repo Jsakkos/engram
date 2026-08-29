@@ -47,10 +47,18 @@ The resulting signal, over the default 10 scan points:
 | Single ep + ASR noise | `E01 E01 E07 E01 E01 E13 E01 E01 E01 E01` | singletons dropped, single |
 | Episode + 12min featurette | `E01 E01 E01 E01 (abstain x6)` | 1 run, sparse coverage |
 
-**Where N stops.** N is bounded by evidence density, not by a magic number: a run needs
-at least 2 votes plus a seam, so `N_max ~= num_points / 3`. At the default 10 scan points
-that is `N <= 3`, which is also comfortably below the 80-minute Play All floor for any
-realistic segment length (11-minute segments would need N=8 to reach it).
+**Where N stops.** N is bounded by evidence density, not by a magic number, and the
+bound is enforced rather than assumed. With `N` evenly spaced scan points split into `R`
+runs, an edge run of `k` votes owns `(k - 0.5)/(N - 1)` of the timeline, so the territory
+rule can only reject the smallest admissible run when `N > 3R + 1`. Below that it cannot
+discriminate at all, so the module refuses the verdict (`insufficient_scan_depth`) instead
+of guessing. At the default 10 scan points a confident verdict therefore caps at **two**
+episodes; three needs the next lattice level (19).
+
+Note the two caps differ on purpose. The duration admission (Task 1) is permissive at
+`MAX_CONJOINED_EPISODES = 3` because its only job is deciding what is worth transcribing;
+the vote verdict is stricter because its job is deciding what to claim. Both sit far below
+the 80-minute Play All floor, and Play All titles are deselected before ripping anyway.
 
 ## Scope
 
@@ -258,8 +266,10 @@ Four checks turn runs into a verdict:
 3. **Coverage**: the runs must jointly account for most of the scan points. This is what
    separates "two conjoined episodes" from "one episode plus a bonus featurette", which
    duration arithmetic cannot do at all.
-4. **Balance**: each run must hold a fair share of the votes. A run of 2 votes at the tail
-   against a run of 7 is a "next time on" preview bleeding in, not a second episode.
+4. **Territory**: each run must OWN a fair share of the timeline. A recap that wins two
+   votes in the first 90 seconds occupies a sliver of the file; a real segment owns
+   roughly 1/N of it. This check uses run POSITION, not vote count, because by vote
+   count a 2-vote recap and a 2-vote genuine segment are indistinguishable.
 
 **Files:**
 - Create: `backend/app/matcher/multi_episode.py`
@@ -281,6 +291,8 @@ straddling the seam abstains (see select_chunk_vote's rank+margin rule).
 
 CI-safe: pure functions over synthetic vote lists. No MKV/audio/Whisper.
 """
+
+import json
 
 import pytest
 
@@ -373,9 +385,112 @@ class TestDecomposeVoteRuns:
             ("S01E02", [700, 830, 960, 1090]),
             ("S01E03", [1280, 1410, 1540, 1670]),
         )
-        verdict = decompose_vote_runs(v, total_scan_points=14)
+        verdict = decompose_vote_runs(v, total_scan_points=19)
         assert verdict.is_multi_episode is True
         assert verdict.codes == ("S01E01", "S01E02", "S01E03")
+
+    def test_recap_at_head_is_not_a_second_episode(self):
+        # A "previously on" recap wins two votes for the PRIOR episode at the head.
+        # By vote count it is indistinguishable from a real segment (2 vs 6 clears
+        # any mean-relative balance rule); by TERRITORY it owns a sliver, so it is
+        # rejected. This is the false positive a vote-count balance check admits.
+        v = _votes(
+            ("S01E04", [120, 250]),
+            ("S01E05", [380, 510, 640, 770, 900, 1030]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=10)
+        assert verdict.is_multi_episode is False
+        assert verdict.reason == "unbalanced_runs"
+
+    def test_three_runs_are_refused_at_default_scan_depth(self):
+        # Recap at the head plus a "next time on" preview at the tail around one
+        # real episode. At 10 scan points the territory rule cannot discriminate
+        # 3 runs at all (it needs N > 3R + 1), so the verdict is refused for want
+        # of evidence rather than guessed. Every point votes here deliberately:
+        # an abstention gap would let this pass on a rounding margin.
+        v = _votes(
+            ("S01E04", [0, 100]),
+            ("S01E05", [200, 300, 400, 500, 600, 700]),
+            ("S01E06", [800, 900]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=10)
+        assert verdict.is_multi_episode is False
+        assert verdict.reason == "insufficient_scan_depth"
+
+    def test_recap_and_preview_rejected_once_depth_supports_it(self):
+        # The same shape at the next lattice level (19), where the territory rule
+        # IS live: now it rejects on the merits rather than on scan depth.
+        v = _votes(
+            ("S01E04", [0, 100]),
+            ("S01E05", [200 + 100 * i for i in range(15)]),
+            ("S01E06", [1700, 1800]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=19)
+        assert verdict.is_multi_episode is False
+        assert verdict.reason == "unbalanced_runs"
+
+    def test_genuine_three_segments_accepted_at_sufficient_depth(self):
+        # A real 3-segment track at depth 19: each run owns about a third of the
+        # timeline, so it survives every guard.
+        v = _votes(
+            ("S01E01", [0, 100, 200, 300]),
+            ("S01E02", [500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500]),
+            ("S01E03", [1700, 1800, 1900, 2000]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=19)
+        assert verdict.is_multi_episode is True
+        assert verdict.reason == "contiguous_runs"
+
+    def test_low_vote_yield_pair_is_still_accepted(self):
+        # Near-wordless cartoons are both the target content AND the lowest
+        # vote-yield content, so the coverage floor must not reject them. Exactly
+        # at MIN_TIMELINE_COVERAGE (5 of 10): accepted, since the bound is strict.
+        v = _votes(("S01E01", [120, 250, 380]), ("S01E02", [820, 950]))
+        verdict = decompose_vote_runs(v, total_scan_points=10)
+        assert verdict.is_multi_episode is True
+        assert verdict.reason == "contiguous_runs"
+
+    def test_more_votes_than_scan_points_is_refused(self):
+        # A caller that double-counts a chunk across two coverages would otherwise
+        # push coverage above 1.0 and silently STRENGTHEN the verdict. Refuse.
+        v = _votes(("S01E01", [1, 2, 3]), ("S01E02", [4, 5, 6]))
+        verdict = decompose_vote_runs(v, total_scan_points=4)
+        assert verdict.is_multi_episode is False
+        assert verdict.reason == "invalid_input"
+
+    def test_conjoined_pair_at_default_scan_depth(self):
+        # canonical_scan_points snaps to the lattice (10/19/37/73/145), so 10 is
+        # the depth this actually runs at. The other pair tests use 11, which no
+        # real scan produces.
+        v = _votes(
+            ("S01E01", [120, 250, 380, 510]),
+            ("S01E02", [820, 950, 1080, 1210]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=10)
+        assert verdict.is_multi_episode is True
+
+    def test_three_segments_at_realistic_scan_depth(self):
+        # 12 votes is impossible at 10 scan points; 19 is the next lattice level.
+        v = _votes(
+            ("S01E01", [120, 250, 380, 510]),
+            ("S01E02", [700, 830, 960, 1090]),
+            ("S01E03", [1280, 1410, 1540, 1670]),
+        )
+        verdict = decompose_vote_runs(v, total_scan_points=19)
+        assert verdict.is_multi_episode is True
+
+    def test_to_dict_is_json_safe_and_playback_ordered(self):
+        # to_dict lands in DiscTitle.match_details and is read back by the UI.
+        v = _votes(
+            ("S01E04", [120, 250, 380, 510]),
+            ("S01E03", [820, 950, 1080, 1210]),
+        )
+        d = decompose_vote_runs(v, total_scan_points=10).to_dict()
+        assert json.loads(json.dumps(d)) == d
+        assert d["is_multi_episode"] is True
+        assert d["codes"] == ["S01E04", "S01E03"]
+        assert [r["code"] for r in d["runs"]] == ["S01E04", "S01E03"]
+        assert d["runs"][0]["votes"] == 4
 
     def test_no_votes_is_not_multi(self):
         verdict = decompose_vote_runs([], total_scan_points=10)
@@ -420,6 +535,13 @@ timeline; ASR confusion appears as interleaved singletons.
 
 Pure stdlib by design (no app.models, no app.services): the whole decision is
 testable with synthetic vote lists, no MKV or Whisper required.
+
+Known limitation: the span is measured between the first and last VOTE, not across
+the scanned range, so a file with a large unexplained head or tail (e.g. a third
+segment absent from the TMDB reference set) can still yield a confident two-episode
+verdict. Closing it needs the scan offsets, not just their count. Accepted for now
+because a positive verdict routes the track to REVIEW rather than naming it, so the
+cost is an incomplete suggestion a human corrects, not a wrong filename on disk.
 """
 
 from __future__ import annotations
@@ -433,12 +555,25 @@ MIN_RUN_VOTES = 2
 # The runs must jointly account for this fraction of scan points. Below it, some
 # unexplained content occupies the file (bonus features, a third unmatched
 # segment), so "N episodes end to end" is the wrong description of the track.
-MIN_TIMELINE_COVERAGE = 0.6
+# Kept at half rather than higher because near-wordless cartoons are exactly the
+# content this feature targets AND the content that yields the fewest votes.
+MIN_TIMELINE_COVERAGE = 0.5
 
-# Each run must hold at least this fraction of an equal share of the votes.
-# Conjoined segments are near-equal length, so a lopsided run is a recap or a
-# "next time on" preview bleeding across the boundary, not a real episode.
-MIN_RUN_BALANCE = 0.5
+# Each run must own at least this fraction of an equal share of the TIMELINE.
+# Deliberately positional rather than a vote-count ratio: by vote count a 2-vote
+# recap at the head and a 2-vote genuine segment are identical, but by territory
+# the recap owns a sliver and the segment owns roughly 1/N of the file.
+MIN_RUN_TERRITORY = 0.5
+
+# A run needs roughly this many scan points before its share of the timeline is
+# measurable at all. With N evenly spaced points split into R runs, an edge run of
+# k votes owns (k - 0.5)/(N - 1) of the span, so the territory rule can only reject
+# the smallest admissible run (k = MIN_RUN_VOTES = 2) when N > 3R + 1. Below that
+# the rule is not merely lenient, it is mathematically incapable of discriminating,
+# so refuse the verdict rather than return a guess the evidence cannot support.
+# At the default 10 scan points this caps a confident verdict at two episodes;
+# canonical_scan_points' next lattice level (19) supports three.
+MIN_SCAN_POINTS_PER_RUN = 3
 
 
 @dataclass(frozen=True)
@@ -465,7 +600,10 @@ class MultiEpisodeVerdict:
         return tuple(r.code for r in self.runs)
 
     def to_dict(self) -> dict:
-        """JSON-safe form for DiscTitle.match_details."""
+        """JSON-safe form for DiscTitle.match_details.
+
+        ``codes`` and ``runs`` are in PLAYBACK order, not TMDB numbering order.
+        """
         return {
             "is_multi_episode": self.is_multi_episode,
             "reason": self.reason,
@@ -482,7 +620,8 @@ class MultiEpisodeVerdict:
         }
 
 
-def _verdict(runs: tuple[EpisodeRun, ...], reason: str) -> MultiEpisodeVerdict:
+def _rejected(runs: tuple[EpisodeRun, ...], reason: str) -> MultiEpisodeVerdict:
+    """Build a negative verdict. Only ever False; the accepting path builds inline."""
     return MultiEpisodeVerdict(runs=runs, is_multi_episode=False, reason=reason)
 
 
@@ -504,7 +643,7 @@ def decompose_vote_runs(
         carries a ``reason`` so the decision is legible in logs and match_details.
     """
     if not votes or total_scan_points <= 0:
-        return _verdict((), "no_votes")
+        return _rejected((), "no_votes")
 
     # 1. Group votes by code and drop noise singletons.
     by_code: dict[str, list[float]] = {}
@@ -522,7 +661,7 @@ def decompose_vote_runs(
         if len(starts) >= MIN_RUN_VOTES
     ]
     if not runs:
-        return _verdict((), "no_votes")
+        return _rejected((), "no_votes")
 
     # Playback order: a disc may pair segments TMDB does not number consecutively,
     # so position on the timeline is the ordering that reflects the file.
@@ -530,28 +669,51 @@ def decompose_vote_runs(
     ordered = tuple(runs)
 
     if len(ordered) == 1:
-        return _verdict(ordered, "single_episode")
+        return _rejected(ordered, "single_episode")
 
     # 2. Contiguity: each run must occupy its own stretch of the timeline. Any
     # overlap means the codes interleave, which is ASR confusion between similar
-    # episodes rather than two episodes stored end to end.
-    for earlier, later in zip(ordered, ordered[1:]):
+    # episodes rather than two episodes stored end to end. Adjacent pairs suffice:
+    # runs are sorted by first_start, so if every neighbour clears the previous
+    # run's last_start, every non-adjacent pair does too (and a nested run is
+    # always caught against its immediate predecessor).
+    for earlier, later in zip(ordered, ordered[1:], strict=False):
         if later.first_start <= earlier.last_start:
-            return _verdict(ordered, "interleaved_runs")
+            return _rejected(ordered, "interleaved_runs")
 
-    # 3. Coverage: the runs must explain most of what was scanned.
+    # 3. Coverage: the runs must explain most of what was scanned. A caller that
+    # reports more votes than chunks has double-counted; refuse rather than let a
+    # broken caller silently strengthen the verdict.
     counted = sum(r.votes for r in ordered)
+    if counted > total_scan_points:
+        return _rejected(ordered, "invalid_input")
+    if total_scan_points <= MIN_SCAN_POINTS_PER_RUN * len(ordered) + 1:
+        return _rejected(ordered, "insufficient_scan_depth")
+
     if counted / total_scan_points < MIN_TIMELINE_COVERAGE:
-        return _verdict(ordered, "sparse_coverage")
+        return _rejected(ordered, "sparse_coverage")
 
-    # 4. Balance: no run may be a sliver against the others.
-    fair_share = counted / len(ordered)
-    if any(r.votes < fair_share * MIN_RUN_BALANCE for r in ordered):
-        return _verdict(ordered, "unbalanced_runs")
+    # 4. Territory: each run owns the stretch from its midpoint with the previous
+    # run to its midpoint with the next. A recap or a "next time on" preview wins
+    # votes but owns almost no timeline, so this rejects what a vote-count ratio
+    # cannot: by vote count a 2-vote recap and a 2-vote real segment are identical.
+    edges = [ordered[0].first_start]
+    for earlier, later in zip(ordered, ordered[1:], strict=False):
+        edges.append((earlier.last_start + later.first_start) / 2)
+    edges.append(ordered[-1].last_start)
+    span = edges[-1] - edges[0]
+    # `not span > 0` rather than `span <= 0`: a NaN timestamp makes every
+    # comparison False, so it would otherwise pass contiguity, pass this guard,
+    # fail every territory test, and return a confident verdict serializing to
+    # invalid JSON.
+    if not span > 0:
+        return _rejected(ordered, "degenerate_span")
+    fair_share = 1.0 / len(ordered)
+    for i in range(len(ordered)):
+        if (edges[i + 1] - edges[i]) / span < fair_share * MIN_RUN_TERRITORY:
+            return _rejected(ordered, "unbalanced_runs")
 
-    return MultiEpisodeVerdict(
-        runs=ordered, is_multi_episode=True, reason="contiguous_runs"
-    )
+    return MultiEpisodeVerdict(runs=ordered, is_multi_episode=True, reason="contiguous_runs")
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -560,7 +722,7 @@ def decompose_vote_runs(
 cd backend && uv run pytest tests/unit/test_multi_episode.py -v
 ```
 
-Expected: PASS, 10 tests.
+Expected: PASS, 19 tests.
 
 - [ ] **Step 5: Lint**
 
@@ -582,44 +744,68 @@ git commit -m "feat(matcher): decompose chunk votes into positional episode runs
 ### Task 3: Wire the verdict through matching
 
 Three edits: the matcher publishes the verdict, the pre-filter stops being terminal,
-and a confirmed multi-episode match goes to REVIEW instead of being auto-organized
-under one of its two codes.
+and any track that is or might be multi-episode goes to REVIEW instead of being
+auto-organized under one of its codes.
+
+**Note the two functions.** The duration pre-filter lives in `_run_match_single_file`
+(starts line 697) but the MATCHED handling lives in `_match_single_file_inner` (starts
+line 1078). They are DIFFERENT functions: `_run_match_single_file` calls the inner one
+at line 889. A local variable will not carry between them, so the conjoined hint is
+passed as a new parameter.
 
 **Files:**
-- Modify: `backend/app/matcher/episode_identification.py:1910-1916` (the `match_stats` dict)
-- Modify: `backend/app/services/matching_coordinator.py:788-806` (the pre-filter branch)
-- Modify: `backend/app/services/matching_coordinator.py` (post-match, near the `MATCHED` commit at ~line 1425)
+- Modify: `backend/app/matcher/episode_identification.py:1911-1916` (the `match_stats` dict)
+- Modify: `backend/app/services/matching_coordinator.py:831-849` (the pre-filter branch)
+- Modify: `backend/app/services/matching_coordinator.py:889` and `:1078-1086` (pass the hint)
+- Modify: `backend/app/services/matching_coordinator.py:1472` (post-match routing)
 - Test: `backend/tests/unit/test_matching_coordinator.py`
 
 - [ ] **Step 1: Publish the verdict from the matcher**
 
-In `backend/app/matcher/episode_identification.py`, add the import near the other
+In `backend/app/matcher/episode_identification.py`, add the import next to the other
 matcher imports at the top of the file:
 
 ```python
 from app.matcher.multi_episode import decompose_vote_runs
 ```
 
-Then replace the `match_stats` assignment (currently lines 1910-1916, beginning
-`# Prepare detailed stats for return`) with:
+Then replace lines 1911-1916 (beginning `# Prepare detailed stats for return`) with:
 
 ```python
             # Prepare detailed stats for return
             # Positional vote runs: a track holding two conjoined ~11-minute
             # segments votes for E01 across the first half and E02 across the
             # second, with the seam chunk abstaining. coverages already carries
-            # every vote's timestamp, so this needs no extra transcription.
+            # every vote's timestamp, so this costs no extra transcription.
             # extract_season_episode returns (None, None) for a reference name it
-            # cannot parse, so filter before formatting, because an unguarded
-            # "S{:02d}".format(None) would raise ValueError and abort the match.
-            positional_votes = []
+            # cannot parse, so filter before formatting: an unguarded
+            # "S{:02d}".format(None) raises ValueError and would abort the match.
+            positional_votes: list[tuple[float, str]] = []
             for cov in coverages.values():
-                _s, _e = extract_season_episode(cov.episode_name)
-                if _s is None or _e is None:
+                cov_season, cov_episode = extract_season_episode(cov.episode_name)
+                if cov_season is None or cov_episode is None:
                     continue
-                _code = f"S{_s:02d}E{_e:02d}"
-                positional_votes.extend((chunk["start"], _code) for chunk in cov.matched_chunks)
+                cov_code = f"S{cov_season:02d}E{cov_episode:02d}"
+                positional_votes.extend((c["start"], cov_code) for c in cov.matched_chunks)
+
             multi_verdict = decompose_vote_runs(positional_votes, len(scan_points))
+            multi_detail = multi_verdict.to_dict()
+
+            # decompose_vote_runs normalizes against the VOTED span, so a stretch
+            # of the file that never voted is invisible to it (a third segment
+            # missing from the TMDB reference set, say). Record the unexplained
+            # head and tail here, where the scan offsets are in scope, so a
+            # reviewer looking at a two-code suggestion for a three-segment file
+            # has a signal that something is unaccounted for. Under-listing is
+            # otherwise silent: a short code list looks complete.
+            if positional_votes and scan_points:
+                multi_detail["head_gap_seconds"] = round(
+                    min(v[0] for v in positional_votes) - scan_points[0], 1
+                )
+                multi_detail["tail_gap_seconds"] = round(
+                    scan_points[-1] - max(v[0] for v in positional_votes), 1
+                )
+
             if multi_verdict.is_multi_episode:
                 logger.info(
                     f"[Matcher] {video_file}: chunk votes describe "
@@ -631,7 +817,7 @@ Then replace the `match_stats` assignment (currently lines 1910-1916, beginning
                 "matches_found": matches_found_count,
                 "matches_rejected": matches_rejected_count,
                 "total_chunks": len(scan_points),
-                "multi_episode": multi_verdict.to_dict(),
+                "multi_episode": multi_detail,
             }
 ```
 
@@ -641,8 +827,16 @@ No change is needed in `backend/app/core/curator.py`: `match_stats` is merged in
 
 - [ ] **Step 2: Make the duration pre-filter non-terminal**
 
-In `backend/app/services/matching_coordinator.py`, replace the body of the
-`if runtimes and title_duration:` branch (currently lines 788-806) with:
+In `backend/app/services/matching_coordinator.py`, inside `_run_match_single_file`,
+initialize the hint BEFORE the `try:` that opens the duration pre-filter (the `try:`
+just after the `# 4. Duration pre-filter` comment block, around line 812), so it is in
+scope after the `except`:
+
+```python
+        conjoined_hint: int | None = None
+```
+
+Then replace lines 831-849 (the `if runtimes and title_duration:` branch) with:
 
 ```python
                 if runtimes and title_duration:
@@ -652,12 +846,12 @@ In `backend/app/services/matching_coordinator.py`, replace the body of the
                         # like several conjoined episodes (cartoon segment discs).
                         # If so it is ADMITTED to matching, not filed: the
                         # positional vote runs decide what it actually holds.
-                        conjoined_n = _conjoined_episode_count(title_minutes, runtimes)
-                        if conjoined_n:
+                        conjoined_hint = _conjoined_episode_count(title_minutes, runtimes)
+                        if conjoined_hint:
                             logger.info(
                                 f"[MATCH] Title {title_id} (Job {job_id}): duration "
                                 f"{title_minutes:.0f}min matches no single episode runtime "
-                                f"but fits ~{conjoined_n} conjoined episodes. Proceeding "
+                                f"but fits ~{conjoined_hint} conjoined episodes. Proceeding "
                                 f"with matching; vote runs will confirm."
                             )
                         else:
@@ -680,49 +874,116 @@ In `backend/app/services/matching_coordinator.py`, replace the body of the
                                         return
 ```
 
-- [ ] **Step 3: Route a confirmed multi-episode match to REVIEW**
+- [ ] **Step 3: Pass the hint into the inner function**
 
-In `backend/app/services/matching_coordinator.py`, add the error-code constant next to
-`RIP_FAILURE_ERROR_CODES` (line 197):
+Still in `backend/app/services/matching_coordinator.py`, change the call at line 889 from:
 
 ```python
-# A track the vote runs showed holds several conjoined episodes. Parked for a human
+            await self._match_single_file_inner(
+                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
+            )
+```
+
+to:
+
+```python
+            await self._match_single_file_inner(
+                job_id,
+                title_id,
+                file_path,
+                num_points,
+                min_vote_count,
+                advisory=advisory,
+                conjoined_hint=conjoined_hint,
+            )
+```
+
+And add the parameter to `_match_single_file_inner`'s signature (line 1078-1086),
+keeping the existing docstring and appending the new paragraph to it:
+
+```python
+    async def _match_single_file_inner(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+        advisory: bool = False,
+        conjoined_hint: int | None = None,
+    ) -> None:
+```
+
+Append this paragraph to that method's existing docstring:
+
+```
+        ``conjoined_hint`` is the episode count the duration pre-filter admitted this
+        track on (see ``_conjoined_episode_count``), or None for an ordinary track. A
+        hinted track is parked for review even when the vote runs cannot confirm it,
+        because ASR still returns one confident episode and naming the file after it
+        would silently drop the rest.
+```
+
+- [ ] **Step 4: Route multi-episode tracks to REVIEW**
+
+Add the error-code constant next to `RIP_FAILURE_ERROR_CODES` (line 197 area):
+
+```python
+# A track that is, or might be, several conjoined episodes. Parked for a human
 # because Engram cannot yet NAME a multi-episode file (S01E01-E02 organizing is a
 # separate change): auto-organizing it under one of its codes would silently lose
-# the other episode.
+# the others.
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
 ```
 
-Then, in `_match_single_title`, immediately before the existing
+Then, in `_match_single_file_inner`, immediately BEFORE the existing line
 `if title.state == TitleState.MATCHED and title.match_source != "engram_chromaprint":`
-line (~1425), insert:
+(line 1472), insert:
 
 ```python
                 # A track the chunk votes show is several conjoined episodes must
-                # not be auto-organized under a single code, because the other episode(s)
-                # would vanish from the library. Park it for a human instead.
-                _multi = {}
+                # not be auto-organized under a single code: the other episodes
+                # would vanish from the library. The same applies to a track the
+                # DURATION admitted as conjoined whose votes could NOT confirm it
+                # (too few scan points for the run count, sparse coverage) -- ASR
+                # still returns one confident episode, so the silent-drop risk is
+                # identical. Park both for a human; only the message differs.
+                multi_detail = {}
                 if title.match_details:
                     try:
-                        _multi = (json.loads(title.match_details) or {}).get(
-                            "multi_episode"
-                        ) or {}
+                        multi_detail = (
+                            json.loads(title.match_details) or {}
+                        ).get("multi_episode") or {}
                     except (json.JSONDecodeError, TypeError):
-                        _multi = {}
-                if _multi.get("is_multi_episode"):
-                    _codes = _multi.get("codes") or []
+                        multi_detail = {}
+                confirmed_multi = bool(multi_detail.get("is_multi_episode"))
+                if confirmed_multi or conjoined_hint:
+                    details = json.loads(title.match_details) if title.match_details else {}
+                    codes = multi_detail.get("codes") or []
                     title.state = TitleState.REVIEW
-                    _md = json.loads(title.match_details)
-                    _md["error"] = MULTI_EPISODE_ERROR_CODE
-                    _md["message"] = (
-                        f"This track appears to contain {len(_codes)} episodes "
-                        f"({', '.join(_codes)}). Engram cannot name a combined file "
-                        "yet. Assign one episode, or mark it as an Extra."
+                    details["error"] = MULTI_EPISODE_ERROR_CODE
+                    if confirmed_multi:
+                        details["message"] = (
+                            f"This track appears to contain {len(codes)} episodes "
+                            f"({', '.join(codes)}). Engram cannot name a combined file "
+                            "yet. Assign one episode, or mark it as an Extra."
+                        )
+                    else:
+                        details["message"] = (
+                            f"This track's runtime suggests about {conjoined_hint} "
+                            "episodes joined together, but the audio match could not "
+                            f"confirm it ({multi_detail.get('reason', 'no verdict')}). "
+                            "Check it before assigning an episode."
+                        )
+                    title.match_details = json.dumps(details)
+                    logger.info(
+                        f"[MATCH] Title {title_id} (Job {job_id}): routed to review as "
+                        f"multi-episode (confirmed={confirmed_multi}, "
+                        f"hint={conjoined_hint}, codes={codes})"
                     )
-                    title.match_details = json.dumps(_md)
 ```
 
-- [ ] **Step 4: Write the failing test**
+- [ ] **Step 5: Write the tests**
 
 Append to `backend/tests/unit/test_matching_coordinator.py`:
 
@@ -731,38 +992,183 @@ Append to `backend/tests/unit/test_matching_coordinator.py`:
 class TestConjoinedAdmission:
     """The duration pre-filter must ADMIT a plausibly-conjoined track to matching
     instead of filing it as an extra (issue #622), and must still file a genuine
-    extra. _handle_extras is stubbed; only the branch decision is under test.
+    extra. These cover the branch decision only; the wiring is exercised by the
+    integration path.
     """
 
-    def test_conjoined_track_is_not_filed_as_extra(self):
-        # 23min against [11]*16: no single runtime matches, but 2 x 11 does.
-        assert _duration_matches_episode_runtime(23.0, [11] * 16) is False
-        assert _conjoined_episode_count(23.0, [11] * 16) == 2
+    WEEKENDERS_S1 = [11] * 16
+
+    def test_conjoined_track_is_admitted_not_filed(self):
+        # 23min against [11]*16: no single runtime matches, but 2 x 11 does, so
+        # the track proceeds to ASR instead of reaching _handle_extras.
+        assert _duration_matches_episode_runtime(23.0, self.WEEKENDERS_S1) is False
+        assert _conjoined_episode_count(23.0, self.WEEKENDERS_S1) == 2
 
     def test_featurette_still_files_as_extra(self):
-        # Neither a single runtime nor any sum: this must still reach _handle_extras.
-        assert _duration_matches_episode_runtime(6.0, [11] * 16) is False
-        assert _conjoined_episode_count(6.0, [11] * 16) is None
+        # Neither a single runtime nor any sum: must still reach _handle_extras.
+        assert _duration_matches_episode_runtime(6.0, self.WEEKENDERS_S1) is False
+        assert _conjoined_episode_count(6.0, self.WEEKENDERS_S1) is None
+
+
+@pytest.mark.unit
+class TestMultiEpisodeReviewRouting:
+    """A track that is, or might be, several conjoined episodes must land in REVIEW
+    rather than MATCHED. Auto-organizing it under one code silently loses the rest,
+    which is the failure this whole change exists to prevent.
+    """
+
+    def _title(self, details: dict | None):
+        return SimpleNamespace(
+            state=TitleState.MATCHED,
+            match_details=json.dumps(details) if details is not None else None,
+            match_source="engram",
+        )
+
+    def test_confirmed_multi_episode_goes_to_review(self):
+        from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE
+
+        details = {
+            "multi_episode": {
+                "is_multi_episode": True,
+                "reason": "contiguous_runs",
+                "codes": ["S01E01", "S01E02"],
+            }
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=2)
+        assert title.state == TitleState.REVIEW
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        assert "S01E01, S01E02" in parsed["message"]
+
+    def test_admitted_but_unconfirmed_goes_to_review(self):
+        # The votes could not confirm it (insufficient scan depth). ASR still
+        # returned one confident episode, so naming the file would drop the rest.
+        from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE
+
+        details = {
+            "multi_episode": {
+                "is_multi_episode": False,
+                "reason": "insufficient_scan_depth",
+                "codes": [],
+            }
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=3)
+        assert title.state == TitleState.REVIEW
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        assert "insufficient_scan_depth" in parsed["message"]
+
+    def test_ordinary_single_episode_is_untouched(self):
+        details = {"multi_episode": {"is_multi_episode": False, "reason": "single_episode"}}
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.state == TitleState.MATCHED
+        assert "error" not in json.loads(title.match_details)
+
+    def test_malformed_match_details_does_not_raise(self):
+        title = SimpleNamespace(
+            state=TitleState.MATCHED, match_details="not json", match_source="engram"
+        )
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.state == TitleState.MATCHED
 ```
 
-- [ ] **Step 5: Run the full matching + matcher unit tests**
+For those tests to run, the routing logic in Step 4 must be extracted into a
+module-level helper rather than being inlined, so it is testable without a DB. Define
+it next to `MULTI_EPISODE_ERROR_CODE`:
+
+```python
+def _apply_multi_episode_review(title, conjoined_hint: int | None) -> bool:
+    """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
+
+    A track the chunk votes show is several conjoined episodes must not be
+    auto-organized under a single code: the other episodes would vanish from the
+    library. The same applies to a track the DURATION admitted as conjoined whose
+    votes could NOT confirm it (too few scan points for the run count, sparse
+    coverage) -- ASR still returns one confident episode, so the silent-drop risk is
+    identical. Only the reviewer-facing message differs.
+    """
+    multi_detail = {}
+    if title.match_details:
+        try:
+            multi_detail = (json.loads(title.match_details) or {}).get("multi_episode") or {}
+        except (json.JSONDecodeError, TypeError):
+            multi_detail = {}
+    confirmed_multi = bool(multi_detail.get("is_multi_episode"))
+    if not (confirmed_multi or conjoined_hint):
+        return False
+
+    try:
+        details = json.loads(title.match_details) if title.match_details else {}
+    except (json.JSONDecodeError, TypeError):
+        details = {}
+    codes = multi_detail.get("codes") or []
+    title.state = TitleState.REVIEW
+    details["error"] = MULTI_EPISODE_ERROR_CODE
+    if confirmed_multi:
+        details["message"] = (
+            f"This track appears to contain {len(codes)} episodes "
+            f"({', '.join(codes)}). Engram cannot name a combined file yet. "
+            "Assign one episode, or mark it as an Extra."
+        )
+    else:
+        details["message"] = (
+            f"This track's runtime suggests about {conjoined_hint} episodes joined "
+            "together, but the audio match could not confirm it "
+            f"({multi_detail.get('reason', 'no verdict')}). "
+            "Check it before assigning an episode."
+        )
+    title.match_details = json.dumps(details)
+    return True
+```
+
+Then Step 4's inlined block becomes just:
+
+```python
+                if _apply_multi_episode_review(title, conjoined_hint):
+                    logger.info(
+                        f"[MATCH] Title {title_id} (Job {job_id}): routed to review "
+                        f"as multi-episode (hint={conjoined_hint})"
+                    )
+```
+
+Add `_apply_multi_episode_review` to the test file's existing import block from
+`app.services.matching_coordinator`, and make sure `SimpleNamespace` and `json` are
+imported in that test file (both already are, at lines 9 and 11).
+
+- [ ] **Step 6: Run the matching and matcher unit tests**
 
 ```bash
-cd backend && uv run pytest tests/unit/test_matching_coordinator.py tests/unit/test_multi_episode.py tests/unit/test_episode_identification.py tests/unit/test_chunk_vote_gate.py -v
+cd backend && uv run pytest tests/unit/test_matching_coordinator.py tests/unit/test_multi_episode.py tests/unit/test_episode_identification.py tests/unit/test_chunk_vote_gate.py tests/unit/test_curator.py -v
 ```
 
 Expected: PASS. Watch specifically that `test_play_all_track_is_an_extra` and
 `test_short_featurette_is_an_extra` stay green: they are the invariants this task
 could plausibly break.
 
-- [ ] **Step 6: Commit**
+Then lint:
+
+```bash
+cd backend && uv run ruff check app tests && uv run ruff format --check app tests
+```
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add backend/app/matcher/episode_identification.py backend/app/services/matching_coordinator.py backend/tests/unit/test_matching_coordinator.py
 git commit -m "feat(matching): admit conjoined tracks to ASR and park them for review (#622)"
 ```
 
----
+**Deferred, deliberately:** `insufficient_scan_depth` semantically means "retry
+deeper" rather than "no", and the machinery exists (`identify_episode` takes
+`num_points` on the 10/19/37/73/145 lattice, already used by the deep re-match path).
+This task does NOT escalate. The consequence is that a genuine THREE-segment track is
+never confirmed at the default depth; it is parked for review via the
+`conjoined_hint` path instead, which is safe but not automatic. The reported bug
+(#622) is the two-segment case, which is fully handled at depth 10. Escalation
+belongs with the multi-episode naming work.
 
 ### Task 4: Register the review code as non-rematchable
 
