@@ -154,14 +154,61 @@ _INVALID_MODEL_MESSAGE = (
     "to use Engram's default for {provider}."
 )
 
+# Local servers have no account, no billing and no key, so the remote wording
+# ("the account has no API credits") is actively misleading. These override
+# _CAUSE_MESSAGES for the local slugs only. {provider} is the display label,
+# {url} the resolved base URL, {model} the requested model id, and {hint} a
+# per-product instruction for starting the server.
+_LOCAL_CAUSE_MESSAGES: dict[ProviderErrorCode, str] = {
+    "network": "Could not reach {provider} at {url}. Is the server running? ({hint})",
+    "timeout": (
+        "{provider} at {url} did not respond in time. A model loading for the first "
+        "time can be slow; try again once it is loaded."
+    ),
+    "model_unavailable": "Model '{model}' is not available in {provider}. {pull}",
+    "bad_key": "{provider} rejected the request at {url}.",
+    "no_credits": "{provider} rejected the request at {url}.",
+    "rate_limited": "{provider} at {url} is busy. Wait a moment and try again.",
+    "bad_request": "{provider} at {url} rejected the request.",
+    "unknown": "{provider} at {url} returned an unexpected error.",
+}
 
-def classify_provider_error(provider: str, exc: Exception) -> tuple[ProviderErrorCode, str]:
+_LOCAL_START_HINTS = {
+    "ollama": "run: ollama serve",
+    "lmstudio": "start the server from LM Studio's Developer tab",
+}
+
+_LOCAL_PULL_HINTS = {
+    "ollama": "Pull it first: ollama pull {model}",
+    "lmstudio": "Download it in LM Studio, then load it.",
+}
+
+# Shown when a local provider has no model set. Unlike the remote providers
+# there is no default to fall back to, so this is a hard stop rather than a
+# silent None.
+_LOCAL_BLANK_MODEL_MESSAGE = (
+    "Select a model for {provider}. Local providers have no default, because the "
+    "answer depends on which models you have installed."
+)
+
+
+def classify_provider_error(
+    provider: str,
+    exc: Exception,
+    *,
+    base_url: str = "",
+    model: str = "",
+) -> tuple[ProviderErrorCode, str]:
     """Map a provider failure to a stable ``(code, human_message)`` pair.
 
     The provider's own body is the only thing that separates a permanently
     exhausted quota from transient throttling (both are HTTP 429 on OpenAI), so
     this reads it. The body is never returned to the caller; it is summarised
     into a fixed sentence and left to the logs.
+
+    ``base_url`` and ``model`` are used only for the local providers, whose
+    messages name the endpoint and the model because "connection refused" is
+    useless to a user who has three inference servers on different ports.
     """
     code: ProviderErrorCode
     if isinstance(exc, httpx.TimeoutException):
@@ -172,7 +219,19 @@ def classify_provider_error(provider: str, exc: Exception) -> tuple[ProviderErro
         code = "network"
     else:
         code = "unknown"
-    return code, _CAUSE_MESSAGES[code].format(provider=_PROVIDER_LABELS.get(provider, provider))
+
+    label = _PROVIDER_LABELS.get(provider, provider)
+    if provider in LOCAL_PROVIDERS:
+        template = _LOCAL_CAUSE_MESSAGES.get(code, _LOCAL_CAUSE_MESSAGES["unknown"])
+        pull = _LOCAL_PULL_HINTS.get(provider, "").format(model=model or "the model")
+        return code, template.format(
+            provider=label,
+            url=base_url or LOCAL_DEFAULT_BASE_URLS.get(provider, ""),
+            model=model or "(none set)",
+            hint=_LOCAL_START_HINTS.get(provider, ""),
+            pull=pull,
+        )
+    return code, _CAUSE_MESSAGES[code].format(provider=label)
 
 
 def _classify_status(provider: str, exc: httpx.HTTPStatusError) -> ProviderErrorCode:

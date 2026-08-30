@@ -1086,3 +1086,60 @@ class TestAiIsConfigured:
 
         assert ai_is_configured("ollama", "") is True
         assert ai_is_configured("lmstudio", "") is True
+
+
+class TestLocalErrorMessages:
+    def test_network_failure_names_the_product_and_url(self):
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        code, message = classify_provider_error(
+            "ollama",
+            httpx.ConnectError("refused"),
+            base_url="http://localhost:11434/v1",
+        )
+        assert code == "network"
+        assert "Ollama" in message
+        assert "http://localhost:11434/v1" in message
+        assert "ollama serve" in message
+
+    def test_lmstudio_network_failure_does_not_mention_ollama(self):
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error(
+            "lmstudio",
+            httpx.ConnectError("refused"),
+            base_url="http://localhost:1234/v1",
+        )
+        assert "LM Studio" in message
+        assert "ollama" not in message.lower()
+
+    def test_404_tells_the_user_to_pull_the_model(self):
+        from app.core.ai_client import classify_provider_error
+
+        code, message = classify_provider_error(
+            "ollama",
+            _status_error_with_body(404, "model not found"),
+            model="llama3.1:8b",
+        )
+        assert code == "model_unavailable"
+        assert "ollama pull llama3.1:8b" in message
+
+    def test_remote_providers_keep_their_wording(self):
+        """Regression guard: the local table must not leak into remote text."""
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error("openai", httpx.ConnectError("refused"))
+        assert message == "Could not reach OpenAI. Check the internet connection."
+
+    def test_no_credits_is_never_reported_for_a_local_provider(self):
+        """A local server has no billing, so the remote wording would be nonsense."""
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error("ollama", _status_error_with_body(402, ""))
+        assert "credits" not in message.lower()
