@@ -1386,3 +1386,53 @@ class TestProviderLabelInFallbackMessages:
                 )
 
         assert "OpenAI returned a reply that was not valid JSON" in str(exc.value)
+
+
+class TestPreambleTolerantParsing:
+    def test_extracts_json_after_a_reasoning_preamble(self):
+        from app.core.ai_client import _parse_json_text
+
+        text = 'Let me think about this. The answer is:\n{"episode": 3, "confidence": 0.8}'
+        assert _parse_json_text(text) == {"episode": 3, "confidence": 0.8}
+
+    def test_ignores_trailing_commentary(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('{"ok": true}\nHope that helps!') == {"ok": True}
+
+    def test_handles_nested_braces(self):
+        from app.core.ai_client import _parse_json_text
+
+        text = 'Result: {"a": {"b": 1}, "c": 2} done'
+        assert _parse_json_text(text) == {"a": {"b": 1}, "c": 2}
+
+    def test_ignores_braces_inside_strings(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('x {"title": "a } b"} y') == {"title": "a } b"}
+
+    def test_plain_json_is_unaffected(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('{"ok": true}') == {"ok": True}
+
+    def test_fenced_json_is_still_handled(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('```json\n{"ok": true}\n```') == {"ok": True}
+
+    def test_genuinely_unparseable_text_still_returns_none(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text("I could not determine the episode.") is None
+
+    def test_unbalanced_braces_return_none(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('here you go {"ok": true') is None
+
+    def test_a_bare_json_array_still_returns_none(self):
+        """complete_json's contract is a dict; an array is not a usable result."""
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text("[1, 2, 3]") is None

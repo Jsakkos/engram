@@ -600,8 +600,46 @@ def _to_gemini_schema(schema):
     return out
 
 
+def _extract_first_json_object(text: str) -> str | None:
+    """Return the first balanced {...} span in ``text``, or None.
+
+    Small local models frequently wrap their answer in prose ("Let me think...
+    the answer is: {...}"), which no amount of prompting reliably suppresses.
+    Brace counting is string-aware so that a '}' inside a value (an episode
+    title, say) does not truncate the span, and escape-aware so a quote escaped
+    inside a string does not flip the in-string state.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def _parse_json_text(text: str | None) -> dict | None:
-    """Parse JSON, tolerating ```json fences and surrounding whitespace.
+    """Parse JSON, tolerating ```json fences, surrounding whitespace, and a
+    reasoning preamble or trailing commentary around the JSON object.
 
     Accepts None so a provider that sends an explicit null text field yields a
     clean "no usable result" rather than an AttributeError.
@@ -615,6 +653,17 @@ def _parse_json_text(text: str | None) -> dict | None:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        # Last resort, and only on a path that has already failed: pull the first
+        # balanced object out of surrounding prose. Reached in practice only for
+        # local models, so it cannot regress the hosted providers.
+        candidate = _extract_first_json_object(text)
+        if candidate is not None and candidate != text:
+            try:
+                data = json.loads(candidate)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse AI response as JSON: %s", text[:200])
+                return None
+            return data if isinstance(data, dict) else None
         logger.warning("Failed to parse AI response as JSON: %s", text[:200])
         return None
     return data if isinstance(data, dict) else None
