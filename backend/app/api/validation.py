@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import httpx
 import requests
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -845,3 +846,77 @@ async def test_discord_webhook(
         return ValidationResponse(valid=False, error=f"Discord rejected the test message: {e}")
 
     return ValidationResponse(valid=True)
+
+
+class LocalModelsResponse(BaseModel):
+    """Model ids available on a local AI server.
+
+    Never signals failure with a status code: an unreachable server is the
+    NORMAL case while a user is still setting things up, and a 5xx would make
+    the wizard render an error banner instead of quietly falling back to a
+    free-text model field.
+    """
+
+    models: list[str] = []
+    error: str | None = None
+
+
+@router.get("/ai/local-models", response_model=LocalModelsResponse)
+async def list_local_models(
+    provider: str,
+    base_url: str = "",
+    _: None = Depends(require_localhost_or_lan),
+) -> LocalModelsResponse:
+    """List the models a local AI server currently offers.
+
+    Both Ollama and LM Studio expose the OpenAI-compatible ``GET /v1/models``,
+    so one implementation serves both. Gated to the host (or an opted-in LAN)
+    for the same reason as validate_ai: it triggers an outbound request the
+    caller can provoke without owning the destination.
+
+    Doubles as a reachability check, which is why the wizard does not need a
+    separate Test button for the local case.
+    """
+    from app.core.ai_client import (
+        LOCAL_PROVIDERS,
+        classify_provider_error,
+        resolve_local_base_url,
+    )
+    from app.core.security import is_safe_local_ai_url
+
+    if provider not in LOCAL_PROVIDERS:
+        return LocalModelsResponse(
+            error=f"'{sanitize_log_value(provider)}' is not a local AI provider"
+        )
+
+    url_base = resolve_local_base_url(provider, base_url)
+    if not is_safe_local_ai_url(url_base):
+        return LocalModelsResponse(
+            error=(
+                "That is not a valid server address. Use a plain http(s) URL such "
+                "as http://localhost:11434/v1."
+            )
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{url_base}/models")
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError as e:
+        _, message = classify_provider_error(provider, e, base_url=url_base)
+        logger.info(
+            "Local model list unavailable for %s: %s",
+            sanitize_log_value(provider),
+            sanitize_log_value(str(e)),
+        )
+        return LocalModelsResponse(error=message)
+    except Exception:  # noqa: BLE001 — this endpoint must never 500
+        logger.warning("Local model list raised unexpectedly", exc_info=True)
+        return LocalModelsResponse(error="Could not read the model list")
+
+    models: list[str] = []
+    for entry in (data or {}).get("data") or []:
+        if isinstance(entry, dict) and entry.get("id"):
+            models.append(str(entry["id"]))
+    return LocalModelsResponse(models=models)
