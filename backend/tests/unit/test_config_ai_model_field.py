@@ -59,3 +59,66 @@ class TestModelNameIsValidatedOnWrite:
         # "" is falsy, so the route's guard skips it entirely.
         assert ConfigUpdate(ai_model="").model_dump()[FIELD] == ""
         assert _is_safe_model_name("") is False
+
+
+BASE_URL_FIELD = "ai_local_base_url"
+
+
+class TestAiLocalBaseUrlField:
+    """Three-way sync for the local AI base URL.
+
+    Same hazard as ai_model above: a field missing from ConfigUpdate or
+    ConfigResponse is dropped by Pydantic with no error anywhere, so the wizard
+    appears to save and the value never arrives.
+    """
+
+    def test_appconfig_defaults_to_blank(self):
+        """Blank means "use the slug's conventional port", not "no endpoint"."""
+        assert getattr(AppConfig(), BASE_URL_FIELD) == ""
+
+    def test_config_update_accepts_and_carries_the_field(self):
+        update = ConfigUpdate(**{BASE_URL_FIELD: "http://box:11434/v1"})
+        assert update.model_dump()[BASE_URL_FIELD] == "http://box:11434/v1"
+        # Unset stays None so PUT doesn't clobber it when omitted.
+        assert ConfigUpdate().model_dump()[BASE_URL_FIELD] is None
+
+    def test_config_response_exposes_the_field(self):
+        assert BASE_URL_FIELD in ConfigResponse.model_fields
+
+
+class TestLocalBaseUrlIsValidatedOnWrite:
+    """The value is interpolated into an outbound request URL, so PUT must
+    reject a malformed one rather than storing it for a later request to
+    execute. update_config raises before it touches the database."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "http://user:pass@localhost:11434/v1",
+            "http://localhost:11434/v1?x=1",
+            "//localhost:11434/v1",
+        ],
+    )
+    async def test_unsafe_base_url_is_rejected(self, bad):
+        with pytest.raises(HTTPException) as exc:
+            await update_config(ConfigUpdate(ai_local_base_url=bad))
+        assert exc.value.status_code == 422
+        assert BASE_URL_FIELD in str(exc.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_blank_clears_back_to_the_default(self):
+        """Unlike a key, this is not a secret: clearing it is how a user reverts
+        to the default port, so "" must pass the guard and reach persistence.
+        A regression here would add it to config_service's sensitive_fields set,
+        where a blank write is deliberately ignored."""
+        assert ConfigUpdate(ai_local_base_url="").model_dump()[BASE_URL_FIELD] == ""
+
+    @pytest.mark.asyncio
+    async def test_a_loopback_url_is_accepted(self):
+        """The whole point: is_safe_remote_url would reject this."""
+        from app.core.security import is_safe_local_ai_url
+
+        assert is_safe_local_ai_url("http://localhost:11434/v1") is True

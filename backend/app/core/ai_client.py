@@ -1,9 +1,10 @@
 """Shared AI client for structured-JSON completions across providers.
 
-Wraps anthropic, openai, openrouter, and gemini behind a single
-`complete_json` entry point. Each provider adapter handles its own
-authentication and structured-JSON convention (prompt-only for anthropic,
-response_format for openai/openrouter, responseSchema for gemini).
+Wraps anthropic, openai, openrouter, gemini, and the local servers (ollama,
+lmstudio) behind a single `complete_json` entry point. Each provider adapter
+handles its own authentication and structured-JSON convention (prompt-only for
+anthropic, response_format for openai/openrouter and the local servers, which
+speak the same OpenAI-compatible contract, responseSchema for gemini).
 """
 
 import asyncio
@@ -15,7 +16,7 @@ import re
 import httpx
 
 from app.core.errors import AIProviderError, ProviderErrorCode
-from app.core.security import sanitize_log_value
+from app.core.security import is_safe_local_ai_url, sanitize_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,60 @@ DEFAULT_MODELS = {
     "gemini": "gemini-2.5-flash-lite",
 }
 
+# Ollama and LM Studio both expose the OpenAI-compatible /v1/chat/completions
+# contract, so they reuse _call_openai_compatible with only the base URL
+# differing. They are grouped here because several invariants elsewhere
+# (credential presence, timeout, error wording) key off "is this local?" and
+# must not each hardcode the slug list.
+LOCAL_PROVIDERS = frozenset({"ollama", "lmstudio"})
+
+LOCAL_DEFAULT_BASE_URLS = {
+    "ollama": "http://localhost:11434/v1",
+    "lmstudio": "http://localhost:1234/v1",
+}
+
+# DEFAULT_MODELS deliberately has no entry for the local slugs: there is no
+# correct default, because the answer depends on which weights the user pulled.
+# That means DEFAULT_MODELS can no longer double as the set of providers that
+# exist, which is what this is for.
+KNOWN_PROVIDERS = frozenset(DEFAULT_MODELS) | LOCAL_PROVIDERS
+
+
+def resolve_local_base_url(provider: str, configured: str) -> str:
+    """Base URL for a local provider: the configured value, else the default.
+
+    Returns "" for a remote provider so a caller can use a truthy check as
+    "is there a local endpoint here?" without a second membership test.
+    A trailing slash is stripped so callers can append "/chat/completions"
+    unconditionally without producing a double slash.
+    """
+    if provider not in LOCAL_PROVIDERS:
+        return ""
+    url = (configured or "").strip() or LOCAL_DEFAULT_BASE_URLS[provider]
+    return url.rstrip("/")
+
+
+def ai_is_configured(provider: str, api_key: str) -> bool:
+    """True if this provider has what it needs to make a call.
+
+    Local providers authenticate to nothing, so requiring a key would silently
+    disable them at every call site that guards on one. Four such gates exist
+    (this module, curator, matching_coordinator, identification_coordinator);
+    they all call this rather than testing the key directly.
+    """
+    return provider in LOCAL_PROVIDERS or bool(api_key)
+
+
 _TIMEOUT_SECONDS = 30.0
+
+# Local inference is not comparable to a hosted API. LM Studio JIT-loads model
+# weights on the FIRST request, so a cold 7B model can spend 30-60s before
+# emitting a token, and CPU-only generation runs into the minutes. The remote
+# 30s value would make local support look broken on first use.
+LOCAL_TIMEOUT_SECONDS = 300.0
+# The Test Connection button: still generous enough to survive a cold load, but
+# bounded so a user is not left staring at a spinner for five minutes.
+LOCAL_VALIDATE_TIMEOUT_SECONDS = 120.0
 
 MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0  # seconds
@@ -68,15 +122,18 @@ def _is_safe_model_name(model: str) -> bool:
     return bool(_MODEL_NAME_RE.match(model))
 
 
-# Display names for the four provider slugs. The slugs themselves are lowercase
+# Display names for all six provider slugs. The slugs themselves are lowercase
 # identifiers, and these sentences are read by users, so "OpenAI accepted the
 # key" beats "openai accepted the key". Mirrors AI_PROVIDER_LABELS in the
-# frontend's ConfigWizard, which labels the same four providers.
+# frontend's ConfigWizard, though that map still only covers the four remote
+# providers until a later task adds the two local ones there.
 _PROVIDER_LABELS = {
     "anthropic": "Anthropic",
     "openai": "OpenAI",
     "openrouter": "OpenRouter",
     "gemini": "Gemini",
+    "ollama": "Ollama",
+    "lmstudio": "LM Studio",
 }
 
 # Human sentences per cause. Rendered verbatim in the UI, so they must be
@@ -107,14 +164,61 @@ _INVALID_MODEL_MESSAGE = (
     "to use Engram's default for {provider}."
 )
 
+# Local servers have no account, no billing and no key, so the remote wording
+# ("the account has no API credits") is actively misleading. These override
+# _CAUSE_MESSAGES for the local slugs only. {provider} is the display label,
+# {url} the resolved base URL, {model} the requested model id, and {hint} a
+# per-product instruction for starting the server.
+_LOCAL_CAUSE_MESSAGES: dict[ProviderErrorCode, str] = {
+    "network": "Could not reach {provider} at {url}. Is the server running? ({hint})",
+    "timeout": (
+        "{provider} at {url} did not respond in time. A model loading for the first "
+        "time can be slow; try again once it is loaded."
+    ),
+    "model_unavailable": "Model '{model}' is not available in {provider}. {pull}",
+    "bad_key": "{provider} rejected the request at {url}.",
+    "no_credits": "{provider} rejected the request at {url}.",
+    "rate_limited": "{provider} at {url} is busy. Wait a moment and try again.",
+    "bad_request": "{provider} at {url} rejected the request.",
+    "unknown": "{provider} at {url} returned an unexpected error.",
+}
 
-def classify_provider_error(provider: str, exc: Exception) -> tuple[ProviderErrorCode, str]:
+_LOCAL_START_HINTS = {
+    "ollama": "run: ollama serve",
+    "lmstudio": "start the server from LM Studio's Developer tab",
+}
+
+_LOCAL_PULL_HINTS = {
+    "ollama": "Pull it first: ollama pull {model}",
+    "lmstudio": "Download it in LM Studio, then load it.",
+}
+
+# Shown when a local provider has no model set. Unlike the remote providers
+# there is no default to fall back to, so this is a hard stop rather than a
+# silent None.
+_LOCAL_BLANK_MODEL_MESSAGE = (
+    "Select a model for {provider}. Local providers have no default, because the "
+    "answer depends on which models you have installed."
+)
+
+
+def classify_provider_error(
+    provider: str,
+    exc: Exception,
+    *,
+    base_url: str = "",
+    model: str = "",
+) -> tuple[ProviderErrorCode, str]:
     """Map a provider failure to a stable ``(code, human_message)`` pair.
 
     The provider's own body is the only thing that separates a permanently
     exhausted quota from transient throttling (both are HTTP 429 on OpenAI), so
     this reads it. The body is never returned to the caller; it is summarised
     into a fixed sentence and left to the logs.
+
+    ``base_url`` and ``model`` are used only for the local providers, whose
+    messages name the endpoint and the model because "connection refused" is
+    useless to a user who has three inference servers on different ports.
     """
     code: ProviderErrorCode
     if isinstance(exc, httpx.TimeoutException):
@@ -125,7 +229,19 @@ def classify_provider_error(provider: str, exc: Exception) -> tuple[ProviderErro
         code = "network"
     else:
         code = "unknown"
-    return code, _CAUSE_MESSAGES[code].format(provider=_PROVIDER_LABELS.get(provider, provider))
+
+    label = _PROVIDER_LABELS.get(provider, provider)
+    if provider in LOCAL_PROVIDERS:
+        template = _LOCAL_CAUSE_MESSAGES.get(code, _LOCAL_CAUSE_MESSAGES["unknown"])
+        pull = _LOCAL_PULL_HINTS.get(provider, "").format(model=model or "the model")
+        return code, template.format(
+            provider=label,
+            url=base_url or LOCAL_DEFAULT_BASE_URLS.get(provider, ""),
+            model=model or "(none set)",
+            hint=_LOCAL_START_HINTS.get(provider, ""),
+            pull=pull,
+        )
+    return code, _CAUSE_MESSAGES[code].format(provider=label)
 
 
 def _classify_status(provider: str, exc: httpx.HTTPStatusError) -> ProviderErrorCode:
@@ -261,7 +377,8 @@ async def complete_json(
     max_tokens: int = 1024,
     raise_on_error: bool = False,
     retries: int = MAX_RETRIES,
-    timeout: float = _TIMEOUT_SECONDS,
+    base_url: str = "",
+    timeout: float | None = None,
 ) -> dict | None:
     """Send a prompt to an LLM provider and return its JSON response as a dict.
 
@@ -277,27 +394,62 @@ async def complete_json(
     propagates as-is — so callers can distinguish a provider outage or a
     truncated/garbled reply from "the model ran and was not confident" (which
     stays a plain ``None`` from the layer above ``complete_json``, e.g.
-    ``match_episode_via_llm`` returning None for a low-confidence match). The
-    early-return paths (empty ``api_key``, unknown provider) still return None
-    regardless of ``raise_on_error`` — see the trace in the code, they exit
-    before the try/except that implements the policy above.
+    ``match_episode_via_llm`` returning None for a low-confidence match). Two of
+    the pre-flight guards (a missing credential, an unknown provider slug) return
+    None regardless of ``raise_on_error``, because neither says anything a caller
+    could act on; the three that describe a fixable config mistake (an unsafe
+    base URL, a blank model for a local provider, an unsafe model name) honour
+    ``raise_on_error`` and raise with code ``bad_request``. All five exit before
+    the try/except that implements the transport policy above.
 
     ``retries`` and ``timeout`` let a caller (e.g. a "test connection"
     pre-flight check) fail fast instead of paying the full backoff ladder.
+
+    ``base_url`` applies only to the local providers (ollama, lmstudio); blank
+    means the slug's conventional default port. ``timeout`` of None means "pick
+    the right default for this provider", which is much longer for local ones.
     """
-    if not api_key:
-        logger.debug("complete_json called with empty api_key; returning None")
+    if not ai_is_configured(provider, api_key):
+        logger.debug("complete_json called without a usable credential; returning None")
+        return None
+
+    if provider not in KNOWN_PROVIDERS:
+        logger.warning("Unknown AI provider: %s", sanitize_log_value(provider))
+        return None
+
+    is_local = provider in LOCAL_PROVIDERS
+    local_url = resolve_local_base_url(provider, base_url)
+
+    if is_local and not is_safe_local_ai_url(local_url):
+        # Refused before any request is issued, so a malformed value can never
+        # become an outbound fetch.
+        logger.warning("Rejecting unsafe local AI base URL: %s", sanitize_log_value(local_url))
+        if raise_on_error:
+            raise AIProviderError(
+                f"'{local_url}' is not a valid server address. Use a plain http(s) "
+                "URL such as http://localhost:11434/v1.",
+                code="bad_request",
+            )
         return None
 
     model = model or DEFAULT_MODELS.get(provider)
     if not model:
-        logger.warning("Unknown AI provider: %s", sanitize_log_value(provider))
+        # Only reachable for a local provider now, since KNOWN_PROVIDERS was
+        # checked above and every remote slug has a default.
+        logger.warning("No model set for local provider %s", sanitize_log_value(provider))
+        if raise_on_error:
+            raise AIProviderError(
+                _LOCAL_BLANK_MODEL_MESSAGE.format(
+                    provider=_PROVIDER_LABELS.get(provider, provider)
+                ),
+                code="bad_request",
+            )
         return None
 
     if not _is_safe_model_name(model):
-        # Unlike the two early returns above, this one honours raise_on_error: a
-        # bad model name is a config mistake the user can fix, and silently
-        # returning None would send them hunting for a key or network problem.
+        # A bad model name is a config mistake the user can fix, so this honours
+        # raise_on_error rather than sending them hunting for a key or network
+        # problem.
         logger.warning("Rejecting unsafe AI model name: %s", sanitize_log_value(model))
         if raise_on_error:
             raise AIProviderError(
@@ -305,6 +457,9 @@ async def complete_json(
                 code="bad_request",
             )
         return None
+
+    if timeout is None:
+        timeout = LOCAL_TIMEOUT_SECONDS if is_local else _TIMEOUT_SECONDS
 
     if provider == "anthropic":
 
@@ -326,6 +481,23 @@ async def complete_json(
 
         def factory():
             return _call_gemini(prompt, api_key, model, max_tokens, schema, timeout)
+    elif is_local:
+        # Both local servers speak the OpenAI chat-completions contract, so this
+        # is the same adapter the openai/openrouter slugs use. Ollama requires an
+        # Authorization header but ignores its value, and LM Studio ignores the
+        # header entirely, so an empty api_key is correct for both.
+        def factory():
+            return _call_openai_compatible(
+                prompt,
+                api_key or "local",
+                f"{local_url}/chat/completions",
+                model,
+                max_tokens,
+                schema,
+                timeout,
+                json_schema_mode=(provider == "lmstudio"),
+                warn_on_model_substitution=True,
+            )
     else:
         logger.warning("Unsupported AI provider: %s", sanitize_log_value(provider))
         return None
@@ -341,12 +513,14 @@ async def complete_json(
         )
         if raise_on_error:
             raise AIProviderError(
-                _CAUSE_MESSAGES["response_truncated"].format(provider=provider),
+                _CAUSE_MESSAGES["response_truncated"].format(
+                    provider=_PROVIDER_LABELS.get(provider, provider)
+                ),
                 code="response_truncated",
             ) from None
         return None
     except httpx.HTTPError as e:
-        code, message = classify_provider_error(provider, e)
+        code, message = classify_provider_error(provider, e, base_url=local_url, model=model)
         # str(e) embeds the request URL, which is built from `model` (also
         # user-settable config), so it is sanitized alongside provider and body.
         logger.warning(
@@ -386,7 +560,9 @@ async def complete_json(
         # with raise_on_error set need this separated from "the model ran and had
         # no confident answer", which is also a None from the layer above.
         raise AIProviderError(
-            _CAUSE_MESSAGES["malformed_response"].format(provider=provider),
+            _CAUSE_MESSAGES["malformed_response"].format(
+                provider=_PROVIDER_LABELS.get(provider, provider)
+            ),
             code="malformed_response",
         )
     return result
@@ -426,8 +602,46 @@ def _to_gemini_schema(schema):
     return out
 
 
+def _extract_first_json_object(text: str) -> str | None:
+    """Return the first balanced {...} span in ``text``, or None.
+
+    Small local models frequently wrap their answer in prose ("Let me think...
+    the answer is: {...}"), which no amount of prompting reliably suppresses.
+    Brace counting is string-aware so that a '}' inside a value (an episode
+    title, say) does not truncate the span, and escape-aware so a quote escaped
+    inside a string does not flip the in-string state.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def _parse_json_text(text: str | None) -> dict | None:
-    """Parse JSON, tolerating ```json fences and surrounding whitespace.
+    """Parse JSON, tolerating ```json fences, surrounding whitespace, and a
+    reasoning preamble or trailing commentary around the JSON object.
 
     Accepts None so a provider that sends an explicit null text field yields a
     clean "no usable result" rather than an AttributeError.
@@ -441,6 +655,17 @@ def _parse_json_text(text: str | None) -> dict | None:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        # Last resort, and only on a path that has already failed: pull the first
+        # balanced object out of surrounding prose. Reached in practice only for
+        # local models, so it cannot regress the hosted providers.
+        candidate = _extract_first_json_object(text)
+        if candidate is not None and candidate != text:
+            try:
+                data = json.loads(candidate)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse AI response as JSON: %s", text[:200])
+                return None
+            return data if isinstance(data, dict) else None
         logger.warning("Failed to parse AI response as JSON: %s", text[:200])
         return None
     return data if isinstance(data, dict) else None
@@ -482,6 +707,8 @@ async def _call_openai_compatible(
     max_tokens: int,
     schema: dict | None,
     timeout: float,
+    json_schema_mode: bool = False,
+    warn_on_model_substitution: bool = False,
 ) -> dict | None:
     body: dict = {
         "model": model,
@@ -490,7 +717,22 @@ async def _call_openai_compatible(
         "temperature": 0,
     }
     if schema is not None:
-        body["response_format"] = {"type": "json_object"}
+        if json_schema_mode:
+            # LM Studio rejects {"type": "json_object"} outright with
+            # "'response_format.type' must be 'json_schema' or 'text'", so it gets
+            # the richer form. This is strictly better where supported: the server
+            # constrains generation to the schema rather than merely to "some JSON".
+            # openai/openrouter already work on json_object and are left alone to
+            # avoid needless risk to existing users; ollama is not installed on this
+            # machine to verify against, and its documented OpenAI-compatibility
+            # explicitly lists json_object as supported, so it stays on the
+            # documented-safe path too.
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "response", "strict": True, "schema": schema},
+            }
+        else:
+            body["response_format"] = {"type": "json_object"}
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(
@@ -503,6 +745,7 @@ async def _call_openai_compatible(
         )
         resp.raise_for_status()
         data = resp.json()
+        _warn_on_model_substitution(model, data, warn=warn_on_model_substitution)
         choices = data.get("choices") or []
         if not choices:
             return None
@@ -510,6 +753,36 @@ async def _call_openai_compatible(
             raise _TruncatedResponse
         text = choices[0].get("message", {}).get("content") or ""
         return _parse_json_text(text)
+
+
+def _warn_on_model_substitution(requested: str, data: dict, *, warn: bool) -> None:
+    """Log when the server answered with a model other than the one asked for.
+
+    LM Studio serves whichever model is currently loaded when asked for one it
+    does not have, returning HTTP 200 with no error. ``validate_ai`` catches a
+    typo up front by checking the server's model list, but that runs only when
+    the user presses Test Connection: swapping the loaded model afterwards would
+    otherwise let real matches run on a different model silently, and nothing in
+    the result would show it.
+
+    The response body names the model that actually answered, so this costs no
+    extra request. It is a log line rather than a failure because the reply is
+    still usable and refusing it would strand a job over a warning.
+
+    Only for local providers. Hosted APIs legitimately answer with a pinned
+    version of the requested id ("gpt-4o-mini" -> "gpt-4o-mini-2024-07-18"),
+    which is why the prefix check below is not enough on its own.
+    """
+    if not warn:
+        return
+    answered = str((data or {}).get("model") or "")
+    if answered and not answered.startswith(requested):
+        logger.warning(
+            "Local AI server answered with model %s, not the requested %s. "
+            "The configured model may no longer be loaded.",
+            sanitize_log_value(answered),
+            sanitize_log_value(requested),
+        )
 
 
 async def _call_gemini(

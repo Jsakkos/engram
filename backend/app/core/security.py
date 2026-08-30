@@ -7,12 +7,14 @@ These back the hardening of CodeQL-flagged sinks:
   calls to executables that actually look like the expected tool.
 - ``is_within_configured_roots`` — constrains media-endpoint file paths to the
   configured staging and library roots.
+- ``is_safe_local_ai_url`` — a deliberately permissive guard for the
+  user-configured local AI server base URL, which must accept loopback.
 - ``sanitize_log_value`` — strips line breaks/control characters from
   disc/user-controlled values before they are written to logs.
 - ``sanitize_playlist_field`` — strips line breaks/control characters from
   disc-derived text before it is embedded in an ``.m3u`` playlist.
 
-The first three are boolean *predicates* — they return ``True``/``False`` so
+The first four are boolean *predicates* — they return ``True``/``False`` so
 the validation is recognised as a barrier guard by static analysis at the call
 site (``if not guard(x): ...``). ``sanitize_log_value`` and
 ``sanitize_playlist_field`` instead return the cleaned value, the recognised
@@ -219,6 +221,136 @@ def is_safe_dashboard_url(url: str) -> bool:
     # Credentials in a URL that gets posted to a chat channel leak them.
     if parsed.username or parsed.password:
         return False
+    return True
+
+
+# Rejected regardless of the deliberately permissive host policy below. No
+# inference server runs on a cloud metadata endpoint, and the model-list caller
+# reflects part of the response back to the requester, so leaving these
+# reachable would turn a config field into a metadata read.
+_LOCAL_AI_DENIED_HOSTS: frozenset[str] = frozenset(
+    {"169.254.169.254", "metadata.google.internal", "metadata.goog"}
+)
+
+
+def _ip_and_embedded_ipv4(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """``addr`` plus any IPv4 address reachable through an IPv6 wrapper.
+
+    An IPv6 literal can name an IPv4 destination in several ways, and the
+    ``is_*`` properties do not all see through the wrapper. Modern CPython does
+    delegate for the IPv4-*mapped* form, so ``::ffff:169.254.169.254`` already
+    reports ``is_link_local``; the deprecated IPv4-*compatible* form
+    ``::169.254.169.254`` does not, and 6to4 and Teredo wrappers do not either.
+    Checking the unwrapped address as well as the literal closes that gap
+    without relying on which forms a given Python version happens to handle.
+
+    No legitimate inference server is addressed this way, so unwrapping costs
+    nothing real.
+    """
+    out: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = [addr]
+    if isinstance(addr, ipaddress.IPv6Address):
+        for attr in ("ipv4_mapped", "sixtofour"):
+            embedded = getattr(addr, attr, None)
+            if embedded is not None:
+                out.append(embedded)
+        teredo = getattr(addr, "teredo", None)
+        if teredo:
+            out.extend(teredo)
+        # "::a.b.c.d" — the whole top 96 bits are zero. Excludes :: and ::1,
+        # whose embedded values (0.0.0.0 / 0.0.0.1) are meaningless, and which
+        # must keep working: ::1 is a normal way to reach a local server.
+        packed = int(addr)
+        if packed >> 32 == 0 and packed > 1:
+            out.append(ipaddress.IPv4Address(packed & 0xFFFFFFFF))
+    return out
+
+
+def is_safe_local_ai_url(url: str) -> bool:
+    """Return True if ``url`` is usable as a local AI server's base URL.
+
+    Deliberately NOT is_safe_remote_url. That guard rejects loopback, private
+    and link-local hosts to prevent SSRF, and those are precisely the addresses
+    an Ollama or LM Studio server listens on, so this is an intentional
+    exemption rather than an oversight.
+
+    Scope of that exemption, stated plainly because the function name understates
+    it: apart from the link-local and metadata hosts denied below, this imposes
+    NO restriction on the host. A public address passes. That is intended, since
+    a user may legitimately run their inference server on another machine, but it
+    means this guard is not what stops a hostile endpoint being configured.
+
+    The server issues real requests to this URL, so it is a request-forgery
+    primitive. It is accepted because the config surface is already fully trusted
+    (it holds API keys, filesystem paths and library roots) and because the
+    endpoints that write it are gated by require_localhost_or_lan. Note that the
+    primitive is blind only on the completion path: the model-list endpoint
+    returns the ids it parses out of the response, so a JSON body shaped like
+    OpenAI's /v1/models is partially reflected to the caller. That is why the
+    metadata hosts are denied outright. See
+    docs/superpowers/specs/2026-08-29-local-ai-provider-design.md.
+
+    Whitespace and control characters are rejected against the RAW string, before
+    parsing. CPython strips tab, CR and LF out of a URL before urlparse sees it,
+    so without this check "http://localhost\n.evil.com" would be validated as
+    the host "localhost.evil.com" while the caller sent the original bytes, and
+    httpx would raise InvalidURL, which is not an httpx.HTTPError subclass and so
+    escapes the transport handler in ai_client. Keeping the judged string and the
+    sent string identical is what makes this a real barrier. It also keeps CR/LF
+    out of a value that reaches the logs.
+
+    Also rejected: non-http(s) schemes (file:, javascript:, ftp:), a missing
+    host, embedded credentials, query, fragment, path parameters, a port outside
+    the valid range, and any ".." path segment. The traversal check matters
+    because callers append "/chat/completions" or "/models" to this value, so a
+    traversal segment would move the request outside the prefix the user
+    approved.
+    """
+    if not isinstance(url, str):
+        return False
+
+    # Against the raw string, before urlparse can normalise it away.
+    if url != url.strip() or any(ch in url for ch in "\t\r\n"):
+        return False
+    if _LOG_CONTROL_CHARS_RE.search(url):
+        return False
+
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        return False
+
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not host:
+        return False
+    if parsed.username or parsed.password:
+        return False
+    if parsed.query or parsed.fragment or parsed.params:
+        return False
+    if host in _LOCAL_AI_DENIED_HOSTS:
+        return False
+
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        pass  # Not an IP literal; a hostname is fine.
+    else:
+        for candidate in _ip_and_embedded_ipv4(addr):
+            if candidate.is_link_local or str(candidate) in _LOCAL_AI_DENIED_HOSTS:
+                return False
+
+    if ".." in parsed.path.split("/"):
+        return False
+
+    # An out-of-range port parses here but raises inside httpx.
+    try:
+        _ = parsed.port
+    except ValueError:
+        return False
+
     return True
 
 

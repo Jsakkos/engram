@@ -32,11 +32,15 @@ async def identify_from_label(
     provider: str,
     api_key: str,
     model: str | None = None,
+    base_url: str = "",
 ) -> dict | None:
     """Send volume label to an LLM to identify the disc content.
 
     ``model`` is the user's optional override (AppConfig.ai_model); None means
     the provider default.
+
+    ``base_url`` is the user's local-server endpoint (AppConfig.ai_local_base_url).
+    It applies only to the local providers; blank means the slug's default port.
 
     Returns dict with keys: title, year, type (or None on failure).
     """
@@ -48,6 +52,7 @@ async def identify_from_label(
         api_key=api_key,
         model=model,
         max_tokens=200,
+        base_url=base_url,
     )
     return _validate(raw, volume_label)
 

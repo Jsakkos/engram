@@ -87,6 +87,7 @@ async def match_episode_via_llm(
     ai_api_key: str,
     tmdb_api_key: str,
     ai_model: str | None = None,
+    ai_local_base_url: str = "",
     raise_on_error: bool = False,
 ) -> LLMEpisodeMatch | None:
     """Run LLM episode matching. Returns None on no-confident-match or empty response.
@@ -94,6 +95,10 @@ async def match_episode_via_llm(
     ``ai_model`` is the user's optional override (AppConfig.ai_model); None means
     the provider default. It is recorded on the returned match so per-track
     provenance names the model that actually answered.
+
+    ``ai_local_base_url`` is the user's local-server endpoint
+    (AppConfig.ai_local_base_url). It applies only to the local providers; blank
+    means the slug's default port.
 
     When ``raise_on_error`` is True, a provider/transport failure raises
     ``AIProviderError`` (instead of being swallowed to None by ``complete_json``)
@@ -138,6 +143,7 @@ async def match_episode_via_llm(
         api_key=ai_api_key,
         model=ai_model or None,
         max_tokens=512,
+        base_url=ai_local_base_url,
         raise_on_error=raise_on_error,
     )
     if not raw:

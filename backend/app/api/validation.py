@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import httpx
 import requests
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -63,11 +64,16 @@ class AiValidationRequest(BaseModel):
     sent from the wizard as typed, not as saved, so the button answers "will
     this combination work" rather than "did the last saved one work" — which is
     the whole point when the user is testing a model their key might not have.
+
+    ``base_url`` applies only to the local providers and, like the others, is
+    sent as typed rather than as saved, so the button answers "will this
+    endpoint work" before the user commits to it.
     """
 
     provider: str
     api_key: str | None = None
     model: str | None = None
+    base_url: str | None = None
 
 
 class ValidationResponse(BaseModel):
@@ -724,20 +730,30 @@ async def validate_ai(
     uses, rather than a bespoke auth ping: a ping would exercise a different
     endpoint, without the structured-output convention, and could therefore pass
     while real matching fails. Gated to the host (or an opted-in LAN) because,
-    unlike the other validators, this one spends the user's money.
+    unlike the other validators, this one makes a real outbound request — to a
+    paid hosted API for a remote provider, or to whatever local server the user
+    pointed it at.
     """
-    from app.core.ai_client import DEFAULT_MODELS, complete_json
+    from app.core.ai_client import (
+        DEFAULT_MODELS,
+        KNOWN_PROVIDERS,
+        LOCAL_PROVIDERS,
+        LOCAL_VALIDATE_TIMEOUT_SECONDS,
+        ai_is_configured,
+        complete_json,
+    )
     from app.core.errors import AIProviderError
 
     provider = (request.provider or "").strip()
-    if provider not in DEFAULT_MODELS:
+    if provider not in KNOWN_PROVIDERS:
         return ValidationResponse(
             valid=False, error=f"Unknown AI provider: {provider or '(empty)'}"
         )
 
     api_key = (request.api_key or "").strip()
     model = (request.model or "").strip()
-    if not api_key or not model:
+    base_url = (request.base_url or "").strip()
+    if not api_key or not model or (provider in LOCAL_PROVIDERS and not base_url):
         from app.services.config_service import get_config
 
         # Guarded: this endpoint promises never to 500, and a config read can
@@ -748,10 +764,11 @@ async def validate_ai(
             config = await get_config()
         except Exception:  # noqa: BLE001 — a validator must never 500
             logger.warning("AI validation could not read the stored config", exc_info=True)
-        if config is None and not api_key:
+        if config is None and not api_key and provider not in LOCAL_PROVIDERS:
             # Only fatal when the key itself was what we came for. A failed read
             # with a supplied key just means "no stored model override", which
-            # falls back to the provider default like any blank model.
+            # falls back to the provider default like any blank model. Local
+            # providers never needed a key in the first place.
             return ValidationResponse(
                 valid=False, error="Could not read the saved API key from the database"
             )
@@ -760,10 +777,38 @@ async def validate_ai(
                 api_key = (getattr(config, "ai_api_key", "") or "").strip()
             if not model:
                 model = (getattr(config, "ai_model", "") or "").strip()
-    if not api_key:
+            if not base_url:
+                base_url = (getattr(config, "ai_local_base_url", "") or "").strip()
+
+    if not ai_is_configured(provider, api_key):
         return ValidationResponse(
             valid=False, error="No API key provided and none is saved for this provider"
         )
+    if provider in LOCAL_PROVIDERS and not model:
+        return ValidationResponse(
+            valid=False,
+            error=(
+                "Select a model first. Local providers have no default, because the "
+                "answer depends on which models you have installed."
+            ),
+        )
+
+    if provider in LOCAL_PROVIDERS:
+        # LM Studio answers a request for an unknown model by silently serving
+        # whichever model is currently loaded, with HTTP 200 and no warning, so a
+        # typo would otherwise pass this check and then quietly matter at match
+        # time. Confirming against the server's own list is the only way to catch
+        # it. A server we cannot reach is left to the completion below, whose
+        # error message is better than anything we could say here.
+        available, _list_error = await _fetch_local_model_ids(provider, base_url)
+        if available and model not in available:
+            shown = ", ".join(available[:10])
+            if len(available) > 10:
+                shown += ", ..."
+            return ValidationResponse(
+                valid=False,
+                error=f"'{model}' is not installed on this server. Available: {shown}",
+            )
 
     try:
         result = await complete_json(
@@ -774,12 +819,15 @@ async def validate_ai(
             provider=provider,
             api_key=api_key,
             model=model or None,
+            base_url=base_url,
             max_tokens=16,
             raise_on_error=True,
             # A dead key must fail in one request rather than paying the backoff
-            # ladder, and a user waiting on a button should not sit for 30s.
+            # ladder, and a user waiting on a button should not sit for 30s. Local
+            # providers get a much longer budget: LM Studio JIT-loads model
+            # weights on the first request, so a cold model can take a minute-plus.
             retries=0,
-            timeout=10.0,
+            timeout=(LOCAL_VALIDATE_TIMEOUT_SECONDS if provider in LOCAL_PROVIDERS else 10.0),
         )
     except AIProviderError as e:
         logger.warning("AI validation failed for %s: %s", sanitize_log_value(provider), e.code)
@@ -794,9 +842,12 @@ async def validate_ai(
 
     if not result:
         return ValidationResponse(valid=False, error="Provider returned an empty response")
-    # Report the model that actually answered, not the default, so a user testing
-    # an override can see which one the key accepted.
-    return ValidationResponse(valid=True, version=model or DEFAULT_MODELS[provider])
+    # Report the model that was requested (or the provider default), not the one
+    # that actually answered — complete_json doesn't surface that. For remote
+    # providers those can differ if the provider silently substitutes a model;
+    # for local providers the pre-flight check above is what keeps them in
+    # agreement, by rejecting a request whose model the server doesn't offer.
+    return ValidationResponse(valid=True, version=model or DEFAULT_MODELS.get(provider, ""))
 
 
 @router.post("/validate/discord-webhook", response_model=ValidationResponse)
@@ -867,3 +918,87 @@ async def test_discord_webhook(
         return ValidationResponse(valid=False, error=f"Discord rejected the test message: {e}")
 
     return ValidationResponse(valid=True)
+
+
+class LocalModelsResponse(BaseModel):
+    """Model ids available on a local AI server.
+
+    Never signals failure with a status code: an unreachable server is the
+    NORMAL case while a user is still setting things up, and a 5xx would make
+    the wizard render an error banner instead of quietly falling back to a
+    free-text model field.
+    """
+
+    models: list[str] = []
+    error: str | None = None
+
+
+async def _fetch_local_model_ids(provider: str, base_url: str) -> tuple[list[str], str | None]:
+    """Model ids a local server offers, plus a human error if it could not be read.
+
+    Shared by ``GET /ai/local-models`` and ``validate_ai``'s pre-flight check, so
+    the two cannot disagree about what the server offers. Never raises: a bad
+    URL, an unreachable server, or a malformed response all come back as an
+    empty list with a message, never an exception — both callers treat an empty
+    list as "could not confirm", not as "the server has zero models".
+    """
+    from app.core.ai_client import classify_provider_error, resolve_local_base_url
+    from app.core.security import is_safe_local_ai_url
+
+    url_base = resolve_local_base_url(provider, base_url)
+    if not is_safe_local_ai_url(url_base):
+        return [], (
+            "That is not a valid server address. Use a plain http(s) URL such "
+            "as http://localhost:11434/v1."
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{url_base}/models")
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError as e:
+        _, message = classify_provider_error(provider, e, base_url=url_base)
+        logger.info(
+            "Local model list unavailable for %s: %s",
+            sanitize_log_value(provider),
+            sanitize_log_value(str(e)),
+        )
+        return [], message
+    except Exception:  # noqa: BLE001 — callers must never see this raise
+        logger.warning("Local model list raised unexpectedly", exc_info=True)
+        return [], "Could not read the model list"
+
+    models: list[str] = []
+    for entry in (data or {}).get("data") or []:
+        if isinstance(entry, dict) and entry.get("id"):
+            models.append(str(entry["id"]))
+    return models, None
+
+
+@router.get("/ai/local-models", response_model=LocalModelsResponse)
+async def list_local_models(
+    provider: str,
+    base_url: str = "",
+    _: None = Depends(require_localhost_or_lan),
+) -> LocalModelsResponse:
+    """List the models a local AI server currently offers.
+
+    Both Ollama and LM Studio expose the OpenAI-compatible ``GET /v1/models``,
+    so one implementation serves both, shared with ``validate_ai``'s pre-flight
+    check via ``_fetch_local_model_ids``. Gated to the host (or an opted-in LAN)
+    for the same reason as validate_ai: it triggers an outbound request the
+    caller can provoke without owning the destination.
+
+    Doubles as a reachability check, which is why the wizard does not need a
+    separate Test button for the local case.
+    """
+    from app.core.ai_client import LOCAL_PROVIDERS
+
+    if provider not in LOCAL_PROVIDERS:
+        return LocalModelsResponse(
+            error=f"'{sanitize_log_value(provider)}' is not a local AI provider"
+        )
+
+    models, error = await _fetch_local_model_ids(provider, base_url)
+    return LocalModelsResponse(models=models, error=error)

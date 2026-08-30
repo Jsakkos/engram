@@ -6,6 +6,15 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
+- **Local AI providers: run identification and episode matching on your own
+  machine.** Ollama and LM Studio can now be selected as the AI provider instead
+  of a paid hosted API, so transcripts and disc labels never leave your network.
+  No API key is required; pick the model from a dropdown of what your server
+  actually has installed, and Engram checks it is really there before reporting
+  a successful connection. Leave the address blank to use the conventional port
+  (`11434` for Ollama, `1234` for LM Studio). See
+  [Local AI](https://jsakkos.github.io/engram/getting-started/configuration/#local-ai-ollama-and-lm-studio)
+  for setup. (#606)
 - **Review every disc before it is organized.** A new setting under *Naming &
   extras* holds every disc in the Review Queue for confirmation, however
   confident the match was. The matcher still runs and pre-fills its best guess —

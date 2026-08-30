@@ -700,7 +700,8 @@ class MatchingCoordinator:
     ) -> dict | None:
         """AI episode-matching fallback for the no-subtitles case.
 
-        When ``ai_episode_matching_enabled`` is on (with a key) and the season is
+        When ``ai_episode_matching_enabled`` is on (and the provider is usable —
+        a key for the hosted ones, nothing for a local server) and the season is
         known, transcribe the ripped file and match the transcript against the
         TMDB synopsis — no reference subtitles required. Returns enriched
         ``match_details`` carrying an ``llm_suggestion`` for the Review UI, or
@@ -724,7 +725,9 @@ class MatchingCoordinator:
             config = await get_config()
             if not config or not config.ai_episode_matching_enabled:
                 return None
-            if not config.ai_api_key:
+            from app.core.ai_client import ai_is_configured
+
+            if not ai_is_configured(config.ai_provider, config.ai_api_key):
                 return None
 
             logger.info(

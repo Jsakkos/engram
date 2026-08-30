@@ -605,7 +605,9 @@ class EpisodeCurator:
         config = await get_config()
         if not config or not getattr(config, "ai_episode_matching_enabled", False):
             return None
-        if not config.ai_api_key:
+        from app.core.ai_client import ai_is_configured
+
+        if not ai_is_configured(config.ai_provider, config.ai_api_key):
             return None
 
         # Resolve TMDB show id — prefer the known id; otherwise resolve by name.
@@ -638,6 +640,7 @@ class EpisodeCurator:
                 ai_provider=config.ai_provider,
                 ai_api_key=config.ai_api_key,
                 ai_model=getattr(config, "ai_model", "") or None,
+                ai_local_base_url=getattr(config, "ai_local_base_url", "") or "",
                 tmdb_api_key=config.tmdb_api_key,
             )
         except Exception as e:

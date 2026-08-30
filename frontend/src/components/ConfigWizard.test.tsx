@@ -462,6 +462,61 @@ describe('ConfigWizard: Discord notification settings', () => {
     });
 });
 
+describe('ConfigWizard — local AI provider settings', () => {
+    /** Data Sharing → AI assistance is collapsed by default; expand it and turn
+     *  the feature on so the provider/model fields render. */
+    async function openAiAssistance() {
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        fireEvent.click(within(nav).getByRole('button', { name: 'Data Sharing' }));
+
+        const summary = await screen.findByText('AI assistance');
+        fireEvent.click(summary);
+
+        const enable = await screen.findByRole('checkbox', { name: /AI-Powered Title Resolution/i });
+        fireEvent.click(enable);
+    }
+
+    async function selectProvider(label: string) {
+        const trigger = screen.getByLabelText('AI Provider');
+        fireEvent.click(trigger);
+        fireEvent.click(await screen.findByText(label));
+    }
+
+    it('selecting a local provider hides the API-key field and shows Server Address', async () => {
+        await openAiAssistance();
+
+        expect(screen.getByLabelText(/Anthropic API Key/i)).toBeInTheDocument();
+        expect(screen.queryByLabelText('Server Address')).not.toBeInTheDocument();
+
+        await selectProvider('Ollama (local)');
+
+        expect(document.getElementById('aiApiKey')).toBeNull();
+        expect(await screen.findByLabelText('Server Address')).toBeInTheDocument();
+    });
+
+    it('shows the concurrency hint only for a local provider with Max Concurrent Matches > 1', async () => {
+        mockApi({ max_concurrent_matches: 3 });
+        await openAiAssistance();
+
+        // Remote provider (default): no hint even though concurrency is 3.
+        expect(screen.queryByText(/processes one request at a time/i)).not.toBeInTheDocument();
+
+        await selectProvider('Ollama (local)');
+
+        expect(await screen.findByText(/processes one request at a time/i)).toBeInTheDocument();
+    });
+
+    it('does not show the concurrency hint for a local provider when Max Concurrent Matches is 1', async () => {
+        mockApi({ max_concurrent_matches: 1 });
+        await openAiAssistance();
+
+        await selectProvider('Ollama (local)');
+
+        expect(screen.queryByText(/processes one request at a time/i)).not.toBeInTheDocument();
+    });
+});
+
 describe('ConfigWizard: webhook test targets the saved value', () => {
     it('refuses to test an unsaved webhook edit instead of silently testing the old one', async () => {
         render(<ConfigWizard {...noop} isOnboarding={false} />);

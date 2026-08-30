@@ -36,6 +36,7 @@ export async function requestAiValidation(
   provider: string,
   apiKey: string,
   model?: string,
+  baseUrl?: string,
 ): Promise<AiValidationResult> {
   // Omit the key entirely when blank so the backend falls back to the stored
   // one. Posting "" would be rejected as an empty key, which is what makes the
@@ -46,6 +47,8 @@ export async function requestAiValidation(
   const payload: Record<string, string> = { provider };
   if (trimmed) payload.api_key = trimmed;
   if (trimmedModel) payload.model = trimmedModel;
+  const trimmedBaseUrl = (baseUrl ?? '').trim();
+  if (trimmedBaseUrl) payload.base_url = trimmedBaseUrl;
 
   let response: Response;
   try {

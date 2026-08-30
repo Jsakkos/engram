@@ -316,6 +316,7 @@ class ConfigResponse(BaseModel):
     ai_provider: str
     ai_api_key: str
     ai_model: str
+    ai_local_base_url: str
     ai_episode_matching_enabled: bool
     # Staging watcher
     staging_watch_enabled: bool
@@ -416,6 +417,7 @@ class ConfigUpdate(BaseModel):
     ai_provider: str | None = None
     ai_api_key: str | None = None
     ai_model: str | None = None
+    ai_local_base_url: str | None = None
     ai_episode_matching_enabled: bool | None = None
     # Staging watcher
     staging_watch_enabled: bool | None = None
@@ -1687,6 +1689,8 @@ async def get_config() -> ConfigResponse:
         ai_api_key="***" if config.ai_api_key else "",  # Redacted
         # Not a secret, and the wizard must round-trip it to show what is in use.
         ai_model=config.ai_model or "",
+        # Not a secret; the wizard must round-trip it to show the endpoint in use.
+        ai_local_base_url=config.ai_local_base_url or "",
         ai_episode_matching_enabled=config.ai_episode_matching_enabled,
         # Staging watcher
         staging_watch_enabled=config.staging_watch_enabled,
@@ -1829,6 +1833,23 @@ async def update_config(config: ConfigUpdate) -> dict:
                 detail=(
                     "ai_model must be a plain model id such as 'gemini-2.5-flash-lite' "
                     "or 'anthropic/claude-haiku-4-5-20251001'"
+                ),
+            )
+
+    # Validated on write for the same reason ai_model is: this value is
+    # interpolated into an outbound request URL, so an unchecked value stored
+    # here becomes a request-forgery primitive executed on the next match. A
+    # blank value is the documented way to revert to the provider default and is
+    # deliberately allowed through.
+    if update_data.get("ai_local_base_url"):
+        from app.core.security import is_safe_local_ai_url
+
+        if not is_safe_local_ai_url(update_data["ai_local_base_url"]):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "ai_local_base_url must be a plain http(s) URL with no credentials "
+                    "or query string, such as 'http://localhost:11434/v1'"
                 ),
             )
 
@@ -4602,6 +4623,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     ``matcher_unavailable``, ``show_not_found``, ``transcription_failed``,
     ``llm_error``, ``no_match``) or is ``None`` on success.
     """
+    from app.core.ai_client import ai_is_configured
     from app.services.config_service import get_config
 
     config = await get_config()
@@ -4611,7 +4633,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
         return LLMMatchOutcome.failed("not_configured")
     if not getattr(config, "ai_episode_matching_enabled", False):
         return LLMMatchOutcome.failed("ai_disabled")
-    if not config.ai_api_key:
+    if not ai_is_configured(config.ai_provider, config.ai_api_key):
         return LLMMatchOutcome.failed("not_configured")
     if not job.detected_title:
         return LLMMatchOutcome.failed("no_show")
@@ -4654,6 +4676,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
             ai_provider=config.ai_provider,
             ai_api_key=config.ai_api_key,
             ai_model=getattr(config, "ai_model", "") or None,
+            ai_local_base_url=getattr(config, "ai_local_base_url", "") or "",
             tmdb_api_key=config.tmdb_api_key,
             raise_on_error=True,
         )

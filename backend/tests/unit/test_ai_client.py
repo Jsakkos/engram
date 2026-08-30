@@ -1037,3 +1037,577 @@ class TestModelOverride:
         assert exc.value.code == "bad_request"
         assert "model name" in str(exc.value).lower()
         mock.post.assert_not_awaited()
+
+
+class TestLocalProviderVocabulary:
+    def test_local_providers_are_ollama_and_lmstudio(self):
+        from app.core.ai_client import LOCAL_PROVIDERS
+
+        assert LOCAL_PROVIDERS == {"ollama", "lmstudio"}
+
+    def test_default_base_urls_match_upstream_conventions(self):
+        from app.core.ai_client import LOCAL_DEFAULT_BASE_URLS
+
+        assert LOCAL_DEFAULT_BASE_URLS["ollama"] == "http://localhost:11434/v1"
+        assert LOCAL_DEFAULT_BASE_URLS["lmstudio"] == "http://localhost:1234/v1"
+
+    def test_blank_configured_url_falls_back_to_default(self):
+        from app.core.ai_client import resolve_local_base_url
+
+        assert resolve_local_base_url("ollama", "") == "http://localhost:11434/v1"
+        assert resolve_local_base_url("lmstudio", "   ") == "http://localhost:1234/v1"
+
+    def test_configured_url_wins_and_trailing_slash_is_stripped(self):
+        from app.core.ai_client import resolve_local_base_url
+
+        assert resolve_local_base_url("ollama", "http://box:8080/v1/") == "http://box:8080/v1"
+
+    def test_resolve_returns_blank_for_a_remote_provider(self):
+        from app.core.ai_client import resolve_local_base_url
+
+        assert resolve_local_base_url("openai", "") == ""
+
+    def test_known_providers_covers_remote_and_local(self):
+        from app.core.ai_client import KNOWN_PROVIDERS
+
+        assert {"anthropic", "openai", "openrouter", "gemini"} <= KNOWN_PROVIDERS
+        assert {"ollama", "lmstudio"} <= KNOWN_PROVIDERS
+
+
+class TestAiIsConfigured:
+    def test_remote_provider_requires_a_key(self):
+        from app.core.ai_client import ai_is_configured
+
+        assert ai_is_configured("openai", "sk-x") is True
+        assert ai_is_configured("openai", "") is False
+
+    def test_local_provider_needs_no_key(self):
+        from app.core.ai_client import ai_is_configured
+
+        assert ai_is_configured("ollama", "") is True
+        assert ai_is_configured("lmstudio", "") is True
+
+
+class TestLocalErrorMessages:
+    def test_network_failure_names_the_product_and_url(self):
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        code, message = classify_provider_error(
+            "ollama",
+            httpx.ConnectError("refused"),
+            base_url="http://localhost:11434/v1",
+        )
+        assert code == "network"
+        assert "Ollama" in message
+        assert "http://localhost:11434/v1" in message
+        assert "ollama serve" in message
+
+    def test_lmstudio_network_failure_does_not_mention_ollama(self):
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error(
+            "lmstudio",
+            httpx.ConnectError("refused"),
+            base_url="http://localhost:1234/v1",
+        )
+        assert "LM Studio" in message
+        assert "ollama" not in message.lower()
+
+    def test_404_tells_the_user_to_pull_the_model(self):
+        from app.core.ai_client import classify_provider_error
+
+        code, message = classify_provider_error(
+            "ollama",
+            _status_error_with_body(404, "model not found"),
+            model="llama3.1:8b",
+        )
+        assert code == "model_unavailable"
+        assert "ollama pull llama3.1:8b" in message
+
+    def test_remote_providers_keep_their_wording(self):
+        """Regression guard: the local table must not leak into remote text."""
+        import httpx
+
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error("openai", httpx.ConnectError("refused"))
+        assert message == "Could not reach OpenAI. Check the internet connection."
+
+    def test_no_credits_is_never_reported_for_a_local_provider(self):
+        """A local server has no billing, so the remote wording would be nonsense."""
+        from app.core.ai_client import classify_provider_error
+
+        _, message = classify_provider_error("ollama", _status_error_with_body(402, ""))
+        assert "credits" not in message.lower()
+
+
+def _openai_shaped(text: str):
+    """A minimal OpenAI-compatible chat-completions body."""
+    return {"choices": [{"message": {"content": text}, "finish_reason": "stop"}]}
+
+
+class TestLocalDispatch:
+    @pytest.mark.asyncio
+    async def test_ollama_posts_to_the_default_endpoint_without_a_key(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="hi",
+                schema=None,
+                provider="ollama",
+                api_key="",
+                model="llama3.1:8b",
+            )
+
+        assert result == {"ok": True}
+        call = mock.post.await_args
+        assert call.args[0] == "http://localhost:11434/v1/chat/completions"
+        assert call.kwargs["json"]["model"] == "llama3.1:8b"
+
+    @pytest.mark.asyncio
+    async def test_lmstudio_uses_its_own_default_port(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=None,
+                provider="lmstudio",
+                api_key="",
+                model="qwen2.5-7b-instruct",
+            )
+
+        assert mock.post.await_args.args[0] == "http://localhost:1234/v1/chat/completions"
+
+    @pytest.mark.asyncio
+    async def test_configured_base_url_overrides_the_default(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=None,
+                provider="ollama",
+                api_key="",
+                model="llama3.1:8b",
+                base_url="http://gpubox:11434/v1",
+            )
+
+        assert mock.post.await_args.args[0] == "http://gpubox:11434/v1/chat/completions"
+
+    @pytest.mark.asyncio
+    async def test_local_default_timeout_is_generous(self):
+        """A cold LM Studio JIT-loads weights; 30s would look like a broken feature."""
+        from app.core.ai_client import LOCAL_TIMEOUT_SECONDS, complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock) as ctor:
+            await complete_json(prompt="hi", schema=None, provider="ollama", api_key="", model="m")
+
+        assert ctor.call_args.kwargs["timeout"] == LOCAL_TIMEOUT_SECONDS
+        assert LOCAL_TIMEOUT_SECONDS >= 300.0
+
+    @pytest.mark.asyncio
+    async def test_remote_default_timeout_is_unchanged(self):
+        from app.core.ai_client import _TIMEOUT_SECONDS, complete_json
+
+        mock = _mock_httpx({"content": [{"text": '{"ok": true}'}]})
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock) as ctor:
+            await complete_json(prompt="hi", schema=None, provider="anthropic", api_key="sk-ant-x")
+
+        assert ctor.call_args.kwargs["timeout"] == _TIMEOUT_SECONDS
+
+    @pytest.mark.asyncio
+    async def test_explicit_timeout_still_wins_for_a_local_provider(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock) as ctor:
+            await complete_json(
+                prompt="hi",
+                schema=None,
+                provider="ollama",
+                api_key="",
+                model="m",
+                timeout=5.0,
+            )
+
+        assert ctor.call_args.kwargs["timeout"] == 5.0
+
+    @pytest.mark.asyncio
+    async def test_blank_model_raises_a_pointed_error(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        with pytest.raises(AIProviderError) as exc:
+            await complete_json(
+                prompt="hi",
+                schema=None,
+                provider="ollama",
+                api_key="",
+                model=None,
+                raise_on_error=True,
+            )
+
+        assert "Select a model" in str(exc.value)
+        assert exc.value.code == "bad_request"
+
+    @pytest.mark.asyncio
+    async def test_blank_model_returns_none_when_not_raising(self):
+        from app.core.ai_client import complete_json
+
+        result = await complete_json(
+            prompt="hi", schema=None, provider="ollama", api_key="", model=None
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_unsafe_base_url_is_refused_before_any_request(self):
+        from app.core.ai_client import complete_json
+
+        with patch("app.core.ai_client.httpx.AsyncClient") as ctor:
+            result = await complete_json(
+                prompt="hi",
+                schema=None,
+                provider="ollama",
+                api_key="",
+                model="m",
+                base_url="file:///etc/passwd",
+            )
+
+        assert result is None
+        ctor.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "model_id",
+        ["llama3.1:8b", "qwen2.5:7b-instruct-q4_K_M", "lmstudio-community/Model-GGUF"],
+    )
+    async def test_real_local_model_ids_are_accepted(self, model_id):
+        """A rejection here surfaces as a misleading 'clear the AI model field'."""
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            result = await complete_json(
+                prompt="hi", schema=None, provider="ollama", api_key="", model=model_id
+            )
+
+        assert result == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_remote_provider_with_empty_key_still_returns_none(self):
+        """ai_is_configured must not loosen the credential gate for remote slugs."""
+        from app.core.ai_client import complete_json
+
+        with patch("app.core.ai_client.httpx.AsyncClient") as ctor:
+            result = await complete_json(prompt="hi", schema=None, provider="openai", api_key="")
+
+        assert result is None
+        ctor.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_openai_still_routes_to_its_own_endpoint(self):
+        """The is_local branch must not swallow the named remote slugs."""
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(prompt="hi", schema=None, provider="openai", api_key="sk-x")
+
+        assert mock.post.await_args.args[0] == "https://api.openai.com/v1/chat/completions"
+
+
+class TestLocalStructuredOutputDialect:
+    """LM Studio rejects response_format={"type": "json_object"} outright, so it
+
+    needs the richer json_schema form; ollama and the remote OpenAI-compatible
+    slugs stay on json_object (verified live against LM Studio; see #606).
+    """
+
+    @pytest.mark.asyncio
+    async def test_lmstudio_with_schema_uses_json_schema_dialect(self):
+        from app.core.ai_client import complete_json
+
+        schema = {"type": "object", "properties": {"episode": {"type": "integer"}}}
+        mock = _mock_httpx(_openai_shaped('{"episode": 3}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=schema,
+                provider="lmstudio",
+                api_key="",
+                model="qwen2.5-7b-instruct",
+            )
+
+        response_format = mock.post.await_args.kwargs["json"]["response_format"]
+        assert response_format["type"] == "json_schema"
+        assert response_format["json_schema"]["schema"] == schema
+
+    @pytest.mark.asyncio
+    async def test_ollama_with_schema_still_uses_json_object(self):
+        from app.core.ai_client import complete_json
+
+        schema = {"type": "object", "properties": {"episode": {"type": "integer"}}}
+        mock = _mock_httpx(_openai_shaped('{"episode": 3}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=schema,
+                provider="ollama",
+                api_key="",
+                model="llama3.1:8b",
+            )
+
+        assert mock.post.await_args.kwargs["json"]["response_format"] == {"type": "json_object"}
+
+    @pytest.mark.asyncio
+    async def test_openai_with_schema_still_uses_json_object(self):
+        """Regression guard: existing openai/openrouter users must not change dialect."""
+        from app.core.ai_client import complete_json
+
+        schema = {"type": "object", "properties": {"episode": {"type": "integer"}}}
+        mock = _mock_httpx(_openai_shaped('{"episode": 3}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(prompt="hi", schema=schema, provider="openai", api_key="sk-x")
+
+        assert mock.post.await_args.kwargs["json"]["response_format"] == {"type": "json_object"}
+
+    @pytest.mark.asyncio
+    async def test_lmstudio_without_schema_sends_no_response_format(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=None,
+                provider="lmstudio",
+                api_key="",
+                model="qwen2.5-7b-instruct",
+            )
+
+        assert "response_format" not in mock.post.await_args.kwargs["json"]
+
+    @pytest.mark.asyncio
+    async def test_lmstudio_forwards_the_real_episode_matcher_schema_intact(self):
+        """Pins the union-type case (runner_up: ["object", "null"]) that live
+
+        testing against LM Studio exercised with strict=True.
+        """
+        from app.core.ai_client import complete_json
+        from app.matcher.llm_episode_matcher import RESPONSE_SCHEMA
+
+        mock = _mock_httpx(_openai_shaped('{"episode": 3, "confidence": 0.9}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=RESPONSE_SCHEMA,
+                provider="lmstudio",
+                api_key="",
+                model="qwen2.5-7b-instruct",
+            )
+
+        response_format = mock.post.await_args.kwargs["json"]["response_format"]
+        assert response_format == {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "strict": True, "schema": RESPONSE_SCHEMA},
+        }
+
+
+class TestProviderLabelInFallbackMessages:
+    """The truncated/malformed paths must name the provider, not its slug."""
+
+    @pytest.mark.asyncio
+    async def test_truncated_response_uses_the_display_label_for_ollama(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        truncated = {"choices": [{"message": {"content": ""}, "finish_reason": "length"}]}
+        mock = _mock_httpx(truncated)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc:
+                await complete_json(
+                    prompt="hi",
+                    schema=None,
+                    provider="ollama",
+                    api_key="",
+                    model="m",
+                    raise_on_error=True,
+                )
+
+        assert "Ollama" in str(exc.value)
+        assert "ollama " not in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_truncated_response_uses_the_display_label_for_openai(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        truncated = {"choices": [{"message": {"content": ""}, "finish_reason": "length"}]}
+        mock = _mock_httpx(truncated)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc:
+                await complete_json(
+                    prompt="hi",
+                    schema=None,
+                    provider="openai",
+                    api_key="sk-x",
+                    raise_on_error=True,
+                )
+
+        assert "OpenAI cut the response off" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_malformed_response_uses_the_display_label(self):
+        from app.core.ai_client import complete_json
+        from app.core.errors import AIProviderError
+
+        mock = _mock_httpx(_openai_shaped("not json at all"))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with pytest.raises(AIProviderError) as exc:
+                await complete_json(
+                    prompt="hi",
+                    schema=None,
+                    provider="openai",
+                    api_key="sk-x",
+                    raise_on_error=True,
+                )
+
+        assert "OpenAI returned a reply that was not valid JSON" in str(exc.value)
+
+
+class TestPreambleTolerantParsing:
+    def test_extracts_json_after_a_reasoning_preamble(self):
+        from app.core.ai_client import _parse_json_text
+
+        text = 'Let me think about this. The answer is:\n{"episode": 3, "confidence": 0.8}'
+        assert _parse_json_text(text) == {"episode": 3, "confidence": 0.8}
+
+    def test_ignores_trailing_commentary(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('{"ok": true}\nHope that helps!') == {"ok": True}
+
+    def test_handles_nested_braces(self):
+        from app.core.ai_client import _parse_json_text
+
+        text = 'Result: {"a": {"b": 1}, "c": 2} done'
+        assert _parse_json_text(text) == {"a": {"b": 1}, "c": 2}
+
+    def test_ignores_braces_inside_strings(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('x {"title": "a } b"} y') == {"title": "a } b"}
+
+    def test_plain_json_is_unaffected(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('{"ok": true}') == {"ok": True}
+
+    def test_fenced_json_is_still_handled(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('```json\n{"ok": true}\n```') == {"ok": True}
+
+    def test_genuinely_unparseable_text_still_returns_none(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text("I could not determine the episode.") is None
+
+    def test_unbalanced_braces_return_none(self):
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text('here you go {"ok": true') is None
+
+    def test_a_bare_json_array_still_returns_none(self):
+        """complete_json's contract is a dict; an array is not a usable result."""
+        from app.core.ai_client import _parse_json_text
+
+        assert _parse_json_text("[1, 2, 3]") is None
+
+
+class TestModelSubstitutionWarning:
+    """LM Studio serves whichever model is loaded when asked for an unknown one.
+
+    validate_ai's pre-flight only runs when the user presses Test Connection, so
+    swapping the loaded model afterwards would let real matches run on a
+    different model with nothing in the result showing it. The response names
+    the model that answered, so this costs no extra request.
+    """
+
+    @pytest.mark.asyncio
+    async def test_warns_when_a_local_server_answers_with_another_model(self, caplog):
+        from app.core.ai_client import complete_json
+
+        body = _openai_shaped('{"ok": true}')
+        body["model"] = "google/gemma-4-e4b"
+        mock = _mock_httpx(body)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with caplog.at_level("WARNING"):
+                result = await complete_json(
+                    prompt="hi",
+                    schema=None,
+                    provider="lmstudio",
+                    api_key="",
+                    model="ibm/granite-4-h-tiny",
+                )
+
+        # Still usable: a warning, not a failure. Refusing would strand the job.
+        assert result == {"ok": True}
+        assert "google/gemma-4-e4b" in caplog.text
+        assert "ibm/granite-4-h-tiny" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_warning_when_the_model_matches(self, caplog):
+        from app.core.ai_client import complete_json
+
+        body = _openai_shaped('{"ok": true}')
+        body["model"] = "ibm/granite-4-h-tiny"
+        mock = _mock_httpx(body)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with caplog.at_level("WARNING"):
+                await complete_json(
+                    prompt="hi",
+                    schema=None,
+                    provider="lmstudio",
+                    api_key="",
+                    model="ibm/granite-4-h-tiny",
+                )
+
+        assert "not the requested" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_hosted_providers_are_not_warned_about_pinned_versions(self, caplog):
+        """OpenAI answers "gpt-4o-mini" with "gpt-4o-mini-2024-07-18"."""
+        from app.core.ai_client import complete_json
+
+        body = _openai_shaped('{"ok": true}')
+        body["model"] = "gpt-4o-mini-2024-07-18"
+        mock = _mock_httpx(body)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with caplog.at_level("WARNING"):
+                await complete_json(prompt="hi", schema=None, provider="openai", api_key="sk-x")
+
+        assert "not the requested" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_a_response_without_a_model_field_does_not_warn(self, caplog):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with caplog.at_level("WARNING"):
+                await complete_json(
+                    prompt="hi", schema=None, provider="ollama", api_key="", model="m"
+                )
+
+        assert "not the requested" not in caplog.text

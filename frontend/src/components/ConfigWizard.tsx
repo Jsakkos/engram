@@ -10,6 +10,7 @@ import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { PathStatusHint } from './PathStatusHint';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
 import { requestAiValidation } from '../utils/aiValidation';
+import { fetchLocalModels, isLocalProvider, localProviderDefaultUrl } from '../utils/localModels';
 import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
 import { requestDiscordWebhookTest } from '../utils/discordWebhookTest';
 import { formatToolVersion } from '../utils/formatting';
@@ -77,6 +78,8 @@ const AI_PROVIDER_LABELS: Record<string, string> = {
     openai: 'OpenAI',
     openrouter: 'OpenRouter',
     gemini: 'Google Gemini',
+    ollama: 'Ollama',
+    lmstudio: 'LM Studio',
 };
 
 const AI_KEY_PLACEHOLDERS: Record<string, string> = {
@@ -88,13 +91,19 @@ const AI_KEY_PLACEHOLDERS: Record<string, string> = {
 
 // Shown as the model-field placeholder so the user can see what they are
 // overriding. Mirrors DEFAULT_MODELS in backend/app/core/ai_client.py — the
-// backend is authoritative, this is a label only.
+// backend is authoritative, this is a label only. The local providers are
+// deliberately absent: they have no default, and the model field is a required
+// dropdown for them rather than an optional override.
 const AI_DEFAULT_MODELS: Record<string, string> = {
     anthropic: 'claude-haiku-4-5-20251001',
     openai: 'gpt-4o-mini',
     openrouter: 'anthropic/claude-haiku-4-5-20251001',
     gemini: 'gemini-2.5-flash-lite',
 };
+
+// Long enough to swallow a typed-out host, short enough that pasting one and
+// stopping still feels immediate.
+const LOCAL_MODEL_FETCH_DEBOUNCE_MS = 400;
 
 interface NamingPreset {
     id: string;
@@ -169,6 +178,7 @@ interface ConfigData {
     aiProvider: string;
     aiApiKey: string;
     aiModel: string;
+    aiLocalBaseUrl: string;
     discdbContributionsEnabled: boolean;
     discdbContributionTier: number;
     discdbExportPath: string;
@@ -260,6 +270,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         aiProvider: 'anthropic',
         aiApiKey: '',
         aiModel: '',
+        aiLocalBaseUrl: '',
         discdbContributionsEnabled: false,
         discdbContributionTier: 2,
         discdbExportPath: '',
@@ -296,6 +307,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // lets the user continue without TMDB.
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string}>({status: 'idle'});
     const [aiValidation, setAiValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string, model?: string}>({status: 'idle'});
+    const [localModels, setLocalModels] = useState<{models: string[]; error: string | null}>({
+        models: [],
+        error: null,
+    });
     // Inline validation for manually-entered tool paths (MakeMKV/FFmpeg), keyed by
     // the config field. Without this, a hand-typed override was saved blind — no
     // confirmation it actually points at a working binary.
@@ -330,6 +345,35 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             setNetworkInfo(null);
         }
     }, [config.allowLanAccess, fetchNetworkInfo]);
+
+    // Populate the model dropdown whenever a local provider or its endpoint
+    // changes. The fetch doubles as a reachability check, which is why the local
+    // path does not need a separate Test button to tell the user their server is
+    // down. A failure leaves `models` empty, and the field below falls back to
+    // free text so a user with an unreachable server can still type an id.
+    // Debounced, because aiLocalBaseUrl is a dependency and someone typing a
+    // custom host would otherwise fire one request per keystroke — each of which
+    // the backend turns into its own outbound fetch with a 5s timeout. Clearing
+    // the timer on cleanup means only the last keystroke actually asks; the
+    // `cancelled` flag then guards the state update for a reply that lands after
+    // the inputs changed again.
+    useEffect(() => {
+        if (!config.aiIdentificationEnabled || !isLocalProvider(config.aiProvider)) {
+            setLocalModels({models: [], error: null});
+            return;
+        }
+        let cancelled = false;
+        const timer = setTimeout(() => {
+            void (async () => {
+                const result = await fetchLocalModels(config.aiProvider, config.aiLocalBaseUrl);
+                if (!cancelled) setLocalModels(result);
+            })();
+        }, LOCAL_MODEL_FETCH_DEBOUNCE_MS);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [config.aiIdentificationEnabled, config.aiProvider, config.aiLocalBaseUrl]);
 
     // Load existing config on mount
     useEffect(() => {
@@ -389,6 +433,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     aiProvider: data.ai_provider || 'anthropic',
                     aiApiKey: data.ai_api_key === '***' ? '' : (data.ai_api_key || ''),
                     aiModel: data.ai_model || '',
+                    aiLocalBaseUrl: data.ai_local_base_url || '',
                     discdbContributionsEnabled: data.discdb_contributions_enabled ?? false,
                     discdbContributionTier: data.discdb_contribution_tier ?? 2,
                     discdbExportPath: data.discdb_export_path || '',
@@ -612,6 +657,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     // which drops blanks so a saved key survives — would make the
                     // override impossible to clear once set.
                     ai_model: config.aiModel.trim(),
+                    ai_local_base_url: config.aiLocalBaseUrl.trim(),
                     discdb_contributions_enabled: config.discdbContributionsEnabled,
                     discdb_contribution_tier: config.discdbContributionTier,
                     discdb_export_path: config.discdbExportPath,
@@ -665,14 +711,20 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     };
 
     const handleTestAi = async () => {
+        const local = isLocalProvider(config.aiProvider);
         const key = config.aiApiKey.trim();
-        if (!key && !savedKeys.ai) {
+        if (!local && !key && !savedKeys.ai) {
             setAiValidation({status: 'invalid', error: 'Please enter a key first'});
+            return;
+        }
+        if (local && !config.aiModel.trim()) {
+            setAiValidation({status: 'invalid', error: 'Select a model first'});
             return;
         }
         // Prefix hint only, never a gate: provider key formats change, and a
         // wrong-provider key is the common mistake after switching providers.
-        const expectedPrefix = AI_KEY_PLACEHOLDERS[config.aiProvider]?.replace('...', '');
+        // Local providers have no key at all, so the hint does not apply.
+        const expectedPrefix = local ? '' : AI_KEY_PLACEHOLDERS[config.aiProvider]?.replace('...', '');
         if (key && expectedPrefix && !key.startsWith(expectedPrefix)) {
             setAiValidation({
                 status: 'invalid',
@@ -683,7 +735,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         setAiValidation({status: 'testing'});
         // The model goes as typed, not as saved: the point of testing is to find
         // out whether this key can reach this model before committing to it.
-        const result = await requestAiValidation(config.aiProvider, config.aiApiKey, config.aiModel);
+        const result = await requestAiValidation(
+            config.aiProvider,
+            config.aiApiKey,
+            config.aiModel,
+            config.aiLocalBaseUrl,
+        );
         if (result.status === 'valid') {
             setAiValidation({status: 'valid', model: result.model});
         } else {
@@ -1248,7 +1305,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <details className="wizard-group">
                             <summary>
                                 <span className="wizard-group-chevron">▸</span>AI assistance
-                                <span className="wizard-group-sub">optional · API key required</span>
+                                {/* Not "API key required" any more: the local providers
+                                    (Ollama, LM Studio) authenticate to nothing, so a key
+                                    is only needed for the hosted ones. */}
+                                <span className="wizard-group-sub">optional · hosted or local</span>
                             </summary>
                             <div className="wizard-group-body">
 
@@ -1278,6 +1338,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         value={config.aiProvider}
                                         onValueChange={(v) => {
                                             handleInputChange('aiProvider', v);
+                                            // The base URL is shared by both local
+                                            // slugs, so carrying a customised Ollama
+                                            // port over to LM Studio would silently
+                                            // point at the wrong server. Reset to the
+                                            // new slug's default (blank for remote).
+                                            handleInputChange('aiLocalBaseUrl', '');
+                                            handleInputChange('aiModel', '');
                                             setAiValidation({status: 'idle'});
                                         }}
                                         options={[
@@ -1285,9 +1352,12 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                             { value: 'openai', label: 'OpenAI' },
                                             { value: 'openrouter', label: 'OpenRouter' },
                                             { value: 'gemini', label: 'Google Gemini' },
+                                            { value: 'ollama', label: 'Ollama (local)' },
+                                            { value: 'lmstudio', label: 'LM Studio (local)' },
                                         ]}
                                     />
                                 </div>
+                                {!isLocalProvider(config.aiProvider) && (
                                 <div className="form-group">
                                     <label htmlFor="aiApiKey">
                                         {providerLabel} API Key
@@ -1303,11 +1373,78 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                             setAiValidation({status: 'idle'});
                                         }}
                                     />
-                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                    <span className="form-hint">
+                                        API key for {providerLabel}. Used only when TMDB lookup fails.
+                                    </span>
+                                </div>
+                                )}
+                                {isLocalProvider(config.aiProvider) && (
+                                <div className="form-group">
+                                    <label htmlFor="aiLocalBaseUrl">Server Address</label>
+                                    <input
+                                        id="aiLocalBaseUrl"
+                                        type="text"
+                                        placeholder={localProviderDefaultUrl(config.aiProvider)}
+                                        value={config.aiLocalBaseUrl}
+                                        onChange={(e) => {
+                                            handleInputChange('aiLocalBaseUrl', e.target.value);
+                                            setAiValidation({status: 'idle'});
+                                        }}
+                                    />
+                                    <span className="form-hint">
+                                        Leave blank to use {providerLabel}'s default address
+                                        ({localProviderDefaultUrl(config.aiProvider)}). No API
+                                        key is needed for a local server.
+                                    </span>
+                                    {localModels.error && (
+                                        <span style={{color: '#f59e0b', fontSize: '0.85rem'}}>
+                                            ⚠ {localModels.error}
+                                        </span>
+                                    )}
+                                </div>
+                                )}
+                                <div className="form-group">
+                                    <label htmlFor="aiModel">
+                                        {isLocalProvider(config.aiProvider) ? 'Model' : 'Model (optional)'}
+                                    </label>
+                                    {isLocalProvider(config.aiProvider) && localModels.models.length > 0 ? (
+                                        <EngramSelect
+                                            id="aiModel"
+                                            value={config.aiModel}
+                                            onValueChange={(v) => {
+                                                handleInputChange('aiModel', v);
+                                                setAiValidation({status: 'idle'});
+                                            }}
+                                            options={localModels.models.map((m) => ({value: m, label: m}))}
+                                        />
+                                    ) : (
+                                        <input
+                                            id="aiModel"
+                                            type="text"
+                                            placeholder={
+                                                isLocalProvider(config.aiProvider)
+                                                    ? 'e.g. llama3.1:8b'
+                                                    : (AI_DEFAULT_MODELS[config.aiProvider] || '')
+                                            }
+                                            value={config.aiModel}
+                                            onChange={(e) => {
+                                                handleInputChange('aiModel', e.target.value);
+                                                setAiValidation({status: 'idle'});
+                                            }}
+                                        />
+                                    )}
+                                    <span className="form-hint">
+                                        {isLocalProvider(config.aiProvider)
+                                            ? "Required. Local providers have no default, because it depends on which models you have installed."
+                                            : "Leave blank to use Engram's default. Set this if your key cannot reach the default model."}
+                                    </span>
+                                </div>
+                                <div className="form-group">
+                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
                                         <button
                                             type="button"
                                             onClick={handleTestAi}
-                                            disabled={aiValidation.status === 'testing' || (!config.aiApiKey && !savedKeys.ai)}
+                                            disabled={aiValidation.status === 'testing' || (!isLocalProvider(config.aiProvider) && !config.aiApiKey && !savedKeys.ai)}
                                             className="btn-secondary"
                                             style={{padding: '0.25rem 0.75rem', fontSize: '0.85rem'}}
                                         >
@@ -1327,28 +1464,22 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                             <span style={{color: '#f59e0b', fontSize: '0.85rem'}}>⚠ {aiValidation.error}</span>
                                         )}
                                     </div>
-                                    <span className="form-hint">
-                                        API key for {providerLabel}. Used only when TMDB lookup fails.
-                                    </span>
                                 </div>
-                                <div className="form-group">
-                                    <label htmlFor="aiModel">Model (optional)</label>
-                                    <input
-                                        id="aiModel"
-                                        type="text"
-                                        placeholder={AI_DEFAULT_MODELS[config.aiProvider] || ''}
-                                        value={config.aiModel}
-                                        onChange={(e) => {
-                                            handleInputChange('aiModel', e.target.value);
-                                            setAiValidation({status: 'idle'});
-                                        }}
-                                    />
-                                    <span className="form-hint">
-                                        Leave blank to use Engram's default. Set this if your key
-                                        cannot reach the default model — a key without access gets
-                                        a "does not have access" error naming the models it can use.
-                                    </span>
-                                </div>
+                                {/* Advisory only, never an override: a local server is
+                                    one GPU or CPU, so parallel requests queue rather
+                                    than overlap, and several large contexts at once can
+                                    exhaust VRAM. Silently clamping a setting the user
+                                    configured would be worse than telling them. */}
+                                {isLocalProvider(config.aiProvider) && config.maxConcurrentMatches > 1 && (
+                                    <div className="form-group">
+                                        <span className="form-hint" style={{color: '#f59e0b'}}>
+                                            ⚠ Max Concurrent Matches is set to {config.maxConcurrentMatches}.
+                                            A local server processes one request at a time, so parallel
+                                            matches queue rather than run faster, and several at once can
+                                            exhaust VRAM. Consider setting it to 1 in Matching settings.
+                                        </span>
+                                    </div>
+                                )}
                                 </div>
                                 <div className="form-group checkbox-group">
                                     <label className="checkbox-label">
