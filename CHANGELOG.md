@@ -11,6 +11,12 @@ All notable changes to Engram will be documented in this file.
   confident the match was. The matcher still runs and pre-fills its best guess —
   you just get the last word before anything moves into the library. Useful for
   shows the matcher handles badly.
+- **Discord notification when a disc finishes ripping**, fired as soon as Engram is finished
+  with the drive rather than when the job reaches its final state, and whether or not
+  auto-eject is on. Discs that need manual review now ping at the point the drive is free
+  instead of staying silent until the review is done. A Status field says whether the rip
+  completed, stopped early, or was a re-rip. Off by default; enable it under Notifications
+  in Settings.
 - **One track can now be assigned several episodes.** Segment-format shows
   (three ~7 minute cartoon segments in one 22 minute DVD track) list each segment
   as its own TMDB episode, so a single track really is `S01E01-E03`. The review

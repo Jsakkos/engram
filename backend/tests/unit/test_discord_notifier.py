@@ -8,6 +8,8 @@ import pytest
 
 from app.core.discord_notifier import (
     DEFAULT_TEMPLATE_COMPLETED,
+    RIP_OUTCOME_COMPLETE,
+    RIP_OUTCOME_STOPPED_EARLY,
     build_template_context,
     notify_discord,
     render_discord_template,
@@ -280,7 +282,7 @@ async def test_send_notification_noop_when_no_webhook():
     await update_config(discord_webhook_url="")
 
     with patch("app.core.discord_notifier.notify_discord") as mock_notify:
-        await job_manager._send_discord_notification(99, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(99, JobState.COMPLETED)
         mock_notify.assert_not_called()
 
 
@@ -295,7 +297,7 @@ async def test_send_notification_noop_for_non_notifiable_state():
     await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(99, JobState.RIPPING)
+        await job_manager._send_discord_notification_for_state(99, JobState.RIPPING)
         mock_notify.assert_not_called()
 
 
@@ -322,7 +324,7 @@ async def test_send_notification_fires_on_completed():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     mock_notify.assert_called_once()
     embed = mock_notify.call_args[0][2]
@@ -352,7 +354,7 @@ async def test_send_notification_fires_on_failed():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.FAILED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.FAILED)
 
     mock_notify.assert_called_once()
     embed = mock_notify.call_args[0][2]
@@ -383,7 +385,7 @@ async def test_send_notification_falls_back_to_volume_label():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     assert mock_notify.call_args[0][2]["description"] == "**UNKNOWN_DISC**"
 
@@ -414,7 +416,7 @@ async def test_send_notification_uses_configured_completed_template():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     assert mock_notify.call_args[0][2]["description"] == "Done: Breaking Bad (BREAKING_BAD_S1D1)"
 
@@ -447,7 +449,7 @@ async def test_send_notification_uses_configured_failed_template():
         job_id = job.id
 
     with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
-        await job_manager._send_discord_notification(job_id, JobState.FAILED)
+        await job_manager._send_discord_notification_for_state(job_id, JobState.FAILED)
 
     assert mock_notify.call_args[0][2]["description"] == "Failed: BAD_DISC: disc unreadable"
 
@@ -468,17 +470,17 @@ async def test_send_notification_swallows_internal_errors():
         new_callable=AsyncMock,
         side_effect=RuntimeError("network dead"),
     ):
-        await job_manager._send_discord_notification(999, JobState.COMPLETED)
+        await job_manager._send_discord_notification_for_state(999, JobState.COMPLETED)
 
 
 @pytest.mark.asyncio
 async def test_terminal_callback_schedules_task():
-    """_notify_discord_on_terminal fires _send_discord_notification as a background task."""
+    """_notify_discord_on_terminal fires the state-keyed sender as a background task."""
     from app.models import JobState
     from app.services.job_manager import job_manager
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         await job_manager._notify_discord_on_terminal(1, JobState.COMPLETED)
         await asyncio.sleep(0)  # yield to let the task start
@@ -510,7 +512,7 @@ async def test_advance_job_via_state_machine_fires_notification():
         job_id = job.id
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         new_state = await job_manager.advance_job_via_state_machine(job_id)
         await asyncio.sleep(0)
@@ -536,6 +538,90 @@ def test_app_config_notification_defaults():
     assert config.discord_notify_review is True
     assert config.discord_mention_review == ""
     assert config.dashboard_base_url == ""
+
+
+def test_ripped_notification_defaults_off():
+    """The one toggle that defaults OFF: an existing user's channel must not
+    double in volume just because they upgraded."""
+    from app.models.app_config import AppConfig
+
+    config = AppConfig()
+    assert config.discord_notify_ripped is False
+    assert config.discord_template_ripped == ""
+
+
+def test_ripped_column_server_default_is_zero():
+    """The other three toggles carry server_default 1 so a NULL reads as
+    enabled and can never silently mute someone. For a new opt-in event that
+    rationale inverts: a NULL must read as OFF, or upgrading turns it on."""
+    from app.models.app_config import AppConfig
+
+    column = AppConfig.__table__.columns["discord_notify_ripped"]
+    assert str(column.server_default.arg) == "0"
+
+
+async def test_reconciler_backfills_ripped_columns_as_disabled(tmp_path):
+    """The invariant that actually matters isn't the model declaration above,
+    it's what a frozen PyInstaller build does. Frozen builds ship no
+    alembic.ini and skip Alembic entirely, converging schema through
+    _add_missing_columns / _drop_extra_columns / _migrate_app_config in
+    app/database.py instead. If that path ever added these two columns
+    without their defaults, discord_notify_ripped would silently switch on
+    for every upgrading user. Exercise the real reconciler functions, in the
+    order init_db() runs them, against a disposable on-disk SQLite DB under
+    tmp_path (never the app's real DB)."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+
+    # `from app import database` rather than `import app.database`: this file
+    # also does `from app.database import async_session` elsewhere, and mixing
+    # the two import forms for one module trips CodeQL's py/import-and-import-from.
+    from app import database as db_mod
+    from app.models.app_config import AppConfig
+
+    db_path = tmp_path / "reconcile.db"
+    migration_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    migration_factory = sessionmaker(migration_engine, class_=AsyncSession, expire_on_commit=False)
+
+    original_engine = db_mod.engine
+    db_mod.engine = migration_engine
+    try:
+        # Full current schema, with a real row in it...
+        async with migration_engine.begin() as conn:
+            await conn.run_sync(
+                lambda sync_conn: AppConfig.__table__.create(sync_conn, checkfirst=True)
+            )
+        async with migration_factory() as session:
+            session.add(AppConfig())
+            await session.commit()
+
+        # ...then strip the two new columns to simulate a pre-upgrade database.
+        async with migration_engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE app_config DROP COLUMN discord_notify_ripped"))
+            await conn.execute(text("ALTER TABLE app_config DROP COLUMN discord_template_ripped"))
+
+        # The same reconciler call order init_db() uses (minus _run_alembic_upgrade,
+        # which frozen builds skip because they ship no alembic.ini).
+        await db_mod._add_missing_columns()
+        await db_mod._drop_extra_columns()
+        await db_mod._migrate_app_config(migration_engine)
+
+        async with migration_engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT discord_notify_ripped, discord_template_ripped "
+                        "FROM app_config WHERE id = 1"
+                    )
+                )
+            ).fetchone()
+
+        assert row[0] == 0, "discord_notify_ripped must backfill to 0, not NULL"
+        assert row[1] == "", "discord_template_ripped must backfill to '', not NULL"
+    finally:
+        db_mod.engine = original_engine
+        await migration_engine.dispose()
 
 
 # --------------------------------------------------------------------------- #
@@ -1065,7 +1151,7 @@ async def test_review_observer_fires_on_entry_to_review():
     from app.services.job_manager import job_manager
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         job_manager._notify_discord_on_review(7, JobState.REVIEW_NEEDED, JobState.MATCHING)
         await asyncio.sleep(0)
@@ -1080,7 +1166,7 @@ async def test_review_observer_suppresses_same_state_rebroadcast():
     from app.services.job_manager import job_manager
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         job_manager._notify_discord_on_review(7, JobState.REVIEW_NEEDED, JobState.REVIEW_NEEDED)
         await asyncio.sleep(0)
@@ -1094,7 +1180,7 @@ async def test_review_observer_ignores_other_states():
     from app.services.job_manager import job_manager
 
     with patch.object(
-        job_manager, "_send_discord_notification", new_callable=AsyncMock
+        job_manager, "_send_discord_notification_for_state", new_callable=AsyncMock
     ) as mock_send:
         job_manager._notify_discord_on_review(7, JobState.RIPPING, JobState.IDENTIFYING)
         await asyncio.sleep(0)
@@ -1126,7 +1212,7 @@ async def test_review_notification_uses_review_event_and_mention():
         with patch(
             "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
         ):
-            await job_manager._send_discord_notification(job_id, JobState.REVIEW_NEEDED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.REVIEW_NEEDED)
 
     embed = mock_notify.call_args[0][2]
     assert "Review Needed" in embed["title"]
@@ -1155,7 +1241,7 @@ async def test_mention_not_attached_to_completed_event():
         with patch(
             "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
         ):
-            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     assert mock_notify.call_args.kwargs["content"] == ""
 
@@ -1179,9 +1265,9 @@ async def test_per_event_toggle_suppresses_only_its_own_event():
         with patch(
             "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
         ):
-            await job_manager._send_discord_notification(job_id, JobState.REVIEW_NEEDED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.REVIEW_NEEDED)
             assert mock_notify.call_count == 0
-            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
             assert mock_notify.call_count == 1
 
     await update_config(discord_notify_review=True)
@@ -1218,7 +1304,7 @@ async def test_completion_notification_includes_episode_manifest():
         with patch(
             "app.core.tmdb_poster.resolve_poster_url", new_callable=AsyncMock, return_value=None
         ):
-            await job_manager._send_discord_notification(job_id, JobState.COMPLETED)
+            await job_manager._send_discord_notification_for_state(job_id, JobState.COMPLETED)
 
     by_name = {f["name"]: f["value"] for f in mock_notify.call_args[0][2]["fields"]}
     assert by_name["Episodes"] == "S01E01-E03 (3 episodes)"
@@ -1248,3 +1334,272 @@ async def test_notify_discord_reraises_only_when_asked():
             await notify_discord(
                 "https://discord.com/api/webhooks/1/a", job_id=1, embed={}, raise_on_error=True
             )
+
+
+# --------------------------------------------------------------------------- #
+# Ripped event
+# --------------------------------------------------------------------------- #
+
+
+def test_ripped_event_is_not_in_the_state_keyed_table():
+    """RIPPED_EVENT lives beside EVENTS, not in it: "ripped" is a hardware
+    milestone, not a JobState, and EVENTS means "notifiable job states"."""
+    from app.core.discord_notifier import EVENTS, RIPPED_EVENT
+    from app.models.disc_job import JobState
+
+    assert RIPPED_EVENT not in EVENTS.values()
+    assert set(EVENTS) == {JobState.COMPLETED, JobState.FAILED, JobState.REVIEW_NEEDED}
+    assert RIPPED_EVENT.key == "ripped"
+    assert RIPPED_EVENT.label == "Disc Ripped"
+
+
+def test_default_template_exists_for_ripped():
+    from app.core.discord_notifier import DEFAULT_TEMPLATES
+
+    assert DEFAULT_TEMPLATES["ripped"] == "**{{{title}}}**"
+
+
+def test_rip_outcome_is_an_allowed_template_var():
+    from app.core.discord_notifier import ALLOWED_TEMPLATE_VARS, validate_discord_template
+
+    assert "rip_outcome" in ALLOWED_TEMPLATE_VARS
+    assert validate_discord_template("{{title}} was {{rip_outcome}}") is None
+
+
+def test_build_template_context_renders_rip_outcome_empty_by_default():
+    """The outcome is knowledge the call site has and the DiscJob row does not,
+    so the row-derived context leaves it blank."""
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+    context = build_template_context(job, 1)
+    assert context["rip_outcome"] == ""
+
+
+def test_status_field_appears_only_on_the_ripped_event():
+    from app.core.discord_notifier import EVENTS, RIPPED_EVENT, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.MOVIE, detected_title="Inception")
+
+    ripped = build_embed_fields(job, [], RIPPED_EVENT, rip_outcome="Stopped early")
+    assert {"name": "Status", "value": "Stopped early", "inline": True} in ripped
+
+    completed = build_embed_fields(job, [], EVENTS[JobState.COMPLETED], rip_outcome="Complete")
+    assert not [f for f in completed if f["name"] == "Status"]
+
+
+def test_status_field_dropped_when_outcome_is_blank():
+    """Empty values drop, matching how Season, Reason and Library behave."""
+    from app.core.discord_notifier import RIPPED_EVENT, build_embed_fields
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.MOVIE, detected_title="Inception")
+    fields = build_embed_fields(job, [], RIPPED_EVENT, rip_outcome="")
+    assert not [f for f in fields if f["name"] == "Status"]
+
+
+def test_reason_field_suppressed_on_ripped_but_not_failed():
+    """Status already says how the rip ended; error_message may be stale or
+    unrelated, so the ripped embed must not surface it as Reason."""
+    from app.core.discord_notifier import EVENTS, RIPPED_EVENT, build_embed_fields
+    from app.models.disc_job import JobState
+
+    job = DiscJob(
+        drive_id="E:",
+        content_type=ContentType.MOVIE,
+        detected_title="Inception",
+        error_message="Cancelled by user",
+    )
+
+    ripped = build_embed_fields(job, [], RIPPED_EVENT, rip_outcome=RIP_OUTCOME_STOPPED_EARLY)
+    assert not [f for f in ripped if f["name"] == "Reason"]
+
+    failed = build_embed_fields(job, [], EVENTS[JobState.FAILED])
+    assert [f for f in failed if f["name"] == "Reason"]
+
+
+def test_build_embed_threads_rip_outcome_into_status_field():
+    """build_embed must actually pass rip_outcome down to build_embed_fields;
+    a deleted keyword here would ship a ripped embed with no Status field."""
+    from app.core.discord_notifier import RIPPED_EVENT, build_embed
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.MOVIE, detected_title="Inception")
+
+    embed = build_embed(job, [], RIPPED_EVENT, "desc", rip_outcome=RIP_OUTCOME_COMPLETE)
+    assert {"name": "Status", "value": RIP_OUTCOME_COMPLETE, "inline": True} in embed["fields"]
+
+
+@pytest.mark.asyncio
+async def test_send_notification_accepts_an_event_and_extra_context():
+    """The generalized signature: callers pass a NotificationEvent, and
+    extra_context supplies vars the DiscJob row cannot provide."""
+    from app.core.discord_notifier import RIP_OUTCOME_STOPPED_EARLY, RIPPED_EVENT
+    from app.database import async_session
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_notify_ripped=True,
+        discord_template_ripped="{{title}} was {{rip_outcome}}",
+    )
+
+    async with async_session() as session:
+        job = DiscJob(
+            drive_id="E:",
+            content_type=ContentType.TV,
+            detected_title="The Wire",
+            volume_label="THE_WIRE_S1D1",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(
+            job_id, RIPPED_EVENT, extra_context={"rip_outcome": RIP_OUTCOME_STOPPED_EARLY}
+        )
+
+    mock_notify.assert_called_once()
+    embed = mock_notify.call_args[0][2]
+    assert embed["description"] == "The Wire was Stopped early"
+    assert {"name": "Status", "value": "Stopped early", "inline": True} in embed["fields"]
+
+
+@pytest.mark.asyncio
+async def test_ripped_notification_suppressed_when_toggle_off():
+    """Default-off means an upgraded user gets nothing until they opt in."""
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE, RIPPED_EVENT
+    from app.database import async_session
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    await update_config(
+        discord_webhook_url="https://discord.com/api/webhooks/1/tok",
+        discord_notify_ripped=False,
+    )
+
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(
+            job_id, RIPPED_EVENT, extra_context={"rip_outcome": RIP_OUTCOME_COMPLETE}
+        )
+
+    mock_notify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_null_ripped_toggle_reads_as_off_at_send_time():
+    """A NULL discord_notify_ripped must suppress the ripped notification.
+
+    The send-time guard is `is not True`, not `is False`, and the difference
+    only shows up on a genuine SQL NULL. It inverts deliberately relative to
+    the other three toggles: completed/failed/review read a NULL as ENABLED so
+    an out-of-band schema change can never silently mute notifications a user
+    already relies on, while ripped is new and opt-in, so a NULL there must
+    read as DISABLED or an upgrade would switch it on for everyone and add a
+    second unrequested ping per disc.
+
+    Distinct from
+    test_api_routes.py::test_null_notify_columns_read_as_off_for_ripped_and_on_for_the_rest,
+    which pins the same asymmetry in the GET /api/config response builder. This
+    one pins the independent guard in JobManager._send_discord_notification.
+    """
+    from sqlalchemy import text as sa_text
+
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE, RIPPED_EVENT
+    from app.database import async_session
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    # Seed the row (and the webhook) BEFORE nulling the column: a later
+    # update_config would rewrite discord_notify_ripped with a real boolean.
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    # The column is NOT NULL with a server_default (see app_config.py), so a
+    # plain UPDATE ... = NULL is rejected by SQLite. Rebuild it as a nullable
+    # BOOLEAN first, matching how an out-of-band schema change (or an old ADD
+    # COLUMN migration) could actually leave a NULL in production.
+    async with async_session() as session:
+        await session.execute(sa_text("ALTER TABLE app_config DROP COLUMN discord_notify_ripped"))
+        await session.execute(
+            sa_text("ALTER TABLE app_config ADD COLUMN discord_notify_ripped BOOLEAN")
+        )
+        await session.commit()
+
+        stored = (
+            await session.execute(sa_text("SELECT discord_notify_ripped FROM app_config"))
+        ).scalar_one()
+    assert stored is None, "column is not actually NULL; the guard would not be exercised"
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(
+            job_id, RIPPED_EVENT, extra_context={"rip_outcome": RIP_OUTCOME_COMPLETE}
+        )
+
+    mock_notify.assert_not_called()
+
+
+def test_ripped_tracks_field_reports_what_actually_reached_disk():
+    """`total_titles` is the disc's title count, fixed at identification. Beside
+    "Stopped early" a bare count reads as a claim about this rip, so the ripped
+    embed reports copied-of-total instead."""
+    from app.core.discord_notifier import (
+        RIP_OUTCOME_STOPPED_EARLY,
+        RIPPED_EVENT,
+        build_embed_fields,
+    )
+    from app.models.disc_job import DiscTitle, TitleState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+    job.total_titles = 12
+    titles = [
+        DiscTitle(job_id=1, title_index=0, state=TitleState.QUEUED),
+        DiscTitle(job_id=1, title_index=1, state=TitleState.QUEUED),
+        DiscTitle(job_id=1, title_index=2, state=TitleState.RIPPING),
+        DiscTitle(job_id=1, title_index=3, state=TitleState.PENDING),
+    ]
+
+    fields = build_embed_fields(job, titles, RIPPED_EVENT, rip_outcome=RIP_OUTCOME_STOPPED_EARLY)
+    tracks = next(f for f in fields if f["name"] == "Tracks")
+    assert tracks["value"] == "2 of 12 copied"
+
+
+def test_non_ripped_events_keep_the_plain_track_count():
+    """Only the ripped embed reframes Tracks; the other three are unchanged."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import DiscTitle, JobState, TitleState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+    job.total_titles = 12
+    titles = [DiscTitle(job_id=1, title_index=0, state=TitleState.QUEUED)]
+
+    fields = build_embed_fields(job, titles, EVENTS[JobState.COMPLETED])
+    tracks = next(f for f in fields if f["name"] == "Tracks")
+    assert tracks["value"] == "12 titles"
+
+
+def test_review_state_does_not_count_as_copied():
+    """REVIEW is ambiguous: route_rip_failure_to_review parks unfinished titles
+    there too, so counting it would overstate what came off the disc."""
+    from app.core.discord_notifier import count_titles_on_disk
+    from app.models.disc_job import DiscTitle, TitleState
+
+    titles = [
+        DiscTitle(job_id=1, title_index=0, state=TitleState.REVIEW),
+        DiscTitle(job_id=1, title_index=1, state=TitleState.FAILED),
+        DiscTitle(job_id=1, title_index=2, state=TitleState.COMPLETED),
+    ]
+    assert count_titles_on_disk(titles) == 1

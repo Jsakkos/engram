@@ -351,9 +351,11 @@ class ConfigResponse(BaseModel):
     discord_template_completed: str = ""
     discord_template_failed: str = ""
     discord_template_review: str = ""
+    discord_template_ripped: str = ""
     discord_notify_completed: bool = True
     discord_notify_failed: bool = True
     discord_notify_review: bool = True
+    discord_notify_ripped: bool = False
     discord_mention_review: str = ""
     dashboard_base_url: str = ""
 
@@ -447,9 +449,11 @@ class ConfigUpdate(BaseModel):
     discord_template_completed: str | None = None
     discord_template_failed: str | None = None
     discord_template_review: str | None = None
+    discord_template_ripped: str | None = None
     discord_notify_completed: bool | None = None
     discord_notify_failed: bool | None = None
     discord_notify_review: bool | None = None
+    discord_notify_ripped: bool | None = None
     discord_mention_review: str | None = None
     dashboard_base_url: str | None = None
 
@@ -1721,12 +1725,17 @@ async def get_config() -> ConfigResponse:
         discord_template_completed=config.discord_template_completed or "",
         discord_template_failed=config.discord_template_failed or "",
         discord_template_review=config.discord_template_review or "",
+        discord_template_ripped=config.discord_template_ripped or "",
         # `is not False` rather than `or True`: a NULL toggle reads as enabled,
         # matching the notifier, so an out-of-band schema change can't mute
         # notifications without the user ever asking for that.
         discord_notify_completed=config.discord_notify_completed is not False,
         discord_notify_failed=config.discord_notify_failed is not False,
         discord_notify_review=config.discord_notify_review is not False,
+        # `is True`, not `is not False`: the other three read a NULL as enabled,
+        # this one must read a NULL as disabled. See the field comment in
+        # app_config.py.
+        discord_notify_ripped=config.discord_notify_ripped is True,
         discord_mention_review=config.discord_mention_review or "",
         dashboard_base_url=config.dashboard_base_url or "",
     )
@@ -1830,6 +1839,7 @@ async def update_config(config: ConfigUpdate) -> dict:
         "discord_template_completed",
         "discord_template_failed",
         "discord_template_review",
+        "discord_template_ripped",
     ):
         if update_data.get(field):
             error = validate_discord_template(update_data[field])
