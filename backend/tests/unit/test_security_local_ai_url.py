@@ -130,3 +130,39 @@ def test_deliberately_allows_a_non_local_host():
     from app.core.security import is_safe_local_ai_url
 
     assert is_safe_local_ai_url("https://gpubox.example.com/v1") is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # IPv4-mapped. Modern CPython delegates is_link_local through
+        # ipv4_mapped so this was already rejected, but pin it so a future
+        # refactor cannot quietly reopen it.
+        "http://[::ffff:169.254.169.254]:1234/v1",
+        "http://[::ffff:a9fe:a9fe]:1234/v1",
+        # IPv4-compatible ("::a.b.c.d"). This one DID slip through: it has no
+        # ipv4_mapped and reports is_link_local False.
+        "http://[::169.254.169.254]:1234/v1",
+        "http://[::a9fe:a9fe]:1234/v1",
+        # 6to4 wrapper around the same address.
+        "http://[2002:a9fe:a9fe::1]:1234/v1",
+    ],
+)
+def test_rejects_ipv4_embedded_in_an_ipv6_literal(url):
+    """The metadata/link-local denylist must see through IPv6 wrappers.
+
+    An IPv6 literal can name an IPv4 destination several ways and the ``is_*``
+    properties do not all unwrap it, so checking only the literal left the
+    metadata endpoint reachable by spelling it differently.
+    """
+    from app.core.security import is_safe_local_ai_url
+
+    assert is_safe_local_ai_url(url) is False
+
+
+@pytest.mark.parametrize("url", ["http://[::1]:11434/v1", "http://[fd00::1]:11434/v1"])
+def test_ipv6_unwrapping_does_not_break_ordinary_local_addresses(url):
+    """::1 must keep working; its "embedded IPv4" (0.0.0.1) is meaningless."""
+    from app.core.security import is_safe_local_ai_url
+
+    assert is_safe_local_ai_url(url) is True

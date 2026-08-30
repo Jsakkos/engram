@@ -496,6 +496,7 @@ async def complete_json(
                 schema,
                 timeout,
                 json_schema_mode=(provider == "lmstudio"),
+                warn_on_model_substitution=True,
             )
     else:
         logger.warning("Unsupported AI provider: %s", sanitize_log_value(provider))
@@ -707,6 +708,7 @@ async def _call_openai_compatible(
     schema: dict | None,
     timeout: float,
     json_schema_mode: bool = False,
+    warn_on_model_substitution: bool = False,
 ) -> dict | None:
     body: dict = {
         "model": model,
@@ -743,6 +745,7 @@ async def _call_openai_compatible(
         )
         resp.raise_for_status()
         data = resp.json()
+        _warn_on_model_substitution(model, data, warn=warn_on_model_substitution)
         choices = data.get("choices") or []
         if not choices:
             return None
@@ -750,6 +753,36 @@ async def _call_openai_compatible(
             raise _TruncatedResponse
         text = choices[0].get("message", {}).get("content") or ""
         return _parse_json_text(text)
+
+
+def _warn_on_model_substitution(requested: str, data: dict, *, warn: bool) -> None:
+    """Log when the server answered with a model other than the one asked for.
+
+    LM Studio serves whichever model is currently loaded when asked for one it
+    does not have, returning HTTP 200 with no error. ``validate_ai`` catches a
+    typo up front by checking the server's model list, but that runs only when
+    the user presses Test Connection: swapping the loaded model afterwards would
+    otherwise let real matches run on a different model silently, and nothing in
+    the result would show it.
+
+    The response body names the model that actually answered, so this costs no
+    extra request. It is a log line rather than a failure because the reply is
+    still usable and refusing it would strand a job over a warning.
+
+    Only for local providers. Hosted APIs legitimately answer with a pinned
+    version of the requested id ("gpt-4o-mini" -> "gpt-4o-mini-2024-07-18"),
+    which is why the prefix check below is not enough on its own.
+    """
+    if not warn:
+        return
+    answered = str((data or {}).get("model") or "")
+    if answered and not answered.startswith(requested):
+        logger.warning(
+            "Local AI server answered with model %s, not the requested %s. "
+            "The configured model may no longer be loaded.",
+            sanitize_log_value(answered),
+            sanitize_log_value(requested),
+        )
 
 
 async def _call_gemini(

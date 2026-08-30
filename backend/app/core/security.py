@@ -233,6 +233,40 @@ _LOCAL_AI_DENIED_HOSTS: frozenset[str] = frozenset(
 )
 
 
+def _ip_and_embedded_ipv4(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """``addr`` plus any IPv4 address reachable through an IPv6 wrapper.
+
+    An IPv6 literal can name an IPv4 destination in several ways, and the
+    ``is_*`` properties do not all see through the wrapper. Modern CPython does
+    delegate for the IPv4-*mapped* form, so ``::ffff:169.254.169.254`` already
+    reports ``is_link_local``; the deprecated IPv4-*compatible* form
+    ``::169.254.169.254`` does not, and 6to4 and Teredo wrappers do not either.
+    Checking the unwrapped address as well as the literal closes that gap
+    without relying on which forms a given Python version happens to handle.
+
+    No legitimate inference server is addressed this way, so unwrapping costs
+    nothing real.
+    """
+    out: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = [addr]
+    if isinstance(addr, ipaddress.IPv6Address):
+        for attr in ("ipv4_mapped", "sixtofour"):
+            embedded = getattr(addr, attr, None)
+            if embedded is not None:
+                out.append(embedded)
+        teredo = getattr(addr, "teredo", None)
+        if teredo:
+            out.extend(teredo)
+        # "::a.b.c.d" — the whole top 96 bits are zero. Excludes :: and ::1,
+        # whose embedded values (0.0.0.0 / 0.0.0.1) are meaningless, and which
+        # must keep working: ::1 is a normal way to reach a local server.
+        packed = int(addr)
+        if packed >> 32 == 0 and packed > 1:
+            out.append(ipaddress.IPv4Address(packed & 0xFFFFFFFF))
+    return out
+
+
 def is_safe_local_ai_url(url: str) -> bool:
     """Return True if ``url`` is usable as a local AI server's base URL.
 
@@ -300,10 +334,13 @@ def is_safe_local_ai_url(url: str) -> bool:
         return False
 
     try:
-        if ipaddress.ip_address(host).is_link_local:
-            return False
+        addr = ipaddress.ip_address(host)
     except ValueError:
         pass  # Not an IP literal; a hostname is fine.
+    else:
+        for candidate in _ip_and_embedded_ipv4(addr):
+            if candidate.is_link_local or str(candidate) in _LOCAL_AI_DENIED_HOSTS:
+                return False
 
     if ".." in parsed.path.split("/"):
         return False

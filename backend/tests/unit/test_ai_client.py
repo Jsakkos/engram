@@ -1533,3 +1533,81 @@ class TestPreambleTolerantParsing:
         from app.core.ai_client import _parse_json_text
 
         assert _parse_json_text("[1, 2, 3]") is None
+
+
+class TestModelSubstitutionWarning:
+    """LM Studio serves whichever model is loaded when asked for an unknown one.
+
+    validate_ai's pre-flight only runs when the user presses Test Connection, so
+    swapping the loaded model afterwards would let real matches run on a
+    different model with nothing in the result showing it. The response names
+    the model that answered, so this costs no extra request.
+    """
+
+    @pytest.mark.asyncio
+    async def test_warns_when_a_local_server_answers_with_another_model(self, caplog):
+        from app.core.ai_client import complete_json
+
+        body = _openai_shaped('{"ok": true}')
+        body["model"] = "google/gemma-4-e4b"
+        mock = _mock_httpx(body)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with caplog.at_level("WARNING"):
+                result = await complete_json(
+                    prompt="hi",
+                    schema=None,
+                    provider="lmstudio",
+                    api_key="",
+                    model="ibm/granite-4-h-tiny",
+                )
+
+        # Still usable: a warning, not a failure. Refusing would strand the job.
+        assert result == {"ok": True}
+        assert "google/gemma-4-e4b" in caplog.text
+        assert "ibm/granite-4-h-tiny" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_warning_when_the_model_matches(self, caplog):
+        from app.core.ai_client import complete_json
+
+        body = _openai_shaped('{"ok": true}')
+        body["model"] = "ibm/granite-4-h-tiny"
+        mock = _mock_httpx(body)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with caplog.at_level("WARNING"):
+                await complete_json(
+                    prompt="hi",
+                    schema=None,
+                    provider="lmstudio",
+                    api_key="",
+                    model="ibm/granite-4-h-tiny",
+                )
+
+        assert "not the requested" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_hosted_providers_are_not_warned_about_pinned_versions(self, caplog):
+        """OpenAI answers "gpt-4o-mini" with "gpt-4o-mini-2024-07-18"."""
+        from app.core.ai_client import complete_json
+
+        body = _openai_shaped('{"ok": true}')
+        body["model"] = "gpt-4o-mini-2024-07-18"
+        mock = _mock_httpx(body)
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with caplog.at_level("WARNING"):
+                await complete_json(prompt="hi", schema=None, provider="openai", api_key="sk-x")
+
+        assert "not the requested" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_a_response_without_a_model_field_does_not_warn(self, caplog):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            with caplog.at_level("WARNING"):
+                await complete_json(
+                    prompt="hi", schema=None, provider="ollama", api_key="", model="m"
+                )
+
+        assert "not the requested" not in caplog.text

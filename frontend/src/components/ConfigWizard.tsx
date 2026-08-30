@@ -100,6 +100,10 @@ const AI_DEFAULT_MODELS: Record<string, string> = {
     gemini: 'gemini-2.5-flash-lite',
 };
 
+// Long enough to swallow a typed-out host, short enough that pasting one and
+// stopping still feels immediate.
+const LOCAL_MODEL_FETCH_DEBOUNCE_MS = 400;
+
 interface NamingPreset {
     id: string;
     seasonFormat: string;
@@ -342,18 +346,27 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // path does not need a separate Test button to tell the user their server is
     // down. A failure leaves `models` empty, and the field below falls back to
     // free text so a user with an unreachable server can still type an id.
+    // Debounced, because aiLocalBaseUrl is a dependency and someone typing a
+    // custom host would otherwise fire one request per keystroke — each of which
+    // the backend turns into its own outbound fetch with a 5s timeout. Clearing
+    // the timer on cleanup means only the last keystroke actually asks; the
+    // `cancelled` flag then guards the state update for a reply that lands after
+    // the inputs changed again.
     useEffect(() => {
         if (!config.aiIdentificationEnabled || !isLocalProvider(config.aiProvider)) {
             setLocalModels({models: [], error: null});
             return;
         }
         let cancelled = false;
-        void (async () => {
-            const result = await fetchLocalModels(config.aiProvider, config.aiLocalBaseUrl);
-            if (!cancelled) setLocalModels(result);
-        })();
+        const timer = setTimeout(() => {
+            void (async () => {
+                const result = await fetchLocalModels(config.aiProvider, config.aiLocalBaseUrl);
+                if (!cancelled) setLocalModels(result);
+            })();
+        }, LOCAL_MODEL_FETCH_DEBOUNCE_MS);
         return () => {
             cancelled = true;
+            clearTimeout(timer);
         };
     }, [config.aiIdentificationEnabled, config.aiProvider, config.aiLocalBaseUrl]);
 
