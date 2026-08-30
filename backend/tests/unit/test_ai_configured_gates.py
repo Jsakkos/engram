@@ -14,6 +14,7 @@ that was actually POSTed to.
 
 import importlib
 import inspect
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,17 +23,34 @@ _GATED_MODULES = [
     "app.core.curator",
     "app.services.matching_coordinator",
     "app.services.identification_coordinator",
+    "app.api.routes",
 ]
 
 _LOCAL_BASE_URL = "http://box:11434/v1"
+
+# The two spellings a truthiness gate on the key actually takes in this codebase:
+# a standalone `if not config.ai_api_key` and a conjunct `and config.ai_api_key`
+# inside a larger condition. Matching both matters — an earlier version of this
+# test only looked for the `not` form and so passed against
+# identification_coordinator, which used the `and` form, while the bug was live.
+#
+# Deliberately NOT matched, because all three are legitimate:
+#   ai_api_key=config.ai_api_key                    (pass-through to the matcher)
+#   ai_is_configured(config.ai_provider, config.ai_api_key)   (the helper itself)
+#   ai_api_key="***" if config.ai_api_key else ""   (redaction for GET /api/config)
+# The redaction is a truthiness test too, but `if ... else` is not a gate, so the
+# pattern requires the `not`/`and` keywords rather than banning bare truthiness.
+_KEY_GATE_SPELLING = re.compile(r"\b(?:not|and)\s+config\.ai_api_key\b")
 
 
 @pytest.mark.parametrize("module_path", _GATED_MODULES)
 def test_no_module_gates_on_the_api_key_directly(module_path):
     source = inspect.getsource(importlib.import_module(module_path))
-    assert "not config.ai_api_key" not in source, (
-        f"{module_path} still gates on the API key directly. Local providers have "
-        "no key, so this silently disables them. Use ai_is_configured(...)."
+    offenders = _KEY_GATE_SPELLING.findall(source)
+    assert not offenders, (
+        f"{module_path} still gates on the API key directly ({len(offenders)} site(s)). "
+        "Local providers have no key, so this silently disables them. "
+        "Use ai_is_configured(...)."
     )
 
 
@@ -129,4 +147,58 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
             )
 
         assert result is not None and result.episode == 2
+        assert _posted_url(client) == f"{_LOCAL_BASE_URL}/chat/completions"
+
+    @pytest.mark.asyncio
+    async def test_manual_rematch_route_posts_to_the_configured_endpoint(self):
+        """The per-track re-match route (POST .../rematch) must honour it too.
+
+        Driven end to end rather than asserted on source: the route's own gate
+        and its base-URL hand-off are two separate mistakes, and only running it
+        catches both at once.
+        """
+        from types import SimpleNamespace
+
+        from app.api.routes import _run_llm_match_for_title
+        from app.models.app_config import AppConfig
+
+        config = AppConfig(
+            ai_episode_matching_enabled=True,
+            ai_provider="ollama",
+            ai_api_key="",
+            ai_model="llama3.1",
+            ai_local_base_url=_LOCAL_BASE_URL,
+            tmdb_api_key="t",
+        )
+        job = SimpleNamespace(id=1, detected_title="The Expanse", detected_season=1)
+        title = SimpleNamespace(id=7)
+        synopses = [{"episode_number": 2, "name": "Cargo", "overview": "A heist."}]
+        client = _mock_transport(
+            _openai_chat_response('{"episode": 2, "confidence": 0.9, "reasoning": "cargo"}')
+        )
+        matcher = MagicMock()
+        matcher.transcribe_full.return_value = "the freighter cargo hold " * 100
+
+        with (
+            patch(
+                "app.services.config_service.get_config",
+                new=AsyncMock(return_value=config),
+            ),
+            patch("app.core.curator.curator._ensure_initialized", MagicMock()),
+            patch("app.core.curator.curator._matcher", matcher),
+            patch("app.matcher.tmdb_client.fetch_show_id", return_value=12345),
+            patch(
+                "app.services.ripping_helpers.find_staging_file",
+                return_value="/staging/t7.mkv",
+            ),
+            patch(
+                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                return_value=synopses,
+            ),
+            patch("app.core.ai_client.httpx.AsyncClient", return_value=client),
+        ):
+            outcome = await _run_llm_match_for_title(title=title, job=job)
+
+        # A keyless local provider must not be turned away as "not_configured".
+        assert outcome.reason is None, f"route refused a local provider: {outcome.reason}"
         assert _posted_url(client) == f"{_LOCAL_BASE_URL}/chat/completions"

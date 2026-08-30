@@ -4596,6 +4596,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     ``matcher_unavailable``, ``show_not_found``, ``transcription_failed``,
     ``llm_error``, ``no_match``) or is ``None`` on success.
     """
+    from app.core.ai_client import ai_is_configured
     from app.services.config_service import get_config
 
     config = await get_config()
@@ -4605,7 +4606,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
         return LLMMatchOutcome.failed("not_configured")
     if not getattr(config, "ai_episode_matching_enabled", False):
         return LLMMatchOutcome.failed("ai_disabled")
-    if not config.ai_api_key:
+    if not ai_is_configured(config.ai_provider, config.ai_api_key):
         return LLMMatchOutcome.failed("not_configured")
     if not job.detected_title:
         return LLMMatchOutcome.failed("no_show")
@@ -4648,6 +4649,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
             ai_provider=config.ai_provider,
             ai_api_key=config.ai_api_key,
             ai_model=getattr(config, "ai_model", "") or None,
+            ai_local_base_url=getattr(config, "ai_local_base_url", "") or "",
             tmdb_api_key=config.tmdb_api_key,
             raise_on_error=True,
         )
