@@ -31,6 +31,50 @@ DEFAULT_MODELS = {
     "gemini": "gemini-2.5-flash-lite",
 }
 
+# Ollama and LM Studio both expose the OpenAI-compatible /v1/chat/completions
+# contract, so they reuse _call_openai_compatible with only the base URL
+# differing. They are grouped here because several invariants elsewhere
+# (credential presence, timeout, error wording) key off "is this local?" and
+# must not each hardcode the slug list.
+LOCAL_PROVIDERS = frozenset({"ollama", "lmstudio"})
+
+LOCAL_DEFAULT_BASE_URLS = {
+    "ollama": "http://localhost:11434/v1",
+    "lmstudio": "http://localhost:1234/v1",
+}
+
+# DEFAULT_MODELS deliberately has no entry for the local slugs: there is no
+# correct default, because the answer depends on which weights the user pulled.
+# That means DEFAULT_MODELS can no longer double as the set of providers that
+# exist, which is what this is for.
+KNOWN_PROVIDERS = frozenset(DEFAULT_MODELS) | LOCAL_PROVIDERS
+
+
+def resolve_local_base_url(provider: str, configured: str) -> str:
+    """Base URL for a local provider: the configured value, else the default.
+
+    Returns "" for a remote provider so a caller can use a truthy check as
+    "is there a local endpoint here?" without a second membership test.
+    A trailing slash is stripped so callers can append "/chat/completions"
+    unconditionally without producing a double slash.
+    """
+    if provider not in LOCAL_PROVIDERS:
+        return ""
+    url = (configured or "").strip() or LOCAL_DEFAULT_BASE_URLS[provider]
+    return url.rstrip("/")
+
+
+def ai_is_configured(provider: str, api_key: str) -> bool:
+    """True if this provider has what it needs to make a call.
+
+    Local providers authenticate to nothing, so requiring a key would silently
+    disable them at every call site that guards on one. Four such gates exist
+    (this module, curator, matching_coordinator, identification_coordinator);
+    they all call this rather than testing the key directly.
+    """
+    return provider in LOCAL_PROVIDERS or bool(api_key)
+
+
 _TIMEOUT_SECONDS = 30.0
 
 MAX_RETRIES = 3
@@ -77,6 +121,8 @@ _PROVIDER_LABELS = {
     "openai": "OpenAI",
     "openrouter": "OpenRouter",
     "gemini": "Gemini",
+    "ollama": "Ollama",
+    "lmstudio": "LM Studio",
 }
 
 # Human sentences per cause. Rendered verbatim in the UI, so they must be

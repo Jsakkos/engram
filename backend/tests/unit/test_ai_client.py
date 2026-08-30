@@ -1037,3 +1037,52 @@ class TestModelOverride:
         assert exc.value.code == "bad_request"
         assert "model name" in str(exc.value).lower()
         mock.post.assert_not_awaited()
+
+
+class TestLocalProviderVocabulary:
+    def test_local_providers_are_ollama_and_lmstudio(self):
+        from app.core.ai_client import LOCAL_PROVIDERS
+
+        assert LOCAL_PROVIDERS == {"ollama", "lmstudio"}
+
+    def test_default_base_urls_match_upstream_conventions(self):
+        from app.core.ai_client import LOCAL_DEFAULT_BASE_URLS
+
+        assert LOCAL_DEFAULT_BASE_URLS["ollama"] == "http://localhost:11434/v1"
+        assert LOCAL_DEFAULT_BASE_URLS["lmstudio"] == "http://localhost:1234/v1"
+
+    def test_blank_configured_url_falls_back_to_default(self):
+        from app.core.ai_client import resolve_local_base_url
+
+        assert resolve_local_base_url("ollama", "") == "http://localhost:11434/v1"
+        assert resolve_local_base_url("lmstudio", "   ") == "http://localhost:1234/v1"
+
+    def test_configured_url_wins_and_trailing_slash_is_stripped(self):
+        from app.core.ai_client import resolve_local_base_url
+
+        assert resolve_local_base_url("ollama", "http://box:8080/v1/") == "http://box:8080/v1"
+
+    def test_resolve_returns_blank_for_a_remote_provider(self):
+        from app.core.ai_client import resolve_local_base_url
+
+        assert resolve_local_base_url("openai", "") == ""
+
+    def test_known_providers_covers_remote_and_local(self):
+        from app.core.ai_client import KNOWN_PROVIDERS
+
+        assert {"anthropic", "openai", "openrouter", "gemini"} <= KNOWN_PROVIDERS
+        assert {"ollama", "lmstudio"} <= KNOWN_PROVIDERS
+
+
+class TestAiIsConfigured:
+    def test_remote_provider_requires_a_key(self):
+        from app.core.ai_client import ai_is_configured
+
+        assert ai_is_configured("openai", "sk-x") is True
+        assert ai_is_configured("openai", "") is False
+
+    def test_local_provider_needs_no_key(self):
+        from app.core.ai_client import ai_is_configured
+
+        assert ai_is_configured("ollama", "") is True
+        assert ai_is_configured("lmstudio", "") is True
