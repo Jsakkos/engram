@@ -7,6 +7,7 @@ import { SvActionButton } from '../app/components/synapse/SvActionButton';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
 import BackgroundEffectsSetting from './BackgroundEffectsSetting';
+import { PathStatusHint } from './PathStatusHint';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
 import { requestAiValidation } from '../utils/aiValidation';
 import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
@@ -855,6 +856,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 Temporary storage during ripping. Files are moved to library after processing.
                                 Ensure this directory has adequate disk space (10-50GB recommended).
                             </span>
+                            <PathStatusHint path={config.stagingPath} label="staging directory" />
                         </div>
 
                         <div className="form-group">
@@ -864,8 +866,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 type="text"
                                 value={config.libraryMoviesPath}
                                 onChange={(e) => handleInputChange('libraryMoviesPath', e.target.value)}
-                                placeholder="e.g., D:\Media\Movies"
+                                placeholder="e.g., D:\Media\Movies or \server\share\Movies"
                             />
+                            <PathStatusHint path={config.libraryMoviesPath} label="movies library" />
                         </div>
 
                         <div className="form-group">
@@ -875,8 +878,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 type="text"
                                 value={config.libraryTvPath}
                                 onChange={(e) => handleInputChange('libraryTvPath', e.target.value)}
-                                placeholder="e.g., D:\Media\TV Shows"
+                                placeholder="e.g., D:\Media\TV Shows or \server\share\TV"
                             />
+                            <PathStatusHint path={config.libraryTvPath} label="TV library" />
                         </div>
 
                     </div>
