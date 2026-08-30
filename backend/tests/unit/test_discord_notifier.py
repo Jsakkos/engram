@@ -1488,3 +1488,62 @@ async def test_ripped_notification_suppressed_when_toggle_off():
         )
 
     mock_notify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_null_ripped_toggle_reads_as_off_at_send_time():
+    """A NULL discord_notify_ripped must suppress the ripped notification.
+
+    The send-time guard is `is not True`, not `is False`, and the difference
+    only shows up on a genuine SQL NULL. It inverts deliberately relative to
+    the other three toggles: completed/failed/review read a NULL as ENABLED so
+    an out-of-band schema change can never silently mute notifications a user
+    already relies on, while ripped is new and opt-in, so a NULL there must
+    read as DISABLED or an upgrade would switch it on for everyone and add a
+    second unrequested ping per disc.
+
+    Distinct from
+    test_api_routes.py::test_null_notify_columns_read_as_off_for_ripped_and_on_for_the_rest,
+    which pins the same asymmetry in the GET /api/config response builder. This
+    one pins the independent guard in JobManager._send_discord_notification.
+    """
+    from sqlalchemy import text as sa_text
+
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE, RIPPED_EVENT
+    from app.database import async_session
+    from app.services.config_service import update_config
+    from app.services.job_manager import job_manager
+
+    # Seed the row (and the webhook) BEFORE nulling the column: a later
+    # update_config would rewrite discord_notify_ripped with a real boolean.
+    await update_config(discord_webhook_url="https://discord.com/api/webhooks/1/tok")
+
+    async with async_session() as session:
+        job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        job_id = job.id
+
+    # The column is NOT NULL with a server_default (see app_config.py), so a
+    # plain UPDATE ... = NULL is rejected by SQLite. Rebuild it as a nullable
+    # BOOLEAN first, matching how an out-of-band schema change (or an old ADD
+    # COLUMN migration) could actually leave a NULL in production.
+    async with async_session() as session:
+        await session.execute(sa_text("ALTER TABLE app_config DROP COLUMN discord_notify_ripped"))
+        await session.execute(
+            sa_text("ALTER TABLE app_config ADD COLUMN discord_notify_ripped BOOLEAN")
+        )
+        await session.commit()
+
+        stored = (
+            await session.execute(sa_text("SELECT discord_notify_ripped FROM app_config"))
+        ).scalar_one()
+    assert stored is None, "column is not actually NULL; the guard would not be exercised"
+
+    with patch("app.core.discord_notifier.notify_discord", new_callable=AsyncMock) as mock_notify:
+        await job_manager._send_discord_notification(
+            job_id, RIPPED_EVENT, extra_context={"rip_outcome": RIP_OUTCOME_COMPLETE}
+        )
+
+    mock_notify.assert_not_called()
