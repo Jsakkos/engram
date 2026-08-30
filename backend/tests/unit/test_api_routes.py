@@ -273,7 +273,12 @@ class TestConfigEndpoints:
 
         verify = await client.get("/api/config")
         config = verify.json()
-        assert config["staging_path"] == "/new/staging/path"
+        # Paths are stored normalized (separator style settled, ~ expanded, UNC
+        # canonicalized), so the expectation is the normalized form rather than
+        # the literal input — the same value, spelled one way.
+        from app.core.paths import normalize_user_path
+
+        assert config["staging_path"] == normalize_user_path("/new/staging/path")
         assert config["max_concurrent_matches"] == 8
 
     async def test_update_config_with_new_api_keys(self, client):
@@ -871,6 +876,83 @@ async def test_config_rejects_javascript_dashboard_url(client):
 async def test_config_rejects_bad_review_template(client):
     resp = await client.put("/api/config", json={"discord_template_review": "{{bogus}}"})
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_config_round_trips_ripped_notification_fields(client):
+    """The three-way sync: a field missing from ConfigUpdate or ConfigResponse
+    is dropped silently, so assert it survives a PUT and comes back on GET."""
+    resp = await client.put(
+        "/api/config",
+        json={"discord_notify_ripped": True, "discord_template_ripped": "**{{{title}}}** ripped"},
+    )
+    assert resp.status_code == 200
+
+    resp = await client.get("/api/config")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["discord_notify_ripped"] is True
+    assert body["discord_template_ripped"] == "**{{{title}}}** ripped"
+
+    # Restore defaults so later tests in this module see a clean config.
+    await client.put(
+        "/api/config",
+        json={"discord_notify_ripped": False, "discord_template_ripped": ""},
+    )
+
+
+@pytest.mark.asyncio
+async def test_config_rejects_unknown_var_in_ripped_template(client):
+    """The ripped template must be validated server-side like the other three."""
+    resp = await client.put(
+        "/api/config", json={"discord_template_ripped": "{{nonsense_variable}}"}
+    )
+    assert resp.status_code == 422
+    assert "nonsense_variable" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_null_notify_columns_read_as_off_for_ripped_and_on_for_the_rest(client):
+    """Pins the deliberate asymmetry in GET /api/config's notify-toggle
+    coalescing.
+
+    The three original toggles (completed/failed/review) read a NULL column
+    as enabled, so an out-of-band schema change can never silently mute
+    notifications a user already relies on. discord_notify_ripped is new and
+    opt-in, so the rationale inverts: a NULL there must read as disabled, or
+    an upgrade would switch it on for everyone and double the notification
+    volume for anyone already using discord_notify_completed.
+
+    Forces NULL into all four notify columns directly via SQL, since the ORM
+    refuses to write NULL into a non-optional field. Both halves of the
+    asymmetry are asserted together so that "fixing the inconsistency" by
+    unifying either expression fails this test, whichever direction it goes.
+    """
+    from sqlalchemy import text as sa_text
+
+    await _seed_config()
+    # These columns are NOT NULL with a server_default (see app_config.py), so
+    # a plain UPDATE ... = NULL is rejected by SQLite. Rebuild each as a
+    # nullable BOOLEAN first, matching how an out-of-band schema change (or an
+    # old ADD COLUMN migration) could actually leave a NULL in production.
+    async with _unit_session_factory() as session:
+        for col in (
+            "discord_notify_completed",
+            "discord_notify_failed",
+            "discord_notify_review",
+            "discord_notify_ripped",
+        ):
+            await session.execute(sa_text(f"ALTER TABLE app_config DROP COLUMN {col}"))
+            await session.execute(sa_text(f"ALTER TABLE app_config ADD COLUMN {col} BOOLEAN"))
+        await session.commit()
+
+    response = await client.get("/api/config")
+    assert response.status_code == 200
+    config = response.json()
+    assert config["discord_notify_completed"] is True
+    assert config["discord_notify_failed"] is True
+    assert config["discord_notify_review"] is True
+    assert config["discord_notify_ripped"] is False
 
 
 # ---------------------------------------------------------------------------
