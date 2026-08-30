@@ -1550,3 +1550,56 @@ async def test_null_ripped_toggle_reads_as_off_at_send_time():
         )
 
     mock_notify.assert_not_called()
+
+
+def test_ripped_tracks_field_reports_what_actually_reached_disk():
+    """`total_titles` is the disc's title count, fixed at identification. Beside
+    "Stopped early" a bare count reads as a claim about this rip, so the ripped
+    embed reports copied-of-total instead."""
+    from app.core.discord_notifier import (
+        RIP_OUTCOME_STOPPED_EARLY,
+        RIPPED_EVENT,
+        build_embed_fields,
+    )
+    from app.models.disc_job import DiscTitle, TitleState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+    job.total_titles = 12
+    titles = [
+        DiscTitle(job_id=1, title_index=0, state=TitleState.QUEUED),
+        DiscTitle(job_id=1, title_index=1, state=TitleState.QUEUED),
+        DiscTitle(job_id=1, title_index=2, state=TitleState.RIPPING),
+        DiscTitle(job_id=1, title_index=3, state=TitleState.PENDING),
+    ]
+
+    fields = build_embed_fields(job, titles, RIPPED_EVENT, rip_outcome=RIP_OUTCOME_STOPPED_EARLY)
+    tracks = next(f for f in fields if f["name"] == "Tracks")
+    assert tracks["value"] == "2 of 12 copied"
+
+
+def test_non_ripped_events_keep_the_plain_track_count():
+    """Only the ripped embed reframes Tracks; the other three are unchanged."""
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import DiscTitle, JobState, TitleState
+
+    job = DiscJob(drive_id="E:", content_type=ContentType.TV, detected_title="The Wire")
+    job.total_titles = 12
+    titles = [DiscTitle(job_id=1, title_index=0, state=TitleState.QUEUED)]
+
+    fields = build_embed_fields(job, titles, EVENTS[JobState.COMPLETED])
+    tracks = next(f for f in fields if f["name"] == "Tracks")
+    assert tracks["value"] == "12 titles"
+
+
+def test_review_state_does_not_count_as_copied():
+    """REVIEW is ambiguous: route_rip_failure_to_review parks unfinished titles
+    there too, so counting it would overstate what came off the disc."""
+    from app.core.discord_notifier import count_titles_on_disk
+    from app.models.disc_job import DiscTitle, TitleState
+
+    titles = [
+        DiscTitle(job_id=1, title_index=0, state=TitleState.REVIEW),
+        DiscTitle(job_id=1, title_index=1, state=TitleState.FAILED),
+        DiscTitle(job_id=1, title_index=2, state=TitleState.COMPLETED),
+    ]
+    assert count_titles_on_disk(titles) == 1

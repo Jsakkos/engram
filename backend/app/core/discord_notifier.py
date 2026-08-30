@@ -259,6 +259,22 @@ def summarize_episodes(titles: list) -> str:
     return f"{', '.join(parts)} ({count} {noun})"
 
 
+# States that mean "this title's file is on disk". QUEUED is the state a title
+# lands in the moment its rip finishes (see TitleState: "Ripped/on disk, waiting
+# for a matching slot"); the rest are the downstream states it passes through.
+# REVIEW is deliberately absent: route_rip_failure_to_review parks unfinished
+# titles there too, so it does not distinguish "ripped, needs episode review"
+# from "rip failed, re-rippable".
+_ON_DISK_TITLE_STATES = frozenset(
+    {TitleState.QUEUED, TitleState.MATCHING, TitleState.MATCHED, TitleState.COMPLETED}
+)
+
+
+def count_titles_on_disk(titles: list) -> int:
+    """How many of this job's titles have actually been copied off the disc."""
+    return sum(1 for t in titles if t.state in _ON_DISK_TITLE_STATES)
+
+
 def build_embed_fields(
     job: DiscJob | None, titles: list, event: NotificationEvent, *, rip_outcome: str = ""
 ) -> list[dict]:
@@ -295,7 +311,20 @@ def build_embed_fields(
             inline=False,
         ),
         _field("Duration", _format_duration(job)),
-        _field("Tracks", f"{job.total_titles} titles" if job.total_titles else ""),
+        # `total_titles` is the disc's title count, fixed at identification. On a
+        # ripped embed it sits directly beside Status, so a bare "12 titles" next
+        # to "Stopped early" reads as a claim that this rip covered 12. Report
+        # what actually reached the disk instead.
+        _field(
+            "Tracks",
+            (
+                f"{count_titles_on_disk(titles)} of {job.total_titles} copied"
+                if event.key == "ripped"
+                else f"{job.total_titles} titles"
+            )
+            if job.total_titles
+            else "",
+        ),
         _field("Subtitles", subtitles),
         _field("Reason", reason or "", inline=False),
         _field("Library", (job.final_path or "") if event.key == "completed" else "", inline=False),
