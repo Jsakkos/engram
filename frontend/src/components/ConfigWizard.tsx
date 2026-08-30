@@ -2081,8 +2081,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 <span className="checkbox-text">
                                     Notify when a disc finishes ripping
                                     <span className="checkbox-hint">
-                                        Fires the moment the disc is copied and ejected, before any matching or
-                                        review. Use this if you swap discs as they finish and review later.
+                                        Fires as soon as Engram is finished with the drive, before any
+                                        matching or review, whether or not auto-eject is on. The Status
+                                        field says whether the rip completed, stopped early, or was a
+                                        re-rip. Use this if you swap discs as they finish and review later.
                                     </span>
                                 </span>
                             </label>

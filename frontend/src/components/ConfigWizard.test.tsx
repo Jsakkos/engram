@@ -478,7 +478,7 @@ describe('ConfigWizard: webhook test targets the saved value', () => {
     });
 });
 
-describe('ConfigWizard — Discord finished-ripping notification', () => {
+describe('ConfigWizard: Discord finished-ripping notification', () => {
     it('round-trips the ripped notification toggle and template', async () => {
         render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
 

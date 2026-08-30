@@ -820,3 +820,62 @@ async def test_mid_rip_eject_does_not_also_send_a_complete_notification(tmp_path
         "eject's own. A second, 'Complete' entry means the ejected_mid_rip "
         "guard at the end of _run_ripping was lost."
     )
+
+
+@pytest.mark.unit
+async def test_mid_rerip_eject_does_not_also_send_a_rerip_notification(tmp_path):
+    """The same rule as the test above, at the third call site.
+
+    An eject returns ``success=True, aborted_for_eject=True`` (extractor.py),
+    so rerip_titles' ``if not result.success`` branch does NOT cover it. Without
+    an explicit guard the user hitting Eject during a re-rip gets "Stopped
+    early" immediately followed by a contradictory "Re-rip" for a rip that was
+    aborted, plus a redundant second eject and sentinel re-arm.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, title_ids = await _seed_job(staging, native_offset=0, count=2)
+
+    # rerip_titles only accepts REVIEW titles on a job it can transition to
+    # RIPPING, which is the state a rip-failed disc actually parks in.
+    async with _db.async_session() as s:
+        job = await s.get(DiscJob, job_id)
+        job.state = JobState.REVIEW_NEEDED
+        s.add(job)
+        for tid in title_ids:
+            t = await s.get(DiscTitle, tid)
+            t.state = TitleState.REVIEW
+            s.add(t)
+        await s.commit()
+
+    write_log: list[int] = []
+    procs: list = []
+    job_manager._loop = asyncio.get_running_loop()
+    title1 = staging / "TEST_t01.mkv"
+
+    outcomes: list[str] = []
+
+    async def _spy_send(job_id_, event, *, extra_context=None):
+        if event.key == "ripped":
+            outcomes.append((extra_context or {}).get("rip_outcome"))
+
+    with (
+        patch("app.core.extractor.FS_POLL_INTERVAL", 30.0),
+        patch(
+            "app.core.extractor.subprocess.Popen",
+            side_effect=_make_popen(staging, [1, 2], write_log, procs),
+        ),
+        patch.object(job_manager, "_send_discord_notification", _spy_send),
+    ):
+        task = asyncio.create_task(job_manager.rerip_titles(job_id, title_ids))
+        await _wait_for_size(title1, 4096)
+
+        assert (await job_manager.eject_disc_for_job(job_id))["action"] == "rip_stopped"
+        await asyncio.wait_for(task, timeout=60)
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    assert outcomes == ["Stopped early"], (
+        "a re-rip aborted by an eject must not also report 'Re-rip' -- the "
+        "disc never finished re-ripping, and the eject already notified."
+    )

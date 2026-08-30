@@ -1319,7 +1319,8 @@ class JobManager:
             else:
                 logger.warning(
                     f"Job {safe_job}: drive {safe_drive} did not open; "
-                    f"the disc can be removed by hand"
+                    f"Engram is finished with it either way and the disc "
+                    f"can be removed by hand"
                 )
 
         asyncio.create_task(
@@ -1340,6 +1341,12 @@ class JobManager:
         IDENTIFYING: eject and cancel. Nothing was produced to salvage.
 
         Any other state: the drive is not held, so raise.
+
+        The two branches differ on notifications, deliberately: RIPPING routes
+        through _release_drive and so sends the "ripped" Discord event with a
+        "Stopped early" status, because tracks were actually copied. IDENTIFYING
+        sends nothing -- nothing was copied, so "Disc Ripped" would be a lie.
+        Do not unify them.
 
         Returns ``{"ejected": bool, "action": str}``. ``ejected`` is False when
         the tray refused to open (MakeMKV may still hold a handle, or the
@@ -2694,10 +2701,17 @@ class JobManager:
                             job_id, t.id, "incomplete_rip", INCOMPLETE_RIP_MESSAGE
                         )
 
-        # Free the drive for the next disc.
-        from app.core.discord_notifier import RIP_OUTCOME_RERIP
+        # Free the drive for the next disc. The aborted_for_eject guard is the
+        # same rule as the `ejected_mid_rip` check at the end of _run_ripping,
+        # applied twice: eject_disc_for_job has already opened the tray and
+        # already sent its own "Stopped early" ping, so releasing again here
+        # would re-eject and contradict it with a "Re-rip" for a rip that was
+        # aborted. Note an eject returns success=True, so the failure branch
+        # above does not cover this.
+        if not result.aborted_for_eject:
+            from app.core.discord_notifier import RIP_OUTCOME_RERIP
 
-        await self._release_drive(job_id, drive_id, RIP_OUTCOME_RERIP)
+            await self._release_drive(job_id, drive_id, RIP_OUTCOME_RERIP)
 
     async def rerip_title_manual(self, job_id: int, title_id: int) -> None:
         """Manually re-rip one title using the disc currently in the drive.
