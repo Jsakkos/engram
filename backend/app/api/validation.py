@@ -741,6 +741,23 @@ async def validate_ai(
             ),
         )
 
+    if provider in LOCAL_PROVIDERS:
+        # LM Studio answers a request for an unknown model by silently serving
+        # whichever model is currently loaded, with HTTP 200 and no warning, so a
+        # typo would otherwise pass this check and then quietly matter at match
+        # time. Confirming against the server's own list is the only way to catch
+        # it. A server we cannot reach is left to the completion below, whose
+        # error message is better than anything we could say here.
+        available, _list_error = await _fetch_local_model_ids(provider, base_url)
+        if available and model not in available:
+            shown = ", ".join(available[:10])
+            if len(available) > 10:
+                shown += ", ..."
+            return ValidationResponse(
+                valid=False,
+                error=f"'{model}' is not installed on this server. Available: {shown}",
+            )
+
     try:
         result = await complete_json(
             # "JSON" must appear in the prompt: OpenAI rejects a json_object
@@ -773,8 +790,11 @@ async def validate_ai(
 
     if not result:
         return ValidationResponse(valid=False, error="Provider returned an empty response")
-    # Report the model that actually answered, not the default, so a user testing
-    # an override can see which one the key accepted.
+    # Report the model that was requested (or the provider default), not the one
+    # that actually answered — complete_json doesn't surface that. For remote
+    # providers those can differ if the provider silently substitutes a model;
+    # for local providers the pre-flight check above is what keeps them in
+    # agreement, by rejecting a request whose model the server doesn't offer.
     return ValidationResponse(valid=True, version=model or DEFAULT_MODELS.get(provider, ""))
 
 
@@ -861,41 +881,23 @@ class LocalModelsResponse(BaseModel):
     error: str | None = None
 
 
-@router.get("/ai/local-models", response_model=LocalModelsResponse)
-async def list_local_models(
-    provider: str,
-    base_url: str = "",
-    _: None = Depends(require_localhost_or_lan),
-) -> LocalModelsResponse:
-    """List the models a local AI server currently offers.
+async def _fetch_local_model_ids(provider: str, base_url: str) -> tuple[list[str], str | None]:
+    """Model ids a local server offers, plus a human error if it could not be read.
 
-    Both Ollama and LM Studio expose the OpenAI-compatible ``GET /v1/models``,
-    so one implementation serves both. Gated to the host (or an opted-in LAN)
-    for the same reason as validate_ai: it triggers an outbound request the
-    caller can provoke without owning the destination.
-
-    Doubles as a reachability check, which is why the wizard does not need a
-    separate Test button for the local case.
+    Shared by ``GET /ai/local-models`` and ``validate_ai``'s pre-flight check, so
+    the two cannot disagree about what the server offers. Never raises: a bad
+    URL, an unreachable server, or a malformed response all come back as an
+    empty list with a message, never an exception — both callers treat an empty
+    list as "could not confirm", not as "the server has zero models".
     """
-    from app.core.ai_client import (
-        LOCAL_PROVIDERS,
-        classify_provider_error,
-        resolve_local_base_url,
-    )
+    from app.core.ai_client import classify_provider_error, resolve_local_base_url
     from app.core.security import is_safe_local_ai_url
-
-    if provider not in LOCAL_PROVIDERS:
-        return LocalModelsResponse(
-            error=f"'{sanitize_log_value(provider)}' is not a local AI provider"
-        )
 
     url_base = resolve_local_base_url(provider, base_url)
     if not is_safe_local_ai_url(url_base):
-        return LocalModelsResponse(
-            error=(
-                "That is not a valid server address. Use a plain http(s) URL such "
-                "as http://localhost:11434/v1."
-            )
+        return [], (
+            "That is not a valid server address. Use a plain http(s) URL such "
+            "as http://localhost:11434/v1."
         )
 
     try:
@@ -910,13 +912,41 @@ async def list_local_models(
             sanitize_log_value(provider),
             sanitize_log_value(str(e)),
         )
-        return LocalModelsResponse(error=message)
-    except Exception:  # noqa: BLE001 — this endpoint must never 500
+        return [], message
+    except Exception:  # noqa: BLE001 — callers must never see this raise
         logger.warning("Local model list raised unexpectedly", exc_info=True)
-        return LocalModelsResponse(error="Could not read the model list")
+        return [], "Could not read the model list"
 
     models: list[str] = []
     for entry in (data or {}).get("data") or []:
         if isinstance(entry, dict) and entry.get("id"):
             models.append(str(entry["id"]))
-    return LocalModelsResponse(models=models)
+    return models, None
+
+
+@router.get("/ai/local-models", response_model=LocalModelsResponse)
+async def list_local_models(
+    provider: str,
+    base_url: str = "",
+    _: None = Depends(require_localhost_or_lan),
+) -> LocalModelsResponse:
+    """List the models a local AI server currently offers.
+
+    Both Ollama and LM Studio expose the OpenAI-compatible ``GET /v1/models``,
+    so one implementation serves both, shared with ``validate_ai``'s pre-flight
+    check via ``_fetch_local_model_ids``. Gated to the host (or an opted-in LAN)
+    for the same reason as validate_ai: it triggers an outbound request the
+    caller can provoke without owning the destination.
+
+    Doubles as a reachability check, which is why the wizard does not need a
+    separate Test button for the local case.
+    """
+    from app.core.ai_client import LOCAL_PROVIDERS
+
+    if provider not in LOCAL_PROVIDERS:
+        return LocalModelsResponse(
+            error=f"'{sanitize_log_value(provider)}' is not a local AI provider"
+        )
+
+    models, error = await _fetch_local_model_ids(provider, base_url)
+    return LocalModelsResponse(models=models, error=error)

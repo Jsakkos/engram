@@ -141,10 +141,103 @@ class TestValidateAiLocalProviders:
         from app.core.ai_client import LOCAL_VALIDATE_TIMEOUT_SECONDS
 
         spy = AsyncMock(return_value={"ok": True})
-        with patch("app.core.ai_client.complete_json", new=spy):
+        with (
+            patch("app.core.ai_client.complete_json", new=spy),
+            patch(
+                "app.api.validation._fetch_local_model_ids",
+                new=AsyncMock(return_value=(["qwen2.5-7b-instruct"], None)),
+            ),
+        ):
             await client.post(
                 "/api/validate/ai",
                 json={"provider": "lmstudio", "model": "qwen2.5-7b-instruct"},
             )
 
         assert spy.await_args.kwargs["timeout"] == LOCAL_VALIDATE_TIMEOUT_SECONDS
+
+
+class TestValidateAiLocalModelPreflight:
+    """LM Studio answers a request for an unknown model by silently serving
+    whichever model is currently loaded (HTTP 200, no error), so a typo'd model
+    name would otherwise sail through this endpoint. The pre-flight confirms the
+    requested model is actually in the server's own list before spending a
+    completion request on it."""
+
+    @pytest.mark.asyncio
+    async def test_model_not_on_server_is_rejected_before_any_completion(self, client):
+        spy = AsyncMock(return_value={"ok": True})
+        with (
+            patch("app.core.ai_client.complete_json", new=spy),
+            patch(
+                "app.api.validation._fetch_local_model_ids",
+                new=AsyncMock(return_value=(["google/gemma-4-e4b", "qwen2.5-7b"], None)),
+            ),
+        ):
+            resp = await client.post(
+                "/api/validate/ai",
+                json={"provider": "lmstudio", "model": "nope/not-a-real-model"},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["valid"] is False
+        assert "not installed" in body["error"].lower() or "not-a-real-model" in body["error"]
+        assert "google/gemma-4-e4b" in body["error"]
+        spy.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_model_on_server_proceeds_to_completion(self, client):
+        spy = AsyncMock(return_value={"ok": True})
+        with (
+            patch("app.core.ai_client.complete_json", new=spy),
+            patch(
+                "app.api.validation._fetch_local_model_ids",
+                new=AsyncMock(return_value=(["google/gemma-4-e4b", "qwen2.5-7b"], None)),
+            ),
+        ):
+            resp = await client.post(
+                "/api/validate/ai",
+                json={"provider": "lmstudio", "model": "qwen2.5-7b"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is True
+        spy.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_unreachable_server_does_not_short_circuit(self, client):
+        """An unreadable model list must not block validation with a confusing
+        "not installed" message; fall through and let the completion produce
+        the better "could not reach" error instead."""
+        spy = AsyncMock(return_value={"ok": True})
+        with (
+            patch("app.core.ai_client.complete_json", new=spy),
+            patch(
+                "app.api.validation._fetch_local_model_ids",
+                new=AsyncMock(return_value=([], "Could not reach LM Studio")),
+            ),
+        ):
+            resp = await client.post(
+                "/api/validate/ai",
+                json={"provider": "lmstudio", "model": "whatever-model"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is True
+        spy.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_remote_provider_never_triggers_preflight(self, client):
+        fetch_spy = AsyncMock(return_value=(["gpt-4o-mini"], None))
+        with (
+            patch("app.core.ai_client.complete_json", new=AsyncMock(return_value={"ok": True})),
+            patch("app.api.validation._fetch_local_model_ids", new=fetch_spy),
+        ):
+            resp = await client.post(
+                "/api/validate/ai",
+                json={"provider": "openai", "api_key": "sk-x", "model": "some-other-model"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is True
+        fetch_spy.assert_not_awaited()
