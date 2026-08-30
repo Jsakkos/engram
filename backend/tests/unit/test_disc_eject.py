@@ -5,7 +5,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -633,3 +633,249 @@ async def test_eject_spares_a_title_that_finished_just_before_the_abort(tmp_path
     assert finished.match_details is None
     assert never_started.state == TitleState.REVIEW
     assert json.loads(never_started.match_details)["error"] == "rip_ejected"
+
+
+# --- _release_drive ---------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_release_drive_notifies_with_the_outcome(monkeypatch):
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
+
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    _install_eject_stubs(monkeypatch, eject_ok=True)
+    sent: list[tuple] = []
+
+    async def fake_send(job_id_, event, *, extra_context=None):
+        sent.append((job_id_, event.key, extra_context))
+
+    monkeypatch.setattr(job_manager, "_send_discord_notification", fake_send)
+
+    await job_manager._release_drive(job_id, "Z:", RIP_OUTCOME_COMPLETE)
+    await asyncio.sleep(0)  # let the fire-and-forget task run
+
+    assert sent == [(job_id, "ripped", {"rip_outcome": "Complete"})]
+
+
+@pytest.mark.unit
+async def test_release_drive_notifies_even_when_auto_eject_is_off(monkeypatch):
+    """No tray opens, but the disc is still copied and the user still wants to
+    know. The notify sits outside the eject branch for exactly this case."""
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
+    from app.services.config_service import update_config
+
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=True)
+    sent: list[tuple] = []
+
+    async def fake_send(job_id_, event, *, extra_context=None):
+        sent.append((job_id_, event.key, extra_context))
+
+    monkeypatch.setattr(job_manager, "_send_discord_notification", fake_send)
+
+    # try/finally, not a trailing restore: config lives in the shared DB, so a
+    # failed assertion above would leak auto_eject_enabled=False into every
+    # later test in this process and turn one failure into a cascade.
+    await update_config(auto_eject_enabled=False)
+    try:
+        ejected = await job_manager._release_drive(job_id, "Z:", RIP_OUTCOME_COMPLETE)
+        await asyncio.sleep(0)
+
+        assert ejected is False
+        assert stubs.calls == [], "auto-eject off must not open the tray"
+        assert sent == [(job_id, "ripped", {"rip_outcome": "Complete"})]
+    finally:
+        await update_config(auto_eject_enabled=True)
+
+
+@pytest.mark.unit
+async def test_release_drive_rearms_sentinel_on_a_falsy_eject_by_default(monkeypatch):
+    """eject_disc returns False unconditionally on macOS and for a Linux drive
+    id that fails the optical-drive regex. The automatic sites must still
+    re-arm the sentinel there, or the next disc is never detected."""
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
+
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=False)
+    monkeypatch.setattr(job_manager, "_send_discord_notification", AsyncMock())
+
+    await job_manager._release_drive(job_id, "Z:", RIP_OUTCOME_COMPLETE)
+
+    assert stubs.notified == ["Z:"]
+
+
+@pytest.mark.unit
+async def test_release_drive_skips_rearm_on_failed_eject_when_asked(monkeypatch):
+    """The user-initiated path reports `ejected` back to the UI and must leave
+    the sentinel armed so it sees the disc when popped by hand."""
+    from app.core.discord_notifier import RIP_OUTCOME_STOPPED_EARLY
+
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=False)
+    monkeypatch.setattr(job_manager, "_send_discord_notification", AsyncMock())
+
+    await job_manager._release_drive(
+        job_id,
+        "Z:",
+        RIP_OUTCOME_STOPPED_EARLY,
+        respect_auto_eject=False,
+        rearm_on_failed_eject=False,
+    )
+
+    assert stubs.notified == []
+
+
+# --- call-site coverage -----------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_eject_while_ripping_sends_a_stopped_early_notification(monkeypatch):
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    _install_eject_stubs(monkeypatch, eject_ok=True)
+    sent: list[tuple] = []
+
+    async def fake_send(job_id_, event, *, extra_context=None):
+        sent.append((job_id_, event.key, extra_context))
+
+    monkeypatch.setattr(job_manager, "_send_discord_notification", fake_send)
+
+    await job_manager.eject_disc_for_job(job_id)
+    await asyncio.sleep(0)
+
+    assert sent == [(job_id, "ripped", {"rip_outcome": "Stopped early"})]
+
+
+@pytest.mark.unit
+async def test_eject_while_identifying_sends_no_ripped_notification(monkeypatch):
+    """Nothing was copied, so "Disc Ripped" would be a lie. The notify sits
+    inside the RIPPING branch, below the IDENTIFYING fork."""
+    job_id = await _seed_job_in_state(JobState.IDENTIFYING)
+    _install_eject_stubs(monkeypatch, eject_ok=True)
+    # cancel_job drives the job terminal, whose own (unrelated) "failed"
+    # notification would otherwise land on this spy -- and leak a DB connection
+    # past teardown. Drop the terminal callbacks, as the sibling identify test
+    # does, so what remains on the spy is exactly what eject_disc_for_job sent.
+    monkeypatch.setattr(jm_mod.state_machine, "_on_terminal_callbacks", [])
+    mock_send = AsyncMock()
+    monkeypatch.setattr(job_manager, "_send_discord_notification", mock_send)
+
+    await job_manager.eject_disc_for_job(job_id)
+    await asyncio.sleep(0)
+
+    mock_send.assert_not_called()
+
+
+@pytest.mark.unit
+async def test_mid_rip_eject_does_not_also_send_a_complete_notification(tmp_path):
+    """Chain test: _run_ripping -> real extractor -> eject_disc_for_job.
+
+    `ejected_mid_rip` guards the notification as well as the eject at the end of
+    _run_ripping. Nothing else pins it: every unit test around it stubs one side
+    or the other, so deleting the guard leaves them all green while the user
+    gets two pings for one disc -- "Stopped early" from the eject, then a
+    flatly false "Complete" for a rip that was aborted.
+
+    This drives the real chain (real extractor, faked makemkvcon) through the
+    real production entry point, so BOTH notifications are the genuine article
+    and their count is meaningful. The job also parks in review on the way out,
+    whose own `review` ping rides the same spy -- hence the filter on the
+    ripped event rather than a raw call count.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, _title_ids = await _seed_job(staging, native_offset=0, count=2)
+
+    write_log: list[int] = []
+    procs: list = []
+    job_manager._loop = asyncio.get_running_loop()
+    title1 = staging / "TEST_t01.mkv"
+
+    outcomes: list[str] = []
+
+    async def _spy_send(job_id_, event, *, extra_context=None):
+        if event.key == "ripped":
+            outcomes.append((extra_context or {}).get("rip_outcome"))
+
+    with (
+        patch("app.core.extractor.FS_POLL_INTERVAL", 30.0),
+        patch(
+            "app.core.extractor.subprocess.Popen",
+            side_effect=_make_popen(staging, [1, 2], write_log, procs),
+        ),
+        patch.object(job_manager, "_send_discord_notification", _spy_send),
+    ):
+        task = asyncio.create_task(job_manager._run_ripping(job_id))
+        await _wait_for_size(title1, 4096)
+
+        # The module-level eject stub is a no-op returning None, so `ejected`
+        # is falsy here; the action is what matters.
+        assert (await job_manager.eject_disc_for_job(job_id))["action"] == "rip_stopped"
+        await asyncio.wait_for(task, timeout=60)
+        # The sends are fire-and-forget create_tasks; let them land.
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    assert outcomes == ["Stopped early"], (
+        "a mid-rip eject must send exactly one ripped notification -- the "
+        "eject's own. A second, 'Complete' entry means the ejected_mid_rip "
+        "guard at the end of _run_ripping was lost."
+    )
+
+
+@pytest.mark.unit
+async def test_mid_rerip_eject_does_not_also_send_a_rerip_notification(tmp_path):
+    """The same rule as the test above, at the third call site.
+
+    An eject returns ``success=True, aborted_for_eject=True`` (extractor.py),
+    so rerip_titles' ``if not result.success`` branch does NOT cover it. Without
+    an explicit guard the user hitting Eject during a re-rip gets "Stopped
+    early" immediately followed by a contradictory "Re-rip" for a rip that was
+    aborted, plus a redundant second eject and sentinel re-arm.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, title_ids = await _seed_job(staging, native_offset=0, count=2)
+
+    # rerip_titles only accepts REVIEW titles on a job it can transition to
+    # RIPPING, which is the state a rip-failed disc actually parks in.
+    async with _db.async_session() as s:
+        job = await s.get(DiscJob, job_id)
+        job.state = JobState.REVIEW_NEEDED
+        s.add(job)
+        for tid in title_ids:
+            t = await s.get(DiscTitle, tid)
+            t.state = TitleState.REVIEW
+            s.add(t)
+        await s.commit()
+
+    write_log: list[int] = []
+    procs: list = []
+    job_manager._loop = asyncio.get_running_loop()
+    title1 = staging / "TEST_t01.mkv"
+
+    outcomes: list[str] = []
+
+    async def _spy_send(job_id_, event, *, extra_context=None):
+        if event.key == "ripped":
+            outcomes.append((extra_context or {}).get("rip_outcome"))
+
+    with (
+        patch("app.core.extractor.FS_POLL_INTERVAL", 30.0),
+        patch(
+            "app.core.extractor.subprocess.Popen",
+            side_effect=_make_popen(staging, [1, 2], write_log, procs),
+        ),
+        patch.object(job_manager, "_send_discord_notification", _spy_send),
+    ):
+        task = asyncio.create_task(job_manager.rerip_titles(job_id, title_ids))
+        await _wait_for_size(title1, 4096)
+
+        assert (await job_manager.eject_disc_for_job(job_id))["action"] == "rip_stopped"
+        await asyncio.wait_for(task, timeout=60)
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    assert outcomes == ["Stopped early"], (
+        "a re-rip aborted by an eject must not also report 'Re-rip' -- the "
+        "disc never finished re-ripping, and the eject already notified."
+    )

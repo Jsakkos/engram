@@ -36,6 +36,20 @@ EVENTS: dict[JobState, NotificationEvent] = {
     JobState.REVIEW_NEEDED: NotificationEvent("review", "Review Needed", "🔍", 0xF59E0B),
 }
 
+# Deliberately NOT in EVENTS: "the disc is copied and out of the drive" is a
+# hardware milestone, not a JobState, and it must fire for a disc that goes on
+# to park in REVIEW_NEEDED. Delivered from JobManager._release_drive rather than
+# from a state-machine callback.
+RIPPED_EVENT = NotificationEvent("ripped", "Disc Ripped", "💿", 0x3B82F6)
+
+# The three ways Engram finishes with a drive, rendered into {{rip_outcome}} and
+# the Status field. Constants rather than literals because Task 5 produces them
+# from three separate call sites in job_manager, where casing drift would show
+# up as two different-looking messages for the same event.
+RIP_OUTCOME_COMPLETE = "Complete"
+RIP_OUTCOME_STOPPED_EARLY = "Stopped early"
+RIP_OUTCOME_RERIP = "Re-rip"
+
 ALLOWED_TEMPLATE_VARS = frozenset(
     {
         "title",
@@ -63,17 +77,20 @@ ALLOWED_TEMPLATE_VARS = frozenset(
         "subtitles_failed",
         "path",
         "total_titles",
+        "rip_outcome",
     }
 )
 
 DEFAULT_TEMPLATE_COMPLETED = "**{{{title}}}**"
 DEFAULT_TEMPLATE_FAILED = "**{{{title}}}**"
 DEFAULT_TEMPLATE_REVIEW = "**{{{title}}}**"
+DEFAULT_TEMPLATE_RIPPED = "**{{{title}}}**"
 
 DEFAULT_TEMPLATES = {
     "completed": DEFAULT_TEMPLATE_COMPLETED,
     "failed": DEFAULT_TEMPLATE_FAILED,
     "review": DEFAULT_TEMPLATE_REVIEW,
+    "ripped": DEFAULT_TEMPLATE_RIPPED,
 }
 
 
@@ -142,6 +159,10 @@ def build_template_context(
         "subtitles_failed": str(job.subtitles_failed),
         "path": job.final_path or "",
         "total_titles": str(job.total_titles),
+        # Filled by the caller via extra_context, not derived from the row:
+        # whether this was a clean rip, a mid-rip abort or a re-rip is known
+        # only at the eject site.
+        "rip_outcome": "",
     }
 
 
@@ -238,13 +259,38 @@ def summarize_episodes(titles: list) -> str:
     return f"{', '.join(parts)} ({count} {noun})"
 
 
-def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEvent) -> list[dict]:
+# States that mean "this title's file is on disk". QUEUED is the state a title
+# lands in the moment its rip finishes (see TitleState: "Ripped/on disk, waiting
+# for a matching slot"); the rest are the downstream states it passes through.
+# REVIEW is deliberately absent: route_rip_failure_to_review parks unfinished
+# titles there too, so it does not distinguish "ripped, needs episode review"
+# from "rip failed, re-rippable".
+_ON_DISK_TITLE_STATES = frozenset(
+    {TitleState.QUEUED, TitleState.MATCHING, TitleState.MATCHED, TitleState.COMPLETED}
+)
+
+
+def count_titles_on_disk(titles: list) -> int:
+    """How many of this job's titles have actually been copied off the disc."""
+    return sum(1 for t in titles if t.state in _ON_DISK_TITLE_STATES)
+
+
+def build_embed_fields(
+    job: DiscJob | None, titles: list, event: NotificationEvent, *, rip_outcome: str = ""
+) -> list[dict]:
     """Structured embed fields for one notification. Empty values are dropped."""
     if job is None:
         return []
 
     is_tv = job.content_type == ContentType.TV
-    reason = job.review_reason if event.key == "review" else job.error_message
+    # The ripped embed reports a hardware milestone, not a diagnosis: Status
+    # already says how the rip ended, and a genuine problem gets its own
+    # Failed or Review Needed notification afterwards. Surfacing a possibly
+    # stale error_message here would just be noise next to Status.
+    if event.key == "ripped":
+        reason = ""
+    else:
+        reason = job.review_reason if event.key == "review" else job.error_message
 
     subtitles = ""
     if job.subtitle_status:
@@ -253,6 +299,7 @@ def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEve
             subtitles += f", {job.subtitles_failed} failed"
 
     candidates = [
+        _field("Status", rip_outcome if event.key == "ripped" else ""),
         _field("Disc", format_disc_identity(job)),
         _field(
             "Season",
@@ -264,7 +311,20 @@ def build_embed_fields(job: DiscJob | None, titles: list, event: NotificationEve
             inline=False,
         ),
         _field("Duration", _format_duration(job)),
-        _field("Tracks", f"{job.total_titles} titles" if job.total_titles else ""),
+        # `total_titles` is the disc's title count, fixed at identification. On a
+        # ripped embed it sits directly beside Status, so a bare "12 titles" next
+        # to "Stopped early" reads as a claim that this rip covered 12. Report
+        # what actually reached the disk instead.
+        _field(
+            "Tracks",
+            (
+                f"{count_titles_on_disk(titles)} of {job.total_titles} copied"
+                if event.key == "ripped"
+                else f"{job.total_titles} titles"
+            )
+            if job.total_titles
+            else "",
+        ),
         _field("Subtitles", subtitles),
         _field("Reason", reason or "", inline=False),
         _field("Library", (job.final_path or "") if event.key == "completed" else "", inline=False),
@@ -303,6 +363,7 @@ def build_embed(
     *,
     poster_url: str | None = None,
     link_url: str | None = None,
+    rip_outcome: str = "",
 ) -> dict:
     """Assemble the Discord embed for one notification.
 
@@ -315,7 +376,7 @@ def build_embed(
         "color": event.color,
         "timestamp": datetime.now(UTC).isoformat(),
         "footer": {"text": f"Engram v{__version__}"},
-        "fields": build_embed_fields(job, titles, event),
+        "fields": build_embed_fields(job, titles, event, rip_outcome=rip_outcome),
     }
     if link_url:
         embed["url"] = link_url
