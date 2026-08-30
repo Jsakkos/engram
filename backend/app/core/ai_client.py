@@ -1,9 +1,10 @@
 """Shared AI client for structured-JSON completions across providers.
 
-Wraps anthropic, openai, openrouter, and gemini behind a single
-`complete_json` entry point. Each provider adapter handles its own
-authentication and structured-JSON convention (prompt-only for anthropic,
-response_format for openai/openrouter, responseSchema for gemini).
+Wraps anthropic, openai, openrouter, gemini, and the local servers (ollama,
+lmstudio) behind a single `complete_json` entry point. Each provider adapter
+handles its own authentication and structured-JSON convention (prompt-only for
+anthropic, response_format for openai/openrouter and the local servers, which
+speak the same OpenAI-compatible contract, responseSchema for gemini).
 """
 
 import asyncio
@@ -15,7 +16,7 @@ import re
 import httpx
 
 from app.core.errors import AIProviderError, ProviderErrorCode
-from app.core.security import sanitize_log_value
+from app.core.security import is_safe_local_ai_url, sanitize_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,15 @@ def ai_is_configured(provider: str, api_key: str) -> bool:
 
 
 _TIMEOUT_SECONDS = 30.0
+
+# Local inference is not comparable to a hosted API. LM Studio JIT-loads model
+# weights on the FIRST request, so a cold 7B model can spend 30-60s before
+# emitting a token, and CPU-only generation runs into the minutes. The remote
+# 30s value would make local support look broken on first use.
+LOCAL_TIMEOUT_SECONDS = 300.0
+# The Test Connection button: still generous enough to survive a cold load, but
+# bounded so a user is not left staring at a spinner for five minutes.
+LOCAL_VALIDATE_TIMEOUT_SECONDS = 120.0
 
 MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0  # seconds
@@ -367,7 +377,8 @@ async def complete_json(
     max_tokens: int = 1024,
     raise_on_error: bool = False,
     retries: int = MAX_RETRIES,
-    timeout: float = _TIMEOUT_SECONDS,
+    base_url: str = "",
+    timeout: float | None = None,
 ) -> dict | None:
     """Send a prompt to an LLM provider and return its JSON response as a dict.
 
@@ -383,27 +394,62 @@ async def complete_json(
     propagates as-is — so callers can distinguish a provider outage or a
     truncated/garbled reply from "the model ran and was not confident" (which
     stays a plain ``None`` from the layer above ``complete_json``, e.g.
-    ``match_episode_via_llm`` returning None for a low-confidence match). The
-    early-return paths (empty ``api_key``, unknown provider) still return None
-    regardless of ``raise_on_error`` — see the trace in the code, they exit
-    before the try/except that implements the policy above.
+    ``match_episode_via_llm`` returning None for a low-confidence match). Two of
+    the pre-flight guards (a missing credential, an unknown provider slug) return
+    None regardless of ``raise_on_error``, because neither says anything a caller
+    could act on; the three that describe a fixable config mistake (an unsafe
+    base URL, a blank model for a local provider, an unsafe model name) honour
+    ``raise_on_error`` and raise with code ``bad_request``. All five exit before
+    the try/except that implements the transport policy above.
 
     ``retries`` and ``timeout`` let a caller (e.g. a "test connection"
     pre-flight check) fail fast instead of paying the full backoff ladder.
+
+    ``base_url`` applies only to the local providers (ollama, lmstudio); blank
+    means the slug's conventional default port. ``timeout`` of None means "pick
+    the right default for this provider", which is much longer for local ones.
     """
-    if not api_key:
-        logger.debug("complete_json called with empty api_key; returning None")
+    if not ai_is_configured(provider, api_key):
+        logger.debug("complete_json called without a usable credential; returning None")
+        return None
+
+    if provider not in KNOWN_PROVIDERS:
+        logger.warning("Unknown AI provider: %s", sanitize_log_value(provider))
+        return None
+
+    is_local = provider in LOCAL_PROVIDERS
+    local_url = resolve_local_base_url(provider, base_url)
+
+    if is_local and not is_safe_local_ai_url(local_url):
+        # Refused before any request is issued, so a malformed value can never
+        # become an outbound fetch.
+        logger.warning("Rejecting unsafe local AI base URL: %s", sanitize_log_value(local_url))
+        if raise_on_error:
+            raise AIProviderError(
+                f"'{local_url}' is not a valid server address. Use a plain http(s) "
+                "URL such as http://localhost:11434/v1.",
+                code="bad_request",
+            )
         return None
 
     model = model or DEFAULT_MODELS.get(provider)
     if not model:
-        logger.warning("Unknown AI provider: %s", sanitize_log_value(provider))
+        # Only reachable for a local provider now, since KNOWN_PROVIDERS was
+        # checked above and every remote slug has a default.
+        logger.warning("No model set for local provider %s", sanitize_log_value(provider))
+        if raise_on_error:
+            raise AIProviderError(
+                _LOCAL_BLANK_MODEL_MESSAGE.format(
+                    provider=_PROVIDER_LABELS.get(provider, provider)
+                ),
+                code="bad_request",
+            )
         return None
 
     if not _is_safe_model_name(model):
-        # Unlike the two early returns above, this one honours raise_on_error: a
-        # bad model name is a config mistake the user can fix, and silently
-        # returning None would send them hunting for a key or network problem.
+        # A bad model name is a config mistake the user can fix, so this honours
+        # raise_on_error rather than sending them hunting for a key or network
+        # problem.
         logger.warning("Rejecting unsafe AI model name: %s", sanitize_log_value(model))
         if raise_on_error:
             raise AIProviderError(
@@ -411,6 +457,9 @@ async def complete_json(
                 code="bad_request",
             )
         return None
+
+    if timeout is None:
+        timeout = LOCAL_TIMEOUT_SECONDS if is_local else _TIMEOUT_SECONDS
 
     if provider == "anthropic":
 
@@ -432,6 +481,21 @@ async def complete_json(
 
         def factory():
             return _call_gemini(prompt, api_key, model, max_tokens, schema, timeout)
+    elif is_local:
+        # Both local servers speak the OpenAI chat-completions contract, so this
+        # is the same adapter the openai/openrouter slugs use. Ollama requires an
+        # Authorization header but ignores its value, and LM Studio ignores the
+        # header entirely, so an empty api_key is correct for both.
+        def factory():
+            return _call_openai_compatible(
+                prompt,
+                api_key or "local",
+                f"{local_url}/chat/completions",
+                model,
+                max_tokens,
+                schema,
+                timeout,
+            )
     else:
         logger.warning("Unsupported AI provider: %s", sanitize_log_value(provider))
         return None
@@ -447,12 +511,14 @@ async def complete_json(
         )
         if raise_on_error:
             raise AIProviderError(
-                _CAUSE_MESSAGES["response_truncated"].format(provider=provider),
+                _CAUSE_MESSAGES["response_truncated"].format(
+                    provider=_PROVIDER_LABELS.get(provider, provider)
+                ),
                 code="response_truncated",
             ) from None
         return None
     except httpx.HTTPError as e:
-        code, message = classify_provider_error(provider, e)
+        code, message = classify_provider_error(provider, e, base_url=local_url, model=model)
         # str(e) embeds the request URL, which is built from `model` (also
         # user-settable config), so it is sanitized alongside provider and body.
         logger.warning(
@@ -492,7 +558,9 @@ async def complete_json(
         # with raise_on_error set need this separated from "the model ran and had
         # no confident answer", which is also a None from the layer above.
         raise AIProviderError(
-            _CAUSE_MESSAGES["malformed_response"].format(provider=provider),
+            _CAUSE_MESSAGES["malformed_response"].format(
+                provider=_PROVIDER_LABELS.get(provider, provider)
+            ),
             code="malformed_response",
         )
     return result
