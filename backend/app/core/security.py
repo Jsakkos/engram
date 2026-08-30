@@ -14,7 +14,7 @@ These back the hardening of CodeQL-flagged sinks:
 - ``sanitize_playlist_field`` — strips line breaks/control characters from
   disc-derived text before it is embedded in an ``.m3u`` playlist.
 
-The first three are boolean *predicates* — they return ``True``/``False`` so
+The first four are boolean *predicates* — they return ``True``/``False`` so
 the validation is recognised as a barrier guard by static analysis at the call
 site (``if not guard(x): ...``). ``sanitize_log_value`` and
 ``sanitize_playlist_field`` instead return the cleaned value, the recognised
