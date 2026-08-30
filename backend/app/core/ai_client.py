@@ -112,10 +112,11 @@ def _is_safe_model_name(model: str) -> bool:
     return bool(_MODEL_NAME_RE.match(model))
 
 
-# Display names for the four provider slugs. The slugs themselves are lowercase
+# Display names for all six provider slugs. The slugs themselves are lowercase
 # identifiers, and these sentences are read by users, so "OpenAI accepted the
 # key" beats "openai accepted the key". Mirrors AI_PROVIDER_LABELS in the
-# frontend's ConfigWizard, which labels the same four providers.
+# frontend's ConfigWizard, though that map still only covers the four remote
+# providers until a later task adds the two local ones there.
 _PROVIDER_LABELS = {
     "anthropic": "Anthropic",
     "openai": "OpenAI",
