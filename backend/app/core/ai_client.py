@@ -495,6 +495,7 @@ async def complete_json(
                 max_tokens,
                 schema,
                 timeout,
+                json_schema_mode=(provider == "lmstudio"),
             )
     else:
         logger.warning("Unsupported AI provider: %s", sanitize_log_value(provider))
@@ -705,6 +706,7 @@ async def _call_openai_compatible(
     max_tokens: int,
     schema: dict | None,
     timeout: float,
+    json_schema_mode: bool = False,
 ) -> dict | None:
     body: dict = {
         "model": model,
@@ -713,7 +715,22 @@ async def _call_openai_compatible(
         "temperature": 0,
     }
     if schema is not None:
-        body["response_format"] = {"type": "json_object"}
+        if json_schema_mode:
+            # LM Studio rejects {"type": "json_object"} outright with
+            # "'response_format.type' must be 'json_schema' or 'text'", so it gets
+            # the richer form. This is strictly better where supported: the server
+            # constrains generation to the schema rather than merely to "some JSON".
+            # openai/openrouter already work on json_object and are left alone to
+            # avoid needless risk to existing users; ollama is not installed on this
+            # machine to verify against, and its documented OpenAI-compatibility
+            # explicitly lists json_object as supported, so it stays on the
+            # documented-safe path too.
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "response", "strict": True, "schema": schema},
+            }
+        else:
+            body["response_format"] = {"type": "json_object"}
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(

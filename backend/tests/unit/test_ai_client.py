@@ -1326,6 +1326,103 @@ class TestLocalDispatch:
         assert mock.post.await_args.args[0] == "https://api.openai.com/v1/chat/completions"
 
 
+class TestLocalStructuredOutputDialect:
+    """LM Studio rejects response_format={"type": "json_object"} outright, so it
+
+    needs the richer json_schema form; ollama and the remote OpenAI-compatible
+    slugs stay on json_object (verified live against LM Studio; see #606).
+    """
+
+    @pytest.mark.asyncio
+    async def test_lmstudio_with_schema_uses_json_schema_dialect(self):
+        from app.core.ai_client import complete_json
+
+        schema = {"type": "object", "properties": {"episode": {"type": "integer"}}}
+        mock = _mock_httpx(_openai_shaped('{"episode": 3}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=schema,
+                provider="lmstudio",
+                api_key="",
+                model="qwen2.5-7b-instruct",
+            )
+
+        response_format = mock.post.await_args.kwargs["json"]["response_format"]
+        assert response_format["type"] == "json_schema"
+        assert response_format["json_schema"]["schema"] == schema
+
+    @pytest.mark.asyncio
+    async def test_ollama_with_schema_still_uses_json_object(self):
+        from app.core.ai_client import complete_json
+
+        schema = {"type": "object", "properties": {"episode": {"type": "integer"}}}
+        mock = _mock_httpx(_openai_shaped('{"episode": 3}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=schema,
+                provider="ollama",
+                api_key="",
+                model="llama3.1:8b",
+            )
+
+        assert mock.post.await_args.kwargs["json"]["response_format"] == {"type": "json_object"}
+
+    @pytest.mark.asyncio
+    async def test_openai_with_schema_still_uses_json_object(self):
+        """Regression guard: existing openai/openrouter users must not change dialect."""
+        from app.core.ai_client import complete_json
+
+        schema = {"type": "object", "properties": {"episode": {"type": "integer"}}}
+        mock = _mock_httpx(_openai_shaped('{"episode": 3}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(prompt="hi", schema=schema, provider="openai", api_key="sk-x")
+
+        assert mock.post.await_args.kwargs["json"]["response_format"] == {"type": "json_object"}
+
+    @pytest.mark.asyncio
+    async def test_lmstudio_without_schema_sends_no_response_format(self):
+        from app.core.ai_client import complete_json
+
+        mock = _mock_httpx(_openai_shaped('{"ok": true}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=None,
+                provider="lmstudio",
+                api_key="",
+                model="qwen2.5-7b-instruct",
+            )
+
+        assert "response_format" not in mock.post.await_args.kwargs["json"]
+
+    @pytest.mark.asyncio
+    async def test_lmstudio_forwards_the_real_episode_matcher_schema_intact(self):
+        """Pins the union-type case (runner_up: ["object", "null"]) that live
+
+        testing against LM Studio exercised with strict=True.
+        """
+        from app.core.ai_client import complete_json
+        from app.matcher.llm_episode_matcher import RESPONSE_SCHEMA
+
+        mock = _mock_httpx(_openai_shaped('{"episode": 3, "confidence": 0.9}'))
+        with patch("app.core.ai_client.httpx.AsyncClient", return_value=mock):
+            await complete_json(
+                prompt="hi",
+                schema=RESPONSE_SCHEMA,
+                provider="lmstudio",
+                api_key="",
+                model="qwen2.5-7b-instruct",
+            )
+
+        response_format = mock.post.await_args.kwargs["json"]["response_format"]
+        assert response_format == {
+            "type": "json_schema",
+            "json_schema": {"name": "response", "strict": True, "schema": RESPONSE_SCHEMA},
+        }
+
+
 class TestProviderLabelInFallbackMessages:
     """The truncated/malformed paths must name the provider, not its slug."""
 
