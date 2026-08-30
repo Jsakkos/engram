@@ -181,9 +181,11 @@ interface ConfigData {
     discordTemplateCompleted: string;
     discordTemplateFailed: string;
     discordTemplateReview: string;
+    discordTemplateRipped: string;
     discordNotifyCompleted: boolean;
     discordNotifyFailed: boolean;
     discordNotifyReview: boolean;
+    discordNotifyRipped: boolean;
     discordMentionReview: string;
     dashboardBaseUrl: string;
 }
@@ -270,15 +272,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         discordTemplateCompleted: '',
         discordTemplateFailed: '',
         discordTemplateReview: '',
+        discordTemplateRipped: '',
         discordNotifyCompleted: true,
         discordNotifyFailed: true,
         discordNotifyReview: true,
+        discordNotifyRipped: false,
         discordMentionReview: '',
         dashboardBaseUrl: '',
     });
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string; review: string}>({completed: '', failed: '', review: ''});
+    const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string; review: string; ripped: string}>({completed: '', failed: '', review: '', ripped: ''});
     const [webhookTest, setWebhookTest] = useState<{status: 'idle' | 'testing' | 'ok' | 'invalid' | 'error', error?: string}>({status: 'idle'});
     const [toolDetection, setToolDetection] = useState<DetectToolsResponse | null>(null);
     const [isDetecting, setIsDetecting] = useState(false);
@@ -397,9 +401,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     discordTemplateCompleted: data.discord_template_completed || '',
                     discordTemplateFailed: data.discord_template_failed || '',
                     discordTemplateReview: data.discord_template_review || '',
+                    discordTemplateRipped: data.discord_template_ripped || '',
                     discordNotifyCompleted: data.discord_notify_completed ?? true,
                     discordNotifyFailed: data.discord_notify_failed ?? true,
                     discordNotifyReview: data.discord_notify_review ?? true,
+                    discordNotifyRipped: data.discord_notify_ripped ?? false,
                     discordMentionReview: data.discord_mention_review || '',
                     dashboardBaseUrl: data.dashboard_base_url || '',
                 });
@@ -420,7 +426,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             // Empty template is always valid (falls back to the built-in default) —
             // skip the round-trip, which also avoids validating on mount before the
             // user has touched either field.
-            const [completedResult, failedResult, reviewResult] = await Promise.all([
+            const [completedResult, failedResult, reviewResult, rippedResult] = await Promise.all([
                 config.discordTemplateCompleted
                     ? requestDiscordTemplateValidation(config.discordTemplateCompleted)
                     : Promise.resolve({ status: 'valid' as const }),
@@ -430,15 +436,19 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 config.discordTemplateReview
                     ? requestDiscordTemplateValidation(config.discordTemplateReview)
                     : Promise.resolve({ status: 'valid' as const }),
+                config.discordTemplateRipped
+                    ? requestDiscordTemplateValidation(config.discordTemplateRipped)
+                    : Promise.resolve({ status: 'valid' as const }),
             ]);
             setDiscordTemplateErrors({
                 completed: completedResult.status === 'invalid' ? completedResult.error : '',
                 failed: failedResult.status === 'invalid' ? failedResult.error : '',
                 review: reviewResult.status === 'invalid' ? reviewResult.error : '',
+                ripped: rippedResult.status === 'invalid' ? rippedResult.error : '',
             });
         }, 400);
         return () => window.clearTimeout(timer);
-    }, [config.discordTemplateCompleted, config.discordTemplateFailed, config.discordTemplateReview]);
+    }, [config.discordTemplateCompleted, config.discordTemplateFailed, config.discordTemplateReview, config.discordTemplateRipped]);
 
     // Detect tools when entering step 2
     useEffect(() => {
@@ -614,9 +624,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     discord_template_completed: config.discordTemplateCompleted,
                     discord_template_failed: config.discordTemplateFailed,
                     discord_template_review: config.discordTemplateReview,
+                    discord_template_ripped: config.discordTemplateRipped,
                     discord_notify_completed: config.discordNotifyCompleted,
                     discord_notify_failed: config.discordNotifyFailed,
                     discord_notify_review: config.discordNotifyReview,
+                    discord_notify_ripped: config.discordNotifyRipped,
                     discord_mention_review: config.discordMentionReview,
                     dashboard_base_url: config.dashboardBaseUrl,
                     setup_complete: true,
@@ -2059,6 +2071,23 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             </label>
                         </div>
 
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.discordNotifyRipped}
+                                    onChange={(e) => handleInputChange('discordNotifyRipped', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    Notify when a disc finishes ripping
+                                    <span className="checkbox-hint">
+                                        Fires the moment the disc is copied and ejected, before any matching or
+                                        review. Use this if you swap discs as they finish and review later.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
                         <div className="form-group">
                             <label htmlFor="discordMentionReview">Review Mention</label>
                             <input
@@ -2130,6 +2159,24 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             )}
                             <span className="form-hint">
                                 Same variables as above, plus {'{{'}review_reason{'}}'}. Leave blank to use the default.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="discordTemplateRipped">Finished Ripping Message</label>
+                            <textarea
+                                id="discordTemplateRipped"
+                                value={config.discordTemplateRipped}
+                                onChange={(e) => handleInputChange('discordTemplateRipped', e.target.value)}
+                                placeholder="**{{title}}**"
+                                rows={2}
+                            />
+                            {discordTemplateErrors.ripped && (
+                                <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {discordTemplateErrors.ripped}</span>
+                            )}
+                            <span className="form-hint">
+                                Same variables as above, plus {'{{'}rip_outcome{'}}'}, which reads Complete,
+                                Stopped early or Re-rip. Only that event fills it in. Leave blank to use the default.
                             </span>
                         </div>
 
@@ -2254,7 +2301,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <button
                             className="btn-primary"
                             onClick={handleNext}
-                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed || !!discordTemplateErrors.review}
+                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed || !!discordTemplateErrors.review || !!discordTemplateErrors.ripped}
                         >
                             {step === totalSteps ? (isSaving ? 'Saving...' : 'Complete Setup') : 'Next →'}
                         </button>
@@ -2262,7 +2309,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <button
                             className="btn-primary"
                             onClick={handleSave}
-                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed || !!discordTemplateErrors.review}
+                            disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed || !!discordTemplateErrors.review || !!discordTemplateErrors.ripped}
                         >
                             {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>

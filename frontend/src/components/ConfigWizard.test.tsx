@@ -477,3 +477,28 @@ describe('ConfigWizard: webhook test targets the saved value', () => {
         expect(status).toHaveTextContent(/save your changes first/i);
     });
 });
+
+describe('ConfigWizard — Discord finished-ripping notification', () => {
+    it('round-trips the ripped notification toggle and template', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+
+        const toggle = await screen.findByLabelText(/notify when a disc finishes ripping/i);
+        expect(toggle).not.toBeChecked();
+
+        fireEvent.click(toggle);
+        const template = screen.getByLabelText(/finished ripping message/i);
+        fireEvent.change(template, { target: { value: '{{title}} done' } });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+        await waitFor(() =>
+            expect((fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls.some((c) => c[1]?.method === 'PUT')).toBe(true),
+        );
+        const putCall = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls.find(
+            (c) => c[1]?.method === 'PUT',
+        );
+        const body = JSON.parse(putCall?.[1]?.body as string);
+        expect(body.discord_notify_ripped).toBe(true);
+        expect(body.discord_template_ripped).toBe('{{title}} done');
+    });
+});
