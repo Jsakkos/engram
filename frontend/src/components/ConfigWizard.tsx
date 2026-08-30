@@ -1276,7 +1276,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <details className="wizard-group">
                             <summary>
                                 <span className="wizard-group-chevron">▸</span>AI assistance
-                                <span className="wizard-group-sub">optional · API key required</span>
+                                {/* Not "API key required" any more: the local providers
+                                    (Ollama, LM Studio) authenticate to nothing, so a key
+                                    is only needed for the hosted ones. */}
+                                <span className="wizard-group-sub">optional · hosted or local</span>
                             </summary>
                             <div className="wizard-group-body">
 
