@@ -5,7 +5,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -633,3 +633,129 @@ async def test_eject_spares_a_title_that_finished_just_before_the_abort(tmp_path
     assert finished.match_details is None
     assert never_started.state == TitleState.REVIEW
     assert json.loads(never_started.match_details)["error"] == "rip_ejected"
+
+
+# --- _release_drive ---------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_release_drive_notifies_with_the_outcome(monkeypatch):
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
+
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    _install_eject_stubs(monkeypatch, eject_ok=True)
+    sent: list[tuple] = []
+
+    async def fake_send(job_id_, event, *, extra_context=None):
+        sent.append((job_id_, event.key, extra_context))
+
+    monkeypatch.setattr(job_manager, "_send_discord_notification", fake_send)
+
+    await job_manager._release_drive(job_id, "Z:", RIP_OUTCOME_COMPLETE)
+    await asyncio.sleep(0)  # let the fire-and-forget task run
+
+    assert sent == [(job_id, "ripped", {"rip_outcome": "Complete"})]
+
+
+@pytest.mark.unit
+async def test_release_drive_notifies_even_when_auto_eject_is_off(monkeypatch):
+    """No tray opens, but the disc is still copied and the user still wants to
+    know. The notify sits outside the eject branch for exactly this case."""
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
+    from app.services.config_service import update_config
+
+    await update_config(auto_eject_enabled=False)
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=True)
+    sent: list[tuple] = []
+
+    async def fake_send(job_id_, event, *, extra_context=None):
+        sent.append((job_id_, event.key, extra_context))
+
+    monkeypatch.setattr(job_manager, "_send_discord_notification", fake_send)
+
+    ejected = await job_manager._release_drive(job_id, "Z:", RIP_OUTCOME_COMPLETE)
+    await asyncio.sleep(0)
+
+    assert ejected is False
+    assert stubs.calls == [], "auto-eject off must not open the tray"
+    assert sent == [(job_id, "ripped", {"rip_outcome": "Complete"})]
+
+    await update_config(auto_eject_enabled=True)
+
+
+@pytest.mark.unit
+async def test_release_drive_rearms_sentinel_on_a_falsy_eject_by_default(monkeypatch):
+    """eject_disc returns False unconditionally on macOS and for a Linux drive
+    id that fails the optical-drive regex. The automatic sites must still
+    re-arm the sentinel there, or the next disc is never detected."""
+    from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
+
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=False)
+    monkeypatch.setattr(job_manager, "_send_discord_notification", AsyncMock())
+
+    await job_manager._release_drive(job_id, "Z:", RIP_OUTCOME_COMPLETE)
+
+    assert stubs.notified == ["Z:"]
+
+
+@pytest.mark.unit
+async def test_release_drive_skips_rearm_on_failed_eject_when_asked(monkeypatch):
+    """The user-initiated path reports `ejected` back to the UI and must leave
+    the sentinel armed so it sees the disc when popped by hand."""
+    from app.core.discord_notifier import RIP_OUTCOME_STOPPED_EARLY
+
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    stubs = _install_eject_stubs(monkeypatch, eject_ok=False)
+    monkeypatch.setattr(job_manager, "_send_discord_notification", AsyncMock())
+
+    await job_manager._release_drive(
+        job_id,
+        "Z:",
+        RIP_OUTCOME_STOPPED_EARLY,
+        respect_auto_eject=False,
+        rearm_on_failed_eject=False,
+    )
+
+    assert stubs.notified == []
+
+
+# --- call-site coverage -----------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_eject_while_ripping_sends_a_stopped_early_notification(monkeypatch):
+    job_id = await _seed_job_in_state(JobState.RIPPING)
+    _install_eject_stubs(monkeypatch, eject_ok=True)
+    sent: list[tuple] = []
+
+    async def fake_send(job_id_, event, *, extra_context=None):
+        sent.append((job_id_, event.key, extra_context))
+
+    monkeypatch.setattr(job_manager, "_send_discord_notification", fake_send)
+
+    await job_manager.eject_disc_for_job(job_id)
+    await asyncio.sleep(0)
+
+    assert sent == [(job_id, "ripped", {"rip_outcome": "Stopped early"})]
+
+
+@pytest.mark.unit
+async def test_eject_while_identifying_sends_no_ripped_notification(monkeypatch):
+    """Nothing was copied, so "Disc Ripped" would be a lie. The notify sits
+    inside the RIPPING branch, below the IDENTIFYING fork."""
+    job_id = await _seed_job_in_state(JobState.IDENTIFYING)
+    _install_eject_stubs(monkeypatch, eject_ok=True)
+    # cancel_job drives the job terminal, whose own (unrelated) "failed"
+    # notification would otherwise land on this spy -- and leak a DB connection
+    # past teardown. Drop the terminal callbacks, as the sibling identify test
+    # does, so what remains on the spy is exactly what eject_disc_for_job sent.
+    monkeypatch.setattr(jm_mod.state_machine, "_on_terminal_callbacks", [])
+    mock_send = AsyncMock()
+    monkeypatch.setattr(job_manager, "_send_discord_notification", mock_send)
+
+    await job_manager.eject_disc_for_job(job_id)
+    await asyncio.sleep(0)
+
+    mock_send.assert_not_called()

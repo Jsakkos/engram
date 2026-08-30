@@ -1262,6 +1262,73 @@ class JobManager:
                     job, session, error_message="Cancelled by user"
                 )
 
+    async def _release_drive(
+        self,
+        job_id: int,
+        drive_id: str,
+        outcome: str,
+        *,
+        respect_auto_eject: bool = True,
+        rearm_on_failed_eject: bool = True,
+    ) -> bool:
+        """Finished with the drive: eject if configured, re-arm the sentinel, notify.
+
+        The single chokepoint for every "Engram is done with this disc" moment,
+        so the notification cannot drift out of sync with the eject.
+
+        The Discord ping fires OUTSIDE the eject branch on purpose: with
+        auto-eject off no tray opens, but the disc is still copied and the user
+        still wants to know.
+
+        ``rearm_on_failed_eject`` exists because eject_disc returns False
+        unconditionally on macOS and for a Linux drive id that fails
+        _OPTICAL_DRIVE_RE. The automatic call sites must re-arm the sentinel
+        regardless, or the next disc is never detected on those platforms. The
+        user-initiated path passes False: it reports `ejected` straight back to
+        the UI, so a drive that genuinely refused must leave the sentinel armed
+        to catch the disc when the user pops it by hand.
+
+        Returns whether the tray actually opened.
+        """
+        # Function-local imports: the eject tests patch app.core.sentinel.eject_disc
+        # and rely on the name resolving at call time. Hoisting this to module
+        # scope silently defeats every eject stub and opens the physical tray
+        # under test.
+        from app.core.discord_notifier import RIPPED_EVENT
+        from app.core.sentinel import eject_disc
+        from app.services.config_service import get_config
+
+        safe_job = sanitize_log_value(job_id)
+        safe_drive = sanitize_log_value(drive_id)
+
+        should_eject = True
+        if respect_auto_eject:
+            config = await get_config()
+            should_eject = bool(config and config.auto_eject_enabled)
+
+        ejected = False
+        if should_eject:
+            raised = False
+            try:
+                ejected = await asyncio.to_thread(eject_disc, drive_id)
+            except (OSError, RuntimeError) as e:
+                raised = True
+                logger.warning(f"Job {safe_job}: could not eject disc from {safe_drive}: {e}")
+            if ejected or (rearm_on_failed_eject and not raised):
+                self._drive_monitor.notify_ejected(drive_id)
+            elif not ejected:
+                logger.warning(
+                    f"Job {safe_job}: drive {safe_drive} did not open; "
+                    f"the disc can be removed by hand"
+                )
+
+        asyncio.create_task(
+            self._send_discord_notification(
+                job_id, RIPPED_EVENT, extra_context={"rip_outcome": outcome}
+            )
+        )
+        return ejected
+
     async def eject_disc_for_job(self, job_id: int) -> dict:
         """Release the disc without cancelling the job.
 
@@ -1303,29 +1370,32 @@ class JobManager:
         if state == JobState.RIPPING:
             await asyncio.to_thread(self._extractor.eject_abort, job_id)
 
-        from app.core.sentinel import eject_disc
-
-        ejected = False
-        try:
-            ejected = await asyncio.to_thread(eject_disc, drive_id)
-        except (OSError, RuntimeError) as e:
-            logger.warning(f"Job {safe_job}: eject of {safe_drive} raised: {e}")
-
-        if ejected:
-            # Only on success: after a failed eject the sentinel must stay armed
-            # so it correctly observes the disc when the user pops it by hand.
-            self._drive_monitor.notify_ejected(drive_id)
-        else:
-            logger.warning(
-                f"Job {safe_job}: drive {safe_drive} did not open; "
-                f"the rip was still stopped and the disc can be removed by hand"
-            )
-
         if state == JobState.IDENTIFYING:
+            from app.core.sentinel import eject_disc
+
+            ejected = False
+            try:
+                ejected = await asyncio.to_thread(eject_disc, drive_id)
+            except (OSError, RuntimeError) as e:
+                logger.warning(f"Job {safe_job}: eject of {safe_drive} raised: {e}")
+            if ejected:
+                self._drive_monitor.notify_ejected(drive_id)
             await self.cancel_job(job_id)
             logger.info(f"Job {safe_job}: ejected during identify, job cancelled")
             return {"ejected": ejected, "action": "job_cancelled"}
 
+        from app.core.discord_notifier import RIP_OUTCOME_STOPPED_EARLY
+
+        # RIPPING: tracks were produced, so this is a real "done with the disc"
+        # moment and gets the ripped notification. IDENTIFYING above does not:
+        # nothing was copied, so "Disc Ripped" would be a lie.
+        ejected = await self._release_drive(
+            job_id,
+            drive_id,
+            RIP_OUTCOME_STOPPED_EARLY,
+            respect_auto_eject=False,
+            rearm_on_failed_eject=False,
+        )
         logger.info(
             f"Job {safe_job}: disc ejected mid-rip; finished titles continue, "
             f"unfinished titles route to review"
@@ -2625,14 +2695,9 @@ class JobManager:
                         )
 
         # Free the drive for the next disc.
-        if cfg and cfg.auto_eject_enabled:
-            try:
-                from app.core.sentinel import eject_disc
+        from app.core.discord_notifier import RIP_OUTCOME_RERIP
 
-                await asyncio.to_thread(eject_disc, drive_id)
-                self._drive_monitor.notify_ejected(drive_id)
-            except (OSError, RuntimeError) as e:
-                logger.warning(f"Job {sanitize_log_value(job_id)}: eject after re-rip failed: {e}")
+        await self._release_drive(job_id, drive_id, RIP_OUTCOME_RERIP)
 
     async def rerip_title_manual(self, job_id: int, title_id: int) -> None:
         """Manually re-rip one title using the disc currently in the drive.
@@ -3193,15 +3258,14 @@ class JobManager:
                             result.failure_reason or STALL_FAILURE_REASON,
                         )
 
-            # Eject disc and reset sentinel state so a new disc insert is detected
-            if rip_config and rip_config.auto_eject_enabled and not ejected_mid_rip:
-                try:
-                    from app.core.sentinel import eject_disc
+            # Eject disc and reset sentinel state so a new disc insert is detected.
+            # `ejected_mid_rip` guards the notification as well as the eject: the
+            # abort path already opened the tray AND already sent its own
+            # "Stopped early" ping, so re-notifying here would double-fire.
+            if not ejected_mid_rip:
+                from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
 
-                    await asyncio.to_thread(eject_disc, drive_id)
-                    self._drive_monitor.notify_ejected(drive_id)
-                except (OSError, RuntimeError) as e:
-                    logger.warning(f"Could not eject disc from {drive_id}: {e}")
+                await self._release_drive(job_id, drive_id, RIP_OUTCOME_COMPLETE)
 
             # Post-rip convergence (walk-away Phase B4): re-read the job row —
             # the locals captured at setup go stale once mid-rip identity
