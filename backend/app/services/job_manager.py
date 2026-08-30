@@ -1316,7 +1316,7 @@ class JobManager:
                 logger.warning(f"Job {safe_job}: could not eject disc from {safe_drive}: {e}")
             if ejected or (rearm_on_failed_eject and not raised):
                 self._drive_monitor.notify_ejected(drive_id)
-            elif not ejected:
+            else:
                 logger.warning(
                     f"Job {safe_job}: drive {safe_drive} did not open; "
                     f"the disc can be removed by hand"

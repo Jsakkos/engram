@@ -664,7 +664,6 @@ async def test_release_drive_notifies_even_when_auto_eject_is_off(monkeypatch):
     from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
     from app.services.config_service import update_config
 
-    await update_config(auto_eject_enabled=False)
     job_id = await _seed_job_in_state(JobState.RIPPING)
     stubs = _install_eject_stubs(monkeypatch, eject_ok=True)
     sent: list[tuple] = []
@@ -674,14 +673,19 @@ async def test_release_drive_notifies_even_when_auto_eject_is_off(monkeypatch):
 
     monkeypatch.setattr(job_manager, "_send_discord_notification", fake_send)
 
-    ejected = await job_manager._release_drive(job_id, "Z:", RIP_OUTCOME_COMPLETE)
-    await asyncio.sleep(0)
+    # try/finally, not a trailing restore: config lives in the shared DB, so a
+    # failed assertion above would leak auto_eject_enabled=False into every
+    # later test in this process and turn one failure into a cascade.
+    await update_config(auto_eject_enabled=False)
+    try:
+        ejected = await job_manager._release_drive(job_id, "Z:", RIP_OUTCOME_COMPLETE)
+        await asyncio.sleep(0)
 
-    assert ejected is False
-    assert stubs.calls == [], "auto-eject off must not open the tray"
-    assert sent == [(job_id, "ripped", {"rip_outcome": "Complete"})]
-
-    await update_config(auto_eject_enabled=True)
+        assert ejected is False
+        assert stubs.calls == [], "auto-eject off must not open the tray"
+        assert sent == [(job_id, "ripped", {"rip_outcome": "Complete"})]
+    finally:
+        await update_config(auto_eject_enabled=True)
 
 
 @pytest.mark.unit
@@ -759,3 +763,60 @@ async def test_eject_while_identifying_sends_no_ripped_notification(monkeypatch)
     await asyncio.sleep(0)
 
     mock_send.assert_not_called()
+
+
+@pytest.mark.unit
+async def test_mid_rip_eject_does_not_also_send_a_complete_notification(tmp_path):
+    """Chain test: _run_ripping -> real extractor -> eject_disc_for_job.
+
+    `ejected_mid_rip` guards the notification as well as the eject at the end of
+    _run_ripping. Nothing else pins it: every unit test around it stubs one side
+    or the other, so deleting the guard leaves them all green while the user
+    gets two pings for one disc -- "Stopped early" from the eject, then a
+    flatly false "Complete" for a rip that was aborted.
+
+    This drives the real chain (real extractor, faked makemkvcon) through the
+    real production entry point, so BOTH notifications are the genuine article
+    and their count is meaningful. The job also parks in review on the way out,
+    whose own `review` ping rides the same spy -- hence the filter on the
+    ripped event rather than a raw call count.
+    """
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id, _title_ids = await _seed_job(staging, native_offset=0, count=2)
+
+    write_log: list[int] = []
+    procs: list = []
+    job_manager._loop = asyncio.get_running_loop()
+    title1 = staging / "TEST_t01.mkv"
+
+    outcomes: list[str] = []
+
+    async def _spy_send(job_id_, event, *, extra_context=None):
+        if event.key == "ripped":
+            outcomes.append((extra_context or {}).get("rip_outcome"))
+
+    with (
+        patch("app.core.extractor.FS_POLL_INTERVAL", 30.0),
+        patch(
+            "app.core.extractor.subprocess.Popen",
+            side_effect=_make_popen(staging, [1, 2], write_log, procs),
+        ),
+        patch.object(job_manager, "_send_discord_notification", _spy_send),
+    ):
+        task = asyncio.create_task(job_manager._run_ripping(job_id))
+        await _wait_for_size(title1, 4096)
+
+        # The module-level eject stub is a no-op returning None, so `ejected`
+        # is falsy here; the action is what matters.
+        assert (await job_manager.eject_disc_for_job(job_id))["action"] == "rip_stopped"
+        await asyncio.wait_for(task, timeout=60)
+        # The sends are fire-and-forget create_tasks; let them land.
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    assert outcomes == ["Stopped early"], (
+        "a mid-rip eject must send exactly one ripped notification -- the "
+        "eject's own. A second, 'Complete' entry means the ejected_mid_rip "
+        "guard at the end of _run_ripping was lost."
+    )
