@@ -46,6 +46,17 @@ All notable changes to Engram will be documented in this file.
   accepts the combined tracks as episodes. If nothing fits under either rule, the
   runtime filter is disabled for that disc and the audio matcher — which compares
   content, not clocks — decides.
+- **Cartoon discs that pack two episodes into one track are no longer filed as
+  Extras.** Shows like The Weekenders and Courage the Cowardly Dog put two
+  eleven-minute segments into a single half-hour track, while TMDB lists each
+  segment as its own episode. Engram compared the track against one episode's
+  runtime, found no match, and quietly sorted the whole thing into Extras
+  without ever listening to it, so an entire disc could come back with nothing
+  organized. Engram now recognises a combined track from where the dialogue
+  matches fall across the file, and sends it to manual review naming the
+  episodes it found rather than discarding it. Combined tracks still need you to
+  assign them by hand, because writing a single file out under two episode
+  numbers is a separate change. (#622)
 
 ## [0.33.0] - 2026-08-23
 

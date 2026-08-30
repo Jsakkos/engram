@@ -19,7 +19,11 @@ from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
+    MULTI_EPISODE_ERROR_CODE,
+    FileWaitResult,
     MatchingCoordinator,
+    _apply_multi_episode_review,
+    _conjoined_episode_count,
     _duration_matches_episode_runtime,
     episode_curator,
 )
@@ -1146,3 +1150,352 @@ class TestTryDiscdbAssignmentSource:
             t = await session.get(DiscTitle, title_id)
             assert t.match_source == "discdb"
             assert json.loads(t.match_details)["source"] == "discdb"
+
+
+@pytest.mark.unit
+class TestConjoinedEpisodeCount:
+    """Cartoon discs put two or three ~11-minute segments in one physical track.
+    TMDB lists each segment as its own episode, so the track only matches a SUM of
+    runtimes, never a single one. This predicate admits such a track to ASR; the
+    positional vote runs (app/matcher/multi_episode.py) make the real call.
+    """
+
+    WEEKENDERS_S1 = [11] * 16
+
+    def test_two_segment_track_admits_as_two(self):
+        # The reported bug: job 60, a 23-minute track of two 11-minute segments.
+        assert _conjoined_episode_count(23.0, self.WEEKENDERS_S1) == 2
+
+    def test_three_segment_track_admits_as_three(self):
+        # 3 x 11 = 33, window [28, 43].
+        assert _conjoined_episode_count(34.0, self.WEEKENDERS_S1) == 3
+
+    def test_single_episode_is_not_conjoined(self):
+        # 11 minutes is one segment. Callers test the single-episode window first;
+        # this predicate must not claim it.
+        assert _conjoined_episode_count(11.0, self.WEEKENDERS_S1) is None
+
+    def test_smallest_n_wins_when_windows_overlap(self):
+        # N=2 window [17, 32] and N=3 window [28, 43] overlap at [28, 32].
+        # Return the smaller; the vote runs correct it if wrong.
+        assert _conjoined_episode_count(30.0, self.WEEKENDERS_S1) == 2
+
+    def test_play_all_track_is_not_conjoined(self):
+        # Gilmore t00: 11515s = 191.9min. Above every N<=3 window, so it stays an
+        # extra. This is the existing test_play_all_track_is_an_extra invariant.
+        assert _conjoined_episode_count(11515 / 60, GILMORE_S1) is None
+
+    def test_four_segments_exceeds_the_cap(self):
+        # 4 x 11 = 44. Beyond MAX_CONJOINED_EPISODES: 10 scan points cannot
+        # resolve 4 runs (needs ~2 votes/run + seams), so refuse rather than guess.
+        assert _conjoined_episode_count(44.0, self.WEEKENDERS_S1) is None
+
+    def test_short_featurette_is_not_conjoined(self):
+        # 10 minutes against 22/44-minute episodes: below every sum window.
+        assert _conjoined_episode_count(10.0, [22, 44]) is None
+
+    def test_uses_consecutive_runtime_windows(self):
+        # A season whose runtimes vary: 22+22 = 44, window [39, 54].
+        assert _conjoined_episode_count(45.0, [22, 22, 44, 44]) == 2
+
+    def test_empty_runtimes_never_matches(self):
+        assert _conjoined_episode_count(23.0, []) is None
+
+
+@pytest.mark.unit
+class TestConjoinedAdmission:
+    """The duration pre-filter must ADMIT a plausibly-conjoined track to matching
+    instead of filing it as an extra (issue #622), and must still file a genuine
+    extra. These cover the branch decision only; the wiring is exercised by the
+    integration path.
+    """
+
+    WEEKENDERS_S1 = [11] * 16
+
+    def test_conjoined_track_is_admitted_not_filed(self):
+        # 23min against [11]*16: no single runtime matches, but 2 x 11 does, so
+        # the track proceeds to ASR instead of reaching _handle_extras.
+        assert _duration_matches_episode_runtime(23.0, self.WEEKENDERS_S1) is False
+        assert _conjoined_episode_count(23.0, self.WEEKENDERS_S1) == 2
+
+    def test_featurette_still_files_as_extra(self):
+        # Neither a single runtime nor any sum: must still reach _handle_extras.
+        # (Note: 11 - EPISODE_DURATION_UNDER_TOLERANCE_MIN(5) = 6, so the single-
+        # episode window's lower bound is inclusive at 6.0 minutes; 5.0 sits
+        # clearly below every window instead.)
+        assert _duration_matches_episode_runtime(5.0, self.WEEKENDERS_S1) is False
+        assert _conjoined_episode_count(5.0, self.WEEKENDERS_S1) is None
+
+
+@pytest.mark.unit
+class TestMultiEpisodeReviewRouting:
+    """A track that is, or might be, several conjoined episodes must land in REVIEW
+    rather than MATCHED. Auto-organizing it under one code silently loses the rest,
+    which is the failure this whole change exists to prevent.
+    """
+
+    def _title(self, details: dict | None):
+        return SimpleNamespace(
+            state=TitleState.MATCHED,
+            match_details=json.dumps(details) if details is not None else None,
+            match_source="engram",
+        )
+
+    def test_confirmed_multi_episode_goes_to_review(self):
+        from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE
+
+        details = {
+            "multi_episode": {
+                "is_multi_episode": True,
+                "reason": "contiguous_runs",
+                "codes": ["S01E01", "S01E02"],
+            }
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=2)
+        assert title.state == TitleState.REVIEW
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        assert "S01E01, S01E02" in parsed["message"]
+
+    def test_admitted_but_unconfirmed_goes_to_review(self):
+        # The votes could not confirm it (insufficient scan depth). ASR still
+        # returned one confident episode, so naming the file would drop the rest.
+        from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE
+
+        details = {
+            "multi_episode": {
+                "is_multi_episode": False,
+                "reason": "insufficient_scan_depth",
+                "codes": [],
+            }
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=3)
+        assert title.state == TitleState.REVIEW
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        assert "insufficient_scan_depth" in parsed["message"]
+
+    def test_prior_warning_is_carried_forward_not_clobbered(self):
+        """The advisory path can flag "file_exists" (a sibling already organized
+        this code) before the multi-episode check runs. Multi-episode takes the
+        error slot because it drives the non-rematchable routing, but dropping the
+        earlier warning would leave the reviewer with no hint that a sibling
+        already claimed the code.
+        """
+        from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE
+
+        details = {
+            "error": "file_exists",
+            "message": "S01E01 is already organized by another track on this disc.",
+            "multi_episode": {
+                "is_multi_episode": True,
+                "reason": "contiguous_runs",
+                "codes": ["S01E01", "S01E02"],
+            },
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        assert parsed["superseded_error"] == "file_exists"
+        assert "already organized by another track" in parsed["message"]
+        assert "S01E01, S01E02" in parsed["message"]
+
+    def test_ordinary_single_episode_is_untouched(self):
+        details = {"multi_episode": {"is_multi_episode": False, "reason": "single_episode"}}
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.state == TitleState.MATCHED
+        assert "error" not in json.loads(title.match_details)
+
+    def test_malformed_match_details_does_not_raise(self):
+        title = SimpleNamespace(
+            state=TitleState.MATCHED, match_details="not json", match_source="engram"
+        )
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.state == TitleState.MATCHED
+
+
+@pytest.mark.unit
+class TestConjoinedDiscDbBypass:
+    """A conjoined track must not escape review via the DiscDB disc-order fallback
+    or the fingerprint contribution enqueue. Both run inside _match_single_file_inner
+    BEFORE the review routing at the end of that function, so this exercises the
+    real call, not just the extracted helper (issue #622, code-review Critical).
+    """
+
+    async def test_conjoined_track_does_not_take_discdb_fallback(self, monkeypatch, tmp_path):
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+
+        mapping = DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Segment A",
+            season=1,
+            episode=1,
+            duration_seconds=600,
+            size_bytes=1024**3,
+        )
+        coord._discdb_mappings = {job.id: [mapping]}
+
+        mock_result = SimpleNamespace(
+            episode_code="S01E01",
+            confidence=0.3,  # below DISCDB_FALLBACK_ASR_FLOOR
+            needs_review=True,
+            match_details={"score": 0.3},
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=2
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.REVIEW
+            parsed = json.loads(title.match_details)
+            assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+            # Not the DiscDB fallback's fingerprint (source/episode_title keys).
+            assert "source" not in parsed
+
+    async def test_ordinary_low_confidence_track_still_takes_discdb_fallback(
+        self, monkeypatch, tmp_path
+    ):
+        """Regression guard: an ordinary (non-conjoined) low-confidence track must
+        still take the DiscDB disc-order fallback exactly as before."""
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+
+        mapping = DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Pilot",
+            season=1,
+            episode=1,
+            duration_seconds=600,
+            size_bytes=1024**3,
+        )
+        coord._discdb_mappings = {job.id: [mapping]}
+
+        mock_result = SimpleNamespace(
+            episode_code="S01E07",
+            confidence=0.3,
+            needs_review=True,
+            match_details={"score": 0.3},
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=None
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.MATCHED
+            assert title.matched_episode == "S01E01"
+            assert title.match_source == "discdb"
+
+    async def test_run_match_single_file_forwards_conjoined_hint_to_inner(
+        self, monkeypatch, tmp_path
+    ):
+        """Drives the PUBLIC entry point (_run_match_single_file), not the inner
+        function directly, so this exercises the conjoined_hint forwarding at
+        that call site. The other tests in this class supply conjoined_hint to
+        _match_single_file_inner themselves and would not notice if the outer
+        function stopped forwarding its computed hint (#622)."""
+        coord = _make_coord()
+        coord._episode_runtimes_for_job = AsyncMock(return_value=[11] * 16)
+        coord._wait_for_file_ready = AsyncMock(return_value=FileWaitResult.READY)
+
+        async with _unit_session_factory() as session:
+            # 23-minute track: matches no single 11-minute runtime, but matches
+            # the sum of two consecutive ones -> conjoined_hint == 2.
+            job, title = await _seed(session, title_index=0, duration_seconds=23 * 60)
+            job_id, title_id = job.id, title.id
+
+        mock_result = SimpleNamespace(
+            episode_code="S01E01",
+            confidence=0.9,
+            needs_review=False,
+            match_details={"score": 0.9},
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "title_t00.mkv")
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title_id)
+            assert title.state == TitleState.REVIEW
+            parsed = json.loads(title.match_details)
+            assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+
+    async def test_conjoined_track_with_unset_hint_still_blocks_discdb_fallback(
+        self, monkeypatch, tmp_path
+    ):
+        """The real case the multi_episode-result clause protects: a conjoined
+        track whose duration happens to match a single TMDB runtime (so the
+        duration pre-filter never sets conjoined_hint) but whose vote runs
+        detected the split anyway. Only the `_is_multi_episode_result` check
+        keeps this out of the DiscDB disc-order fallback and the low-confidence
+        review path must carry the multi-episode error (#622)."""
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+
+        mapping = DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Segment A",
+            season=1,
+            episode=1,
+            duration_seconds=600,
+            size_bytes=1024**3,
+        )
+        coord._discdb_mappings = {job.id: [mapping]}
+
+        mock_result = SimpleNamespace(
+            episode_code="S01E01",
+            confidence=0.3,  # below DISCDB_FALLBACK_ASR_FLOOR
+            needs_review=True,
+            match_details={
+                "multi_episode": {
+                    "is_multi_episode": True,
+                    "reason": "contiguous_runs",
+                    "codes": ["S01E01", "S01E02"],
+                }
+            },
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=mock_result)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        # conjoined_hint=None: the duration pre-filter did not flag this track;
+        # only the multi_episode result content protects it here.
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=None
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.REVIEW
+            parsed = json.loads(title.match_details)
+            assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+            # Not the DiscDB fallback's fingerprint (source/episode_title keys).
+            assert "source" not in parsed
