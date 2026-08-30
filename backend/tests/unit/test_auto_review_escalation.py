@@ -373,3 +373,24 @@ class TestIsRematchableReview:
         """Pre-existing exclusion must still hold after the set-union change."""
         t = _review_title({"error": "subtitle_download_failed"})
         assert _is_rematchable_review(t) is False
+
+
+@pytest.mark.unit
+def test_multi_episode_review_is_not_rematchable():
+    """A track parked because it holds several conjoined episodes must not be
+    re-matched: a denser ASR pass cannot change what the file contains, and the
+    rerun overwrites the match_details message the reviewer needs (#622).
+    """
+    from app.services.finalization_coordinator import _is_rematchable_review
+
+    title = SimpleNamespace(
+        state=TitleState.REVIEW,
+        is_extra=False,
+        match_details=json.dumps(
+            {
+                "error": "multi_episode_detected",
+                "multi_episode": {"is_multi_episode": True, "codes": ["S01E01", "S01E02"]},
+            }
+        ),
+    )
+    assert _is_rematchable_review(title) is False

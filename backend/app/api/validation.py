@@ -607,6 +607,58 @@ async def validate_fpcalc(request: ValidationRequest) -> ValidationResponse:
     return ValidationResponse(valid=True, version=result.version, path=result.path)
 
 
+class PathCheckResponse(BaseModel):
+    """Whether a configured folder will actually work, and why not if it won't."""
+
+    ok: bool
+    # The value as Engram would store it: quotes stripped, ~ expanded, separators
+    # settled. Shown back so the user can see what their input became.
+    normalized: str
+    exists: bool
+    writable: bool
+    is_network: bool
+    # True when the location is fine to save but not reachable right now (an
+    # offline share) — a warning, not a rejection.
+    unreachable: bool = False
+    free_bytes: int | None = None
+    reason: str | None = None
+
+
+@router.post("/validate/path", response_model=PathCheckResponse)
+async def validate_path(
+    request: ValidationRequest,
+    _: None = Depends(require_localhost_or_lan),
+) -> PathCheckResponse:
+    """Check that a library/staging folder exists and Engram can write to it.
+
+    Settings paths are the ones most likely to be quietly wrong — a typo, an
+    offline NAS, a Docker volume owned by another uid — and the failure otherwise
+    surfaces as an organize error hours later, after a full rip. The write test is
+    a real touch/unlink, because on network shares and container mounts the
+    permission bits regularly disagree with what the server can actually do.
+
+    Gated like the other side-effecting validators in this module: the caller
+    chooses the path, and the answer reports existence, writability and free
+    space after really touching and unlinking a probe file there.
+    """
+    from app.core.paths import describe_path
+
+    status = await asyncio.to_thread(describe_path, request.path)
+    logger.debug(
+        "Path check: %s -> ok=%s", sanitize_log_value(status.path), sanitize_log_value(status.ok)
+    )
+    return PathCheckResponse(
+        ok=status.ok,
+        normalized=status.path,
+        exists=status.exists,
+        writable=status.writable,
+        is_network=status.is_network,
+        unreachable=status.unreachable,
+        free_bytes=status.free_bytes,
+        reason=status.reason,
+    )
+
+
 @router.post("/validate/tmdb", response_model=ValidationResponse)
 async def validate_tmdb(request: TmdbValidationRequest) -> ValidationResponse:
     """Validate a TMDB API key by making a lightweight configuration request."""
