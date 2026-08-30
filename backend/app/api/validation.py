@@ -63,11 +63,16 @@ class AiValidationRequest(BaseModel):
     sent from the wizard as typed, not as saved, so the button answers "will
     this combination work" rather than "did the last saved one work" — which is
     the whole point when the user is testing a model their key might not have.
+
+    ``base_url`` applies only to the local providers and, like the others, is
+    sent as typed rather than as saved, so the button answers "will this
+    endpoint work" before the user commits to it.
     """
 
     provider: str
     api_key: str | None = None
     model: str | None = None
+    base_url: str | None = None
 
 
 class ValidationResponse(BaseModel):
@@ -672,20 +677,30 @@ async def validate_ai(
     uses, rather than a bespoke auth ping: a ping would exercise a different
     endpoint, without the structured-output convention, and could therefore pass
     while real matching fails. Gated to the host (or an opted-in LAN) because,
-    unlike the other validators, this one spends the user's money.
+    unlike the other validators, this one makes a real outbound request — to a
+    paid hosted API for a remote provider, or to whatever local server the user
+    pointed it at.
     """
-    from app.core.ai_client import DEFAULT_MODELS, complete_json
+    from app.core.ai_client import (
+        DEFAULT_MODELS,
+        KNOWN_PROVIDERS,
+        LOCAL_PROVIDERS,
+        LOCAL_VALIDATE_TIMEOUT_SECONDS,
+        ai_is_configured,
+        complete_json,
+    )
     from app.core.errors import AIProviderError
 
     provider = (request.provider or "").strip()
-    if provider not in DEFAULT_MODELS:
+    if provider not in KNOWN_PROVIDERS:
         return ValidationResponse(
             valid=False, error=f"Unknown AI provider: {provider or '(empty)'}"
         )
 
     api_key = (request.api_key or "").strip()
     model = (request.model or "").strip()
-    if not api_key or not model:
+    base_url = (request.base_url or "").strip()
+    if not api_key or not model or (provider in LOCAL_PROVIDERS and not base_url):
         from app.services.config_service import get_config
 
         # Guarded: this endpoint promises never to 500, and a config read can
@@ -696,10 +711,11 @@ async def validate_ai(
             config = await get_config()
         except Exception:  # noqa: BLE001 — a validator must never 500
             logger.warning("AI validation could not read the stored config", exc_info=True)
-        if config is None and not api_key:
+        if config is None and not api_key and provider not in LOCAL_PROVIDERS:
             # Only fatal when the key itself was what we came for. A failed read
             # with a supplied key just means "no stored model override", which
-            # falls back to the provider default like any blank model.
+            # falls back to the provider default like any blank model. Local
+            # providers never needed a key in the first place.
             return ValidationResponse(
                 valid=False, error="Could not read the saved API key from the database"
             )
@@ -708,9 +724,20 @@ async def validate_ai(
                 api_key = (getattr(config, "ai_api_key", "") or "").strip()
             if not model:
                 model = (getattr(config, "ai_model", "") or "").strip()
-    if not api_key:
+            if not base_url:
+                base_url = (getattr(config, "ai_local_base_url", "") or "").strip()
+
+    if not ai_is_configured(provider, api_key):
         return ValidationResponse(
             valid=False, error="No API key provided and none is saved for this provider"
+        )
+    if provider in LOCAL_PROVIDERS and not model:
+        return ValidationResponse(
+            valid=False,
+            error=(
+                "Select a model first. Local providers have no default, because the "
+                "answer depends on which models you have installed."
+            ),
         )
 
     try:
@@ -722,12 +749,15 @@ async def validate_ai(
             provider=provider,
             api_key=api_key,
             model=model or None,
+            base_url=base_url,
             max_tokens=16,
             raise_on_error=True,
             # A dead key must fail in one request rather than paying the backoff
-            # ladder, and a user waiting on a button should not sit for 30s.
+            # ladder, and a user waiting on a button should not sit for 30s. Local
+            # providers get a much longer budget: LM Studio JIT-loads model
+            # weights on the first request, so a cold model can take a minute-plus.
             retries=0,
-            timeout=10.0,
+            timeout=(LOCAL_VALIDATE_TIMEOUT_SECONDS if provider in LOCAL_PROVIDERS else 10.0),
         )
     except AIProviderError as e:
         logger.warning("AI validation failed for %s: %s", sanitize_log_value(provider), e.code)
@@ -744,7 +774,7 @@ async def validate_ai(
         return ValidationResponse(valid=False, error="Provider returned an empty response")
     # Report the model that actually answered, not the default, so a user testing
     # an override can see which one the key accepted.
-    return ValidationResponse(valid=True, version=model or DEFAULT_MODELS[provider])
+    return ValidationResponse(valid=True, version=model or DEFAULT_MODELS.get(provider, ""))
 
 
 @router.post("/validate/discord-webhook", response_model=ValidationResponse)

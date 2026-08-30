@@ -101,3 +101,50 @@ class TestValidateAI:
                 "/api/validate/ai", json={"provider": "openai", "api_key": "sk-x"}
             )
         assert resp.json()["valid"] is False
+
+
+class TestValidateAiLocalProviders:
+    @pytest.mark.asyncio
+    async def test_local_provider_is_accepted_without_a_key(self, client):
+        from unittest.mock import AsyncMock, patch
+
+        with patch("app.core.ai_client.complete_json", new=AsyncMock(return_value={"ok": True})):
+            resp = await client.post(
+                "/api/validate/ai",
+                json={"provider": "ollama", "model": "llama3.1:8b"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is True
+
+    @pytest.mark.asyncio
+    async def test_local_provider_with_no_model_is_rejected_clearly(self, client):
+        resp = await client.post("/api/validate/ai", json={"provider": "ollama"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["valid"] is False
+        assert "model" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_unknown_provider_is_still_rejected(self, client):
+        resp = await client.post("/api/validate/ai", json={"provider": "notreal"})
+
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is False
+        assert "Unknown AI provider" in resp.json()["error"]
+
+    @pytest.mark.asyncio
+    async def test_local_validation_uses_the_longer_timeout(self, client):
+        from unittest.mock import AsyncMock, patch
+
+        from app.core.ai_client import LOCAL_VALIDATE_TIMEOUT_SECONDS
+
+        spy = AsyncMock(return_value={"ok": True})
+        with patch("app.core.ai_client.complete_json", new=spy):
+            await client.post(
+                "/api/validate/ai",
+                json={"provider": "lmstudio", "model": "qwen2.5-7b-instruct"},
+            )
+
+        assert spy.await_args.kwargs["timeout"] == LOCAL_VALIDATE_TIMEOUT_SECONDS
