@@ -1806,6 +1806,8 @@ class IdentificationCoordinator:
                 )
                 tmdb_signal = tv_retry
 
+        from app.core.ai_client import ai_is_configured
+
         # AI-powered identification fallback (not for staging). Skipped when the
         # disc network already resolved a confident identity — that result takes
         # precedence and must not be clobbered by a lower-trust AI guess.
@@ -1816,7 +1818,7 @@ class IdentificationCoordinator:
             and not tmdb_signal
             and not (discdb_signal and discdb_signal.confidence >= 0.90)
             and config.ai_identification_enabled
-            and config.ai_api_key
+            and ai_is_configured(config.ai_provider, config.ai_api_key)
         ):
             try:
                 from app.core.ai_identifier import identify_from_label
@@ -1830,6 +1832,7 @@ class IdentificationCoordinator:
                     config.ai_provider,
                     config.ai_api_key,
                     getattr(config, "ai_model", "") or None,
+                    base_url=getattr(config, "ai_local_base_url", "") or "",
                 )
                 if ai_result and ai_result.get("title"):
                     ai_identified_name = ai_result["title"]
