@@ -7,6 +7,8 @@ These back the hardening of CodeQL-flagged sinks:
   calls to executables that actually look like the expected tool.
 - ``is_within_configured_roots`` — constrains media-endpoint file paths to the
   configured staging and library roots.
+- ``is_safe_local_ai_url`` — a deliberately permissive guard for the
+  user-configured local AI server base URL, which must accept loopback.
 - ``sanitize_log_value`` — strips line breaks/control characters from
   disc/user-controlled values before they are written to logs.
 - ``sanitize_playlist_field`` — strips line breaks/control characters from
@@ -218,6 +220,47 @@ def is_safe_dashboard_url(url: str) -> bool:
         return False
     # Credentials in a URL that gets posted to a chat channel leak them.
     if parsed.username or parsed.password:
+        return False
+    return True
+
+
+def is_safe_local_ai_url(url: str) -> bool:
+    """Return True if ``url`` is usable as a local AI server's base URL.
+
+    Deliberately NOT is_safe_remote_url. That guard rejects loopback, private
+    and link-local hosts to prevent SSRF, and those are precisely the addresses
+    an Ollama or LM Studio server listens on, so this is an intentional
+    exemption rather than an oversight.
+
+    Unlike is_safe_dashboard_url (whose value is only rendered as a link), the
+    server DOES issue POST requests to this URL, so this is a blind-SSRF
+    primitive against the host's own loopback interface. It is accepted because
+    the config surface is already fully trusted (it holds API keys, filesystem
+    paths and library roots), because the endpoints that write it are gated by
+    require_localhost_or_lan, and because the response body is parsed as JSON
+    and discarded unless it matches the requested schema, making the primitive
+    blind rather than an exfiltration channel. See
+    docs/superpowers/specs/2026-08-29-local-ai-provider-design.md.
+
+    What is still rejected: non-http(s) schemes (file:, javascript:, ftp:), a
+    missing host, embedded credentials, and any query or fragment. The last two
+    matter because callers append "/chat/completions" to this value, so a query
+    string would silently move the path into the query and a credential would be
+    logged with the request URL.
+    """
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        return False
+
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not host:
+        return False
+    if parsed.username or parsed.password:
+        return False
+    if parsed.query or parsed.fragment:
         return False
     return True
 
