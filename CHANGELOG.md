@@ -11,6 +11,10 @@ All notable changes to Engram will be documented in this file.
   confident the match was. The matcher still runs and pre-fills its best guess —
   you just get the last word before anything moves into the library. Useful for
   shows the matcher handles badly.
+- **Discord notification when a disc finishes ripping**, fired the moment the disc is copied
+  and ejected rather than when the job reaches its final state. Discs that need manual review
+  now ping at the point the drive is free instead of staying silent until the review is done.
+  Off by default; enable it under Notifications in Settings.
 
 ### Fixed
 

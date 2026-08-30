@@ -242,7 +242,13 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
 - **Notification events**: `EVENTS` in `app/core/discord_notifier.py` maps `JobState` to
   presentation. Terminal events arrive via `on_terminal_state`; `REVIEW_NEEDED` arrives via
   `on_transition`, which receives `(job_id, to_state, from_state)` so a same-state
-  re-broadcast does not re-notify.
+  re-broadcast does not re-notify. `RIPPED_EVENT` sits deliberately OUTSIDE `EVENTS`: "the
+  disc is copied and out of the drive" is a hardware milestone, not a `JobState`, and it must
+  fire for a disc that then parks in review. It is delivered from `JobManager._release_drive`,
+  the single chokepoint for the three places that finish with the drive (end of rip, mid-rip
+  eject, end of re-rip), and carries a `rip_outcome` of Complete / Stopped early / Re-rip.
+  Unlike the other three toggles it defaults OFF with `server_default 0`, because an opt-in
+  event must read a NULL as disabled rather than enabled.
 
 ## TMDB Configuration
 
