@@ -224,6 +224,15 @@ def is_safe_dashboard_url(url: str) -> bool:
     return True
 
 
+# Rejected regardless of the deliberately permissive host policy below. No
+# inference server runs on a cloud metadata endpoint, and the model-list caller
+# reflects part of the response back to the requester, so leaving these
+# reachable would turn a config field into a metadata read.
+_LOCAL_AI_DENIED_HOSTS: frozenset[str] = frozenset(
+    {"169.254.169.254", "metadata.google.internal", "metadata.goog"}
+)
+
+
 def is_safe_local_ai_url(url: str) -> bool:
     """Return True if ``url`` is usable as a local AI server's base URL.
 
@@ -232,22 +241,47 @@ def is_safe_local_ai_url(url: str) -> bool:
     an Ollama or LM Studio server listens on, so this is an intentional
     exemption rather than an oversight.
 
-    Unlike is_safe_dashboard_url (whose value is only rendered as a link), the
-    server DOES issue POST requests to this URL, so this is a blind-SSRF
-    primitive against the host's own loopback interface. It is accepted because
-    the config surface is already fully trusted (it holds API keys, filesystem
-    paths and library roots), because the endpoints that write it are gated by
-    require_localhost_or_lan, and because the response body is parsed as JSON
-    and discarded unless it matches the requested schema, making the primitive
-    blind rather than an exfiltration channel. See
+    Scope of that exemption, stated plainly because the function name understates
+    it: apart from the link-local and metadata hosts denied below, this imposes
+    NO restriction on the host. A public address passes. That is intended, since
+    a user may legitimately run their inference server on another machine, but it
+    means this guard is not what stops a hostile endpoint being configured.
+
+    The server issues real requests to this URL, so it is a request-forgery
+    primitive. It is accepted because the config surface is already fully trusted
+    (it holds API keys, filesystem paths and library roots) and because the
+    endpoints that write it are gated by require_localhost_or_lan. Note that the
+    primitive is blind only on the completion path: the model-list endpoint
+    returns the ids it parses out of the response, so a JSON body shaped like
+    OpenAI's /v1/models is partially reflected to the caller. That is why the
+    metadata hosts are denied outright. See
     docs/superpowers/specs/2026-08-29-local-ai-provider-design.md.
 
-    What is still rejected: non-http(s) schemes (file:, javascript:, ftp:), a
-    missing host, embedded credentials, and any query or fragment. The last two
-    matter because callers append "/chat/completions" to this value, so a query
-    string would silently move the path into the query and a credential would be
-    logged with the request URL.
+    Whitespace and control characters are rejected against the RAW string, before
+    parsing. CPython strips tab, CR and LF out of a URL before urlparse sees it,
+    so without this check "http://localhost\n.evil.com" would be validated as
+    the host "localhost.evil.com" while the caller sent the original bytes, and
+    httpx would raise InvalidURL, which is not an httpx.HTTPError subclass and so
+    escapes the transport handler in ai_client. Keeping the judged string and the
+    sent string identical is what makes this a real barrier. It also keeps CR/LF
+    out of a value that reaches the logs.
+
+    Also rejected: non-http(s) schemes (file:, javascript:, ftp:), a missing
+    host, embedded credentials, query, fragment, path parameters, a port outside
+    the valid range, and any ".." path segment. The traversal check matters
+    because callers append "/chat/completions" or "/models" to this value, so a
+    traversal segment would move the request outside the prefix the user
+    approved.
     """
+    if not isinstance(url, str):
+        return False
+
+    # Against the raw string, before urlparse can normalise it away.
+    if url != url.strip() or any(ch in url for ch in "\t\r\n"):
+        return False
+    if _LOG_CONTROL_CHARS_RE.search(url):
+        return False
+
     try:
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
@@ -260,8 +294,26 @@ def is_safe_local_ai_url(url: str) -> bool:
         return False
     if parsed.username or parsed.password:
         return False
-    if parsed.query or parsed.fragment:
+    if parsed.query or parsed.fragment or parsed.params:
         return False
+    if host in _LOCAL_AI_DENIED_HOSTS:
+        return False
+
+    try:
+        if ipaddress.ip_address(host).is_link_local:
+            return False
+    except ValueError:
+        pass  # Not an IP literal; a hostname is fine.
+
+    if ".." in parsed.path.split("/"):
+        return False
+
+    # An out-of-range port parses here but raises inside httpx.
+    try:
+        _ = parsed.port
+    except ValueError:
+        return False
+
     return True
 
 
