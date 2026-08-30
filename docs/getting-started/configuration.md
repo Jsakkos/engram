@@ -139,16 +139,87 @@ The `conflict_resolution_default` field accepts one of four values:
 
 | Field | Description | Notes |
 |-------|-------------|-------|
-| `ai_identification_enabled` | Enable AI-assisted disc title resolution | Requires `ai_provider` and `ai_api_key` |
-| `ai_provider` | AI provider to use | `anthropic`, `openai`, `openrouter`, `gemini` |
-| `ai_api_key` | API key for the selected provider | Redacted in API responses |
-| `ai_model` | Model override | Blank uses Engram's default for the provider. Set this when your key has no access to that default |
+| `ai_identification_enabled` | Enable AI-assisted disc title resolution | Requires `ai_provider`, plus `ai_api_key` for a hosted provider |
+| `ai_provider` | AI provider to use | Hosted: `anthropic`, `openai`, `openrouter`, `gemini`. Local: `ollama`, `lmstudio` |
+| `ai_api_key` | API key for the selected provider | Redacted in API responses. Not needed for a local provider |
+| `ai_model` | Model override | Blank uses Engram's default for the provider. Set this when your key has no access to that default. **Required** for a local provider, which has no default |
+| `ai_local_base_url` | Address of a local AI server | Local providers only. Blank uses the provider's conventional port |
+
+See [Local AI](#local-ai-ollama-and-lm-studio) to run this against your own machine instead of a paid API.
 
 ### AI-Powered Episode Matching
 
 `ai_episode_matching_enabled` (default: `false`) — when enabled, low-confidence TV episode matches are sent to your configured AI provider with the season's TMDB synopses for a suggested episode. Always surfaces through the [review queue](../guide/review-queue.md); never auto-organizes. Shares `ai_provider`/`ai_api_key` with [AI-Powered Title Resolution](#ai-powered-title-resolution).
 
 See the [LLM Episode Matcher guide](../guide/llm-episode-matcher.md) for accuracy expectations and provider recommendations (Gemini Flash-Lite is best on this task).
+
+### Local AI (Ollama and LM Studio)
+
+Both AI features above can run against a model on your own machine instead of a
+paid hosted API. Two servers are supported, and they work the same way because
+they expose the same OpenAI-compatible interface.
+
+**No API key is required.** The key field is hidden when a local provider is
+selected.
+
+#### Setup
+
+1. Start your server:
+    - **Ollama:** run `ollama serve`, then pull a model with `ollama pull llama3.1:8b`.
+    - **LM Studio:** open the Developer tab, load a model, and start the server.
+2. In Engram, open **Settings → Data sharing → AI assistance**, enable AI
+   identification, and choose **Ollama (local)** or **LM Studio (local)**.
+3. Leave **Server Address** blank to use the default:
+
+    | Provider | Default address |
+    |----------|-----------------|
+    | Ollama | `http://localhost:11434/v1` |
+    | LM Studio | `http://localhost:1234/v1` |
+
+    Set it only if your server runs on another port, or on another machine on
+    your network.
+4. Pick a model from the **Model** dropdown. The list is read from your server,
+   so it only populates once the server is running. Unlike the hosted providers
+   there is no default model, because the answer depends on what you installed.
+5. Click **Test Connection** to confirm Engram can reach it.
+
+#### Choosing a model
+
+Any instruction-tuned model in roughly the 7B-14B range works well. Both tasks
+ask for a small JSON reply, so reasoning-heavy or very large models cost a lot
+of time for little benefit.
+
+The dropdown lists everything the server offers, including embedding models
+(names containing `embed`). Those cannot answer chat requests; pick an
+instruction-tuned model instead. Neither server's model list distinguishes the
+two, so Engram cannot filter them for you.
+
+#### Performance
+
+Set **Max Concurrent Matches** to 1 in *Preferences → Matching*. A local server
+has one GPU or CPU, so parallel requests queue rather than overlap, and several
+large contexts at once can exhaust VRAM. Engram shows a reminder in Settings
+when a local provider is selected with concurrency above 1; it does not override
+your setting.
+
+The first request after loading a model is slow. LM Studio loads weights on
+demand, which can take 30-60 seconds before any text appears. Engram allows up
+to five minutes for a local response, so this is expected rather than a failure.
+
+#### Troubleshooting
+
+| Message | Cause |
+|---------|-------|
+| `Could not reach Ollama at ...` | The server is not running, or the address is wrong |
+| `'<model>' is not installed on this server` | The model is not pulled (Ollama) or not downloaded (LM Studio). The message lists what is available |
+| `Select a model first` | Local providers have no default; pick one from the dropdown |
+
+!!! note "Why Engram checks the model list before testing"
+    LM Studio answers a request for an unknown model by silently serving
+    whichever model is currently loaded, returning HTTP 200 with no warning. A
+    typo would otherwise pass the connection test and then quietly matter at
+    match time, so Engram verifies the model against the server's own list
+    first.
 
 ### Extras Policy
 
