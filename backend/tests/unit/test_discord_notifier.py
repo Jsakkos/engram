@@ -574,7 +574,10 @@ async def test_reconciler_backfills_ripped_columns_as_disabled(tmp_path):
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
 
-    import app.database as db_mod
+    # `from app import database` rather than `import app.database`: this file
+    # also does `from app.database import async_session` elsewhere, and mixing
+    # the two import forms for one module trips CodeQL's py/import-and-import-from.
+    from app import database as db_mod
     from app.models.app_config import AppConfig
 
     db_path = tmp_path / "reconcile.db"
