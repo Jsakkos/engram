@@ -376,11 +376,23 @@ class TestNoSubtitleAIFallback:
     a bare manual-assignment. Otherwise the existing manual-review path is kept.
     """
 
-    def _patch_ai_config(self, monkeypatch, *, enabled: bool, key: str = "k"):
+    def _patch_ai_config(
+        self, monkeypatch, *, enabled: bool, key: str = "k", provider: str = "anthropic"
+    ):
+        # ai_provider is required, not incidental: the gate is ai_is_configured(
+        # provider, key), because a local provider (ollama / lmstudio) has no key
+        # at all. A stub without it raises AttributeError inside the fallback,
+        # which the coordinator swallows as "AI fallback failed" and the test
+        # then fails for the wrong reason.
         monkeypatch.setattr(
             "app.services.config_service.get_config",
             AsyncMock(
-                return_value=SimpleNamespace(ai_episode_matching_enabled=enabled, ai_api_key=key)
+                return_value=SimpleNamespace(
+                    ai_episode_matching_enabled=enabled,
+                    ai_api_key=key,
+                    ai_provider=provider,
+                    ai_local_base_url="",
+                )
             ),
         )
 
@@ -423,6 +435,42 @@ class TestNoSubtitleAIFallback:
             # Must NOT auto-organize — it's only a suggestion for the user.
             assert t.organized_to is None
         coord._check_job_completion.assert_awaited()
+
+    async def test_local_provider_runs_the_fallback_without_a_key(self, monkeypatch, tmp_path):
+        """A keyless local provider must reach the LLM fallback, not be gated out.
+
+        This path once guarded on `if not config.ai_api_key`, which silently
+        disabled Ollama and LM Studio while the settings page looked correctly
+        filled in. The gate is now ai_is_configured(provider, key), and this is
+        the behavioural proof that an empty key no longer stops it.
+        """
+        self._patch_ai_config(monkeypatch, enabled=True, key="", provider="ollama")
+        suggest = AsyncMock(return_value=None)
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await self._seed_failed(session)
+            job_id, title_id = job.id, title.id
+
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        suggest.assert_awaited_once()
+
+    async def test_remote_provider_without_a_key_is_still_gated_out(self, monkeypatch, tmp_path):
+        """The relaxation must not let a hosted provider through unconfigured."""
+        self._patch_ai_config(monkeypatch, enabled=True, key="", provider="anthropic")
+        suggest = AsyncMock(return_value=None)
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await self._seed_failed(session)
+            job_id, title_id = job.id, title.id
+
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        suggest.assert_not_awaited()
 
     async def test_disabled_keeps_manual_review_path(self, monkeypatch, tmp_path):
         self._patch_ai_config(monkeypatch, enabled=False)
