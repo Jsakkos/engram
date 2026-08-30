@@ -106,6 +106,26 @@ describe('requestAiValidation', () => {
         });
     });
 
+    it('sends the base URL when one is entered', async () => {
+        const spy = vi.fn().mockResolvedValue({
+            ok: true, json: async () => ({ valid: true }),
+        });
+        stubFetch(spy);
+        await requestAiValidation('ollama', '', '', '  http://localhost:11434  ');
+        expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({
+            provider: 'ollama', base_url: 'http://localhost:11434',
+        });
+    });
+
+    it('omits base_url entirely when blank so the backend falls back to the saved value', async () => {
+        const spy = vi.fn().mockResolvedValue({
+            ok: true, json: async () => ({ valid: true }),
+        });
+        stubFetch(spy);
+        await requestAiValidation('ollama', '', '', '   ');
+        expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ provider: 'ollama' });
+    });
+
     it('reports an unparseable body as error', async () => {
         stubFetch(vi.fn().mockResolvedValue({
             ok: true, json: async () => { throw new Error('bad json'); },
