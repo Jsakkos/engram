@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-08-31
+
+_Highlights: run identification and episode matching entirely on your own machine with Ollama or LM Studio._
+
 ### Added
 
 - **Local AI providers: run identification and episode matching on your own
@@ -19,7 +23,7 @@ All notable changes to Engram will be documented in this file.
   extras* holds every disc in the Review Queue for confirmation, however
   confident the match was. The matcher still runs and pre-fills its best guess —
   you just get the last word before anything moves into the library. Useful for
-  shows the matcher handles badly.
+  shows the matcher handles badly. (#611, thanks @raiju!)
 - **Discord notification when a disc finishes ripping**, fired as soon as Engram is finished
   with the drive rather than when the job reaches its final state, and whether or not
   auto-eject is on. Discs that need manual review now ping at the point the drive is free
@@ -45,7 +49,7 @@ All notable changes to Engram will be documented in this file.
   `//server/share` spelling, which is normalized to one canonical form. A share
   that is offline while you are editing settings is flagged as a warning rather
   than rejected, and a Windows-style share path entered on Linux or macOS now
-  explains that it needs mounting instead of failing obscurely.
+  explains that it needs mounting instead of failing obscurely. (#612, thanks @raiju!)
 
 ### Fixed
 
@@ -54,7 +58,7 @@ All notable changes to Engram will be documented in this file.
   duration pre-filter could reject every track on it, so a whole box set could
   file every one of its episodes into `Extras/` and report success. Such
   a disc now stops for confirmation, because "nothing on this disc is an episode"
-  is far more often a failed match than a genuine bonus disc.
+  is far more often a failed match than a genuine bonus disc. (#611, thanks @raiju!)
 - **Episode-length tracks are no longer mistaken for extras on segment-format
   shows.** When no track on a disc matches a single TMDB runtime but tracks match
   whole multiples of one, Engram now recognises the disc as segment-numbered and
