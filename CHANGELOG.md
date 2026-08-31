@@ -43,7 +43,7 @@ _Highlights: run identification and episode matching entirely on your own machin
   whether the folder exists, whether Engram can actually write to it (a real
   write test, not a guess at permissions), and how much space is free — so a typo
   or a permissions problem is visible immediately instead of surfacing as a failed
-  organize after a completed rip.
+  organize after a completed rip. (#612, thanks @raiju!)
 - **Network shares are supported as library paths.** A Windows UNC path
   (`\\server\share\TV`) works wherever a local path does, including the pasted
   `//server/share` spelling, which is normalized to one canonical form. A share
