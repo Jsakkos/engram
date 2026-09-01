@@ -579,6 +579,21 @@ class TestStopReason:
         assert reason is not None
         assert "quota" in reason.lower()
 
+    def test_stops_when_remaining_exactly_at_floor(self, bsc):
+        """Inclusive boundary: at the floor is already too low to risk a
+        download that would be recorded as zero coverage if it fails."""
+        reason = bsc._stop_reason(baseline=1000, remaining=10, max_downloads=900, floor=10)
+        assert reason is not None
+        assert "quota" in reason.lower()
+
+    def test_floor_wins_when_both_limits_trip(self, bsc):
+        """Both limits are satisfied here. The floor message must win: a
+        nearly-empty account is the more urgent diagnosis, and the budget
+        message would misdescribe it as a well-behaved stop."""
+        reason = bsc._stop_reason(baseline=1000, remaining=5, max_downloads=100, floor=10)
+        assert "quota" in reason.lower()
+        assert "budget" not in reason.lower()
+
     def test_none_when_quota_unknown(self, bsc):
         """No OpenSubtitles credentials means no quota telemetry. Scrapers
         have no daily cap, so an unknown quota must not halt the run."""
@@ -590,3 +605,4 @@ class TestStopReason:
     def test_stops_at_floor_when_baseline_unknown(self, bsc):
         reason = bsc._stop_reason(baseline=None, remaining=0, max_downloads=900, floor=10)
         assert reason is not None
+        assert "quota" in reason.lower()

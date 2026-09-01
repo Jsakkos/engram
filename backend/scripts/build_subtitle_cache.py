@@ -134,6 +134,14 @@ def _stop_reason(
       ``baseline - remaining``. Leaves headroom so a scheduled build cannot
       consume the entire daily allowance.
 
+    Assumes ``remaining <= baseline``. If the daily quota resets mid-run the
+    reading rises above the baseline, the subtraction goes negative, and the
+    budget branch stops firing for the rest of the run. The caller is
+    responsible for re-baselining when it sees the quota refill.
+
+    ``max_downloads`` of 0 or less stops immediately on the first check; it
+    does NOT mean unlimited.
+
     ``remaining is None`` means no OpenSubtitles telemetry (no credentials, or
     the probe failed). Scrapers carry no daily cap, so an unknown quota must
     never halt the run -- returning a stop here would break credential-free
