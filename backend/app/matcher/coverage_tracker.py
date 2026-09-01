@@ -21,6 +21,30 @@ from typing import Any
 from app.matcher import tmdb_persistent_cache
 
 
+def _any_age_record(tmdb_id: int, season: int) -> dict[str, Any] | None:
+    """Return the coverage row for ``(tmdb_id, season)`` regardless of age.
+
+    States the row shape (columns and dict keys) once; ``_fresh_record``
+    composes on top of this to add its own age policy.
+    """
+    conn = tmdb_persistent_cache.get_conn()
+    row = conn.execute(
+        "SELECT attempted_at, total_episodes, covered_episodes, coverage_ratio "
+        "FROM subtitle_coverage WHERE tmdb_id = ? AND season = ?",
+        (tmdb_id, season),
+    ).fetchone()
+    if row is None:
+        return None
+
+    attempted_at, total, covered, ratio = row
+    return {
+        "attempted_at": attempted_at,
+        "total_episodes": total,
+        "covered_episodes": covered,
+        "coverage_ratio": ratio,
+    }
+
+
 def _fresh_record(
     tmdb_id: int,
     season: int,
@@ -29,56 +53,17 @@ def _fresh_record(
     """Return the coverage row for ``(tmdb_id, season)`` iff it was recorded
     within ``window_days``, else None (no row, or stale).
 
-    Shared by ``should_skip`` (low-coverage branch) and ``is_done``
-    (at/above-threshold branch) so both agree on what "recent enough to
+    Used by ``should_skip``: a failed season deserves a retry eventually,
+    so its skip decision is age-gated. ``is_done`` deliberately does NOT
+    use this -- it reads via ``_any_age_record`` instead, because a season
+    whose SRTs are on disk does not become un-harvested by the passage of
+    time. The two now deliberately disagree on what "recent enough to
     trust" means.
     """
-    conn = tmdb_persistent_cache.get_conn()
-    row = conn.execute(
-        "SELECT attempted_at, total_episodes, covered_episodes, coverage_ratio "
-        "FROM subtitle_coverage WHERE tmdb_id = ? AND season = ?",
-        (tmdb_id, season),
-    ).fetchone()
-    if row is None:
+    row = _any_age_record(tmdb_id, season)
+    if row is None or time.time() - row["attempted_at"] > window_days * 86400:
         return None
-
-    attempted_at, total, covered, ratio = row
-    if time.time() - attempted_at > window_days * 86400:
-        return None
-
-    return {
-        "attempted_at": attempted_at,
-        "total_episodes": total,
-        "covered_episodes": covered,
-        "coverage_ratio": ratio,
-    }
-
-
-def _any_age_record(tmdb_id: int, season: int) -> dict[str, Any] | None:
-    """Return the coverage row for ``(tmdb_id, season)`` regardless of age.
-
-    ``_fresh_record``'s age gate is correct for ``should_skip`` (a failed
-    season deserves a retry eventually) and wrong for ``is_done`` (a season
-    whose SRTs are on disk does not become un-harvested by the passage of
-    time). Splitting the two lookups is what stops the periodic full
-    re-sweep; see the 2026-08-31 harvester-repair spec.
-    """
-    conn = tmdb_persistent_cache.get_conn()
-    row = conn.execute(
-        "SELECT attempted_at, total_episodes, covered_episodes, coverage_ratio "
-        "FROM subtitle_coverage WHERE tmdb_id = ? AND season = ?",
-        (tmdb_id, season),
-    ).fetchone()
-    if row is None:
-        return None
-
-    attempted_at, total, covered, ratio = row
-    return {
-        "attempted_at": attempted_at,
-        "total_episodes": total,
-        "covered_episodes": covered,
-        "coverage_ratio": ratio,
-    }
+    return row
 
 
 def should_skip(
@@ -104,7 +89,6 @@ def is_done(
     tmdb_id: int,
     season: int,
     min_ratio: float,
-    window_days: int = 30,
 ) -> tuple[bool, dict[str, Any] | None]:
     """Return ``(done, prior_row)``.
 
@@ -112,16 +96,20 @@ def is_done(
     season already hit the coverage threshold and can be shipped from the SRTs
     already on disk without re-hitting TMDB/OpenSubtitles/scrapers.
 
-    Deliberately age-independent: ``window_days`` is accepted for call-site
-    compatibility and ignored. Success does not decay. Expiring it forced a
-    full re-harvest of the whole corpus every 30 days, which exhausted the
+    Deliberately age-independent: success does not decay. Expiring it forced
+    a full re-harvest of the whole corpus every 30 days, which exhausted the
     daily OpenSubtitles quota and caused every subsequent season to be
     recorded as zero-coverage. Pass ``--refresh`` to the build script to
     re-harvest deliberately.
 
-    The caller still verifies the SRTs are physically present
-    (``discover_season_srts``) and falls through to a normal harvest if they
-    are not, so a wiped cache directory self-heals.
+    The caller is responsible for comparing ``prior_row["covered_episodes"]``
+    against what ``discover_season_srts`` actually finds on disk. This
+    function only reports what the coverage record claims; it does not check
+    the filesystem, so a season that lost some (not all) of its SRTs to a
+    partial wipe still reports ``done`` here -- the caller must catch a
+    partial shortfall itself and fall through to a normal harvest. A fully
+    wiped season self-heals because ``discover_season_srts`` then returns
+    nothing at all.
     """
     row = _any_age_record(tmdb_id, season)
     if row is None or row["coverage_ratio"] < min_ratio:

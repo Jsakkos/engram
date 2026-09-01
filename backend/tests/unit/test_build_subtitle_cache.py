@@ -279,6 +279,63 @@ class TestHarvestShowCompleteOnDisk:
         assert called == [("Gone Show", 1)], "must re-harvest when SRTs are missing"
         assert tally.seasons_from_disk == 0
 
+    def test_partial_srt_loss_falls_back_to_harvest(self, bsc, tmp_path):
+        """A coverage record claims 2 episodes covered but only 1 SRT survives
+        on disk (a partial wipe or interrupted sync). Shipping the 1 that
+        remains would silently under-deliver a season previously marked
+        complete, so this must fall through to a normal harvest, not ship
+        the shortfall."""
+        from app.matcher.subtitle_utils import corpus_dir_name
+
+        show = {"name": "Partial Show", "tmdb_id": 558, "seasons": 1}
+        data_dir = tmp_path / "data" / corpus_dir_name(show["tmdb_id"], show["name"])
+        self._write_min_srt(data_dir / f"{show['name']} - S01E01.srt")
+        # Prior attempt recorded 2 covered episodes; only 1 SRT survives.
+        coverage_tracker.record(558, 1, total=2, covered=2)
+
+        args = type(
+            "Args",
+            (),
+            {
+                "min_episodes_ratio": 0.5,
+                "sleep": 0,
+                "retry_low_coverage": True,
+                "refresh": False,
+                "skip_window_days": 30,
+            },
+        )()
+        tally = bsc.RunTally()
+        called = []
+
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
+            called.append((show_name, season))
+            return {
+                "show_name": show_name,
+                "season": season,
+                "total_episodes": 2,
+                "episodes": [
+                    {
+                        "code": "S01E01",
+                        "status": "cached",
+                        "path": str(data_dir / f"{show_name} - S01E01.srt"),
+                        "source": "cache",
+                    },
+                    {
+                        "code": "S01E02",
+                        "status": "downloaded",
+                        "path": str(data_dir / f"{show_name} - S01E02.srt"),
+                        "source": "addic7ed",
+                    },
+                ],
+                "cache_dir": str(data_dir),
+            }
+
+        with patch.object(bsc, "download_subtitles", side_effect=fake_download):
+            bsc._harvest_show(show, args, tally, tmp_path)
+
+        assert called == [("Partial Show", 1)], "must re-harvest on a partial SRT shortfall"
+        assert tally.seasons_from_disk == 0
+
     def test_refresh_forces_reharvest_even_when_covered(self, bsc, tmp_path):
         """--refresh re-harvests a covered-on-disk season instead of shipping it."""
         from app.matcher.subtitle_utils import sanitize_filename

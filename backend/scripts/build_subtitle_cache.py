@@ -274,15 +274,15 @@ def _harvest_show(
         # season. --refresh forces a full re-harvest to fill gaps providers
         # may have added since.
         if not args.refresh:
-            done, _ = coverage_tracker.is_done(
+            done, prior = coverage_tracker.is_done(
                 show["tmdb_id"],
                 season,
                 args.min_episodes_ratio,
-                args.skip_window_days,
             )
             if done:
                 on_disk = discover_season_srts(season_data_dir, season)
-                if on_disk:
+                expected = prior["covered_episodes"]
+                if on_disk and len(on_disk) >= expected:
                     for code, path in on_disk:
                         harvested.append((season, code, path))
                     tally.episodes_from_disk += len(on_disk)
@@ -296,15 +296,19 @@ def _harvest_show(
                     if on_season_done is not None:
                         on_season_done()
                     continue
-                # A coverage record exists but the SRTs are gone (e.g. a wiped
-                # CI cache). Log it so a re-harvested "done" season isn't a
-                # silent surprise, then fall through to harvest from scratch.
-                # No on_season_done() here: the normal harvest path below calls
-                # it exactly once for this season — a second call would
+                # A coverage record exists but the SRTs on disk are missing
+                # entirely, or a partial wipe/interrupted sync left fewer
+                # than the recorded count (e.g. a wiped or truncated CI
+                # cache). Either way, shipping the shortfall would silently
+                # under-deliver a season previously marked complete, so log
+                # it and fall through to harvest from scratch. No
+                # on_season_done() here: the normal harvest path below calls
+                # it exactly once for this season; a second call would
                 # over-advance the progress bar.
                 logger.info(
-                    f"  {canonical} S{season:02d}: coverage recorded but SRTs "
-                    f"missing on disk; re-harvesting from scratch"
+                    f"  {canonical} S{season:02d}: coverage recorded "
+                    f"({expected} eps) but only {len(on_disk)}/{expected} SRTs "
+                    f"on disk; re-harvesting from scratch"
                 )
 
         if not args.retry_low_coverage:
