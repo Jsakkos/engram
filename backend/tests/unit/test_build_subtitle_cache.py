@@ -28,7 +28,6 @@ from app.matcher.vectorizer_config import (
     HASHING_N_FEATURES,
     vectorizer_config_hash,
 )
-from scripts import build_subtitle_cache as bsc
 
 # `bsc` (build_subtitle_cache) and `vsc` (validate_subtitle_cache) fixtures
 # live in conftest.py as session-scoped — each script's module-level code
@@ -565,29 +564,29 @@ class TestStopReason:
     """``_stop_reason`` is the pure decision behind the run's quota guard.
     Returns None to continue, or a human-readable reason to stop."""
 
-    def test_none_when_within_budget_and_above_floor(self):
+    def test_none_when_within_budget_and_above_floor(self, bsc):
         assert bsc._stop_reason(baseline=1000, remaining=800, max_downloads=900, floor=10) is None
 
-    def test_stops_when_budget_spent(self):
+    def test_stops_when_budget_spent(self, bsc):
         reason = bsc._stop_reason(baseline=1000, remaining=100, max_downloads=900, floor=10)
         assert reason is not None
         assert "budget" in reason.lower()
 
-    def test_stops_when_at_floor_even_if_budget_remains(self):
+    def test_stops_when_at_floor_even_if_budget_remains(self, bsc):
         """An account that began the day partially used hits the floor long
         before the per-run budget. This is the case the login-only check missed."""
         reason = bsc._stop_reason(baseline=200, remaining=8, max_downloads=900, floor=10)
         assert reason is not None
         assert "quota" in reason.lower()
 
-    def test_none_when_quota_unknown(self):
+    def test_none_when_quota_unknown(self, bsc):
         """No OpenSubtitles credentials means no quota telemetry. Scrapers
         have no daily cap, so an unknown quota must not halt the run."""
         assert bsc._stop_reason(baseline=None, remaining=None, max_downloads=900, floor=10) is None
 
-    def test_none_when_baseline_unknown_but_above_floor(self):
+    def test_none_when_baseline_unknown_but_above_floor(self, bsc):
         assert bsc._stop_reason(baseline=None, remaining=500, max_downloads=900, floor=10) is None
 
-    def test_stops_at_floor_when_baseline_unknown(self):
+    def test_stops_at_floor_when_baseline_unknown(self, bsc):
         reason = bsc._stop_reason(baseline=None, remaining=0, max_downloads=900, floor=10)
         assert reason is not None
