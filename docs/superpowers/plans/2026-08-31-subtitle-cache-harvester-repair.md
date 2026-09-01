@@ -340,6 +340,15 @@ In `main()`'s argparse block, immediately after the `--skip-window-days` argumen
     )
 ```
 
+Then validate them immediately after `args = parser.parse_args()`, because `_stop_reason` treats a non-positive budget as "stop immediately" rather than "unlimited", and zero-as-unlimited is a common enough CLI idiom that someone will try it:
+
+```python
+    if args.max_downloads <= 0:
+        parser.error("--max-downloads must be positive (0 does not mean unlimited)")
+    if args.quota_floor < 0:
+        parser.error("--quota-floor cannot be negative")
+```
+
 - [ ] **Step 2: Record the quota baseline**
 
 `main()` probes the quota around line 494-499, but only inside the branch that runs when OpenSubtitles credentials are configured. The name must exist unconditionally, so initialise it first.
@@ -364,15 +373,36 @@ Declaring both names at function scope before the branch keeps them defined on e
 In `main()`'s show loop, immediately after `progress.advance(shows_task)` (line 576), add:
 
 ```python
+            remaining_now = (get_last_quota() or {}).get("remaining")
+
+            # Re-baseline on a mid-run quota refill. These runs span hours and
+            # the OpenSubtitles bucket resets daily, so a run that crosses the
+            # reset sees `remaining` rise above the baseline. Without this,
+            # `baseline - remaining` goes negative, the budget branch stops
+            # firing for the rest of the run, and only the floor is left --
+            # a run started on a partially-spent account could then draw the
+            # entire fresh allowance while the operator believes
+            # --max-downloads capped it.
+            if remaining_now is not None and (
+                quota_baseline is None or remaining_now > quota_baseline
+            ):
+                quota_baseline = remaining_now
+
             stop = _stop_reason(
                 quota_baseline,
-                (get_last_quota() or {}).get("remaining"),
+                remaining_now,
                 args.max_downloads,
                 args.quota_floor,
             )
             if stop:
                 console.log(f"[yellow]STOP[/] {stop}")
                 logger.warning(f"Halting run: {stop}")
+                # Raised from main()'s show loop, NOT from inside
+                # _harvest_show: that function wraps download_subtitles in a
+                # broad `except Exception` (around line 391) which would
+                # swallow this halt and log it as a per-season warning. If the
+                # guard is ever moved to a per-season check, narrow that
+                # handler first.
                 raise QuotaExhausted(stop)
 ```
 
