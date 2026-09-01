@@ -10,10 +10,12 @@ produces and what the consumer expects (manifest schema, tarball layout,
 vectorizer config identity).
 """
 
+import io
 import json
 import shutil
 import sys
 import tarfile
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -23,6 +25,7 @@ import pytest
 import app.services.config_service as cfg_svc
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import EpisodeMatcher, TfidfMatcher
+from app.matcher.subtitle_utils import corpus_dir_name
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
@@ -606,3 +609,249 @@ class TestStopReason:
         reason = bsc._stop_reason(baseline=None, remaining=0, max_downloads=900, floor=10)
         assert reason is not None
         assert "quota" in reason.lower()
+
+
+@pytest.mark.unit
+class TestMainQuotaHalt:
+    """Drive ``main()`` into the quota guard.
+
+    ``TestStopReason`` covers the pure decision; this class covers the wiring
+    around it: the per-show check, the try/except that ends the run, the
+    mid-run re-baseline, and the exit-code matrix. The guard is the only thing
+    standing between a scheduled build and the failure it was written for --
+    a run that sails past zero quota and records every remaining season as 0%
+    coverage, skip-listing it for a month.
+
+    Assertions are on observable effects (return code, which shows were
+    actually harvested, whether a tarball was written, what reached the log),
+    not on mock call counts: a wiring regression that never reads the quota
+    would still satisfy "the mock was called".
+    """
+
+    @staticmethod
+    def _setup(bsc, tmp_path, monkeypatch, *, n_shows, quota_readings):
+        """Stage ``n_shows`` single-season shows and a scripted quota feed.
+
+        ``quota_readings`` is consumed one entry per ``get_last_quota()`` call
+        and clamps to its last value, because ``main`` calls it once per show
+        AND once more for the final summary. Entries are the raw dict the real
+        function returns (or None, for a run with no OpenSubtitles telemetry).
+
+        Returns the list that records every show ``download_subtitles`` was
+        called for, in order -- that list is how "the run stopped early" is
+        asserted.
+        """
+        cache_dir = tmp_path / "cache"
+        harvested_shows: list[str] = []
+
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
+            harvested_shows.append(show_name)
+            data_dir = cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
+            episodes = []
+            for code, text in _EPISODES[:2]:
+                srt_path = data_dir / f"{show_name} - {code}.srt"
+                _write_srt(srt_path, text)
+                episodes.append(
+                    {
+                        "code": code,
+                        "status": "downloaded",
+                        "path": str(srt_path),
+                        "source": "opensubtitles_api",
+                    }
+                )
+            return {
+                "show_name": show_name,
+                "season": season,
+                "total_episodes": len(episodes),
+                "episodes": episodes,
+                "cache_dir": str(data_dir),
+            }
+
+        shows = [
+            {"name": f"Show {i}", "tmdb_id": 9000 + i, "seasons": 1} for i in range(1, n_shows + 1)
+        ]
+
+        calls = {"n": 0}
+
+        def fake_get_last_quota():
+            idx = min(calls["n"], len(quota_readings) - 1)
+            calls["n"] += 1
+            return quota_readings[idx]
+
+        def fake_config():
+            return SimpleNamespace(
+                tmdb_api_key="fake-tmdb-key",
+                opensubtitles_api_key=None,
+                opensubtitles_username=None,
+                opensubtitles_password=None,
+                subtitles_cache_path=str(cache_dir),
+            )
+
+        monkeypatch.setattr(bsc, "_ensure_db_schema", lambda: None)
+        monkeypatch.setattr(bsc, "_bootstrap_config_from_env", lambda: None)
+        monkeypatch.setattr(bsc, "_select_shows", lambda args: shows)
+        monkeypatch.setattr(bsc, "download_subtitles", fake_download)
+        monkeypatch.setattr(bsc, "get_last_quota", fake_get_last_quota)
+        monkeypatch.setattr(cfg_svc, "get_config_sync", fake_config)
+        # coverage_tracker is a real sqlite store under ~/.engram/cache. Neutralize
+        # it so these tests neither read the developer's skip-list (which would make
+        # them pass or fail depending on local state) nor write rows into it.
+        monkeypatch.setattr(coverage_tracker, "is_done", lambda *a, **k: (False, None))
+        monkeypatch.setattr(coverage_tracker, "should_skip", lambda *a, **k: (False, None))
+        monkeypatch.setattr(coverage_tracker, "record", lambda *a, **k: None)
+
+        return harvested_shows
+
+    @staticmethod
+    def _argv(tarball, *, max_downloads, quota_floor):
+        return [
+            "build_subtitle_cache.py",
+            "--output",
+            str(tarball),
+            "--min-episodes-ratio",
+            "0.5",
+            "--sleep",
+            "0",
+            "--content-version",
+            "test-run",
+            "--max-downloads",
+            str(max_downloads),
+            "--quota-floor",
+            str(quota_floor),
+        ]
+
+    @staticmethod
+    @contextmanager
+    def _captured_log(bsc):
+        """Collect WARNING+ loguru output. The script logs through loguru, which
+        pytest's ``caplog`` (a stdlib logging handler) does not see."""
+        sink = io.StringIO()
+        handler_id = bsc.logger.add(sink, level="WARNING", format="{message}")
+        try:
+            yield sink
+        finally:
+            bsc.logger.remove(handler_id)
+
+    def test_halts_at_quota_floor_and_exits_2(self, bsc, tmp_path, monkeypatch):
+        """Quota drops to the floor after the first show: the run must stop
+        there, still package show 1, and exit non-zero."""
+        harvested = self._setup(
+            bsc,
+            tmp_path,
+            monkeypatch,
+            n_shows=3,
+            # show 1 finishes with plenty left; show 2 finishes at 5, under the floor.
+            quota_readings=[{"remaining": 900}, {"remaining": 5}],
+        )
+        tarball = tmp_path / "cache.tar.gz"
+        monkeypatch.setattr(sys, "argv", self._argv(tarball, max_downloads=900, quota_floor=10))
+
+        with self._captured_log(bsc) as sink:
+            exit_code = bsc.main()
+
+        assert exit_code == 2
+        # The load-bearing assertion: the loop actually ended. Exit code 2 alone
+        # would also be produced by a run that harvested everything and only
+        # noticed the halt at the end.
+        assert harvested == ["Show 1", "Show 2"], (
+            f"run did not stop after the guard tripped; harvested {harvested}"
+        )
+        assert "quota" in sink.getvalue().lower()
+        assert "halted early" in sink.getvalue().lower()
+
+        # A halted run still publishes what it completed before the halt.
+        assert tarball.exists()
+        manifest = json.loads(tarball.with_name("manifest.json").read_text())
+        assert list(manifest["shows"]) == ["9001"], (
+            "expected only the show completed before the halt to be packaged"
+        )
+
+    def test_halt_with_nothing_packaged_exits_2_not_1(self, bsc, tmp_path, monkeypatch):
+        """Halting on the very first show leaves no blocks. That must still
+        report the halt and exit 2: exit 1 ("nothing to build") reads as a
+        broken build, when the truth is a quota wall that clears on its own."""
+        harvested = self._setup(
+            bsc,
+            tmp_path,
+            monkeypatch,
+            n_shows=2,
+            quota_readings=[{"remaining": 3}],
+        )
+        tarball = tmp_path / "cache.tar.gz"
+        monkeypatch.setattr(sys, "argv", self._argv(tarball, max_downloads=900, quota_floor=10))
+
+        with self._captured_log(bsc) as sink:
+            exit_code = bsc.main()
+
+        assert exit_code == 2
+        assert harvested == ["Show 1"]
+        logged = sink.getvalue().lower()
+        assert "halted early" in logged
+        assert "nothing to publish" in logged
+        assert not tarball.exists()
+
+    def test_rebaseline_keeps_the_budget_live_after_a_quota_refill(
+        self, bsc, tmp_path, monkeypatch
+    ):
+        """A long run crossing the daily reset sees ``remaining`` rise above the
+        captured baseline. Without re-baselining, ``baseline - remaining`` goes
+        negative and the budget branch never fires again -- the run would then
+        draw the entire fresh allowance while the operator believes
+        --max-downloads capped it.
+
+        Feed: 600 -> 400 -> 5000 (refill) -> 4400. With the re-baseline, the
+        budget is measured from 5000 and 600 spent trips the 500 cap at show 4.
+        Without it, the budget is measured from 600, the subtraction is -3800,
+        nothing ever trips, and all five shows run to a clean exit 0. So this
+        test fails loudly if the re-baseline is removed.
+        """
+        harvested = self._setup(
+            bsc,
+            tmp_path,
+            monkeypatch,
+            n_shows=5,
+            quota_readings=[
+                {"remaining": 600},
+                {"remaining": 400},
+                {"remaining": 5000},
+                {"remaining": 4400},
+            ],
+        )
+        tarball = tmp_path / "cache.tar.gz"
+        monkeypatch.setattr(sys, "argv", self._argv(tarball, max_downloads=500, quota_floor=10))
+
+        with self._captured_log(bsc) as sink:
+            exit_code = bsc.main()
+
+        assert exit_code == 2
+        assert harvested == ["Show 1", "Show 2", "Show 3", "Show 4"], (
+            f"budget did not trip against the refilled baseline; harvested {harvested}"
+        )
+        # Budget, not floor: 4400 remaining is nowhere near the floor of 10.
+        logged = sink.getvalue().lower()
+        assert "budget" in logged
+        assert "halted early" in logged
+
+    def test_credential_free_run_is_never_halted(self, bsc, tmp_path, monkeypatch):
+        """No OpenSubtitles credentials means no quota telemetry at all. The
+        scrapers have no daily cap, so an unknown quota must let the run finish
+        normally rather than halting it on a phantom limit."""
+        harvested = self._setup(
+            bsc,
+            tmp_path,
+            monkeypatch,
+            n_shows=2,
+            quota_readings=[None],
+        )
+        tarball = tmp_path / "cache.tar.gz"
+        monkeypatch.setattr(sys, "argv", self._argv(tarball, max_downloads=900, quota_floor=10))
+
+        with self._captured_log(bsc) as sink:
+            exit_code = bsc.main()
+
+        assert exit_code == 0
+        assert harvested == ["Show 1", "Show 2"]
+        assert "halted early" not in sink.getvalue().lower()
+        assert tarball.exists()
+        manifest = json.loads(tarball.with_name("manifest.json").read_text())
+        assert sorted(manifest["shows"]) == ["9001", "9002"]
