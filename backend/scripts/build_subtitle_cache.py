@@ -109,6 +109,54 @@ class RunTally:
         return self.cache_hits / denom if denom else 0.0
 
 
+class QuotaExhausted(Exception):
+    """Raised to end a run cleanly when the download budget or quota floor is hit.
+
+    Carries the human-readable reason so ``main`` can log it and exit non-zero
+    without unwinding through a bare ``Exception`` handler.
+    """
+
+
+def _stop_reason(
+    baseline: int | None,
+    remaining: int | None,
+    max_downloads: int,
+    floor: int,
+) -> str | None:
+    """Return why the run must stop, or None to continue.
+
+    Two independent limits:
+
+    * ``floor`` -- an absolute guard on remaining daily quota. Catches the
+      account that began the day partially spent, where the per-run budget
+      would never trip.
+    * ``max_downloads`` -- this run's own budget, measured as
+      ``baseline - remaining``. Leaves headroom so a scheduled build cannot
+      consume the entire daily allowance.
+
+    ``remaining is None`` means no OpenSubtitles telemetry (no credentials, or
+    the probe failed). Scrapers carry no daily cap, so an unknown quota must
+    never halt the run -- returning a stop here would break credential-free
+    builds entirely.
+    """
+    if remaining is None:
+        return None
+
+    if remaining <= floor:
+        return (
+            f"OpenSubtitles daily quota nearly exhausted ({remaining} remaining, "
+            f"floor {floor}); stopping before failed downloads get recorded as "
+            "zero coverage"
+        )
+
+    if baseline is not None and (baseline - remaining) >= max_downloads:
+        return (
+            f"run download budget spent ({baseline - remaining}/{max_downloads}); stopping cleanly"
+        )
+
+    return None
+
+
 def _ensure_db_schema() -> None:
     """Create and migrate the DB schema via the app's canonical ``init_db()``.
 
