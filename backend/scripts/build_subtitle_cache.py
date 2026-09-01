@@ -525,7 +525,32 @@ def main() -> int:
             "retried automatically (default: 30)."
         ),
     )
+    parser.add_argument(
+        "--max-downloads",
+        type=int,
+        default=900,
+        help=(
+            "Stop the run after this many OpenSubtitles downloads (default: 900). "
+            "Leaves headroom under the 1000/day VIP cap so a scheduled build "
+            "cannot exhaust the daily allowance and start recording false zeros."
+        ),
+    )
+    parser.add_argument(
+        "--quota-floor",
+        type=int,
+        default=10,
+        help=(
+            "Stop the run when remaining daily OpenSubtitles quota drops to this "
+            "(default: 10). Independent of --max-downloads: catches an account "
+            "that began the day partially spent."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.max_downloads <= 0:
+        parser.error("--max-downloads must be positive (0 does not mean unlimited)")
+    if args.quota_floor < 0:
+        parser.error("--quota-floor cannot be negative")
 
     if args.keep_srt:
         if args.clean_srt:
@@ -545,6 +570,8 @@ def main() -> int:
     from app.services.config_service import get_config_sync
 
     config = get_config_sync()
+    quota_baseline: int | None = None
+    halted_reason: str | None = None
     if (
         config.opensubtitles_api_key
         and config.opensubtitles_username
@@ -560,6 +587,7 @@ def main() -> int:
             f"OpenSubtitles quota: "
             f"{remaining if remaining is not None else 'n/a'} downloads remaining today"
         )
+        quota_baseline = remaining
     else:
         logger.warning(
             "OpenSubtitles API: INACTIVE — credentials missing; falling back to "
@@ -604,93 +632,127 @@ def main() -> int:
         transient=False,
     ) as progress:
         shows_task = progress.add_task("Building cache", total=len(shows))
-        for idx, show in enumerate(shows, 1):
-            show_start = time.monotonic()
-            tally_snapshot = (
-                tally.cache_hits,
-                tally.downloaded,
-                tally.not_found,
-                tally.episodes_from_disk,
-            )
-            # `transient` is a Progress() constructor argument that makes
-            # the whole bar vanish on exit, not a per-task option — passing
-            # it here is silently stored as task metadata and has no visual
-            # effect. The per-show task is removed cleanly by the
-            # `progress.remove_task(season_task)` call below after the
-            # show finishes.
-            season_task = progress.add_task(
-                f"  {show['name']}",
-                total=show["seasons"],
-            )
-
-            logger.info(f"[{idx}/{len(shows)}] {show['name']} (TMDB {show['tmdb_id']})")
-            # Bind season_task via default arg so the closure captures THIS
-            # iteration's task id, not the loop variable (B023).
-            harvested = _harvest_show(
-                show,
-                args,
-                tally,
-                cache_dir,
-                on_season_done=lambda task=season_task: progress.advance(task),
-            )
-            progress.remove_task(season_task)
-            progress.advance(shows_task)
-
-            if not harvested:
-                # All seasons either failed or fell below the coverage
-                # threshold — emit a yellow SKIP banner instead of the green
-                # OK banner so the log line matches what actually happened.
-                console.log(
-                    f"[yellow]SKIP[/] {show['name']} — no usable seasons "
-                    f"(omitted from cache) in {int(time.monotonic() - show_start)}s"
+        try:
+            for idx, show in enumerate(shows, 1):
+                show_start = time.monotonic()
+                tally_snapshot = (
+                    tally.cache_hits,
+                    tally.downloaded,
+                    tally.not_found,
+                    tally.episodes_from_disk,
                 )
-                logger.warning(f"  {show['name']}: no usable seasons; omitting from cache")
-                continue
+                # `transient` is a Progress() constructor argument that makes
+                # the whole bar vanish on exit, not a per-task option — passing
+                # it here is silently stored as task metadata and has no visual
+                # effect. The per-show task is removed cleanly by the
+                # `progress.remove_task(season_task)` call below after the
+                # show finishes.
+                season_task = progress.add_task(
+                    f"  {show['name']}",
+                    total=show["seasons"],
+                )
 
-            # Per-show summary — show what we did this iteration.
-            delta_hits = tally.cache_hits - tally_snapshot[0]
-            delta_dls = tally.downloaded - tally_snapshot[1]
-            delta_nf = tally.not_found - tally_snapshot[2]
-            delta_disk = tally.episodes_from_disk - tally_snapshot[3]
-            got = delta_hits + delta_dls + delta_disk
-            console.log(
-                f"[green]OK[/] {show['name']} — "
-                f"{got}/{got + delta_nf} episodes "
-                f"({delta_disk} from disk, {delta_hits} cached, {delta_dls} new, "
-                f"{delta_nf} missing) "
-                f"in {int(time.monotonic() - show_start)}s"
-            )
+                logger.info(f"[{idx}/{len(shows)}] {show['name']} (TMDB {show['tmdb_id']})")
+                # Bind season_task via default arg so the closure captures THIS
+                # iteration's task id, not the loop variable (B023).
+                harvested = _harvest_show(
+                    show,
+                    args,
+                    tally,
+                    cache_dir,
+                    on_season_done=lambda task=season_task: progress.advance(task),
+                )
+                progress.remove_task(season_task)
+                progress.advance(shows_task)
 
-            by_season: dict[int, list[tuple[str, Path]]] = {}
-            for season, code, path in harvested:
-                by_season.setdefault(season, []).append((code, path))
+                remaining_now = (get_last_quota() or {}).get("remaining")
 
-            show_seasons: list[int] = []
-            episode_counts: dict[str, int] = {}
-            for season in sorted(by_season):
-                episodes = sorted(by_season[season], key=lambda x: x[0])
-                texts, codes = [], []
-                for code, path in episodes:
-                    text = subtitle_cache.get_full_text(str(path))
-                    if text:
-                        texts.append(text)
-                        codes.append(code)
-                if not texts:
+                # Re-baseline on a mid-run quota refill. These runs span hours and
+                # the OpenSubtitles bucket resets daily, so a run that crosses the
+                # reset sees `remaining` rise above the baseline. Without this,
+                # `baseline - remaining` goes negative, the budget branch stops
+                # firing for the rest of the run, and only the floor is left --
+                # a run started on a partially-spent account could then draw the
+                # entire fresh allowance while the operator believes
+                # --max-downloads capped it.
+                if remaining_now is not None and (
+                    quota_baseline is None or remaining_now > quota_baseline
+                ):
+                    quota_baseline = remaining_now
+
+                stop = _stop_reason(
+                    quota_baseline,
+                    remaining_now,
+                    args.max_downloads,
+                    args.quota_floor,
+                )
+                if stop:
+                    console.log(f"[yellow]STOP[/] {stop}")
+                    logger.warning(f"Halting run: {stop}")
+                    # Raised from main()'s show loop, NOT from inside
+                    # _harvest_show: that function wraps download_subtitles in a
+                    # broad `except Exception` which would swallow this halt and
+                    # log it as a per-season warning. If the guard is ever moved
+                    # to a per-season check, narrow that handler first.
+                    raise QuotaExhausted(stop)
+
+                if not harvested:
+                    # All seasons either failed or fell below the coverage
+                    # threshold — emit a yellow SKIP banner instead of the green
+                    # OK banner so the log line matches what actually happened.
+                    console.log(
+                        f"[yellow]SKIP[/] {show['name']} — no usable seasons "
+                        f"(omitted from cache) in {int(time.monotonic() - show_start)}s"
+                    )
+                    logger.warning(f"  {show['name']}: no usable seasons; omitting from cache")
                     continue
-                counts = hv.transform(texts)  # raw hashed term counts
-                blocks.append((show["tmdb_id"], show["name"], season, codes, counts))
-                show_seasons.append(season)
-                episode_counts[str(season)] = len(codes)
 
-            if show_seasons:
-                # v3: keyed by tmdb_id so same-named shows don't collide; the name
-                # is stored so the runtime can still resolve when no id is known.
-                manifest_shows[str(show["tmdb_id"])] = {
-                    "tmdb_id": show["tmdb_id"],
-                    "name": show["name"],
-                    "seasons": show_seasons,
-                    "episode_counts": episode_counts,
-                }
+                # Per-show summary — show what we did this iteration.
+                delta_hits = tally.cache_hits - tally_snapshot[0]
+                delta_dls = tally.downloaded - tally_snapshot[1]
+                delta_nf = tally.not_found - tally_snapshot[2]
+                delta_disk = tally.episodes_from_disk - tally_snapshot[3]
+                got = delta_hits + delta_dls + delta_disk
+                console.log(
+                    f"[green]OK[/] {show['name']} — "
+                    f"{got}/{got + delta_nf} episodes "
+                    f"({delta_disk} from disk, {delta_hits} cached, {delta_dls} new, "
+                    f"{delta_nf} missing) "
+                    f"in {int(time.monotonic() - show_start)}s"
+                )
+
+                by_season: dict[int, list[tuple[str, Path]]] = {}
+                for season, code, path in harvested:
+                    by_season.setdefault(season, []).append((code, path))
+
+                show_seasons: list[int] = []
+                episode_counts: dict[str, int] = {}
+                for season in sorted(by_season):
+                    episodes = sorted(by_season[season], key=lambda x: x[0])
+                    texts, codes = [], []
+                    for code, path in episodes:
+                        text = subtitle_cache.get_full_text(str(path))
+                        if text:
+                            texts.append(text)
+                            codes.append(code)
+                    if not texts:
+                        continue
+                    counts = hv.transform(texts)  # raw hashed term counts
+                    blocks.append((show["tmdb_id"], show["name"], season, codes, counts))
+                    show_seasons.append(season)
+                    episode_counts[str(season)] = len(codes)
+
+                if show_seasons:
+                    # v3: keyed by tmdb_id so same-named shows don't collide; the name
+                    # is stored so the runtime can still resolve when no id is known.
+                    manifest_shows[str(show["tmdb_id"])] = {
+                        "tmdb_id": show["tmdb_id"],
+                        "name": show["name"],
+                        "seasons": show_seasons,
+                        "episode_counts": episode_counts,
+                    }
+        except QuotaExhausted as e:
+            halted_reason = str(e)
 
     if not blocks:
         logger.error("No subtitles harvested; nothing to build")
@@ -797,6 +859,14 @@ def main() -> int:
         f"  elapsed:          {tally.elapsed_str()}\n"
         f"  OS quota left:    {quota_str} downloads today"
     )
+
+    if halted_reason:
+        logger.warning(
+            f"Run halted early: {halted_reason}. Harvested shows were still "
+            "packaged; re-run after the daily quota resets to continue."
+        )
+        return 2
+
     return 0
 
 
