@@ -754,6 +754,14 @@ def main() -> int:
         except QuotaExhausted as e:
             halted_reason = str(e)
 
+    if halted_reason and not blocks:
+        logger.warning(
+            f"Run halted early: {halted_reason}. No shows were packaged before the "
+            "halt, so there is nothing to publish this run; re-run after the daily "
+            "quota resets to continue."
+        )
+        return 2
+
     if not blocks:
         logger.error("No subtitles harvested; nothing to build")
         return 1
@@ -862,8 +870,8 @@ def main() -> int:
 
     if halted_reason:
         logger.warning(
-            f"Run halted early: {halted_reason}. Harvested shows were still "
-            "packaged; re-run after the daily quota resets to continue."
+            f"Run halted early: {halted_reason}. Shows harvested before the halt "
+            "were still packaged; re-run after the daily quota resets to continue."
         )
         return 2
 
