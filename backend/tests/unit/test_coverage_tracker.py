@@ -89,14 +89,27 @@ class TestIsDone:
         assert done is False
         assert prev is None
 
-    def test_outside_window_not_done(self, monkeypatch):
-        """A covered season older than the window is eligible for re-harvest —
-        providers may have added the missing episodes since."""
+    def test_outside_window_still_done(self, monkeypatch):
+        """A covered season does NOT expire on a timer. The SRTs are on disk;
+        age says nothing about whether they are still there. Expiry here used
+        to disable the complete-on-disk fast path, forcing a full re-harvest
+        every 30 days -- the oversized run that exhausted the daily quota.
+        Use --refresh to deliberately re-harvest for newly-added episodes."""
         forty_days_ago = time.time() - 40 * 86400
         monkeypatch.setattr(coverage_tracker.time, "time", lambda: forty_days_ago)
         coverage_tracker.record(6, 1, total=10, covered=10)  # 100%
         monkeypatch.undo()
         done, prev = coverage_tracker.is_done(6, 1, min_ratio=0.6, window_days=30)
+        assert done is True
+        assert prev["coverage_ratio"] == pytest.approx(1.0)
+
+    def test_below_threshold_outside_window_still_not_done(self, monkeypatch):
+        """Age-independence must not promote a FAILED season to done."""
+        forty_days_ago = time.time() - 40 * 86400
+        monkeypatch.setattr(coverage_tracker.time, "time", lambda: forty_days_ago)
+        coverage_tracker.record(7, 1, total=10, covered=1)  # 10%
+        monkeypatch.undo()
+        done, prev = coverage_tracker.is_done(7, 1, min_ratio=0.6, window_days=30)
         assert done is False
         assert prev is None
 

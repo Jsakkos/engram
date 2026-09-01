@@ -54,6 +54,33 @@ def _fresh_record(
     }
 
 
+def _any_age_record(tmdb_id: int, season: int) -> dict[str, Any] | None:
+    """Return the coverage row for ``(tmdb_id, season)`` regardless of age.
+
+    ``_fresh_record``'s age gate is correct for ``should_skip`` (a failed
+    season deserves a retry eventually) and wrong for ``is_done`` (a season
+    whose SRTs are on disk does not become un-harvested by the passage of
+    time). Splitting the two lookups is what stops the periodic full
+    re-sweep; see the 2026-08-31 harvester-repair spec.
+    """
+    conn = tmdb_persistent_cache.get_conn()
+    row = conn.execute(
+        "SELECT attempted_at, total_episodes, covered_episodes, coverage_ratio "
+        "FROM subtitle_coverage WHERE tmdb_id = ? AND season = ?",
+        (tmdb_id, season),
+    ).fetchone()
+    if row is None:
+        return None
+
+    attempted_at, total, covered, ratio = row
+    return {
+        "attempted_at": attempted_at,
+        "total_episodes": total,
+        "covered_episodes": covered,
+        "coverage_ratio": ratio,
+    }
+
+
 def should_skip(
     tmdb_id: int,
     season: int,
@@ -81,15 +108,22 @@ def is_done(
 ) -> tuple[bool, dict[str, Any] | None]:
     """Return ``(done, prior_row)``.
 
-    ``done`` is True iff a prior attempt was recorded within ``window_days``
-    AND its coverage_ratio was at or above ``min_ratio`` — i.e. the season
-    already reached the coverage threshold and can be shipped from the SRTs
-    already on disk without re-hitting TMDB/OpenSubtitles/scrapers. The
-    symmetric complement of ``should_skip``: a fresh record is either
-    below-threshold (skip), at/above-threshold (done), or absent/stale
-    (neither — harvest normally).
+    ``done`` is True iff a recorded attempt reached ``min_ratio`` -- i.e. the
+    season already hit the coverage threshold and can be shipped from the SRTs
+    already on disk without re-hitting TMDB/OpenSubtitles/scrapers.
+
+    Deliberately age-independent: ``window_days`` is accepted for call-site
+    compatibility and ignored. Success does not decay. Expiring it forced a
+    full re-harvest of the whole corpus every 30 days, which exhausted the
+    daily OpenSubtitles quota and caused every subsequent season to be
+    recorded as zero-coverage. Pass ``--refresh`` to the build script to
+    re-harvest deliberately.
+
+    The caller still verifies the SRTs are physically present
+    (``discover_season_srts``) and falls through to a normal harvest if they
+    are not, so a wiped cache directory self-heals.
     """
-    row = _fresh_record(tmdb_id, season, window_days)
+    row = _any_age_record(tmdb_id, season)
     if row is None or row["coverage_ratio"] < min_ratio:
         return False, None
     return True, row
