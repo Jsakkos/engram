@@ -129,6 +129,25 @@ def get_last_quota() -> dict | None:
     return _OS.last_quota
 
 
+def _is_degraded(os_failed: bool, episodes: list[dict]) -> bool:
+    """Return True when this season's result is NOT a trustworthy measurement.
+
+    Degraded means the OpenSubtitles path was unavailable (exhausted quota,
+    login failure, hard error) AND the scraper cascade retrieved nothing. In
+    that state a 0% result says nothing about whether subtitles exist, so the
+    caller must not persist it as coverage: ``coverage_tracker.record(0.0)``
+    skip-lists the season for 30 days, converting a transient outage into a
+    month-long blind spot.
+
+    Conservative by design. If anything at all was retrieved, or if
+    OpenSubtitles was healthy and simply had nothing, the measurement is real
+    and SHOULD be recorded so genuinely dead seasons stop consuming quota.
+    """
+    if not os_failed:
+        return False
+    return not any(ep.get("status") in ("cached", "downloaded") for ep in episodes)
+
+
 def probe_os_quota(config) -> int | None:
     """Log in (cached) and return remaining daily OpenSubtitles downloads.
 
@@ -804,6 +823,9 @@ def download_subtitles(
         "total_episodes": episode_count,
         "episodes": episodes,
         "cache_dir": str(series_cache_dir),
+        # True when this result is not a trustworthy measurement -- see
+        # _is_degraded. The cache builder skips coverage recording for these.
+        "degraded": _is_degraded(_OS.failed, episodes),
     }
 
 
