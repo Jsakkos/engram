@@ -615,6 +615,16 @@ def download_subtitles(
     # --- OpenSubtitles.com REST API (preferred when credentials are configured) ---
     # Pre-download the whole season at once; falls back to scrapers per-episode on failure.
     api_srt_map: dict[int, Path] = {}
+    # `_OS.failed` only records unavailability discovered at LOGIN time and is
+    # sticky for the rest of the process (re-login only every _OS_TOKEN_MAX_AGE,
+    # 12h) -- it never re-evaluates once a login succeeds. A season whose
+    # search/download call fails mid-run (e.g. quota exhausted between logins)
+    # falls through to the `except Exception` below without ever touching
+    # `_OS.failed`. This season-local flag captures that case; it is
+    # deliberately NOT written back into `_OS.failed`, which stays a
+    # process-wide signal so a single season's transient failure doesn't
+    # disable OpenSubtitles for every remaining show in the run.
+    os_failed_this_season = False
 
     # Skip the API entirely if every episode for this season is already cached on
     # disk — otherwise the unconditional `search()` below burns API rate limit on
@@ -727,6 +737,7 @@ def download_subtitles(
                 # download_and_save() calls above.
                 _snapshot_os_quota(_os_client)
             except Exception as e:
+                os_failed_this_season = True
                 logger.warning(
                     f"OpenSubtitles API failed ({e}), falling back to scrapers",
                     exc_info=True,
@@ -824,8 +835,11 @@ def download_subtitles(
         "episodes": episodes,
         "cache_dir": str(series_cache_dir),
         # True when this result is not a trustworthy measurement -- see
-        # _is_degraded. The cache builder skips coverage recording for these.
-        "degraded": _is_degraded(_OS.failed, episodes),
+        # _is_degraded. Combines the sticky process-wide login-failure flag
+        # with the season-local mid-run failure flag, since either one means
+        # OpenSubtitles did not serve this season. The cache builder skips
+        # coverage recording for these.
+        "degraded": _is_degraded(_OS.failed or os_failed_this_season, episodes),
     }
 
 
