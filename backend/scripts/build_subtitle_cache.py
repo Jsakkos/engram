@@ -54,7 +54,12 @@ from scipy import sparse
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache, _corpus_show_dir
 from app.matcher.subtitle_utils import corpus_dir_name, discover_season_srts
-from app.matcher.testing_service import download_subtitles, get_last_quota, probe_os_quota
+from app.matcher.testing_service import (
+    RETRIEVED_STATUSES,
+    download_subtitles,
+    get_last_quota,
+    probe_os_quota,
+)
 from app.matcher.tmdb_client import (
     fetch_show_details,
     fetch_show_id,
@@ -68,7 +73,10 @@ from app.matcher.vectorizer_config import (
     vectorizer_config_hash,
 )
 
-_VALID_STATUSES = {"cached", "downloaded"}
+# Alias kept for readability at existing call sites; the definition lives once
+# in testing_service.py (the producer of these statuses) so it can't drift
+# from what _is_degraded there treats as "retrieved".
+_VALID_STATUSES = RETRIEVED_STATUSES
 
 
 @dataclass
@@ -92,6 +100,13 @@ class RunTally:
     seasons_from_disk: int = 0
     seasons_skipped_below_threshold: int = 0
     seasons_failed: int = 0
+    # Seasons whose result was degraded (OpenSubtitles unavailable, season
+    # incomplete) and therefore NOT recorded to subtitle_coverage. A count
+    # near the total season count usually means a misconfigured run
+    # (bad OS credentials, missing opensubtitlescom package) rather than a
+    # brief mid-run outage -- surfaced in the final summary so that isn't
+    # silent.
+    seasons_degraded: int = 0
     # Per-provider download counts (opensubtitles_api, addic7ed, tvsubtitles).
     # Surfaces which provider served each NEW download so a quiet fallback's
     # contribution is visible in the final summary. Cache hits are excluded --
@@ -163,6 +178,16 @@ def _stop_reason(
         )
 
     return None
+
+
+def _should_record_coverage(result: dict) -> bool:
+    """Return whether this season's outcome is worth persisting as coverage.
+
+    Defaults to True when the key is absent so paths that build their own
+    result dict (e.g. the precomputed-cache skip) keep their existing
+    behaviour rather than silently dropping out of the coverage record.
+    """
+    return not result.get("degraded", False)
 
 
 def _ensure_db_schema() -> None:
@@ -436,11 +461,25 @@ def _harvest_show(
         total = result.get("total_episodes", 0) or len(result["episodes"])
         ratio = len(episodes) / total if total else 0.0
 
-        # Record EVERY season we actually attempted (success or below-threshold).
-        # This is what powers the skip-list on the next run — without it, low
-        # coverage seasons keep getting re-attempted every day, burning
-        # rate-limit quota on shows that simply don't have subtitles.
-        coverage_tracker.record(show["tmdb_id"], season, total, len(episodes))
+        # Record EVERY season we actually MEASURED (success or genuinely
+        # below-threshold). This powers the skip-list on the next run -- without
+        # it, low-coverage seasons get re-attempted every day, burning quota on
+        # shows that simply don't have subtitles.
+        #
+        # A degraded season is NOT a measurement: OpenSubtitles was unavailable
+        # and the season is incomplete, so 0% says nothing about availability.
+        # Recording it would skip-list the season for 30 days on the strength of
+        # an outage. That defect cost 664 seasons on 2026-06-12; see the
+        # harvester-repair spec.
+        if _should_record_coverage(result):
+            coverage_tracker.record(show["tmdb_id"], season, total, len(episodes))
+        else:
+            tally.seasons_degraded += 1
+            logger.warning(
+                f"  {canonical} S{season:02d}: degraded result "
+                f"(OpenSubtitles unavailable, season incomplete); "
+                "NOT recording coverage so the season is re-measured next run"
+            )
 
         if ratio < args.min_episodes_ratio:
             logger.info(
@@ -864,6 +903,7 @@ def main() -> int:
         f"  seasons OK:       {tally.seasons_done}\n"
         f"  seasons skipped:  {tally.seasons_skipped_below_threshold} (below coverage threshold)\n"
         f"  seasons failed:   {tally.seasons_failed}\n"
+        f"  seasons degraded: {tally.seasons_degraded} (not recorded; re-measured next run)\n"
         f"  elapsed:          {tally.elapsed_str()}\n"
         f"  OS quota left:    {quota_str} downloads today"
     )

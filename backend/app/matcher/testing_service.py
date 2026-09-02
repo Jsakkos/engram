@@ -43,6 +43,15 @@ from app.matcher.tvsubtitles_client import TVSubtitlesClient
 # for rate-limit purposes. __version__ is sourced from app/__init__.py.
 _USER_AGENT = f"Engram v{__version__}"
 
+# Episode statuses that mean "this episode's subtitle was actually retrieved"
+# (as opposed to "not_found" or a precomputed-cache hit, which the builder
+# never sees -- see the defense-in-depth assert in build_subtitle_cache.py).
+# Single definition shared with scripts/build_subtitle_cache.py (which
+# imports it as ``_VALID_STATUSES``) so producer and consumer of "retrieved"
+# can't drift -- a future third status added to only one side would silently
+# change coverage semantics without failing anything.
+RETRIEVED_STATUSES = frozenset({"cached", "downloaded"})
+
 
 # --- Cached OpenSubtitles API client + quota state -------------------------
 # The OpenSubtitles bearer token is valid ~24h and is meant to be reused.
@@ -156,7 +165,7 @@ def _is_degraded(os_failed: bool, episodes: list[dict]) -> bool:
         return False
     if not episodes:
         return True
-    return any(ep.get("status") not in ("cached", "downloaded") for ep in episodes)
+    return any(ep.get("status") not in RETRIEVED_STATUSES for ep in episodes)
 
 
 def probe_os_quota(config) -> int | None:

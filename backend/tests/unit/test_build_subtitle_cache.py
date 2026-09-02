@@ -876,3 +876,111 @@ class TestMainQuotaHalt:
         assert tarball.exists()
         manifest = json.loads(tarball.with_name("manifest.json").read_text())
         assert sorted(manifest["shows"]) == ["9001", "9002"]
+
+
+@pytest.mark.unit
+class TestDegradedSuppressesCoverageRecord:
+    """The specific regression that cost 664 seasons in June 2026: a quota
+    failure was written to subtitle_coverage as genuine zero coverage, which
+    skip-listed those seasons for 30 days."""
+
+    def test_degraded_season_is_not_recorded(self, bsc):
+        assert bsc._should_record_coverage({"degraded": True, "episodes": []}) is False
+
+    def test_degraded_season_with_partial_episodes_is_not_recorded(self, bsc):
+        """Degraded is decided upstream by _is_degraded; the builder trusts the
+        flag rather than re-deriving it from the episode list."""
+        episodes = [{"code": "S01E01", "status": "not_found", "path": None, "source": None}]
+        assert bsc._should_record_coverage({"degraded": True, "episodes": episodes}) is False
+
+    def test_healthy_empty_season_still_records(self, bsc):
+        """OpenSubtitles worked and had nothing: a real measurement. Recording
+        it is what stops dead seasons consuming quota every single day."""
+        assert bsc._should_record_coverage({"degraded": False, "episodes": []}) is True
+
+    def test_missing_degraded_key_defaults_to_recording(self, bsc):
+        """Backwards compatibility: a result dict without the key (e.g. the
+        precomputed-skip fast path) must not silently stop being recorded."""
+        assert bsc._should_record_coverage({"episodes": []}) is True
+
+
+@pytest.mark.unit
+class TestHarvestShowDegradedSuppressesCoverageRow:
+    """End-to-end through `_harvest_show`: a degraded season must leave no row
+    in subtitle_coverage at all (not a zero-coverage row), so it is
+    re-measured on the next run instead of skip-listed for 30 days. Uses the
+    real coverage_tracker / tmdb_persistent_cache -- conftest.py's autouse
+    fixture already points CACHE_DB_PATH at a per-test tmp_path, so this
+    never touches the developer's real cache."""
+
+    @staticmethod
+    def _args():
+        return type(
+            "Args",
+            (),
+            {
+                "min_episodes_ratio": 0.6,
+                "sleep": 0,
+                "retry_low_coverage": True,  # bypass the skip-list fast-path
+                "refresh": True,  # bypass the complete-on-disk fast-path
+                "skip_window_days": 30,
+            },
+        )()
+
+    def test_degraded_season_writes_no_coverage_row(self, bsc, tmp_path):
+        show = {"name": "Degraded Show", "tmdb_id": 9101, "seasons": 1}
+
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
+            return {
+                "show_name": show_name,
+                "season": season,
+                "total_episodes": 4,
+                "episodes": [
+                    {"code": "S01E01", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E02", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E03", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E04", "status": "not_found", "path": None, "source": None},
+                ],
+                "cache_dir": "/tmp",
+                "degraded": True,
+            }
+
+        tally = bsc.RunTally()
+        with patch.object(bsc, "download_subtitles", side_effect=fake_download):
+            bsc._harvest_show(show, self._args(), tally, tmp_path)
+
+        assert coverage_tracker.get_show_coverage(9101) == [], (
+            "a degraded season must leave no coverage row so it is re-measured, "
+            "not skip-listed on a false zero"
+        )
+        assert tally.seasons_degraded == 1
+
+    def test_healthy_low_coverage_season_still_writes_a_row(self, bsc, tmp_path):
+        """A genuinely low-coverage season (OpenSubtitles healthy, subtitles
+        just don't exist) must still be recorded -- that's what stops it
+        being re-attempted every day."""
+        show = {"name": "Healthy Low Show", "tmdb_id": 9102, "seasons": 1}
+
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
+            return {
+                "show_name": show_name,
+                "season": season,
+                "total_episodes": 4,
+                "episodes": [
+                    {"code": "S01E01", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E02", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E03", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E04", "status": "not_found", "path": None, "source": None},
+                ],
+                "cache_dir": "/tmp",
+                "degraded": False,
+            }
+
+        tally = bsc.RunTally()
+        with patch.object(bsc, "download_subtitles", side_effect=fake_download):
+            bsc._harvest_show(show, self._args(), tally, tmp_path)
+
+        rows = coverage_tracker.get_show_coverage(9102)
+        assert len(rows) == 1
+        assert rows[0]["coverage_ratio"] == 0.0
+        assert tally.seasons_degraded == 0
