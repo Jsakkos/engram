@@ -141,7 +141,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: uv sync --no-install-project
@@ -168,7 +168,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies (Linux)
@@ -225,7 +225,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies
@@ -272,7 +272,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: uv sync --no-install-project
@@ -316,7 +316,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies
@@ -422,7 +422,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: uv sync --no-install-project
@@ -519,7 +519,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies
@@ -600,7 +600,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies
