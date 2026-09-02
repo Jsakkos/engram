@@ -176,6 +176,80 @@ class TestDownloadSubtitlesMidRunDegradation:
         assert [ep["status"] for ep in result["episodes"]] == ["downloaded", "not_found"]
         assert result["degraded"] is True
 
+    def test_quota_snapshot_refreshed_after_midrun_os_failure(self, tmp_path):
+        """The quota snapshot must be refreshed on the FAILURE path.
+
+        The snapshot at the end of the API try block never runs when a call
+        raises partway through, so without an explicit refresh in the except
+        handler ``_OS.last_quota`` keeps its last healthy reading. The build
+        script's quota guard then never fires, the run does not halt, and the
+        operator is handed a "check your OpenSubtitles credentials" hint for
+        what is really quota exhaustion.
+        """
+        client = Mock()
+        client.user_downloads_remaining = 900
+
+        def _fake_os_call(fn, *args, **kwargs):
+            if fn is client.user_info:
+                # user_info does not consume download quota; it is the probe
+                # that refreshes the library's remaining-downloads attribute.
+                client.user_downloads_remaining = 0
+                return {"data": {"remaining_downloads": 0}}
+            raise Exception("406 quota exceeded")
+
+        with (
+            patch.object(ts._OS, "failed", False),
+            patch.object(ts._OS, "last_quota", {"remaining": 900, "as_of": 0.0}),
+            patch.object(ts._OS, "last_logged_remaining", 900),
+            patch(
+                "app.services.config_service.get_config_sync",
+                return_value=_mock_config(tmp_path),
+            ),
+            patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
+            patch.object(ts, "fetch_season_details", return_value=1),
+            patch.object(ts, "_precomputed_skip_result", return_value=None),
+            patch.object(ts, "_get_os_client", return_value=client),
+            patch.object(ts, "os_api_call", side_effect=_fake_os_call),
+            patch.object(ts, "run_jobs", return_value={}),
+        ):
+            result = ts.download_subtitles("Test Show", 1, tmdb_id=999, use_precomputed=False)
+            # Read inside the patch context -- patch.object restores _OS on exit.
+            quota = ts.get_last_quota()
+
+        assert result["degraded"] is True
+        assert quota is not None
+        # Stale value was 900; the refresh must have picked up the real 0.
+        assert quota["remaining"] == 0
+
+    def test_quota_refresh_probe_failure_does_not_break_harvest(self, tmp_path):
+        """Failing to MEASURE the quota must never fail the harvest.
+
+        Here the re-probe itself raises (network down). ``download_subtitles``
+        must still return a normal degraded result rather than propagating.
+        """
+        client = Mock()
+        # A client shape that also makes the snapshot itself fail.
+        client.user_downloads_remaining = "not-an-int"
+
+        with (
+            patch.object(ts._OS, "failed", False),
+            patch.object(ts._OS, "last_quota", {"remaining": 900, "as_of": 0.0}),
+            patch(
+                "app.services.config_service.get_config_sync",
+                return_value=_mock_config(tmp_path),
+            ),
+            patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
+            patch.object(ts, "fetch_season_details", return_value=1),
+            patch.object(ts, "_precomputed_skip_result", return_value=None),
+            patch.object(ts, "_get_os_client", return_value=client),
+            patch.object(ts, "os_api_call", side_effect=Exception("connection reset")),
+            patch.object(ts, "run_jobs", return_value={}),
+        ):
+            result = ts.download_subtitles("Test Show", 1, tmdb_id=999, use_precomputed=False)
+
+        assert result["degraded"] is True
+        assert all(ep["status"] == "not_found" for ep in result["episodes"])
+
 
 @pytest.mark.unit
 class TestDownloadSubtitlesLoginFailureDegradation:

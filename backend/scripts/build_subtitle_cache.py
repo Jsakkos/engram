@@ -13,6 +13,23 @@ Usage (from backend/):
 TMDB / OpenSubtitles credentials are read from the AppConfig DB row; in CI they
 are bootstrapped from the env vars TMDB_API_KEY, OPENSUBTITLES_API_KEY,
 OPENSUBTITLES_USERNAME, OPENSUBTITLES_PASSWORD.
+
+EXIT CODES -- a publishing wrapper MUST branch on these:
+
+    0  Success. The run finished the whole selected corpus. The tarball is
+       complete and is safe to publish.
+    1  Failure. Nothing usable was produced (no TMDB key, or no subtitles
+       harvested at all). No tarball worth publishing exists.
+    2  HALTED ON QUOTA. The OpenSubtitles budget/floor guard stopped the run
+       partway through. A tarball MAY still have been written, but it contains
+       ONLY the shows completed before the halt.
+
+       **An exit-2 artifact is PARTIAL and MUST NOT be published.** A nightly
+       `gh release upload --clobber` that ignores the exit code would replace
+       the full published cache with a truncated one after a single
+       quota-capped night, and every Engram install would silently pick up the
+       smaller cache. Re-run after the daily quota resets instead; the harvest
+       resumes from disk.
 """
 
 import argparse
@@ -524,6 +541,72 @@ def _harvest_show(
     return harvested
 
 
+def _render_tally(tally: "RunTally") -> str:
+    """Render the run tally block (everything that does NOT need packaging).
+
+    Split out of the final summary so it can also be printed on ``main()``'s
+    early-return paths. ``seasons_degraded`` and the misconfiguration hint are
+    the most diagnostic output a run produces, and a run that harvested nothing
+    is exactly when an operator needs them -- yet those paths return before the
+    packaging summary is ever built. Everything here reads only ``tally`` and
+    the process-wide quota snapshot, so it is safe on every path; anything
+    computed during packaging (shows, episodes, tarball size) deliberately
+    stays with the caller so no path can print a misleading zero.
+    """
+    quota = get_last_quota()
+    quota_str = f"{quota['remaining']}" if quota and quota.get("remaining") is not None else "n/a"
+    by_source = ", ".join(f"{s}={n}" for s, n in sorted(tally.by_source.items())) or "none"
+
+    # Label column computed, not hand-padded: "seasons attempted:" is the
+    # longest label, and padding it by eye is how the block's right edge
+    # drifted by a character in the first place.
+    def _row(label: str, value: str) -> str:
+        return f"  {label + ':':<19}{value}"
+
+    episodes_seen = tally.cache_hits + tally.downloaded + tally.not_found + tally.episodes_from_disk
+    lines = [
+        _row("episodes seen", str(episodes_seen)),
+        _row(
+            "from disk",
+            f"{tally.episodes_from_disk} "
+            f"({tally.seasons_from_disk} covered seasons shipped without network)",
+        ),
+        _row("cache hits", str(tally.cache_hits)),
+        _row("new downloads", str(tally.downloaded)),
+        _row("not found", str(tally.not_found)),
+        _row("cache hit rate", f"{tally.cache_hit_rate:.0%}"),
+        _row("by source", by_source),
+        _row("seasons OK", str(tally.seasons_done)),
+        _row(
+            "seasons skipped",
+            f"{tally.seasons_skipped_below_threshold} (below coverage threshold)",
+        ),
+        _row("seasons failed", str(tally.seasons_failed)),
+        _row(
+            "seasons attempted",
+            f"{tally.seasons_attempted}, of which degraded "
+            f"(coverage not recorded, re-measured next run): {tally.seasons_degraded}",
+        ),
+        _row("elapsed", tally.elapsed_str()),
+        _row("OS quota left", f"{quota_str} downloads today"),
+    ]
+
+    # Half or more of the seasons this run actually attempted came back
+    # degraded: far more likely a misconfigured run (bad OpenSubtitles
+    # credentials, or the opensubtitlescom package missing) than a brief
+    # mid-run outage. Surfaced so a silently-empty skip-list gets diagnosed
+    # instead of misread as "these shows have little content".
+    if tally.seasons_attempted and tally.seasons_degraded / tally.seasons_attempted >= 0.5:
+        lines.append(
+            "  HINT: half or more of the seasons attempted this run were degraded -- "
+            "check the OpenSubtitles credentials (opensubtitles_api_key/username/password) "
+            "and that the opensubtitlescom package is installed, rather than reading this "
+            "as a content problem"
+        )
+
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the Engram subtitle-vector cache")
     parser.add_argument(
@@ -816,6 +899,15 @@ def main() -> int:
         except QuotaExhausted as e:
             halted_reason = str(e)
 
+    if not blocks:
+        # Print the tally BEFORE either early return. These two paths are the
+        # ones an operator most needs the degraded count and the
+        # misconfiguration hint for, and they used to skip the summary
+        # entirely. Only the tally portion is printed: nothing was packaged,
+        # so shows/episodes/tarball size do not exist and printing them as
+        # zeros would read as a content conclusion rather than "no run".
+        console.log("[bold]Final summary[/]: nothing packaged\n" + _render_tally(tally))
+
     if halted_reason and not blocks:
         logger.warning(
             f"Run halted early: {halted_reason}. No shows were packaged before the "
@@ -907,43 +999,10 @@ def main() -> int:
     # --- Final summary --------------------------------------------------------
     # Single block readable in CI logs. ``console`` was created above in the
     # Progress context but stays usable after the ``with`` exits.
-    quota = get_last_quota()
-    quota_str = f"{quota['remaining']}" if quota and quota.get("remaining") is not None else "n/a"
-    by_source = ", ".join(f"{s}={n}" for s, n in sorted(tally.by_source.items())) or "none"
-    # Half or more of the seasons this run actually attempted came back
-    # degraded: far more likely a misconfigured run (bad OpenSubtitles
-    # credentials, or the opensubtitlescom package missing) than a brief
-    # mid-run outage. Surfaced so a silently-empty skip-list gets diagnosed
-    # instead of misread as "these shows have little content".
-    degraded_hint = ""
-    if tally.seasons_attempted and tally.seasons_degraded / tally.seasons_attempted >= 0.5:
-        degraded_hint = (
-            "\n  HINT: half or more of the seasons attempted this run were degraded -- "
-            "check the OpenSubtitles credentials (opensubtitles_api_key/username/password) "
-            "and that the opensubtitlescom package is installed, rather than reading this "
-            "as a content problem"
-        )
     console.log(
         "[bold]Final summary[/]: "
         f"{len(manifest_shows)} shows, {total_episodes} episodes packaged "
-        f"({size_mb:.1f} MB)\n"
-        f"  episodes seen:    "
-        f"{tally.cache_hits + tally.downloaded + tally.not_found + tally.episodes_from_disk}\n"
-        f"  from disk:        {tally.episodes_from_disk} "
-        f"({tally.seasons_from_disk} covered seasons shipped without network)\n"
-        f"  cache hits:       {tally.cache_hits}\n"
-        f"  new downloads:    {tally.downloaded}\n"
-        f"  not found:        {tally.not_found}\n"
-        f"  cache hit rate:   {tally.cache_hit_rate:.0%}\n"
-        f"  by source:        {by_source}\n"
-        f"  seasons OK:       {tally.seasons_done}\n"
-        f"  seasons skipped:  {tally.seasons_skipped_below_threshold} (below coverage threshold)\n"
-        f"  seasons failed:   {tally.seasons_failed}\n"
-        f"  seasons attempted: {tally.seasons_attempted}, of which degraded "
-        f"(coverage not recorded, re-measured next run): {tally.seasons_degraded}\n"
-        f"  elapsed:          {tally.elapsed_str()}\n"
-        f"  OS quota left:    {quota_str} downloads today"
-        f"{degraded_hint}"
+        f"({size_mb:.1f} MB)\n" + _render_tally(tally)
     )
 
     if halted_reason:

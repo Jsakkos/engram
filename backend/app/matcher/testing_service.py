@@ -47,7 +47,7 @@ _USER_AGENT = f"Engram v{__version__}"
 # (as opposed to "not_found" or a precomputed-cache hit, which the builder
 # never sees -- see the defense-in-depth assert in build_subtitle_cache.py).
 # Single definition shared with scripts/build_subtitle_cache.py (which
-# imports it as ``_VALID_STATUSES``) so producer and consumer of "retrieved"
+# imports it under this same name) so producer and consumer of "retrieved"
 # can't drift -- a future third status added to only one side would silently
 # change coverage semantics without failing anything.
 RETRIEVED_STATUSES = frozenset({"cached", "downloaded"})
@@ -775,6 +775,33 @@ def download_subtitles(
                     f"OpenSubtitles API failed ({e}), falling back to scrapers",
                     exc_info=True,
                 )
+                # Refresh the quota reading on the FAILURE path too. The
+                # snapshot at the end of the try block never runs when a
+                # download raises partway through, so _OS.last_quota would
+                # keep its last healthy value and the build script's quota
+                # guard would never fire -- the run grinds through the whole
+                # corpus on scrapers for hours, exits 0, and reports a
+                # >50% degraded rate whose hint blames the OpenSubtitles
+                # credentials or a missing opensubtitlescom package. That is
+                # the wrong diagnosis for what is really quota exhaustion,
+                # and mid-run exhaustion is the LIKELIER path once a run is
+                # already logged in (the login-time check only runs at
+                # startup or after the 12h re-login). Do not delete this as
+                # redundant with the snapshot above.
+                #
+                # Re-probe user_info first: it does NOT consume download
+                # quota, and the library may not have updated
+                # user_downloads_remaining from a call that failed.
+                try:
+                    os_api_call(_os_client.user_info)
+                except Exception as probe_exc:
+                    logger.debug(
+                        f"OS quota re-probe failed (non-fatal): {probe_exc}", exc_info=True
+                    )
+                # Snapshot regardless: even an un-refreshed attribute may
+                # have been updated by the failing call itself. Failing to
+                # MEASURE the quota must never fail the harvest.
+                _snapshot_os_quota(_os_client)
 
     # Per-episode triage: separate cache hits + API hits from the residual
     # work the scheduler will fan out across scrapers.
