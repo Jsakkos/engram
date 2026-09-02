@@ -49,6 +49,19 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **The subtitle-cache builder no longer records a provider outage as missing
+  content.** When the daily OpenSubtitles quota ran out partway through a build,
+  every remaining season came back empty and was written down as "0% coverage",
+  which then suppressed those seasons from being retried for 30 days. One such
+  run marked 664 seasons unharvestable; re-running an affected show afterwards
+  recovered all 330 of its episodes, so the subtitles had been there the whole
+  time. A build now stops cleanly when the quota runs low (staying under the
+  daily cap by default), declines to record coverage it could not actually
+  measure, and reports how many seasons were affected so a misconfigured run is
+  obvious rather than silent. Coverage that already succeeded no longer expires
+  on a timer either, which is what used to trigger the oversized re-harvests
+  that exhausted the quota in the first place. Run summaries also credit
+  OpenSubtitles correctly instead of reporting its downloads as cache hits.
 - **Discs whose every track was filed as "extras" are held for review instead of
   quietly completing.** When TMDB's runtimes don't describe the disc, the
   duration pre-filter could reject every track on it, so a whole box set could
