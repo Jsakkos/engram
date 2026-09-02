@@ -1064,6 +1064,32 @@ which changes the scheduler's return contract and every consumer of it. That is 
 separate task, not a widening of this one. Recorded here while the analysis is fresh
 so it is not rediscovered later as a fresh mystery.
 
+## Known gap: a persistently degraded corpus is re-measured forever
+
+This is the deliberate tradeoff of Task 5 (no record beats a false zero), but the
+specific runaway is worth naming because **the guard one would assume bounds it
+provably does not**.
+
+A degraded season writes no coverage row, so `should_skip` never suppresses it. If
+OpenSubtitles is *misconfigured* rather than transiently down (wrong credentials, or
+the `opensubtitlescom` package missing), every season degrades on every run, the
+skip-list never forms, and each daily build re-attempts the entire corpus through the
+scrapers.
+
+Task 3's quota guard cannot help here. With bad credentials `_get_os_client` returns
+None, so `probe_os_quota` returns None, so `get_last_quota()` returns None, so
+`_stop_reason` short-circuits on its `remaining is None` rule and never fires. That
+short-circuit is correct on its own terms (scrapers have no daily cap, so an unknown
+quota must not halt a scraper-only run), but it means the budget is inert in exactly
+the scenario that produces the runaway. `--max-downloads` also counts OpenSubtitles
+downloads, not scraper fetches.
+
+The only bound is wall-clock and scraper rate limits. Mitigation options (a
+degraded-run circuit breaker, or recording a row after N consecutive degraded runs
+for the same season) are design decisions rather than bug fixes, so they are left out
+of this plan. The `seasons_degraded` counter added in Task 5 is the detection half:
+it makes the condition visible so an operator can act before it runs for weeks.
+
 ---
 
 ## Notes for the implementer
