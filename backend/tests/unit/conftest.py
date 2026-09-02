@@ -83,6 +83,12 @@ def msc():
 
 
 @pytest.fixture(scope="session")
+def ppc():
+    """The purge_poisoned_coverage.py module, loaded once per pytest session."""
+    return _load_script_module("purge_poisoned_coverage")
+
+
+@pytest.fixture(scope="session")
 def psc(bsc):
     """The pack_subtitle_cache.py module, loaded once per pytest session.
 
