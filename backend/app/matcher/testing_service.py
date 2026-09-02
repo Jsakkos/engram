@@ -641,6 +641,12 @@ def download_subtitles(
     # --- OpenSubtitles.com REST API (preferred when credentials are configured) ---
     # Pre-download the whole season at once; falls back to scrapers per-episode on failure.
     api_srt_map: dict[int, Path] = {}
+    # Episodes DOWNLOADED from the API this run, as opposed to ones api_srt_map
+    # merely points at because the file already existed. Without this split the
+    # triage loop below sees the freshly-moved file on disk and misreports the
+    # download as a cache hit, so by_source under-reports OpenSubtitles usage by
+    # ~99% and a quota wall is invisible in the run summary.
+    api_fresh_eps: set[int] = set()
     # `_OS.failed` only records unavailability discovered at LOGIN time and is
     # sticky for the rest of the process (re-login only every _OS_TOKEN_MAX_AGE,
     # 12h) -- it never re-evaluates once a login succeeds. A season whose
@@ -750,6 +756,7 @@ def download_subtitles(
                         if srt_file and is_valid_srt_file(Path(srt_file)):
                             shutil.move(str(srt_file), srt_target)
                             api_srt_map[ep_num] = srt_target
+                            api_fresh_eps.add(ep_num)
                             seen_api_eps.add(ep_num)
                     else:
                         api_srt_map[ep_num] = srt_target
@@ -779,6 +786,15 @@ def download_subtitles(
     for episode in range(1, episode_count + 1):
         episode_code = f"S{season:02d}E{episode:02d}"
         srt_path = series_cache_dir / f"{safe_show_name} - {episode_code}.srt"
+
+        if episode in api_fresh_eps:
+            pre_resolved[episode] = {
+                "code": episode_code,
+                "status": "downloaded",
+                "path": str(api_srt_map[episode]),
+                "source": "opensubtitles_api",
+            }
+            continue
 
         existing_subtitle = find_existing_subtitle(
             str(series_cache_dir), safe_show_name, season, episode

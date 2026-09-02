@@ -7,6 +7,7 @@ on the strength of an infrastructure failure -- the defect that cost 664
 seasons in June 2026.
 """
 
+import types
 from unittest.mock import Mock, patch
 
 import pytest
@@ -204,3 +205,108 @@ class TestDownloadSubtitlesLoginFailureDegradation:
 
         assert all(ep["status"] == "not_found" for ep in result["episodes"])
         assert result["degraded"] is True
+
+
+_VALID_SRT = "1\n00:00:01,000 --> 00:00:02,000\nHello world, this is a padding test line.\n\n"
+
+
+@pytest.mark.unit
+class TestDownloadSubtitlesOpenSubtitlesCredit:
+    """Coverage for the by_source misattribution bug: the OpenSubtitles bulk
+    path moves a freshly-downloaded SRT to exactly the path
+    ``find_existing_subtitle`` looks at, so the per-episode triage loop --
+    which checks the filesystem BEFORE checking ``api_srt_map`` -- saw the
+    file and reported every OpenSubtitles download as a cache hit. Run
+    summaries under-reported OpenSubtitles usage by ~99%, hiding the June
+    2026 quota wall."""
+
+    def test_fresh_download_credited_to_opensubtitles_not_cache(self, tmp_path):
+        """S01E02 is downloaded fresh via the OpenSubtitles bulk path this
+        run. It must be reported as status='downloaded', source
+        ='opensubtitles_api' -- NOT status='cached', source='cache', even
+        though the file now sits on disk at the same path
+        find_existing_subtitle checks."""
+        series_cache_dir = tmp_path / "data" / "999"
+        series_cache_dir.mkdir(parents=True)
+
+        subtitle = types.SimpleNamespace(episode_number=2, season_number=1, release=None)
+        search_response = types.SimpleNamespace(data=[subtitle])
+        os_client = Mock()
+
+        def fake_os_api_call(func, *args, **kwargs):
+            if func is os_client.search:
+                return search_response
+            if func is os_client.download_and_save:
+                raw = tmp_path / "raw_download.srt"
+                raw.write_text(_VALID_SRT, encoding="utf-8")
+                return str(raw)
+            raise AssertionError(f"unexpected os_api_call target: {func}")
+
+        with (
+            patch.object(ts._OS, "failed", False),
+            patch(
+                "app.services.config_service.get_config_sync",
+                return_value=_mock_config(tmp_path),
+            ),
+            patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
+            patch.object(ts, "fetch_season_details", return_value=2),
+            patch.object(ts, "fetch_season_episodes", return_value=[]),
+            patch.object(ts, "_precomputed_skip_result", return_value=None),
+            patch.object(ts, "_get_os_client", return_value=os_client),
+            patch.object(ts, "os_api_call", side_effect=fake_os_api_call),
+            patch.object(ts, "run_jobs", return_value={}),
+        ):
+            result = ts.download_subtitles("Test Show", 1, tmdb_id=999, use_precomputed=False)
+
+        by_code = {ep["code"]: ep for ep in result["episodes"]}
+        assert by_code["S01E02"]["status"] == "downloaded"
+        assert by_code["S01E02"]["source"] == "opensubtitles_api"
+
+    def test_preexisting_file_still_credited_to_cache(self, tmp_path):
+        """S01E01 already has a valid SRT on disk before this run starts (no
+        download happened for it this run). It must stay status='cached',
+        source='cache' -- the fix must not over-credit OpenSubtitles for
+        files it didn't touch this run."""
+        series_cache_dir = tmp_path / "data" / "999"
+        series_cache_dir.mkdir(parents=True)
+        (series_cache_dir / "Test Show - S01E01.srt").write_text(_VALID_SRT, encoding="utf-8")
+
+        # Distinct dialogue from _VALID_SRT so the cross-episode dedup guard
+        # (_reject_content_duplicates) doesn't mistake this for a mislabeled
+        # copy of S01E01 and rewrite it back to not_found.
+        distinct_srt = "1\n00:00:03,000 --> 00:00:04,000\nA completely different episode line.\n\n"
+
+        subtitle = types.SimpleNamespace(episode_number=2, season_number=1, release=None)
+        search_response = types.SimpleNamespace(data=[subtitle])
+        os_client = Mock()
+
+        def fake_os_api_call(func, *args, **kwargs):
+            if func is os_client.search:
+                return search_response
+            if func is os_client.download_and_save:
+                raw = tmp_path / "raw_download.srt"
+                raw.write_text(distinct_srt, encoding="utf-8")
+                return str(raw)
+            raise AssertionError(f"unexpected os_api_call target: {func}")
+
+        with (
+            patch.object(ts._OS, "failed", False),
+            patch(
+                "app.services.config_service.get_config_sync",
+                return_value=_mock_config(tmp_path),
+            ),
+            patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
+            patch.object(ts, "fetch_season_details", return_value=2),
+            patch.object(ts, "fetch_season_episodes", return_value=[]),
+            patch.object(ts, "_precomputed_skip_result", return_value=None),
+            patch.object(ts, "_get_os_client", return_value=os_client),
+            patch.object(ts, "os_api_call", side_effect=fake_os_api_call),
+            patch.object(ts, "run_jobs", return_value={}),
+        ):
+            result = ts.download_subtitles("Test Show", 1, tmdb_id=999, use_precomputed=False)
+
+        by_code = {ep["code"]: ep for ep in result["episodes"]}
+        assert by_code["S01E01"]["status"] == "cached"
+        assert by_code["S01E01"]["source"] == "cache"
+        assert by_code["S01E02"]["status"] == "downloaded"
+        assert by_code["S01E02"]["source"] == "opensubtitles_api"
