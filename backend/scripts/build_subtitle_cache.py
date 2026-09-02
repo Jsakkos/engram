@@ -73,11 +73,6 @@ from app.matcher.vectorizer_config import (
     vectorizer_config_hash,
 )
 
-# Alias kept for readability at existing call sites; the definition lives once
-# in testing_service.py (the producer of these statuses) so it can't drift
-# from what _is_degraded there treats as "retrieved".
-_VALID_STATUSES = RETRIEVED_STATUSES
-
 
 @dataclass
 class RunTally:
@@ -100,12 +95,19 @@ class RunTally:
     seasons_from_disk: int = 0
     seasons_skipped_below_threshold: int = 0
     seasons_failed: int = 0
+    # Seasons where download_subtitles actually ran (i.e. neither the
+    # complete-on-disk fast path nor the skip-list bypassed it). Denominator
+    # for seasons_degraded's share of the run -- see the final-summary hint.
+    seasons_attempted: int = 0
     # Seasons whose result was degraded (OpenSubtitles unavailable, season
-    # incomplete) and therefore NOT recorded to subtitle_coverage. A count
-    # near the total season count usually means a misconfigured run
-    # (bad OS credentials, missing opensubtitlescom package) rather than a
-    # brief mid-run outage -- surfaced in the final summary so that isn't
-    # silent.
+    # incomplete) and therefore NOT recorded to subtitle_coverage. This is a
+    # QUALIFIER on seasons_attempted, not a disposition parallel to OK /
+    # skipped / failed -- a season can be both "done" and "degraded" (it
+    # cleared the ratio threshold despite the outage) or both "unmeasured"
+    # and "degraded" (it didn't). A count near seasons_attempted usually
+    # means a misconfigured run (bad OS credentials, missing
+    # opensubtitlescom package) rather than a brief mid-run outage --
+    # surfaced in the final summary so that isn't silent.
     seasons_degraded: int = 0
     # Per-provider download counts (opensubtitles_api, addic7ed, tvsubtitles).
     # Surfaces which provider served each NEW download so a quiet fallback's
@@ -434,12 +436,13 @@ def _harvest_show(
 
         # Defense in depth: the builder must never receive precomputed-status
         # episodes. use_precomputed=False is passed above, but if that ever
-        # regresses the _VALID_STATUSES filter below would silently drop every
+        # regresses the RETRIEVED_STATUSES filter below would silently drop every
         # episode and write a zero-row cache. Fail loudly instead.
         assert all(ep["status"] != "precomputed" for ep in result["episodes"]), (
             "download_subtitles returned precomputed status to the cache builder — "
             "use_precomputed=False must be passed when harvesting"
         )
+        tally.seasons_attempted += 1
 
         # Tally every episode (including failures) so the running totals
         # match what actually happened, not what we chose to keep.
@@ -456,7 +459,7 @@ def _harvest_show(
                 tally.by_source[source] += 1
 
         episodes = [
-            ep for ep in result["episodes"] if ep["status"] in _VALID_STATUSES and ep.get("path")
+            ep for ep in result["episodes"] if ep["status"] in RETRIEVED_STATUSES and ep.get("path")
         ]
         total = result.get("total_episodes", 0) or len(result["episodes"])
         ratio = len(episodes) / total if total else 0.0
@@ -471,7 +474,15 @@ def _harvest_show(
         # Recording it would skip-list the season for 30 days on the strength of
         # an outage. That defect cost 664 seasons on 2026-06-12; see the
         # harvester-repair spec.
-        if _should_record_coverage(result):
+        #
+        # Computed once and reused below: a degraded, below-threshold season
+        # must not ALSO be reported as a content conclusion ("below threshold;
+        # skipping season") -- that wording asserts we measured the content and
+        # found little, when in fact we couldn't measure it at all. Reporting
+        # both back to back is a more confidently wrong story than saying
+        # nothing.
+        should_record = _should_record_coverage(result)
+        if should_record:
             coverage_tracker.record(show["tmdb_id"], season, total, len(episodes))
         else:
             tally.seasons_degraded += 1
@@ -482,11 +493,23 @@ def _harvest_show(
             )
 
         if ratio < args.min_episodes_ratio:
-            logger.info(
-                f"  {canonical} S{season:02d}: {len(episodes)}/{total} episodes "
-                f"({ratio:.0%}) below threshold {args.min_episodes_ratio:.0%}; skipping season"
-            )
-            tally.seasons_skipped_below_threshold += 1
+            if should_record:
+                logger.info(
+                    f"  {canonical} S{season:02d}: {len(episodes)}/{total} episodes "
+                    f"({ratio:.0%}) below threshold {args.min_episodes_ratio:.0%}; "
+                    "skipping season"
+                )
+                tally.seasons_skipped_below_threshold += 1
+            else:
+                # Not a threshold verdict -- the season wasn't measured, so it
+                # can't be "below threshold". Don't double-count it into
+                # seasons_skipped_below_threshold either; seasons_degraded
+                # already covers it, and the WARNING above already explained why.
+                logger.info(
+                    f"  {canonical} S{season:02d}: {len(episodes)}/{total} episodes "
+                    f"retrieved before degrading; not packaged this run "
+                    "(unmeasured, see WARNING above)"
+                )
             if on_season_done is not None:
                 on_season_done()
             continue
@@ -887,6 +910,19 @@ def main() -> int:
     quota = get_last_quota()
     quota_str = f"{quota['remaining']}" if quota and quota.get("remaining") is not None else "n/a"
     by_source = ", ".join(f"{s}={n}" for s, n in sorted(tally.by_source.items())) or "none"
+    # Half or more of the seasons this run actually attempted came back
+    # degraded: far more likely a misconfigured run (bad OpenSubtitles
+    # credentials, or the opensubtitlescom package missing) than a brief
+    # mid-run outage. Surfaced so a silently-empty skip-list gets diagnosed
+    # instead of misread as "these shows have little content".
+    degraded_hint = ""
+    if tally.seasons_attempted and tally.seasons_degraded / tally.seasons_attempted >= 0.5:
+        degraded_hint = (
+            "\n  HINT: half or more of the seasons attempted this run were degraded -- "
+            "check the OpenSubtitles credentials (opensubtitles_api_key/username/password) "
+            "and that the opensubtitlescom package is installed, rather than reading this "
+            "as a content problem"
+        )
     console.log(
         "[bold]Final summary[/]: "
         f"{len(manifest_shows)} shows, {total_episodes} episodes packaged "
@@ -903,9 +939,11 @@ def main() -> int:
         f"  seasons OK:       {tally.seasons_done}\n"
         f"  seasons skipped:  {tally.seasons_skipped_below_threshold} (below coverage threshold)\n"
         f"  seasons failed:   {tally.seasons_failed}\n"
-        f"  seasons degraded: {tally.seasons_degraded} (not recorded; re-measured next run)\n"
+        f"  seasons attempted: {tally.seasons_attempted}, of which degraded "
+        f"(coverage not recorded, re-measured next run): {tally.seasons_degraded}\n"
         f"  elapsed:          {tally.elapsed_str()}\n"
         f"  OS quota left:    {quota_str} downloads today"
+        f"{degraded_hint}"
     )
 
     if halted_reason:

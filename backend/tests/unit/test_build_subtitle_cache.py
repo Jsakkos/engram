@@ -954,6 +954,50 @@ class TestHarvestShowDegradedSuppressesCoverageRow:
             "not skip-listed on a false zero"
         )
         assert tally.seasons_degraded == 1
+        # Below-threshold is a content conclusion ("we measured and it was
+        # thin"); a degraded season was never measured, so it must not land
+        # in the same bucket a real low-coverage season would.
+        assert tally.seasons_skipped_below_threshold == 0
+        assert tally.seasons_done == 0
+
+    def test_degraded_below_threshold_does_not_assert_a_content_conclusion(self, bsc, tmp_path):
+        """The regression this whole fix targets: a degraded, below-threshold
+        season must not ALSO be reported with "below threshold; skipping
+        season" wording. That phrase asserts we measured the content and
+        found little -- contradicting the WARNING immediately above it that
+        says we could not measure it at all."""
+        show = {"name": "Degraded Wording Show", "tmdb_id": 9103, "seasons": 1}
+
+        def fake_download(show_name, season, *, tmdb_id=None, use_precomputed=False):
+            return {
+                "show_name": show_name,
+                "season": season,
+                "total_episodes": 4,
+                "episodes": [
+                    {"code": "S01E01", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E02", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E03", "status": "not_found", "path": None, "source": None},
+                    {"code": "S01E04", "status": "not_found", "path": None, "source": None},
+                ],
+                "cache_dir": "/tmp",
+                "degraded": True,
+            }
+
+        tally = bsc.RunTally()
+        sink = io.StringIO()
+        handler_id = bsc.logger.add(sink, level="INFO", format="{message}")
+        try:
+            with patch.object(bsc, "download_subtitles", side_effect=fake_download):
+                bsc._harvest_show(show, self._args(), tally, tmp_path)
+        finally:
+            bsc.logger.remove(handler_id)
+
+        logged = sink.getvalue().lower()
+        assert "below threshold" not in logged, (
+            f"degraded season must not be reported as a content conclusion; got: {logged!r}"
+        )
+        assert tally.seasons_skipped_below_threshold == 0
+        assert tally.seasons_degraded == 1
 
     def test_healthy_low_coverage_season_still_writes_a_row(self, bsc, tmp_path):
         """A genuinely low-coverage season (OpenSubtitles healthy, subtitles
@@ -984,3 +1028,6 @@ class TestHarvestShowDegradedSuppressesCoverageRow:
         assert len(rows) == 1
         assert rows[0]["coverage_ratio"] == 0.0
         assert tally.seasons_degraded == 0
+        # A real (non-degraded) below-threshold season keeps its content
+        # conclusion and its counter -- only the degraded case is suppressed.
+        assert tally.seasons_skipped_below_threshold == 1
