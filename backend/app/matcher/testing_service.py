@@ -132,20 +132,31 @@ def get_last_quota() -> dict | None:
 def _is_degraded(os_failed: bool, episodes: list[dict]) -> bool:
     """Return True when this season's result is NOT a trustworthy measurement.
 
-    Degraded means the OpenSubtitles path was unavailable (exhausted quota,
-    login failure, hard error) AND the scraper cascade retrieved nothing. In
-    that state a 0% result says nothing about whether subtitles exist, so the
-    caller must not persist it as coverage: ``coverage_tracker.record(0.0)``
-    skip-lists the season for 30 days, converting a transient outage into a
-    month-long blind spot.
+    Degraded means the OpenSubtitles path did not serve (exhausted quota, login
+    failure, hard error -- at login time OR mid-run) AND the season is not
+    fully retrieved. Quota exhaustion does not respect season boundaries: it
+    can land mid-loop with a few episodes already downloaded, so requiring
+    "nothing at all" would let a partial season (e.g. 3/13) get recorded as a
+    real 23% coverage measurement and skip-listed for 30 days on the strength
+    of an infrastructure failure that happened to land inside that season.
+    Recording NO coverage for such a season instead just costs a retry on the
+    next run -- cheap and self-correcting, versus a month-long blind spot.
 
-    Conservative by design. If anything at all was retrieved, or if
-    OpenSubtitles was healthy and simply had nothing, the measurement is real
-    and SHOULD be recorded so genuinely dead seasons stop consuming quota.
+    Conservative by design in the other direction: a season the OpenSubtitles
+    path fully retrieved, or one where OpenSubtitles was healthy and simply
+    had nothing, is a real measurement and SHOULD be recorded so genuinely
+    dead seasons stop consuming quota.
+
+    This predicate covers the OpenSubtitles half of the cascade ONLY.
+    ``degraded=False`` does not mean the measurement is trustworthy in
+    general -- the scraper cascade (Addic7ed/TVsubtitles) has no equivalent
+    failure signal, which is a known, separate gap.
     """
     if not os_failed:
         return False
-    return not any(ep.get("status") in ("cached", "downloaded") for ep in episodes)
+    if not episodes:
+        return True
+    return any(ep.get("status") not in ("cached", "downloaded") for ep in episodes)
 
 
 def probe_os_quota(config) -> int | None:
@@ -302,6 +313,12 @@ def _precomputed_skip_result(
             {"code": code, "status": "precomputed", "source": "precomputed"} for code in codes
         ],
         "cache_dir": str(series_cache_dir),
+        # A precomputed-covered season is by definition not a degraded
+        # measurement -- explicit so the dict shape stays total even though
+        # "precomputed" isn't in _is_degraded's retrieved-status allowlist.
+        # _heal_precomputed_gaps copies this dict forward (dict(skip) /
+        # unchanged `return skip`), so this single site covers both.
+        "degraded": False,
     }
 
 
