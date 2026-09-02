@@ -629,13 +629,30 @@ class TestMainQuotaHalt:
     """
 
     @staticmethod
-    def _setup(bsc, tmp_path, monkeypatch, *, n_shows, quota_readings):
+    def _setup(
+        bsc,
+        tmp_path,
+        monkeypatch,
+        *,
+        n_shows,
+        quota_readings,
+        credentialed=True,
+        startup_probe=None,
+    ):
         """Stage ``n_shows`` single-season shows and a scripted quota feed.
 
         ``quota_readings`` is consumed one entry per ``get_last_quota()`` call
         and clamps to its last value, because ``main`` calls it once per show
         AND once more for the final summary. Entries are the raw dict the real
         function returns (or None, for a run with no OpenSubtitles telemetry).
+
+        ``credentialed`` selects which startup branch ``main`` takes, and
+        ``startup_probe`` is what the up-front ``probe_os_quota`` returns. Both
+        matter: in production the baseline is normally captured from that probe,
+        and only a run whose probe FAILED (credentials present, ``user_info``
+        unreachable, None returned) falls through to the loop's
+        ``quota_baseline is None`` arm. A credential-free run has no client at
+        all, so its quota stays None for the whole run and it can never halt.
 
         Returns the list that records every show ``download_subtitles`` was
         called for, in order -- that list is how "the run stopped early" is
@@ -681,9 +698,9 @@ class TestMainQuotaHalt:
         def fake_config():
             return SimpleNamespace(
                 tmdb_api_key="fake-tmdb-key",
-                opensubtitles_api_key=None,
-                opensubtitles_username=None,
-                opensubtitles_password=None,
+                opensubtitles_api_key="fake-os-key" if credentialed else None,
+                opensubtitles_username="user" if credentialed else None,
+                opensubtitles_password="pass" if credentialed else None,
                 subtitles_cache_path=str(cache_dir),
             )
 
@@ -692,13 +709,8 @@ class TestMainQuotaHalt:
         monkeypatch.setattr(bsc, "_select_shows", lambda args: shows)
         monkeypatch.setattr(bsc, "download_subtitles", fake_download)
         monkeypatch.setattr(bsc, "get_last_quota", fake_get_last_quota)
+        monkeypatch.setattr(bsc, "probe_os_quota", lambda config: startup_probe)
         monkeypatch.setattr(cfg_svc, "get_config_sync", fake_config)
-        # coverage_tracker is a real sqlite store under ~/.engram/cache. Neutralize
-        # it so these tests neither read the developer's skip-list (which would make
-        # them pass or fail depending on local state) nor write rows into it.
-        monkeypatch.setattr(coverage_tracker, "is_done", lambda *a, **k: (False, None))
-        monkeypatch.setattr(coverage_tracker, "should_skip", lambda *a, **k: (False, None))
-        monkeypatch.setattr(coverage_tracker, "record", lambda *a, **k: None)
 
         return harvested_shows
 
@@ -740,6 +752,8 @@ class TestMainQuotaHalt:
             tmp_path,
             monkeypatch,
             n_shows=3,
+            # Baseline captured up front, as in production.
+            startup_probe=900,
             # show 1 finishes with plenty left; show 2 finishes at 5, under the floor.
             quota_readings=[{"remaining": 900}, {"remaining": 5}],
         )
@@ -756,7 +770,9 @@ class TestMainQuotaHalt:
         assert harvested == ["Show 1", "Show 2"], (
             f"run did not stop after the guard tripped; harvested {harvested}"
         )
-        assert "quota" in sink.getvalue().lower()
+        # "floor", not "quota": both halt reports end with "re-run after the daily
+        # quota resets", so "quota" would not distinguish this from the budget stop.
+        assert "floor" in sink.getvalue().lower()
         assert "halted early" in sink.getvalue().lower()
 
         # A halted run still publishes what it completed before the halt.
@@ -775,6 +791,9 @@ class TestMainQuotaHalt:
             tmp_path,
             monkeypatch,
             n_shows=2,
+            # Credentials present but the up-front probe failed, so the baseline
+            # is seeded by the loop's `quota_baseline is None` arm instead.
+            startup_probe=None,
             quota_readings=[{"remaining": 3}],
         )
         tarball = tmp_path / "cache.tar.gz"
@@ -810,6 +829,7 @@ class TestMainQuotaHalt:
             tmp_path,
             monkeypatch,
             n_shows=5,
+            startup_probe=600,
             quota_readings=[
                 {"remaining": 600},
                 {"remaining": 400},
@@ -841,6 +861,7 @@ class TestMainQuotaHalt:
             tmp_path,
             monkeypatch,
             n_shows=2,
+            credentialed=False,
             quota_readings=[None],
         )
         tarball = tmp_path / "cache.tar.gz"
