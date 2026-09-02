@@ -1,7 +1,7 @@
 {
     "name": "engram-frontend",
     "private": true,
-    "version": "0.33.0",
+    "version": "0.34.0",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -76,7 +76,7 @@
         "@playwright/test": "^1.62.1",
         "@tailwindcss/vite": "4.3.3",
         "@testing-library/jest-dom": "^6.9.1",
-        "@testing-library/react": "^16.3.2",
+        "@testing-library/react": "^16.3.3",
         "@testing-library/user-event": "^14.6.6",
         "@types/node": "^25.9.5",
         "@types/react": "^18.2.43",
@@ -86,7 +86,7 @@
         "autoprefixer": "^10.5.4",
         "eslint": "^10.8.1",
         "eslint-plugin-react-hooks": "^7.1.1",
-        "eslint-plugin-react-refresh": "^0.5.4",
+        "eslint-plugin-react-refresh": "^0.5.5",
         "globals": "^17.6.0",
         "jsdom": "^29.1.1",
         "png2icons": "^2.0.1",
