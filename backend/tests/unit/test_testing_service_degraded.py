@@ -13,7 +13,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 import app.matcher.testing_service as ts
-from app.matcher.testing_service import _is_degraded
 
 
 @pytest.mark.unit
@@ -30,7 +29,7 @@ class TestIsDegraded:
             {"code": "S01E01", "status": "downloaded", "path": "/x.srt", "source": "addic7ed"},
             {"code": "S01E02", "status": "not_found", "path": None, "source": None},
         ]
-        assert _is_degraded(os_failed=True, episodes=episodes) is True
+        assert ts._is_degraded(os_failed=True, episodes=episodes) is True
 
     def test_not_degraded_when_os_failed_but_season_fully_retrieved(self):
         """A complete season is a complete season regardless of what happened
@@ -40,30 +39,30 @@ class TestIsDegraded:
             {"code": "S01E01", "status": "downloaded", "path": "/x.srt", "source": "addic7ed"},
             {"code": "S01E02", "status": "cached", "path": "/y.srt", "source": "cache"},
         ]
-        assert _is_degraded(os_failed=True, episodes=episodes) is False
+        assert ts._is_degraded(os_failed=True, episodes=episodes) is False
 
     def test_not_degraded_when_os_healthy_and_nothing_found(self):
         """OpenSubtitles worked and genuinely had nothing. That is a real
         measurement and SHOULD be recorded, so the season gets skip-listed."""
         episodes = [{"code": "S01E01", "status": "not_found", "path": None, "source": None}]
-        assert _is_degraded(os_failed=False, episodes=episodes) is False
+        assert ts._is_degraded(os_failed=False, episodes=episodes) is False
 
     def test_degraded_when_os_failed_and_nothing_found(self):
         episodes = [
             {"code": "S01E01", "status": "not_found", "path": None, "source": None},
             {"code": "S01E02", "status": "not_found", "path": None, "source": None},
         ]
-        assert _is_degraded(os_failed=True, episodes=episodes) is True
+        assert ts._is_degraded(os_failed=True, episodes=episodes) is True
 
     def test_cached_episodes_count_as_retrieved(self):
         episodes = [{"code": "S01E01", "status": "cached", "path": "/x.srt", "source": "cache"}]
-        assert _is_degraded(os_failed=True, episodes=episodes) is False
+        assert ts._is_degraded(os_failed=True, episodes=episodes) is False
 
     def test_empty_episode_list_with_os_failed_is_degraded(self):
-        assert _is_degraded(os_failed=True, episodes=[]) is True
+        assert ts._is_degraded(os_failed=True, episodes=[]) is True
 
     def test_empty_episode_list_with_os_healthy_is_not_degraded(self):
-        assert _is_degraded(os_failed=False, episodes=[]) is False
+        assert ts._is_degraded(os_failed=False, episodes=[]) is False
 
 
 def _mock_config(tmp_path):
