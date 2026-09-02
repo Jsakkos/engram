@@ -694,7 +694,19 @@ In `backend/scripts/build_subtitle_cache.py`, replace lines 379-383 (the comment
             )
 ```
 
-- [ ] **Step 6: Run the full build-script test file**
+- [ ] **Step 6: Surface a degradation count in the run summary**
+
+A misconfigured run (wrong OpenSubtitles credentials, or the `opensubtitlescom` package missing) sets `_OS.failed` process-wide, so every empty season becomes degraded and NOTHING gets recorded for the whole run. That is correct by the predicate's logic but silent, and a silently-empty skip-list looks identical to a healthy run in the logs.
+
+Add a `seasons_degraded` counter to `RunTally`, increment it in the `else` branch added in Step 5, and include it in the final summary block alongside `seasons skipped`. If it is large relative to the seasons attempted, that is the signal that OpenSubtitles is misconfigured rather than that the content is missing.
+
+- [ ] **Step 7: Share the retrieved-status allowlist**
+
+`_is_degraded` uses `("cached", "downloaded")` and `_VALID_STATUSES` at the top of this file encodes the same concept. Producer and consumer defining "retrieved" separately means a future third status added to one and not the other silently changes coverage semantics without failing anything.
+
+Import `_VALID_STATUSES`'s definition from one place. Since `testing_service` is the producer, export the set from there and have the build script use it, keeping the local name as an alias if that reads better at the existing call sites.
+
+- [ ] **Step 8: Run the full build-script test file**
 
 ```bash
 cd backend && uv run pytest tests/unit/test_build_subtitle_cache.py -v
@@ -702,7 +714,7 @@ cd backend && uv run pytest tests/unit/test_build_subtitle_cache.py -v
 
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add backend/scripts/build_subtitle_cache.py backend/tests/unit/test_build_subtitle_cache.py
@@ -1031,6 +1043,26 @@ cd backend && uv run python scripts/purge_poisoned_coverage.py --apply
 ```
 
 This is irreversible and returns ~978 seasons to the unmeasured pool, costing several days of quota to re-measure. Hold for explicit approval.
+
+---
+
+## Known gap, deliberately out of scope: the scrapers have no failure signal
+
+`_is_degraded` covers the OpenSubtitles half of the cascade only. The scraper
+scheduler (`app/matcher/provider_scheduler.py`) emits exactly two per-episode
+statuses, `downloaded` and `not_found`, and its `_CircuitBreaker` trips after three
+consecutive transport failures and thereafter skips the provider without changing
+the result shape.
+
+So if OpenSubtitles is healthy but BOTH Addic7ed and TVsubtitles are down, every
+episode comes back `not_found`, `os_failed` is False, the season is recorded at 0%,
+and it is skip-listed for 30 days. That is the same defect this plan repairs,
+reachable through a different door.
+
+Closing it requires `run_jobs` to surface transport-failure or breaker-open state,
+which changes the scheduler's return contract and every consumer of it. That is a
+separate task, not a widening of this one. Recorded here while the analysis is fresh
+so it is not rediscovered later as a fresh mystery.
 
 ---
 
