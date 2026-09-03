@@ -43,6 +43,15 @@ from app.matcher.tvsubtitles_client import TVSubtitlesClient
 # for rate-limit purposes. __version__ is sourced from app/__init__.py.
 _USER_AGENT = f"Engram v{__version__}"
 
+# Episode statuses that mean "this episode's subtitle was actually retrieved"
+# (as opposed to "not_found" or a precomputed-cache hit, which the builder
+# never sees -- see the defense-in-depth assert in build_subtitle_cache.py).
+# Single definition shared with scripts/build_subtitle_cache.py (which
+# imports it under this same name) so producer and consumer of "retrieved"
+# can't drift -- a future third status added to only one side would silently
+# change coverage semantics without failing anything.
+RETRIEVED_STATUSES = frozenset({"cached", "downloaded"})
+
 
 # --- Cached OpenSubtitles API client + quota state -------------------------
 # The OpenSubtitles bearer token is valid ~24h and is meant to be reused.
@@ -127,6 +136,36 @@ def get_last_quota() -> dict | None:
     summary so the user sees "downloads remaining today" at the end of a run.
     """
     return _OS.last_quota
+
+
+def _is_degraded(os_failed: bool, episodes: list[dict]) -> bool:
+    """Return True when this season's result is NOT a trustworthy measurement.
+
+    Degraded means the OpenSubtitles path did not serve (exhausted quota, login
+    failure, hard error -- at login time OR mid-run) AND the season is not
+    fully retrieved. Quota exhaustion does not respect season boundaries: it
+    can land mid-loop with a few episodes already downloaded, so requiring
+    "nothing at all" would let a partial season (e.g. 3/13) get recorded as a
+    real 23% coverage measurement and skip-listed for 30 days on the strength
+    of an infrastructure failure that happened to land inside that season.
+    Recording NO coverage for such a season instead just costs a retry on the
+    next run -- cheap and self-correcting, versus a month-long blind spot.
+
+    Conservative by design in the other direction: a season the OpenSubtitles
+    path fully retrieved, or one where OpenSubtitles was healthy and simply
+    had nothing, is a real measurement and SHOULD be recorded so genuinely
+    dead seasons stop consuming quota.
+
+    This predicate covers the OpenSubtitles half of the cascade ONLY.
+    ``degraded=False`` does not mean the measurement is trustworthy in
+    general -- the scraper cascade (Addic7ed/TVsubtitles) has no equivalent
+    failure signal, which is a known, separate gap.
+    """
+    if not os_failed:
+        return False
+    if not episodes:
+        return True
+    return any(ep.get("status") not in RETRIEVED_STATUSES for ep in episodes)
 
 
 def probe_os_quota(config) -> int | None:
@@ -283,6 +322,12 @@ def _precomputed_skip_result(
             {"code": code, "status": "precomputed", "source": "precomputed"} for code in codes
         ],
         "cache_dir": str(series_cache_dir),
+        # A precomputed-covered season is by definition not a degraded
+        # measurement -- explicit so the dict shape stays total even though
+        # "precomputed" isn't in _is_degraded's retrieved-status allowlist.
+        # _heal_precomputed_gaps copies this dict forward (dict(skip) /
+        # unchanged `return skip`), so this single site covers both.
+        "degraded": False,
     }
 
 
@@ -596,6 +641,22 @@ def download_subtitles(
     # --- OpenSubtitles.com REST API (preferred when credentials are configured) ---
     # Pre-download the whole season at once; falls back to scrapers per-episode on failure.
     api_srt_map: dict[int, Path] = {}
+    # Episodes DOWNLOADED from the API this run, as opposed to ones api_srt_map
+    # merely points at because the file already existed. Without this split the
+    # triage loop below sees the freshly-moved file on disk and misreports the
+    # download as a cache hit, so by_source under-reports OpenSubtitles usage by
+    # ~99% and a quota wall is invisible in the run summary.
+    api_fresh_eps: set[int] = set()
+    # `_OS.failed` only records unavailability discovered at LOGIN time and is
+    # sticky for the rest of the process (re-login only every _OS_TOKEN_MAX_AGE,
+    # 12h) -- it never re-evaluates once a login succeeds. A season whose
+    # search/download call fails mid-run (e.g. quota exhausted between logins)
+    # falls through to the `except Exception` below without ever touching
+    # `_OS.failed`. This season-local flag captures that case; it is
+    # deliberately NOT written back into `_OS.failed`, which stays a
+    # process-wide signal so a single season's transient failure doesn't
+    # disable OpenSubtitles for every remaining show in the run.
+    os_failed_this_season = False
 
     # Skip the API entirely if every episode for this season is already cached on
     # disk — otherwise the unconditional `search()` below burns API rate limit on
@@ -695,6 +756,7 @@ def download_subtitles(
                         if srt_file and is_valid_srt_file(Path(srt_file)):
                             shutil.move(str(srt_file), srt_target)
                             api_srt_map[ep_num] = srt_target
+                            api_fresh_eps.add(ep_num)
                             seen_api_eps.add(ep_num)
                     else:
                         api_srt_map[ep_num] = srt_target
@@ -708,10 +770,38 @@ def download_subtitles(
                 # download_and_save() calls above.
                 _snapshot_os_quota(_os_client)
             except Exception as e:
+                os_failed_this_season = True
                 logger.warning(
                     f"OpenSubtitles API failed ({e}), falling back to scrapers",
                     exc_info=True,
                 )
+                # Refresh the quota reading on the FAILURE path too. The
+                # snapshot at the end of the try block never runs when a
+                # download raises partway through, so _OS.last_quota would
+                # keep its last healthy value and the build script's quota
+                # guard would never fire -- the run grinds through the whole
+                # corpus on scrapers for hours, exits 0, and reports a
+                # >50% degraded rate whose hint blames the OpenSubtitles
+                # credentials or a missing opensubtitlescom package. That is
+                # the wrong diagnosis for what is really quota exhaustion,
+                # and mid-run exhaustion is the LIKELIER path once a run is
+                # already logged in (the login-time check only runs at
+                # startup or after the 12h re-login). Do not delete this as
+                # redundant with the snapshot above.
+                #
+                # Re-probe user_info first: it does NOT consume download
+                # quota, and the library may not have updated
+                # user_downloads_remaining from a call that failed.
+                try:
+                    os_api_call(_os_client.user_info)
+                except Exception as probe_exc:
+                    logger.debug(
+                        f"OS quota re-probe failed (non-fatal): {probe_exc}", exc_info=True
+                    )
+                # Snapshot regardless: even an un-refreshed attribute may
+                # have been updated by the failing call itself. Failing to
+                # MEASURE the quota must never fail the harvest.
+                _snapshot_os_quota(_os_client)
 
     # Per-episode triage: separate cache hits + API hits from the residual
     # work the scheduler will fan out across scrapers.
@@ -723,6 +813,15 @@ def download_subtitles(
     for episode in range(1, episode_count + 1):
         episode_code = f"S{season:02d}E{episode:02d}"
         srt_path = series_cache_dir / f"{safe_show_name} - {episode_code}.srt"
+
+        if episode in api_fresh_eps:
+            pre_resolved[episode] = {
+                "code": episode_code,
+                "status": "downloaded",
+                "path": str(api_srt_map[episode]),
+                "source": "opensubtitles_api",
+            }
+            continue
 
         existing_subtitle = find_existing_subtitle(
             str(series_cache_dir), safe_show_name, season, episode
@@ -804,6 +903,12 @@ def download_subtitles(
         "total_episodes": episode_count,
         "episodes": episodes,
         "cache_dir": str(series_cache_dir),
+        # True when this result is not a trustworthy measurement -- see
+        # _is_degraded. Combines the sticky process-wide login-failure flag
+        # with the season-local mid-run failure flag, since either one means
+        # OpenSubtitles did not serve this season. The cache builder skips
+        # coverage recording for these.
+        "degraded": _is_degraded(_OS.failed or os_failed_this_season, episodes),
     }
 
 
