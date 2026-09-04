@@ -143,6 +143,36 @@ class RunTally:
         return self.cache_hits / denom if denom else 0.0
 
 
+def _ensure_utf8_output(*streams) -> None:
+    """Force the given text streams to UTF-8 so a show title cannot abort a run.
+
+    On Windows both a legacy console and a redirected pipe default to the ANSI
+    codepage (cp1252), which cannot encode titles like "Shogun" (spelled with a
+    macron) or "El Senor de los Cielos". Rich repaints the progress bar through
+    that stream, so ONE such title raised UnicodeEncodeError and killed a real
+    448-show harvest at show 179, discarding the packaging step for the 178
+    shows that had already succeeded. The harvest itself was fine; only the
+    rendering of its progress was fatal.
+
+    ``errors="replace"`` is the half that makes this permanently non-fatal: a
+    character some future stream cannot represent degrades to a placeholder
+    rather than ending a multi-hour run.
+
+    Streams with no ``reconfigure`` (a test double, a plain object) are skipped,
+    and a stream that refuses to be reconfigured (already detached) is left
+    alone. Failing to change an encoding must never be worse than the crash it
+    is preventing.
+    """
+    for stream in streams:
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError) as exc:
+            logger.debug(f"Could not force UTF-8 on {stream!r} (non-fatal): {exc}")
+
+
 class QuotaExhausted(Exception):
     """Raised to end a run cleanly when the download budget or quota floor is hit.
 
@@ -608,6 +638,10 @@ def _render_tally(tally: "RunTally") -> str:
 
 
 def main() -> int:
+    # Before anything renders: a single non-ASCII title must not be able to
+    # kill the run through the progress bar. See _ensure_utf8_output.
+    _ensure_utf8_output(sys.stdout, sys.stderr)
+
     parser = argparse.ArgumentParser(description="Build the Engram subtitle-vector cache")
     parser.add_argument(
         "--limit", type=int, default=300, help="Number of shows (top by TMDB vote count)"
