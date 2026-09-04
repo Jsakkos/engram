@@ -116,7 +116,7 @@ class RunTally:
     # complete-on-disk fast path nor the skip-list bypassed it). Denominator
     # for seasons_degraded's share of the run -- see the final-summary hint.
     seasons_attempted: int = 0
-    # Seasons whose result was degraded (OpenSubtitles unavailable, season
+    # Seasons whose result was degraded (some provider never answered, season
     # incomplete) and therefore NOT recorded to subtitle_coverage. This is a
     # QUALIFIER on seasons_attempted, not a disposition parallel to OK /
     # skipped / failed -- a season can be both "done" and "degraded" (it
@@ -486,8 +486,9 @@ def _harvest_show(
         # it, low-coverage seasons get re-attempted every day, burning quota on
         # shows that simply don't have subtitles.
         #
-        # A degraded season is NOT a measurement: OpenSubtitles was unavailable
-        # and the season is incomplete, so 0% says nothing about availability.
+        # A degraded season is NOT a measurement: some provider never answered
+        # (OpenSubtitles, or a scraper whose circuit breaker tripped) and the
+        # season is incomplete, so 0% says nothing about availability.
         # Recording it would skip-list the season for 30 days on the strength of
         # an outage. That defect cost 664 seasons on 2026-06-12; see the
         # harvester-repair spec.
@@ -505,7 +506,7 @@ def _harvest_show(
             tally.seasons_degraded += 1
             logger.warning(
                 f"  {canonical} S{season:02d}: degraded result "
-                f"(OpenSubtitles unavailable, season incomplete); "
+                f"(a provider never answered and the season is incomplete); "
                 "NOT recording coverage so the season is re-measured next run"
             )
 
@@ -593,15 +594,17 @@ def _render_tally(tally: "RunTally") -> str:
 
     # Half or more of the seasons this run actually attempted came back
     # degraded: far more likely a misconfigured run (bad OpenSubtitles
-    # credentials, or the opensubtitlescom package missing) than a brief
-    # mid-run outage. Surfaced so a silently-empty skip-list gets diagnosed
-    # instead of misread as "these shows have little content".
+    # credentials, or the opensubtitlescom package missing) or a scraper
+    # outage than a brief mid-run blip. Surfaced so a silently-empty
+    # skip-list gets diagnosed instead of misread as "these shows have
+    # little content".
     if tally.seasons_attempted and tally.seasons_degraded / tally.seasons_attempted >= 0.5:
         lines.append(
             "  HINT: half or more of the seasons attempted this run were degraded -- "
-            "check the OpenSubtitles credentials (opensubtitles_api_key/username/password) "
-            "and that the opensubtitlescom package is installed, rather than reading this "
-            "as a content problem"
+            "check the OpenSubtitles credentials (opensubtitles_api_key/username/password), "
+            "that the opensubtitlescom package is installed, and the 'never answered' "
+            "warnings above for a scraper outage, rather than reading this as a content "
+            "problem"
         )
 
     return "\n".join(lines)

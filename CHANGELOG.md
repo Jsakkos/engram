@@ -20,6 +20,14 @@ All notable changes to Engram will be documented in this file.
   that exhausted the quota in the first place. Run summaries also credit
   OpenSubtitles correctly instead of reporting its downloads as cache hits.
 
+- **The same protection now covers the subtitle scrapers.** The fix above read
+  only OpenSubtitles' health, so a build where OpenSubtitles was fine but both
+  Addic7ed and TVsubtitles were unreachable still wrote those seasons down as
+  having no subtitles and stopped retrying them for 30 days. A scraper that
+  goes down is now told apart from one that simply has nothing, so a season
+  nobody could reach is left unmeasured and picked up on the next run, and the
+  run summary names the provider that never answered.
+
 ## [0.34.0] - 2026-08-31
 
 _Highlights: run identification and episode matching entirely on your own machine with Ollama or LM Studio._

@@ -270,14 +270,20 @@ class TestDownloadSubtitles:
         _write_precomputed_cache(
             tmp_path, "Arrested Development", season=1, episode_codes=["S01E01", "S01E02"]
         )
-        mock_fetch_eps.return_value = {
-            3: {
-                "code": "S01E03",
-                "status": "downloaded",
-                "path": "x.srt",
-                "source": "addic7ed",
-            }
-        }
+        # (results, failed_providers) -- _fetch_episodes reports scraper
+        # reachability so the heal can tell "nobody has it" from "nobody
+        # answered".
+        mock_fetch_eps.return_value = (
+            {
+                3: {
+                    "code": "S01E03",
+                    "status": "downloaded",
+                    "path": "x.srt",
+                    "source": "addic7ed",
+                }
+            },
+            [],
+        )
 
         result = download_subtitles("Arrested Development", 1)
 

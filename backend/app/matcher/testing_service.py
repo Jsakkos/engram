@@ -138,12 +138,21 @@ def get_last_quota() -> dict | None:
     return _OS.last_quota
 
 
-def _is_degraded(os_failed: bool, episodes: list[dict]) -> bool:
+def _is_degraded(os_failed: bool, episodes: list[dict], *, providers_failed: bool = False) -> bool:
     """Return True when this season's result is NOT a trustworthy measurement.
 
-    Degraded means the OpenSubtitles path did not serve (exhausted quota, login
-    failure, hard error -- at login time OR mid-run) AND the season is not
-    fully retrieved. Quota exhaustion does not respect season boundaries: it
+    Degraded means some part of the cascade did not serve AND the season is not
+    fully retrieved. Two independent failure signals feed the first half:
+    ``os_failed`` (OpenSubtitles exhausted its quota, failed to log in, or hard
+    errored -- at login time OR mid-run) and ``providers_failed`` (a scraper
+    went down hard enough to trip its circuit breaker; see
+    ``provider_scheduler.ProviderHealth.failed``).
+
+    Both doors lead to the same defect. A dead scraper and an unsubtitled
+    episode both surface as ``not_found``, so without the second signal a
+    season whose scrapers were ALL down records as a genuine 0% and is
+    skip-listed for 30 days -- exactly what a June 2026 OpenSubtitles outage
+    did to 664 seasons through the first door. Quota exhaustion does not respect season boundaries: it
     can land mid-loop with a few episodes already downloaded, so requiring
     "nothing at all" would let a partial season (e.g. 3/13) get recorded as a
     real 23% coverage measurement and skip-listed for 30 days on the strength
@@ -151,17 +160,16 @@ def _is_degraded(os_failed: bool, episodes: list[dict]) -> bool:
     Recording NO coverage for such a season instead just costs a retry on the
     next run -- cheap and self-correcting, versus a month-long blind spot.
 
-    Conservative by design in the other direction: a season the OpenSubtitles
-    path fully retrieved, or one where OpenSubtitles was healthy and simply
-    had nothing, is a real measurement and SHOULD be recorded so genuinely
-    dead seasons stop consuming quota.
-
-    This predicate covers the OpenSubtitles half of the cascade ONLY.
-    ``degraded=False`` does not mean the measurement is trustworthy in
-    general -- the scraper cascade (Addic7ed/TVsubtitles) has no equivalent
-    failure signal, which is a known, separate gap.
+    Conservative by design in the other direction: a fully retrieved season is
+    a real measurement whichever provider went down afterwards, because there
+    is no gap left for the outage to have hidden. So is a season where every
+    provider answered and simply had nothing -- that one SHOULD be recorded, so
+    genuinely dead seasons stop consuming quota. One dead scraper plus one
+    healthy one is judged on the same rule: complete records, incomplete
+    degrades, because a partial season cannot distinguish "genuinely absent"
+    from "was behind the dead provider".
     """
-    if not os_failed:
+    if not (os_failed or providers_failed):
         return False
     if not episodes:
         return True
@@ -342,8 +350,12 @@ def _fetch_episodes(
     cache already covers. Per-episode work fans out across the same
     addic7ed/tvsubtitles scheduler the full season download uses for its residual.
 
-    Returns ``{episode_number: result_dict}`` with the same shape as the full
-    download's per-episode results (``code``/``status``/``path``/``source``).
+    Returns ``({episode_number: result_dict}, failed_providers)``. The results
+    share the full download's per-episode shape
+    (``code``/``status``/``path``/``source``); ``failed_providers`` names any
+    scraper that never answered, because a dead provider and an episode nobody
+    has both surface as ``not_found`` and the caller must not record the first
+    as if it were the second.
     """
     from app.matcher.subtitle_utils import find_existing_subtitle
 
@@ -376,18 +388,20 @@ def _fetch_episodes(
             )
         )
 
+    failed_providers: list[str] = []
     if residual_jobs:
         workers = {"addic7ed": Addic7edClient(), "tvsubtitles": TVSubtitlesClient()}
-        scheduler_results = run_jobs(residual_jobs, workers)
+        scheduler_run = run_jobs(residual_jobs, workers)
+        failed_providers = scheduler_run.failed_providers
         for episode in wanted:
             if episode in results:
                 continue
             episode_code = f"S{season:02d}E{episode:02d}"
-            results[episode] = scheduler_results.get(
+            results[episode] = scheduler_run.results.get(
                 episode_code,
                 {"code": episode_code, "status": "not_found", "path": None, "source": None},
             )
-    return results
+    return results, failed_providers
 
 
 def _heal_precomputed_gaps(
@@ -436,7 +450,9 @@ def _heal_precomputed_gaps(
         f"{len(gap_eps)} of {episode_count} episode(s): {', '.join(gap_codes)}; fetching"
     )
     series_cache_dir = cache_path / "data" / corpus_dir_name(tmdb_id, show_name)
-    fetched = _fetch_episodes(resolved_id, show_name, season, gap_eps, series_cache_dir, config)
+    fetched, failed_providers = _fetch_episodes(
+        resolved_id, show_name, season, gap_eps, series_cache_dir, config
+    )
 
     still_missing = [
         fetched[ep]["code"] for ep in gap_eps if fetched.get(ep, {}).get("status") == "not_found"
@@ -463,6 +479,18 @@ def _heal_precomputed_gaps(
     )
     healed["episodes"] = healed_episodes
     healed["total_episodes"] = len(healed_episodes)
+    # The skip dict this copies is unconditionally `degraded: False`, which is
+    # right for a complete precomputed season and wrong for one whose gaps we
+    # just failed to fill because the scrapers were down. Same rule as the full
+    # download: a provider went dark AND something is still missing means the
+    # season was not measured, so the cache builder must not record it.
+    if failed_providers and still_missing:
+        logger.warning(
+            f"{show_name} S{season:02d}: scraper(s) {', '.join(failed_providers)} never "
+            f"answered while healing {len(still_missing)} gap(s); marking degraded so the "
+            "season is re-measured rather than recorded short"
+        )
+        healed["degraded"] = True
     return healed
 
 
@@ -867,12 +895,24 @@ def download_subtitles(
     # a different episode — total wall-time falls from the sum of
     # per-provider times toward their max.
     scheduler_results: dict[str, dict] = {}
+    # Whether any scraper went down hard during this season, as opposed to
+    # merely having nothing. Both look like `not_found` per episode, so this
+    # flag is the only thing that separates them; see _is_degraded.
+    scrapers_failed = False
     if residual_jobs:
         workers = {
             "addic7ed": Addic7edClient(),
             "tvsubtitles": TVSubtitlesClient(),
         }
-        scheduler_results = run_jobs(residual_jobs, workers)
+        scheduler_run = run_jobs(residual_jobs, workers)
+        scheduler_results = scheduler_run.results
+        failed = scheduler_run.failed_providers
+        scrapers_failed = bool(failed)
+        if failed:
+            logger.warning(
+                f"{canonical_show_name} S{season:02d}: scraper(s) {', '.join(failed)} "
+                "never answered; this season's coverage may not be measurable"
+            )
 
     # Re-assemble episode results in episode order.
     episodes = []
@@ -906,9 +946,14 @@ def download_subtitles(
         # True when this result is not a trustworthy measurement -- see
         # _is_degraded. Combines the sticky process-wide login-failure flag
         # with the season-local mid-run failure flag, since either one means
-        # OpenSubtitles did not serve this season. The cache builder skips
-        # coverage recording for these.
-        "degraded": _is_degraded(_OS.failed or os_failed_this_season, episodes),
+        # OpenSubtitles did not serve this season, plus the scraper cascade's
+        # own reachability verdict. The cache builder skips coverage recording
+        # for these.
+        "degraded": _is_degraded(
+            _OS.failed or os_failed_this_season,
+            episodes,
+            providers_failed=scrapers_failed,
+        ),
     }
 
 
