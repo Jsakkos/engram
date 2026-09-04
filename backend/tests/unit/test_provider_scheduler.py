@@ -68,14 +68,14 @@ class TestSingleProvider:
     def test_one_job_one_provider_success(self, tmp_path):
         job = _make_job(srt_target=tmp_path / "ep.srt")
         client = _writing_client()
-        results = run_jobs([job], workers={"addic7ed": client}, timeout=5)
+        results = run_jobs([job], workers={"addic7ed": client}, timeout=5).results
         assert results["S01E01"]["status"] == "downloaded"
         assert results["S01E01"]["source"] == "addic7ed"
         assert Path(results["S01E01"]["path"]).read_text().startswith("1\n")
 
     def test_one_job_one_provider_not_found(self, tmp_path):
         job = _make_job(srt_target=tmp_path / "ep.srt")
-        results = run_jobs([job], workers={"addic7ed": _missing_client()}, timeout=5)
+        results = run_jobs([job], workers={"addic7ed": _missing_client()}, timeout=5).results
         assert results["S01E01"]["status"] == "not_found"
         assert results["S01E01"]["source"] is None
 
@@ -88,7 +88,7 @@ class TestProviderCascade:
             srt_target=tmp_path / "ep.srt",
         )
         workers = {"addic7ed": _missing_client(), "podnapisi": _writing_client()}
-        results = run_jobs([job], workers=workers, timeout=5)
+        results = run_jobs([job], workers=workers, timeout=5).results
         assert results["S01E01"]["status"] == "downloaded"
         assert results["S01E01"]["source"] == "podnapisi"
 
@@ -102,7 +102,7 @@ class TestProviderCascade:
             "podnapisi": _missing_client(),
             "tvsubtitles": _missing_client(),
         }
-        results = run_jobs([job], workers=workers, timeout=5)
+        results = run_jobs([job], workers=workers, timeout=5).results
         assert results["S01E01"]["status"] == "not_found"
 
     def test_provider_exception_advances_to_next(self, tmp_path):
@@ -117,7 +117,7 @@ class TestProviderCascade:
             "addic7ed": _failing_client(RuntimeError("simulated 503")),
             "podnapisi": _writing_client(),
         }
-        results = run_jobs([job], workers=workers, timeout=5)
+        results = run_jobs([job], workers=workers, timeout=5).results
         assert results["S01E01"]["status"] == "downloaded"
         assert results["S01E01"]["source"] == "podnapisi"
 
@@ -141,7 +141,7 @@ class TestProviderCascade:
             srt_target=tmp_path / "ep.srt",
         )
         workers = {"addic7ed": client_bad, "podnapisi": _writing_client()}
-        results = run_jobs([job], workers=workers, timeout=5)
+        results = run_jobs([job], workers=workers, timeout=5).results
         assert results["S01E01"]["status"] == "downloaded"
         assert results["S01E01"]["source"] == "podnapisi"
 
@@ -155,7 +155,7 @@ class TestMissingWorker:
             providers=["does_not_exist", "addic7ed"],
             srt_target=tmp_path / "ep.srt",
         )
-        results = run_jobs([job], workers={"addic7ed": _writing_client()}, timeout=5)
+        results = run_jobs([job], workers={"addic7ed": _writing_client()}, timeout=5).results
         assert results["S01E01"]["status"] == "downloaded"
         assert results["S01E01"]["source"] == "addic7ed"
 
@@ -164,7 +164,7 @@ class TestMissingWorker:
             providers=["does_not_exist"],
             srt_target=tmp_path / "ep.srt",
         )
-        results = run_jobs([job], workers={"addic7ed": _writing_client()}, timeout=5)
+        results = run_jobs([job], workers={"addic7ed": _writing_client()}, timeout=5).results
         assert results["S01E01"]["status"] == "not_found"
 
 
@@ -185,7 +185,9 @@ class TestConcurrency:
         podnapisi = _writing_client(
             "1\n00:00:00,000 --> 00:00:02,000\nfrom P, padded to satisfy validator.\n"
         )
-        results = run_jobs(jobs, workers={"addic7ed": addic7ed, "podnapisi": podnapisi}, timeout=5)
+        results = run_jobs(
+            jobs, workers={"addic7ed": addic7ed, "podnapisi": podnapisi}, timeout=5
+        ).results
         assert results["S01E01"]["source"] == "addic7ed"
         assert results["S01E02"]["source"] == "podnapisi"
         assert results["S01E03"]["source"] == "addic7ed"
@@ -221,7 +223,7 @@ class TestConcurrency:
         workers = {"a": slow_client("A"), "b": slow_client("B"), "c": slow_client("C")}
 
         start = time.monotonic()
-        results = run_jobs(jobs, workers=workers, timeout=5)
+        results = run_jobs(jobs, workers=workers, timeout=5).results
         elapsed = time.monotonic() - start
 
         assert len(results) == 3
@@ -235,7 +237,7 @@ class TestConcurrency:
 @pytest.mark.unit
 class TestEmptyInput:
     def test_no_jobs_returns_empty(self):
-        results = run_jobs([], workers={"addic7ed": _missing_client()})
+        results = run_jobs([], workers={"addic7ed": _missing_client()}).results
         assert results == {}
 
 
@@ -307,9 +309,166 @@ class TestCircuitBreakerIntegration:
             )
             for i in range(1, 7)  # 6 jobs; default threshold is 3
         ]
-        results = run_jobs(jobs, workers={"addic7ed": addic7ed, "podnapisi": podnapisi}, timeout=5)
+        results = run_jobs(
+            jobs, workers={"addic7ed": addic7ed, "podnapisi": podnapisi}, timeout=5
+        ).results
         # Every job still resolved via the healthy fallback.
         assert all(results[f"S01E{i:02d}"]["source"] == "podnapisi" for i in range(1, 7))
         # But the dead provider was hit only `threshold` (3) times — jobs 4-6
         # skipped it entirely instead of each paying a failed call.
         assert addic7ed.get_best_subtitle.call_count == 3
+
+
+@pytest.mark.unit
+class TestProviderHealth:
+    """``run_jobs`` must distinguish "this provider had nothing" from "this
+    provider never answered". Without that, a season whose scrapers were all
+    down looks identical to a season nobody ever subtitled, gets recorded at
+    0% coverage, and is skip-listed for 30 days on the strength of an outage.
+    """
+
+    def test_missing_client_is_not_a_failure(self, tmp_path):
+        """A clean miss means the provider RESPONDED. It is reachable and
+        genuinely had nothing, which is a real measurement."""
+        job = _make_job(srt_target=tmp_path / "ep.srt")
+        run = run_jobs([job], workers={"addic7ed": _missing_client()}, timeout=5)
+
+        assert run.results["S01E01"]["status"] == "not_found"
+        assert run.failed_providers == []
+        health = run.provider_health["addic7ed"]
+        assert health.responded is True
+        assert health.transport_failures == 0
+        assert health.breaker_tripped is False
+
+    def test_down_provider_is_reported_failed(self, tmp_path):
+        """Enough consecutive transport failures to trip the breaker means the
+        provider never answered. The per-episode results are unchanged
+        (``not_found``) -- that is exactly why the old contract could not tell
+        this case apart."""
+        jobs = [_make_job(episode=i, srt_target=tmp_path / f"ep{i}.srt") for i in range(1, 6)]
+        run = run_jobs(
+            jobs,
+            workers={"addic7ed": _failing_client(ConnectionError("down"))},
+            timeout=5,
+        )
+
+        assert all(r["status"] == "not_found" for r in run.results.values())
+        assert run.failed_providers == ["addic7ed"]
+        health = run.provider_health["addic7ed"]
+        assert health.responded is False
+        assert health.breaker_tripped is True
+        assert health.transport_failures >= 3
+
+    def test_one_transient_failure_is_not_a_failed_provider(self, tmp_path):
+        """A single exception below the breaker threshold is routine scraper
+        noise. Flagging on it would mark nearly every season degraded, so no
+        coverage row would ever be written again."""
+        client = Mock()
+        client.get_best_subtitle.side_effect = [ConnectionError("blip"), None, None]
+        jobs = [_make_job(episode=i, srt_target=tmp_path / f"ep{i}.srt") for i in range(1, 4)]
+        run = run_jobs(jobs, workers={"addic7ed": client}, timeout=5)
+
+        health = run.provider_health["addic7ed"]
+        assert health.transport_failures == 1
+        assert health.breaker_tripped is False
+        assert run.failed_providers == []
+
+    def test_healthy_provider_alongside_dead_one(self, tmp_path):
+        """One dead scraper does not taint the other's verdict."""
+        jobs = [_make_job(episode=i, providers=["addic7ed", "tvsubtitles"]) for i in range(1, 6)]
+        for i, job in enumerate(jobs, start=1):
+            job.srt_target = tmp_path / f"ep{i}.srt"
+        run = run_jobs(
+            jobs,
+            workers={
+                "addic7ed": _failing_client(ConnectionError("down")),
+                "tvsubtitles": _writing_client(),
+            },
+            timeout=5,
+        )
+
+        assert all(r["status"] == "downloaded" for r in run.results.values())
+        assert run.failed_providers == ["addic7ed"]
+        assert run.provider_health["tvsubtitles"].responded is True
+
+    def test_breaker_starts_closed_every_run(self, tmp_path):
+        """``run_jobs`` builds a fresh Scheduler per call and
+        ``download_subtitles`` calls it once per season, so breaker state is
+        season-local: a provider can never be breaker-open for a season it
+        never attempted. Pinned because making breakers process-global (a
+        separate follow-up) would invalidate it, and the degraded rule would
+        then need a never-attempted case."""
+        jobs = [_make_job(episode=i, srt_target=tmp_path / f"a{i}.srt") for i in range(1, 6)]
+        first = run_jobs(jobs, workers={"addic7ed": _failing_client(ConnectionError())}, timeout=5)
+        assert first.provider_health["addic7ed"].breaker_tripped is True
+
+        second = run_jobs(
+            [_make_job(srt_target=tmp_path / "b.srt")],
+            workers={"addic7ed": _missing_client()},
+            timeout=5,
+        )
+        assert second.provider_health["addic7ed"].breaker_tripped is False
+        assert second.provider_health["addic7ed"].skipped_by_breaker == 0
+        assert second.failed_providers == []
+
+    def test_empty_job_list_reports_health_for_registered_workers(self):
+        """Shape stays total: no jobs means no failures, not a missing key."""
+        run = run_jobs([], workers={"addic7ed": _missing_client()})
+        assert run.results == {}
+        assert run.failed_providers == []
+        assert run.provider_health["addic7ed"].responded is False
+
+
+@pytest.mark.unit
+class TestProviderHealthSmallBatches:
+    """The breaker needs three consecutive failures to trip, but a batch can be
+    smaller than three. ``_fetch_episodes`` healing a precomputed gap typically
+    asks for one or two episodes, so a completely dead provider could never
+    trip within that call and the season was recorded as a real absence -- the
+    protection was weakest exactly where it is most often exercised."""
+
+    def test_single_job_dead_provider_is_still_failed(self, tmp_path):
+        job = _make_job(srt_target=tmp_path / "ep.srt")
+        run = run_jobs(
+            [job], workers={"addic7ed": _failing_client(ConnectionError("down"))}, timeout=5
+        )
+
+        health = run.provider_health["addic7ed"]
+        assert health.breaker_tripped is False, "one failure cannot trip a threshold of three"
+        assert health.responded is False
+        assert run.failed_providers == ["addic7ed"]
+
+    def test_two_jobs_dead_provider_is_still_failed(self, tmp_path):
+        jobs = [_make_job(episode=i, srt_target=tmp_path / f"ep{i}.srt") for i in (1, 2)]
+        run = run_jobs(
+            jobs, workers={"addic7ed": _failing_client(ConnectionError("down"))}, timeout=5
+        )
+        assert run.failed_providers == ["addic7ed"]
+
+    def test_a_provider_that_answered_once_is_not_failed_by_a_later_blip(self, tmp_path):
+        """The guard against over-flagging: a provider that answered at all is
+        reachable, so a subsequent exception is noise, not an outage. This is
+        the case that ruled out keying on ``transport_failures > 0`` alone."""
+        client = Mock()
+        client.get_best_subtitle.side_effect = [None, ConnectionError("blip"), None]
+        jobs = [_make_job(episode=i, srt_target=tmp_path / f"ep{i}.srt") for i in range(1, 4)]
+        run = run_jobs(jobs, workers={"addic7ed": client}, timeout=5)
+
+        health = run.provider_health["addic7ed"]
+        assert health.responded is True
+        assert health.transport_failures == 1
+        assert run.failed_providers == []
+
+    def test_never_asked_provider_is_not_failed(self, tmp_path):
+        """A registered provider the cascade never reached has no evidence
+        either way, and absence of evidence must not read as failure."""
+        job = _make_job(providers=["addic7ed"], srt_target=tmp_path / "ep.srt")
+        run = run_jobs(
+            job and [job],
+            workers={"addic7ed": _writing_client(), "tvsubtitles": _failing_client(OSError())},
+            timeout=5,
+        )
+
+        assert run.provider_health["tvsubtitles"].transport_failures == 0
+        assert run.provider_health["tvsubtitles"].responded is False
+        assert run.failed_providers == []

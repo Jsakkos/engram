@@ -18,13 +18,14 @@ import tarfile
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 import app.services.config_service as cfg_svc
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import EpisodeMatcher, TfidfMatcher
+from app.matcher.provider_scheduler import ProviderHealth, SchedulerRun
 from app.matcher.subtitle_utils import corpus_dir_name
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
@@ -1031,6 +1032,103 @@ class TestHarvestShowDegradedSuppressesCoverageRow:
         # A real (non-degraded) below-threshold season keeps its content
         # conclusion and its counter -- only the degraded case is suppressed.
         assert tally.seasons_skipped_below_threshold == 1
+
+
+@pytest.mark.unit
+class TestScraperOutageWritesNoCoverageRow:
+    """The second door, end to end and unmocked between the layers: the real
+    ``download_subtitles`` runs under ``_harvest_show`` with OpenSubtitles
+    healthy-but-empty and both scrapers down. Before the scheduler surfaced
+    provider health this recorded a 0% row and skip-listed the season for 30
+    days -- the same defect the OpenSubtitles fix repaired, reached through
+    the scrapers."""
+
+    @staticmethod
+    def _args():
+        return type(
+            "Args",
+            (),
+            {
+                "min_episodes_ratio": 0.6,
+                "sleep": 0,
+                "retry_low_coverage": True,
+                "refresh": True,
+                "skip_window_days": 30,
+            },
+        )()
+
+    @staticmethod
+    def _config(tmp_path):
+        cfg = SimpleNamespace(
+            subtitles_cache_path=str(tmp_path),
+            opensubtitles_api_key="key",
+            opensubtitles_username="user",
+            opensubtitles_password="pass",
+            tmdb_api_key="tmdb-key",
+        )
+        return cfg
+
+    @contextmanager
+    def _healthy_os_dead_scrapers(self, tmp_path, scheduler_run):
+        import app.matcher.testing_service as ts
+
+        with (
+            patch.object(ts._OS, "failed", False),
+            patch(
+                "app.services.config_service.get_config_sync", return_value=self._config(tmp_path)
+            ),
+            patch.object(ts, "fetch_show_details", return_value={"name": "Outage Show"}),
+            patch.object(ts, "fetch_season_details", return_value=4),
+            patch.object(ts, "fetch_season_episodes", return_value=[]),
+            patch.object(ts, "_precomputed_skip_result", return_value=None),
+            patch.object(ts, "_get_os_client", return_value=Mock()),
+            patch.object(ts, "os_api_call", return_value=Mock(data=[])),
+            patch.object(ts, "run_jobs", return_value=scheduler_run),
+        ):
+            yield
+
+    def _scheduler_run(self, failed):
+        health = {
+            name: ProviderHealth(
+                name=name,
+                responded=name not in failed,
+                transport_failures=3 if name in failed else 0,
+                breaker_tripped=name in failed,
+                skipped_by_breaker=0,
+            )
+            for name in ("addic7ed", "tvsubtitles")
+        }
+        return SchedulerRun(results={}, provider_health=health)
+
+    def test_all_scrapers_down_writes_no_coverage_row(self, bsc, tmp_path):
+        show = {"name": "Outage Show", "tmdb_id": 9202, "seasons": 1}
+        tally = bsc.RunTally()
+
+        with self._healthy_os_dead_scrapers(
+            tmp_path, self._scheduler_run(("addic7ed", "tvsubtitles"))
+        ):
+            bsc._harvest_show(show, self._args(), tally, tmp_path)
+
+        assert coverage_tracker.get_show_coverage(9202) == [], (
+            "scrapers that never answered must not be recorded as a season with "
+            "no subtitles; that skip-lists it for 30 days on an outage"
+        )
+        assert tally.seasons_degraded == 1
+
+    def test_healthy_scrapers_finding_nothing_still_writes_a_row(self, bsc, tmp_path):
+        """The control. Identical on the wire (every episode not_found) but the
+        providers answered, so this IS a measurement and must be recorded --
+        otherwise genuinely unsubtitled seasons are re-harvested forever."""
+        show = {"name": "Outage Show", "tmdb_id": 9203, "seasons": 1}
+        tally = bsc.RunTally()
+
+        with self._healthy_os_dead_scrapers(tmp_path, self._scheduler_run(())):
+            bsc._harvest_show(show, self._args(), tally, tmp_path)
+
+        rows = coverage_tracker.get_show_coverage(9203)
+        assert len(rows) == 1
+        assert rows[0]["coverage_ratio"] == 0.0
+        assert tally.seasons_degraded == 0
 
 
 @pytest.mark.unit

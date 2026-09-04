@@ -16,7 +16,11 @@ Public surface:
 - ``EpisodeJob`` — dataclass describing one episode's lifecycle.
 - ``ProviderWorker`` — thread that pulls jobs for one provider.
 - ``Scheduler`` — wires workers together and waits for completion.
-- ``run_jobs(jobs, workers)`` — convenience entry point.
+- ``ProviderHealth`` / ``SchedulerRun`` -- per-provider reachability, so a
+  caller can tell "this provider had nothing" from "this provider never
+  answered".
+- ``run_jobs(jobs, workers)`` — convenience entry point; returns a
+  ``SchedulerRun``, not a bare results dict.
 
 Worker contract (any provider):
 - ``client.get_best_subtitle(show, season, episode) -> entry | None``
@@ -79,6 +83,78 @@ class EpisodeJob:
     result: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class ProviderHealth:
+    """One provider's reachability across a scheduler run.
+
+    ``responded`` is the load-bearing field: the worker calls
+    ``record_success`` for a hit, a clean miss AND an unusable download,
+    because all three mean the provider answered. Only an exception is a
+    ``transport_failure``. That is the difference between "this provider had
+    nothing" (a real measurement of the content) and "this provider never
+    answered" (a measurement of our infrastructure, which must not be
+    recorded as a fact about the show).
+    """
+
+    name: str
+    responded: bool
+    transport_failures: int
+    breaker_tripped: bool
+    skipped_by_breaker: int
+
+    @property
+    def failed(self) -> bool:
+        """True when this provider is down, not merely unlucky.
+
+        Two ways to reach that verdict, because the breaker alone cannot see a
+        small batch. The breaker needs three CONSECUTIVE transport failures,
+        and a batch can be smaller than three: ``_fetch_episodes`` healing a
+        precomputed gap usually asks for one or two episodes, so a completely
+        dead provider would never trip inside that call and the gap would be
+        recorded as a genuine absence. Hence the second clause: a provider that
+        raised on every attempt and never once answered is down on this batch's
+        own evidence, whatever the threshold says.
+
+        ``not responded`` is what keeps that second clause honest, and it is
+        why the rule is not simply ``transport_failures > 0``. A lone exception
+        partway through a season a provider is otherwise serving is routine
+        noise; flagging on it would mark nearly every season degraded, so the
+        cache builder would stop recording coverage entirely and re-harvest the
+        whole corpus forever. A provider that answered even once is reachable,
+        so later blips do not condemn it.
+
+        A provider the cascade never reached has no failures and no responses,
+        and stays unflagged: absence of evidence is not evidence of an outage.
+        """
+        if self.breaker_tripped or self.skipped_by_breaker > 0:
+            return True
+        return self.transport_failures > 0 and not self.responded
+
+
+@dataclass(frozen=True)
+class SchedulerRun:
+    """A scheduler run's per-episode results plus per-provider health.
+
+    ``run_jobs`` returns this rather than the bare results dict it used to,
+    because the results dict cannot express the difference above: a dead
+    provider and an unsubtitled episode both come back ``not_found``. The
+    subtitle-cache builder read that ambiguity as genuine zero coverage and
+    skip-listed 664 seasons for 30 days during a June 2026 outage.
+
+    A dataclass rather than a dict subclass carrying an attribute: a stale
+    mock returning a plain ``{}`` must fail loudly here, not silently report
+    "no providers failed" and reintroduce the very defect this closes.
+    """
+
+    results: dict[str, dict[str, Any]]
+    provider_health: dict[str, ProviderHealth]
+
+    @property
+    def failed_providers(self) -> list[str]:
+        """Registered providers that never answered, in registration order."""
+        return [name for name, health in self.provider_health.items() if health.failed]
+
+
 class _CircuitBreaker:
     """Per-provider circuit breaker.
 
@@ -114,6 +190,15 @@ class _CircuitBreaker:
         self._opened_at = 0.0
         self._cooldown = base_cooldown
         self._probe_in_flight = False
+        # Run-scoped health tallies. The breaker already computes the only
+        # distinction that matters to the cache builder -- a miss or an
+        # unusable download calls record_success because the provider
+        # RESPONDED, while only an exception counts as a failure -- so these
+        # just stop that verdict being thrown away. See ProviderHealth.
+        self._total_failures = 0
+        self._ever_opened = False
+        self._ever_responded = False
+        self._skipped_while_open = 0
 
     def allow(self, now: float | None = None) -> bool:
         """True if a job may be sent to this provider right now."""
@@ -122,11 +207,13 @@ class _CircuitBreaker:
             if not self._open:
                 return True
             if now - self._opened_at < self._cooldown:
+                self._skipped_while_open += 1
                 return False
             # Cooldown elapsed → half-open. Let exactly ONE probe through; its
             # outcome (record_success / record_failure) decides what happens
             # next. Concurrent callers see probe_in_flight and stay blocked.
             if self._probe_in_flight:
+                self._skipped_while_open += 1
                 return False
             self._probe_in_flight = True
             logger.info(f"{self.name} circuit half-open: probing recovery")
@@ -137,6 +224,7 @@ class _CircuitBreaker:
         with self._lock:
             if self._open:
                 logger.info(f"{self.name} circuit closed (recovered)")
+            self._ever_responded = True
             self._consecutive_failures = 0
             self._open = False
             self._probe_in_flight = False
@@ -148,6 +236,7 @@ class _CircuitBreaker:
         with self._lock:
             was_probe = self._probe_in_flight
             self._probe_in_flight = False
+            self._total_failures += 1
             if self._open:
                 # A probe failed → stay open and back off further. Stragglers
                 # (jobs dispatched just before the trip) failing while already
@@ -163,12 +252,24 @@ class _CircuitBreaker:
             self._consecutive_failures += 1
             if self._consecutive_failures >= self.failure_threshold:
                 self._open = True
+                self._ever_opened = True
                 self._opened_at = now
                 self._cooldown = self.base_cooldown
                 logger.warning(
                     f"{self.name} circuit opened after {self._consecutive_failures} "
                     f"consecutive failures; skipping it for {self._cooldown:.0f}s"
                 )
+
+    def health(self) -> ProviderHealth:
+        """Snapshot this provider's reachability for the run so far."""
+        with self._lock:
+            return ProviderHealth(
+                name=self.name,
+                responded=self._ever_responded,
+                transport_failures=self._total_failures,
+                breaker_tripped=self._ever_opened,
+                skipped_by_breaker=self._skipped_while_open,
+            )
 
 
 class ProviderWorker(threading.Thread):
@@ -297,6 +398,10 @@ class Scheduler:
         if breaker is not None:
             breaker.record_success()
 
+    def provider_health(self) -> dict[str, ProviderHealth]:
+        """Per-provider reachability for the run so far, keyed by name."""
+        return {name: breaker.health() for name, breaker in self._breakers.items()}
+
     def run(
         self, jobs: list[EpisodeJob], timeout: float | None = None
     ) -> dict[str, dict[str, Any]]:
@@ -385,14 +490,38 @@ def run_jobs(
     jobs: list[EpisodeJob],
     workers: dict[str, SubtitleProviderClient],
     timeout: float | None = None,
-) -> dict[str, dict[str, Any]]:
+) -> SchedulerRun:
     """One-shot helper: create a scheduler, register workers, run, shut
     down. Suitable when the caller (e.g. ``download_subtitles``) handles
-    one season at a time and doesn't need to reuse worker state."""
+    one season at a time and doesn't need to reuse worker state.
+
+    Returns a ``SchedulerRun`` (``.results`` plus ``.provider_health``), not a
+    bare results dict, so the caller can tell a dead provider from an
+    unsubtitled episode.
+
+    Because a fresh ``Scheduler`` is built here per call, breaker state is
+    scoped to this batch. ``download_subtitles`` calls this once per season, so
+    every breaker starts closed at a season boundary and a trip always means
+    "this provider went down during THIS season". If breakers are ever made
+    process-global (a separate follow-up, to stop re-paying a dead provider's
+    timeouts each season), that stops being true and a provider could be
+    breaker-open for a season it never attempted; such a season would then have
+    to count as failed too, for the same reason a mid-season trip does.
+    """
     scheduler = Scheduler()
     for name, client in workers.items():
         scheduler.register(name, client)
     try:
-        return scheduler.run(jobs, timeout=timeout)
+        results = scheduler.run(jobs, timeout=timeout)
+        health = scheduler.provider_health()
     finally:
         scheduler.shutdown()
+
+    for name in [n for n, h in health.items() if h.failed]:
+        detail = health[name]
+        logger.warning(
+            f"Provider {name} never answered this batch: "
+            f"{detail.transport_failures} transport failure(s), "
+            f"{detail.skipped_by_breaker} job(s) skipped with the circuit open"
+        )
+    return SchedulerRun(results=results, provider_health=health)

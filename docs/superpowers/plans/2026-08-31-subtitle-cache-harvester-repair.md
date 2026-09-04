@@ -1048,6 +1048,11 @@ This is irreversible and returns ~978 seasons to the unmeasured pool, costing se
 
 ## Known gap, deliberately out of scope: the scrapers have no failure signal
 
+> **CLOSED 2026-09-03.** `run_jobs` now returns a `SchedulerRun` carrying per-provider
+> health, and `_is_degraded` takes a `providers_failed` axis alongside the OpenSubtitles
+> one. Design: `docs/superpowers/specs/2026-09-03-scraper-failure-signal-design.md`.
+> The analysis below is kept as the diagnosis that motivated it.
+
 `_is_degraded` covers the OpenSubtitles half of the cascade only. The scraper
 scheduler (`app/matcher/provider_scheduler.py`) emits exactly two per-episode
 statuses, `downloaded` and `not_found`, and its `_CircuitBreaker` trips after three
