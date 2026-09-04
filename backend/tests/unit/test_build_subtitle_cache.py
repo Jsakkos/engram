@@ -1031,3 +1031,70 @@ class TestHarvestShowDegradedSuppressesCoverageRow:
         # A real (non-degraded) below-threshold season keeps its content
         # conclusion and its counter -- only the degraded case is suppressed.
         assert tally.seasons_skipped_below_threshold == 1
+
+
+@pytest.mark.unit
+class TestEnsureUtf8Output:
+    """A non-ASCII show title must never be able to abort a harvest.
+
+    On Windows both a legacy console and a redirected pipe default to the ANSI
+    codepage (cp1252). Rich repaints the progress bar through that stream, so
+    the single title "Shogun" (spelled with a macron) raised UnicodeEncodeError
+    and killed a real 448-show run at show 179, throwing away the packaging
+    step for the 178 shows that had already succeeded.
+    """
+
+    def test_reconfigures_a_cp1252_stream_to_utf8(self, bsc):
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp1252")
+        assert stream.encoding.lower().replace("-", "") in ("cp1252", "windows1252")
+
+        bsc._ensure_utf8_output(stream)
+
+        assert stream.encoding.lower() == "utf-8"
+        stream.write("Shōgun")
+        stream.flush()
+        assert "Shōgun".encode() in raw.getvalue()
+
+    def test_undecodable_character_is_replaced_not_raised(self, bsc):
+        """errors="replace" is the half that makes this non-fatal: even if some
+        future stream cannot represent a character, a harvest must not die."""
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp1252")
+        bsc._ensure_utf8_output(stream)
+        assert stream.errors == "replace"
+
+    def test_stream_without_reconfigure_is_skipped(self, bsc):
+        bsc._ensure_utf8_output(object())
+
+    def test_reconfigure_failure_is_not_fatal(self, bsc):
+        class Detached:
+            encoding = "cp1252"
+
+            def reconfigure(self, **kwargs):
+                raise ValueError("underlying buffer has been detached")
+
+        bsc._ensure_utf8_output(Detached())
+
+    def test_a_malformed_reconfigure_is_not_fatal(self, bsc):
+        """The docstring promises that failing to change an encoding is never
+        worse than the crash it prevents. An object whose `reconfigure` is not
+        a callable taking these kwargs raises TypeError, so the catch has to be
+        broad enough to honour that promise."""
+
+        class Malformed:
+            reconfigure = "not callable"
+
+        bsc._ensure_utf8_output(Malformed())
+
+    def test_a_reconfigure_raising_anything_is_not_fatal(self, bsc):
+        class Hostile:
+            def reconfigure(self, **kwargs):
+                raise RuntimeError("some future stream implementation")
+
+        bsc._ensure_utf8_output(Hostile())
+
+    def test_accepts_several_streams(self, bsc):
+        streams = [io.TextIOWrapper(io.BytesIO(), encoding="cp1252") for _ in range(2)]
+        bsc._ensure_utf8_output(*streams)
+        assert [s.encoding.lower() for s in streams] == ["utf-8", "utf-8"]
