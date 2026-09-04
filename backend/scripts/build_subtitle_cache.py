@@ -169,7 +169,14 @@ def _ensure_utf8_output(*streams) -> None:
             continue
         try:
             reconfigure(encoding="utf-8", errors="replace")
-        except (ValueError, OSError) as exc:
+        # Deliberately broad. A detached buffer raises ValueError and a bad
+        # descriptor raises OSError, but an object carrying a `reconfigure`
+        # attribute that is not a callable taking these kwargs raises
+        # TypeError, and anything that escapes here would defeat the whole
+        # point of this function: failing to CHANGE an encoding must never be
+        # worse than the crash it is preventing. This runs once at startup,
+        # so a broad catch costs nothing and cannot mask a later error.
+        except Exception as exc:  # noqa: BLE001
             logger.debug(f"Could not force UTF-8 on {stream!r} (non-fatal): {exc}")
 
 

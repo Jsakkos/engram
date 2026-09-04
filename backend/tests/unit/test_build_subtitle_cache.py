@@ -1076,6 +1076,24 @@ class TestEnsureUtf8Output:
 
         bsc._ensure_utf8_output(Detached())
 
+    def test_a_malformed_reconfigure_is_not_fatal(self, bsc):
+        """The docstring promises that failing to change an encoding is never
+        worse than the crash it prevents. An object whose `reconfigure` is not
+        a callable taking these kwargs raises TypeError, so the catch has to be
+        broad enough to honour that promise."""
+
+        class Malformed:
+            reconfigure = "not callable"
+
+        bsc._ensure_utf8_output(Malformed())
+
+    def test_a_reconfigure_raising_anything_is_not_fatal(self, bsc):
+        class Hostile:
+            def reconfigure(self, **kwargs):
+                raise RuntimeError("some future stream implementation")
+
+        bsc._ensure_utf8_output(Hostile())
+
     def test_accepts_several_streams(self, bsc):
         streams = [io.TextIOWrapper(io.BytesIO(), encoding="cp1252") for _ in range(2)]
         bsc._ensure_utf8_output(*streams)
