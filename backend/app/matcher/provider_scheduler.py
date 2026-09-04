@@ -106,14 +106,29 @@ class ProviderHealth:
     def failed(self) -> bool:
         """True when this provider is down, not merely unlucky.
 
-        Deliberately keyed to the breaker trip rather than to
-        ``transport_failures > 0``. A lone scraper exception is routine noise;
-        treating it as a failure would mark nearly every season degraded, so
-        the cache builder would stop recording coverage entirely and re-harvest
-        the whole corpus forever. Three consecutive transport failures is the
-        already-tuned "this provider is down" verdict, so reuse it.
+        Two ways to reach that verdict, because the breaker alone cannot see a
+        small batch. The breaker needs three CONSECUTIVE transport failures,
+        and a batch can be smaller than three: ``_fetch_episodes`` healing a
+        precomputed gap usually asks for one or two episodes, so a completely
+        dead provider would never trip inside that call and the gap would be
+        recorded as a genuine absence. Hence the second clause: a provider that
+        raised on every attempt and never once answered is down on this batch's
+        own evidence, whatever the threshold says.
+
+        ``not responded`` is what keeps that second clause honest, and it is
+        why the rule is not simply ``transport_failures > 0``. A lone exception
+        partway through a season a provider is otherwise serving is routine
+        noise; flagging on it would mark nearly every season degraded, so the
+        cache builder would stop recording coverage entirely and re-harvest the
+        whole corpus forever. A provider that answered even once is reachable,
+        so later blips do not condemn it.
+
+        A provider the cascade never reached has no failures and no responses,
+        and stays unflagged: absence of evidence is not evidence of an outage.
         """
-        return self.breaker_tripped or self.skipped_by_breaker > 0
+        if self.breaker_tripped or self.skipped_by_breaker > 0:
+            return True
+        return self.transport_failures > 0 and not self.responded
 
 
 @dataclass(frozen=True)

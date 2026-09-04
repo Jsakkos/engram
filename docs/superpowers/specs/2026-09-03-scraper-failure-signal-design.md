@@ -47,12 +47,26 @@ Plus 12 call sites in `tests/unit/test_provider_scheduler.py` and 7
 `record_success` because the provider *responded*. That is exactly "this provider had
 nothing" versus "this provider never answered".
 
-A provider is **failed for this season** when its breaker tripped, or a job was
-fast-skipped because its breaker was open. Deliberately NOT "had at least one transport
-failure": a single transient scraper exception is routine, and flagging on it would mark
-nearly every season degraded, write no coverage rows at all, and walk straight into the
-other known gap ("a persistently degraded corpus is re-measured forever"). Three
-consecutive transport failures is an already-tuned "this provider is down" verdict.
+A provider is **failed for this season** when its breaker tripped, a job was
+fast-skipped because its breaker was open, **or** it raised on every attempt and never
+once answered.
+
+The breaker is the primary signal because three consecutive transport failures is an
+already-tuned "this provider is down" verdict. The third clause exists because the
+breaker cannot see a small batch: it needs three consecutive failures, and
+`_fetch_episodes` healing a precomputed gap usually asks for one or two episodes, so a
+completely dead provider would never trip inside that call and the gap would be recorded
+as a genuine absence. That left the protection weakest exactly where the heal path
+exercises it most often.
+
+The rule is still deliberately NOT "had at least one transport failure". The
+`never answered` qualifier is what keeps the third clause honest: a lone exception
+partway through a season the provider is otherwise serving is routine noise, and flagging
+on it would mark nearly every season degraded, write no coverage rows at all, and walk
+straight into the other known gap ("a persistently degraded corpus is re-measured
+forever"). A provider that answered even once is reachable, so later blips do not condemn
+it, and a provider the cascade never reached has neither failures nor responses and stays
+unflagged.
 
 ### 2. Combination rule
 
@@ -144,6 +158,11 @@ Assert observable effects, not mock call counts, per what worked in PR #631:
   unchanged for existing consumers).
 - `run_jobs` against a client that only ever misses: `failed_providers` is empty
   (responded, had nothing).
+- `run_jobs` on batches of one and two jobs against a dead client: still reported failed,
+  below the breaker threshold. Plus the two over-flag guards -- a provider that answered
+  once then raised is not failed, and a provider never asked is not failed.
+- The heal path end to end through the REAL scheduler (not a fabricated `SchedulerRun`)
+  with a one-episode gap and dead clients.
 - `download_subtitles` end to end with healthy OpenSubtitles and dead scrapers, asserting
   `result["degraded"] is True` -- the exact scenario that is silently mis-recorded today.
 - Build-script level: `_should_record_coverage` declines, so no coverage row is written.

@@ -417,3 +417,58 @@ class TestProviderHealth:
         assert run.results == {}
         assert run.failed_providers == []
         assert run.provider_health["addic7ed"].responded is False
+
+
+@pytest.mark.unit
+class TestProviderHealthSmallBatches:
+    """The breaker needs three consecutive failures to trip, but a batch can be
+    smaller than three. ``_fetch_episodes`` healing a precomputed gap typically
+    asks for one or two episodes, so a completely dead provider could never
+    trip within that call and the season was recorded as a real absence -- the
+    protection was weakest exactly where it is most often exercised."""
+
+    def test_single_job_dead_provider_is_still_failed(self, tmp_path):
+        job = _make_job(srt_target=tmp_path / "ep.srt")
+        run = run_jobs(
+            [job], workers={"addic7ed": _failing_client(ConnectionError("down"))}, timeout=5
+        )
+
+        health = run.provider_health["addic7ed"]
+        assert health.breaker_tripped is False, "one failure cannot trip a threshold of three"
+        assert health.responded is False
+        assert run.failed_providers == ["addic7ed"]
+
+    def test_two_jobs_dead_provider_is_still_failed(self, tmp_path):
+        jobs = [_make_job(episode=i, srt_target=tmp_path / f"ep{i}.srt") for i in (1, 2)]
+        run = run_jobs(
+            jobs, workers={"addic7ed": _failing_client(ConnectionError("down"))}, timeout=5
+        )
+        assert run.failed_providers == ["addic7ed"]
+
+    def test_a_provider_that_answered_once_is_not_failed_by_a_later_blip(self, tmp_path):
+        """The guard against over-flagging: a provider that answered at all is
+        reachable, so a subsequent exception is noise, not an outage. This is
+        the case that ruled out keying on ``transport_failures > 0`` alone."""
+        client = Mock()
+        client.get_best_subtitle.side_effect = [None, ConnectionError("blip"), None]
+        jobs = [_make_job(episode=i, srt_target=tmp_path / f"ep{i}.srt") for i in range(1, 4)]
+        run = run_jobs(jobs, workers={"addic7ed": client}, timeout=5)
+
+        health = run.provider_health["addic7ed"]
+        assert health.responded is True
+        assert health.transport_failures == 1
+        assert run.failed_providers == []
+
+    def test_never_asked_provider_is_not_failed(self, tmp_path):
+        """A registered provider the cascade never reached has no evidence
+        either way, and absence of evidence must not read as failure."""
+        job = _make_job(providers=["addic7ed"], srt_target=tmp_path / "ep.srt")
+        run = run_jobs(
+            job and [job],
+            workers={"addic7ed": _writing_client(), "tvsubtitles": _failing_client(OSError())},
+            timeout=5,
+        )
+
+        assert run.provider_health["tvsubtitles"].transport_failures == 0
+        assert run.provider_health["tvsubtitles"].responded is False
+        assert run.failed_providers == []

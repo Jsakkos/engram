@@ -645,3 +645,65 @@ class TestHealPrecomputedGapsDegradation:
 
         assert healed is skip
         assert healed["degraded"] is False
+
+
+@pytest.mark.unit
+class TestHealSingleGapWithRealScheduler:
+    """The heal path with the real scheduler, not a fabricated SchedulerRun.
+
+    A precomputed gap is usually ONE episode, which is fewer attempts than the
+    circuit breaker's three-failure threshold. This pins that a dead provider
+    is still reported on such a batch, because that is where the heal path's
+    protection is most often exercised and would otherwise be weakest.
+    """
+
+    @staticmethod
+    def _dead_client():
+        client = Mock()
+        client.get_best_subtitle.side_effect = ConnectionError("provider down")
+        return client
+
+    @staticmethod
+    def _missing_client():
+        client = Mock()
+        client.get_best_subtitle.return_value = None
+        return client
+
+    def test_one_episode_gap_with_dead_scrapers_is_degraded(self, tmp_path):
+        with (
+            patch.object(ts, "fetch_season_details", return_value=2),
+            patch.object(ts, "Addic7edClient", return_value=self._dead_client()),
+            patch.object(ts, "TVSubtitlesClient", return_value=self._dead_client()),
+        ):
+            healed = ts._heal_precomputed_gaps(
+                _precomputed_skip(["S01E01"], tmp_path),
+                "Test Show",
+                1,
+                tmdb_id=999,
+                cache_path=tmp_path,
+                config=_mock_config(tmp_path),
+            )
+
+        assert healed["degraded"] is True, (
+            "a single-episode gap cannot trip a three-failure breaker, so the "
+            "verdict has to come from 'raised every time and never answered'"
+        )
+
+    def test_one_episode_gap_with_healthy_scrapers_is_not_degraded(self, tmp_path):
+        """The control: identical on the wire (the gap stays unfilled) but both
+        providers answered, so the gap is a real one."""
+        with (
+            patch.object(ts, "fetch_season_details", return_value=2),
+            patch.object(ts, "Addic7edClient", return_value=self._missing_client()),
+            patch.object(ts, "TVSubtitlesClient", return_value=self._missing_client()),
+        ):
+            healed = ts._heal_precomputed_gaps(
+                _precomputed_skip(["S01E01"], tmp_path),
+                "Test Show",
+                1,
+                tmdb_id=999,
+                cache_path=tmp_path,
+                config=_mock_config(tmp_path),
+            )
+
+        assert healed["degraded"] is False
