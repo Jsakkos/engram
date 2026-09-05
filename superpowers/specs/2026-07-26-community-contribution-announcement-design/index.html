@@ -1,0 +1,1876 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-07-26-community-contribution-announcement-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Announcing Engram's community data features - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#announcing-engrams-community-data-features" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Announcing Engram's community data features
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workstreams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workstreams
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workstreams">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A. Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-backend-current-version-release-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B. Backend: current-version release notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-frontend-once-per-version-whats-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C. Frontend: once-per-version "What's new"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d-changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D. CHANGELOG
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e-external-posts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E. External posts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-a-github-discussions-post-announcements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix A: GitHub Discussions post (Announcements)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Appendix A: GitHub Discussions post (Announcements)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#thediscdb-contributions-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TheDiscDB contributions: opt in
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-fingerprint-network-already-running-here-is-what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fingerprint network: already running, here is what it does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-this-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why this matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-b-discord-announcement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix B: Discord announcement
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="announcing-engrams-community-data-features">Announcing Engram's community data features</h1>
+<p><strong>Date:</strong> 2026-07-26
+<strong>Status:</strong> Approved design, ready for planning
+<strong>Scope:</strong> Documentation, a reusable in-app "What's new" surface, curated release notes, and two external post drafts.</p>
+<h2 id="problem">Problem</h2>
+<p>Engram now participates in two community data networks, and users have effectively
+been told about neither.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>TheDiscDB contributions</th>
+<th>Engram fingerprint network</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shipped in</td>
+<td>v0.27.0 (2026-07-24)</td>
+<td>v0.10.0 (2026-05)</td>
+</tr>
+<tr>
+<td>Master flag</td>
+<td><code>DISCDB_CONTRIBUTIONS_ENABLED = True</code> (<code>backend/app/core/features.py</code>)</td>
+<td>none, always on</td>
+</tr>
+<tr>
+<td>Per-user default</td>
+<td>opt in, <strong>off</strong> (<code>discdb_contributions_enabled = False</code>)</td>
+<td>opt out, <strong>on</strong> (<code>enable_fingerprint_contributions = True</code>) plus an explicit disclosure modal</td>
+</tr>
+<tr>
+<td>Read path</td>
+<td>lookup on since PR #430</td>
+<td><code>enable_fingerprint_identification</code> now defaults <strong>True</strong></td>
+</tr>
+<tr>
+<td>User-facing docs</td>
+<td>none</td>
+<td>none; only <code>docs/development/fingerprint-privacy.md</code>, an engineering-grade wire-format reference</td>
+</tr>
+<tr>
+<td>In-app surface</td>
+<td>Contribute page and nav item</td>
+<td>Settings toggle and <code>FingerprintDisclosureModal</code></td>
+</tr>
+</tbody>
+</table>
+<p>Three consequences follow from that table, and they drive every decision below.</p>
+<ol>
+<li>
+<p><strong>The two features need opposite messaging.</strong> TheDiscDB needs a call to action:
+   nobody contributes unless they go and tick a box. The fingerprint network needs
+   transparency and explanation: everyone is already contributing, and identification
+   only just started reading from it. A single undifferentiated "help the community"
+   message would under-sell the first and make the second sound like a surprise.</p>
+</li>
+<li>
+<p><strong>The word "fingerprint" is already overloaded.</strong> <code>README.md</code> and <code>docs/index.md</code>
+   both describe the ASR-versus-subtitles matcher as "audio fingerprint matching".
+   Chromaprint is the thing that actually is a fingerprint. Any document written
+   without fixing this will be read as describing one system.</p>
+</li>
+<li>
+<p><strong>The consent document is unreachable.</strong> <code>docs/development/fingerprint-privacy.md</code>
+   is referenced only by <code>mkdocs.yml</code> and one plan document. Nothing in the app links
+   to it, including <code>FingerprintDisclosureModal</code>, the modal that asks users to accept
+   those terms.</p>
+</li>
+</ol>
+<h2 id="decisions">Decisions</h2>
+<ul>
+<li><strong>Framing:</strong> one story, two clearly separated halves. TheDiscDB answers "which disc
+  is this?"; the fingerprint network answers "which episode is this track?". They are
+  adjacent halves of one identification problem, which makes the split honest rather
+  than presentational.</li>
+<li><strong>In-app:</strong> extend the existing update pipeline rather than building a parallel
+  announcement system. A generic once-per-version "What's new" modal, fed by
+  <code>CHANGELOG.md</code> through the existing release pipeline, announces this release and
+  every future release at no extra cost.</li>
+<li><strong>External:</strong> GitHub Discussions (Announcements category, currently unused) and
+  Discord. Drafts are written here for the maintainer to post; nothing is published
+  automatically.</li>
+</ul>
+<h2 id="workstreams">Workstreams</h2>
+<p>Five workstreams. A and D are writing, B and C are code, E depends on A because it
+links to the new page.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Workstream</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td>Docs: new user-guide page, nav entry, terminology disambiguation</td>
+<td>writing</td>
+</tr>
+<tr>
+<td>B</td>
+<td>Backend: current-version release notes in <code>updater.py</code></td>
+<td>code</td>
+</tr>
+<tr>
+<td>C</td>
+<td>Frontend: once-per-version "What's new" auto-open</td>
+<td>code</td>
+</tr>
+<tr>
+<td>D</td>
+<td>CHANGELOG: the 0.28.0 section, which is the announcement copy</td>
+<td>writing</td>
+</tr>
+<tr>
+<td>E</td>
+<td>Post drafts for Discussions and Discord</td>
+<td>writing</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="a-documentation">A. Documentation</h3>
+<p><strong>New page:</strong> <code>docs/guide/contributing-data.md</code>, in <code>mkdocs.yml</code> nav under
+<em>User Guide → Contributing Data</em>, placed after <em>Job History</em>.</p>
+<p>Structure:</p>
+<ol>
+<li><strong>Why there are two networks.</strong> One paragraph plus a comparison table.</li>
+<li><strong>TheDiscDB.</strong> What a contribution contains (content hash, title to episode map,
+   MakeMKV scan log, and at tier 3 the UPC/ASIN and cover art). The tier 1/2/3 model
+   (<code>discdb_contribution_tier</code>, default 2). The Contribute page workflow: export,
+   group multi-disc sets, enhance, submit. State plainly that lookup already benefits
+   every user and has since PR #430, and that submission needs no account or API key.
+   <strong>The call to action lives here:</strong> Settings → TheDiscDB Contributions.</li>
+<li><strong>The Engram fingerprint network.</strong> Opens by separating chromaprint from the
+   ASR/subtitle matcher. Summarises what is sent (a short table, not the full field
+   list), the per-install pseudonym, the rule that a fingerprint reaches canonical tier
+   only after contributions from at least three distinct disc releases, the <code>/v1/forget</code>
+   deletion path, and the fact that identification now defaults on. Links to
+   <code>fingerprint-privacy.md</code> for the exhaustive wire format.</li>
+<li><strong>FAQ.</strong> Does Engram upload my media (no audio or video ever leaves the machine)?
+   Can I turn it off? Can I delete what I have already sent? Do I need an account?</li>
+</ol>
+<p><strong>Terminology fix,</strong> targeted rather than a rewrite. In both <code>README.md</code> and
+<code>docs/index.md</code>, the bullet "Audio fingerprint matching, identifies TV episodes via ASR
+transcription matched against subtitles" becomes <strong>Episode matching</strong>, and a new bullet
+introduces the fingerprint network as a distinct capability. Both files also gain a
+short <strong>Community data</strong> bullet linking the new page.</p>
+<p><strong>Reachability fix.</strong> Link <code>fingerprint-privacy.md</code> from <code>FingerprintDisclosureModal</code>
+and from the new guide page. The file stays at its current path so the existing nav
+entry and any external links keep working.</p>
+<h3 id="b-backend-current-version-release-notes">B. Backend: current-version release notes</h3>
+<p><code>Updater._check()</code> returns at <code>if self._is_older_or_equal(tag, self._current_version)</code>
+before ever assigning <code>self.release_notes</code>, so a user who is up to date has no notes
+available. Two constraints shape the fix:</p>
+<ul>
+<li><code>GITHUB_API_URL</code> points at <code>/releases/latest</code>, which is the <strong>wrong release</strong> for a
+  user sitting on 0.27.0 while 0.28.0 is out. Current-version notes require a second
+  call to <code>/releases/tags/v{current_version}</code>, fetched once and cached on the instance.</li>
+<li>The new values must <strong>not</strong> reuse <code>latest_version</code> / <code>release_notes</code>. <code>UpdateBanner</code>
+  keys off <code>state === 'ready'</code> and the update flow keys off <code>latest_version</code>; writing
+  the current version into those fields risks offering an update to the version already
+  running. Use distinct fields: <code>current_release_notes</code> and <code>current_release_url</code>.</li>
+</ul>
+<p>Both new fields must be added to <strong><code>get_status()</code> (REST) and
+<code>broadcast_update_status()</code> (WS)</strong>. These two serialisers have drifted before; a field
+present in one and absent from the other produces a UI that works on reload and not on
+live update.</p>
+<p>Failure handling matches the existing check: network or rate-limit failures log at debug
+and leave the fields <code>None</code>. There is no retry storm and no user-visible error.</p>
+<h3 id="c-frontend-once-per-version-whats-new">C. Frontend: once-per-version "What's new"</h3>
+<p><strong>Trigger.</strong> Not <code>last_update_success_version</code>. That field is only set by a successful
+self-update, so Docker users and anyone who downloads a release manually would never see
+the modal. Instead compare <code>localStorage["engram:lastSeenVersion"]</code> against
+<code>updateStatus.current_version</code>:</p>
+<ul>
+<li>key absent: seed it silently and show nothing (a brand new install should not get a
+  what's-new modal during the setup wizard);</li>
+<li>key present and different: show the modal once, then write the new value;</li>
+<li>key present and equal: do nothing.</li>
+</ul>
+<p>This mirrors the dedupe pattern already used by <code>useUpdateSuccessToast</code> and covers every
+install path.</p>
+<p><strong>Components.</strong> A new <code>useWhatsNewModal</code> hook, plus a read-only mode for the existing
+<code>UpdateModal</code>: same markdown body and chrome, with "Skip this version" and "Restart"
+replaced by a single "Close". If <code>current_release_notes</code> is null (rate-limited GitHub,
+air-gapped install) the modal does not open and the localStorage key is <strong>not</strong> advanced,
+so the notes still get shown once they arrive, either later in the same session via the
+WebSocket push or on a later launch. The key therefore means "the last version whose
+notes we have shown", with a fresh install seeding it to suppress the first one.</p>
+<p><strong>Bonus.</strong> With current-version notes always available, "What's new" becomes reachable
+permanently by clicking the version string in the top bar (<code>SvTopBar</code>, the only place
+the version renders alongside <code>SvStatusBar</code>), not only from an update banner that renders
+while <code>state === 'ready'</code>.</p>
+<h3 id="d-changelog">D. CHANGELOG</h3>
+<p><code>extract_changelog.py</code> feeds the GitHub release body, which <code>updater.py</code> feeds to the
+modal. The 0.28.0 <code>_Highlights:_</code> line and its <code>### Added</code> prose are therefore literally
+what every user reads on first launch after updating. This is announcement copy, not a
+changelog chore, and should be budgeted as writing time.</p>
+<p>Two <code>### Added</code> entries: one for the community data story linking the new docs page, one
+for the what's-new modal itself.</p>
+<h3 id="e-external-posts">E. External posts</h3>
+<p>Drafts are held as appendices to this document rather than as loose files: they stay
+version controlled, they keep the repository root clean, and they are easy to copy from.
+See Appendix A (Discussions) and Appendix B (Discord).</p>
+<p>The maintainer posts them. Nothing here publishes anything.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<ul>
+<li><strong>Backend:</strong> unit tests for the tag-specific fetch, covering the success path, a 404
+  for a tag with no GitHub release, and a network failure. <code>httpx</code> mocked, as in the
+  existing updater tests.</li>
+<li><strong>Frontend:</strong> vitest coverage in the existing <code>npm run test:unit</code> tier for the hook's
+  three paths: seed on absent key, show once on changed version, no-op on unchanged
+  version, plus the null-notes case.</li>
+<li><strong>No E2E for the modal.</strong> Every modal in this app leaves a stuck <code>opacity: 0</code>
+  full-screen overlay under automation, a known pre-existing issue unrelated to this
+  work. An E2E test here would be fighting that for little value.</li>
+<li><strong>Docs:</strong> <code>mkdocs build</code> from the repository root, without <code>--strict</code> (18 known
+  warnings are expected).</li>
+</ul>
+<h2 id="out-of-scope">Out of scope</h2>
+<ul>
+<li>Reddit and other external community posts.</li>
+<li>A bespoke one-time "spotlight" card. The generic modal carries this release; a
+  purpose-built panel would be a throwaway asset.</li>
+<li>Any change to feature flags or defaults. Nothing is enabled or disabled by this work.</li>
+<li>Any nudge UI pushing users toward the TheDiscDB opt-in. That is a follow-up if the
+  announcement under-performs.</li>
+</ul>
+<hr />
+<h2 id="appendix-a-github-discussions-post-announcements">Appendix A: GitHub Discussions post (Announcements)</h2>
+<blockquote>
+<p><strong>Title:</strong> Engram is a shared network now: contributing disc data and audio fingerprints</p>
+</blockquote>
+<p>Engram has quietly grown two community data features, and it is past time to explain
+both properly. They solve adjacent halves of the same problem.</p>
+<p><strong>Which disc is this?</strong> That is TheDiscDB. A pressed disc has a content hash derived from
+its file layout, so once anyone has mapped a given pressing's titles to episodes, every
+other person who inserts that same disc gets the answer instantly. Engram has been
+<em>reading</em> TheDiscDB for a while. As of v0.27.0 it can also <em>write</em> to it.</p>
+<p><strong>Which episode is this track?</strong> That is Engram's own acoustic fingerprint network. It
+uses chromaprint, which condenses a short window of audio into a perceptual hash. Match
+that hash against a catalog and you know which episode a track is without needing
+subtitles for the show at all.</p>
+<h3 id="thediscdb-contributions-opt-in">TheDiscDB contributions: opt in</h3>
+<p>This is the half that needs you to do something. It is off by default and stays off
+until you turn it on in <strong>Settings → TheDiscDB Contributions</strong>.</p>
+<p>Once it is on, the <strong>Contribute</strong> page lets you export what Engram learned about a disc,
+group multi-disc box sets, enhance the record with a UPC or cover art, and submit it to
+<a href="https://thediscdb.com">thediscdb.com</a>. No account, no API key. There are three sharing
+tiers, so "hash and title map only" and "everything including images" are both valid
+choices.</p>
+<p>What a contribution contains: the disc content hash, the title to episode mapping, the
+MakeMKV scan log, and at the highest tier the UPC/ASIN and cover art you supplied. It
+describes the factory pressing, not you.</p>
+<h3 id="the-fingerprint-network-already-running-here-is-what-it-does">The fingerprint network: already running, here is what it does</h3>
+<p>This half is on by default, gated behind the disclosure dialog Engram shows before the
+first upload, and it works without any further action from you. Two things are worth
+stating plainly.</p>
+<p><strong>No audio or video ever leaves your machine.</strong> What is sent is a chromaprint hash
+sequence: 30-second windows reduced to a stream of 32-bit integers, compressed. You
+cannot reconstruct audio from it. Alongside it go the TMDB ID, season and episode
+numbers, the local matcher's confidence, how the episode was identified, the Engram
+version, and a random per-install UUID used as a pseudonym.</p>
+<p><strong>You can withdraw.</strong> The pseudonym is what makes deletion possible: <code>/v1/forget</code>
+removes everything sent under it. The toggle is in Settings, and you can rotate the
+pseudonym at any time.</p>
+<p>A fingerprint only reaches canonical tier after contributions from at least three
+distinct disc releases agree, which is what keeps one person's mislabelled rip from
+poisoning the catalog.</p>
+<p>Identification now reads from this catalog by default. On a miss it falls back to the
+existing TMDB, AI, and heuristic paths, exactly as before.</p>
+<h3 id="why-this-matters">Why this matters</h3>
+<p>Episode identification has depended on finding reference subtitles for the specific show
+you are ripping. For popular shows that works. For obscure ones it does not, and there
+is nothing an individual user can do about it. Both of these networks attack the same
+weakness: every disc someone identifies correctly is a disc nobody else has to identify
+again.</p>
+<p>Full details, including exactly what is transmitted field by field:
+<a href="https://jsakkos.github.io/engram/guide/contributing-data/">Contributing Data</a>.</p>
+<p>Questions and objections welcome in this thread.</p>
+<hr />
+<h2 id="appendix-b-discord-announcement">Appendix B: Discord announcement</h2>
+<blockquote>
+<p>Engram now has two community data features, and neither has ever been properly
+explained. Short version:</p>
+<p><strong>TheDiscDB contributions (v0.27.0, opt in).</strong> Engram has been reading TheDiscDB to
+identify discs by content hash. It can now write back to it too: export a disc, group
+box sets, add a UPC or cover art, submit. No account or API key needed. Off by default,
+switch it on in Settings → TheDiscDB Contributions.</p>
+<p><strong>The acoustic fingerprint network (on by default).</strong> Chromaprint hashes of short audio
+windows, used to identify episodes without needing subtitles for the show. No audio or
+video ever leaves your machine, contributions are pseudonymous, and <code>/v1/forget</code> deletes
+everything you have sent. Identification now reads from the catalog by default and falls
+back to the old path on a miss.</p>
+<p>Both attack the same weakness: episode ID currently depends on finding reference
+subtitles for your specific show, which fails on obscure titles. Every disc identified
+correctly by one person is a disc nobody else has to identify again.</p>
+<p>Full write-up, including field-by-field detail on what gets transmitted:
+<a href="https://jsakkos.github.io/engram/guide/contributing-data/">https://jsakkos.github.io/engram/guide/contributing-data/</a></p>
+</blockquote>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

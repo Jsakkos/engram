@@ -1,0 +1,1809 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-08-31-subtitle-cache-expansion-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Subtitle cache expansion: harvester repair, English-only curation, scheduled builds - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#subtitle-cache-expansion-harvester-repair-english-only-curation-scheduled-builds" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Subtitle cache expansion: harvester repair, English-only curation, scheduled builds
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evidence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root-cause" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root cause
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-harvester-repair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Harvester repair
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-curation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Curation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-server-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Server deployment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-cutover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Cutover
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Risks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-items" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open items
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="subtitle-cache-expansion-harvester-repair-english-only-curation-scheduled-builds">Subtitle cache expansion: harvester repair, English-only curation, scheduled builds</h1>
+<p><strong>Date:</strong> 2026-08-31
+<strong>Status:</strong> Design approved, pending implementation plan</p>
+<h2 id="summary">Summary</h2>
+<p>The precomputed subtitle cache stalled: the last published build (2026-07-08) covers
+467 shows / 36,742 episodes, and the local coverage tracker shows 27,265 episodes
+missing across 665 shows. The apparent cause was believed to be poor subtitle
+availability at the providers. It is not. A two-day OpenSubtitles quota failure on
+2026-06-11/12 was recorded by the build script as genuine zero coverage, which
+skip-listed 664 seasons and made the corpus look permanently unharvestable.</p>
+<p>This spec covers three sequenced pieces of work:</p>
+<ol>
+<li>Repair the harvester so a quota or provider failure can never again be recorded
+   as a content fact.</li>
+<li>Rebuild the show list as English-only, using outcome data drawn only from
+   periods when the harvester was known healthy.</li>
+<li>Move harvesting to the Ubuntu server (<code>192.168.1.122</code>) on a daily schedule.</li>
+</ol>
+<p>The ordering is load-bearing. Curating or scheduling before the repair would encode
+a two-day infrastructure outage into the permanent show list and re-run the failure
+on a 30-day cycle.</p>
+<h2 id="evidence">Evidence</h2>
+<p>Coverage rates from <code>subtitle_coverage</code>, split at 2026-06-11:</p>
+<table>
+<thead>
+<tr>
+<th>Window</th>
+<th>Season rows</th>
+<th>Covered / total</th>
+<th>Rate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Before 2026-06-11</td>
+<td>2,111</td>
+<td>32,280 / 34,219</td>
+<td><strong>94.3%</strong></td>
+</tr>
+<tr>
+<td>2026-06-11 onward</td>
+<td>978</td>
+<td>4,277 / 29,509</td>
+<td><strong>14.5%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The split is by date, not by content. Per-show proof, same providers and account:</p>
+<ul>
+<li><strong>ER</strong>: S05 to S15 fully covered on 2026-06-08; S01 to S04 recorded zero on 06-12.</li>
+<li><strong>The Nanny</strong>: S01 to S02 covered 06-04; S03 to S06 zero on 06-12.</li>
+<li><strong>Superstore</strong>: S01 covered 06-09; S02 to S06 zero on 06-12.</li>
+<li><strong>CSI: NY</strong>: S08 and S09 covered early in the 06-12 run; S01 to S07 zero later in
+  the same run.</li>
+</ul>
+<p>A diagnostic re-harvest of ER on 2026-08-31 recovered all 15 seasons (330/331
+episodes) in 2m15s for 94 downloads. The four seasons the tracker had written off as
+zero downloaded cleanly.</p>
+<p>The language gradient that appeared in the aggregate data is also an artifact. Split
+by the same window:</p>
+<table>
+<thead>
+<tr>
+<th>Origin</th>
+<th>Healthy window</th>
+<th>Suspect window</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>US</td>
+<td>94.8%</td>
+<td>24.3%</td>
+</tr>
+<tr>
+<td>GB</td>
+<td>96.1%</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td>JP</td>
+<td>89.3%</td>
+<td>8.2%</td>
+</tr>
+<tr>
+<td>KR</td>
+<td>100%</td>
+<td>9.1%</td>
+</tr>
+<tr>
+<td>MX</td>
+<td>100% (81 eps)</td>
+<td>0.1%</td>
+</tr>
+</tbody>
+</table>
+<p>Only <strong>9 shows</strong> measure below 20% using healthy-window data alone. <strong>243 shows have
+never had a fair measurement</strong>: every record they hold comes from the broken window.</p>
+<h2 id="root-cause">Root cause</h2>
+<p>Three defects compound:</p>
+<ol>
+<li>
+<p><strong>Quota is checked only at login.</strong> <code>testing_service._get_os_client</code> tests
+   <code>remaining &lt;= 0</code> once and sets <code>_OS.failed</code>; the client is then cached for
+   <code>_OS_TOKEN_MAX_AGE</code>. <code>_snapshot_os_quota</code> keeps updating
+   <code>user_downloads_remaining</code> as downloads proceed, but nothing reads it. A run
+   starting at 1,000 sails past zero and turns every later season into a false
+   negative.</p>
+</li>
+<li>
+<p><strong>Coverage is recorded unconditionally.</strong> <code>build_subtitle_cache._harvest_show</code>
+   calls <code>coverage_tracker.record()</code> after every season regardless of why the
+   season came back empty. <code>record()</code> cannot distinguish "the provider has nothing"
+   from "we got nothing", and writes <code>coverage_ratio = 0.0</code> either way.
+   <code>should_skip()</code> then honours that for <code>skip_window_days</code> (30).</p>
+</li>
+<li>
+<p><strong>One window carries two opposite meanings.</strong> <code>is_done()</code> and <code>should_skip()</code>
+   both call <code>_fresh_record()</code> with the same <code>skip_window_days</code>. For a failure,
+   30-day expiry is a sensible retry. For a success, expiry silently disables the
+   complete-on-disk fast path, so the next run re-enumerates the whole corpus. That
+   oversized run is what hits the quota wall, which poisons records, which expire,
+   which produces another oversized run. The failure is self-amplifying.</p>
+</li>
+</ol>
+<p>A fourth, non-causal defect obscured the problem: the OpenSubtitles bulk-season path
+writes SRTs to disk and the per-episode loop reads them back as <code>cached</code>, so
+<code>tally.by_source</code> never credits <code>opensubtitles_api</code>. The ER diagnostic reported
+<code>new downloads: 1</code> while consuming 94 quota. Run summaries have been under-reporting
+OpenSubtitles usage by roughly 99%, so the June quota wall was invisible in the logs.</p>
+<h2 id="goals">Goals</h2>
+<ul>
+<li>A build run cannot record a coverage fact it did not fairly measure.</li>
+<li>A daily unattended run stays inside the 1,000/day VIP quota and makes monotonic
+  progress.</li>
+<li>The shipped cache contains only English-language shows, matching Engram's actual
+  capability (the matcher pairs English subtitles with English audio).</li>
+<li>Harvesting runs on the Ubuntu server on a schedule, publishing to the rolling
+  <code>subtitle-cache-latest</code> release.</li>
+</ul>
+<h2 id="non-goals">Non-goals</h2>
+<ul>
+<li>Capping tarball size. Growth is deliberately uncapped for now. A shard-by-range
+  split is noted as a future escape hatch, not built.</li>
+<li>Changing the cache format or the runtime consumer path.</li>
+<li>Multi-language matching support.</li>
+</ul>
+<h2 id="design">Design</h2>
+<h3 id="1-harvester-repair">1. Harvester repair</h3>
+<p><strong>1a. Mid-run quota guard.</strong> Add a quota floor check after each season in
+<code>_harvest_show</code>. When <code>user_downloads_remaining</code> falls to the floor, set
+<code>_OS.failed</code> and raise a <code>QuotaExhausted</code> exception that <code>main()</code> catches to end the
+run cleanly, package what was harvested, and exit non-zero with a clear message.</p>
+<p><strong>1b. Do not record coverage on infrastructure failure.</strong> <code>download_subtitles</code>
+returns a <code>degraded: bool</code> in its result when OpenSubtitles was unavailable or
+exhausted <strong>and</strong> the scraper cascade did not serve the season. <code>_harvest_show</code>
+skips <code>coverage_tracker.record()</code> entirely for degraded seasons. No record is
+strictly better than a false zero: absence means "measure this later", while <code>0.0</code>
+means "never retry for 30 days".</p>
+<p><strong>1c. Split the two windows.</strong> <code>should_skip()</code> keeps the 30-day window. <code>is_done()</code>
+stops expiring on a timer: a season whose SRTs are present on disk is done
+regardless of record age. Verification moves to the disk check that the
+complete-on-disk path already performs via <code>discover_season_srts</code>. This removes the
+periodic full re-sweep.</p>
+<p><strong>1d. Download budget.</strong> New <code>--max-downloads</code> (default 900) counted across the run.
+On reaching it the run stops cleanly, exactly as 1a. This is the single change that
+makes every unattended run safe, and it lands first.</p>
+<p><strong>1e. Purge the poisoned window.</strong> One-time maintenance command deleting
+<code>subtitle_coverage</code> rows with <code>attempted_at &gt;= 2026-06-11</code> and
+<code>coverage_ratio &lt; min_ratio</code>. These rows are already inert (expired by age), but
+they corrupt any outcome-based curation. Deleting converts known-bad data into
+no-data, which the repaired harvester refills honestly. Legitimately-zero seasons in
+that window are re-measured, which is acceptable.</p>
+<p><strong>1f. Honest reporting.</strong> Credit <code>opensubtitles_api</code> in <code>tally.by_source</code> for
+episodes served by the bulk path, and surface downloads-consumed alongside
+<code>OS quota left</code> in the final summary.</p>
+<h3 id="2-curation">2. Curation</h3>
+<p>Produce a new <code>curated_shows.csv</code> with:</p>
+<p><strong>Hard filter:</strong> <code>original_language == "en"</code>. This is the matcher's real constraint.
+Note that <code>origin_country</code> is the wrong field: Telemundo shows such as
+<em>El Señor de los Cielos</em> and <em>Pasión de Gavilanes</em> are <code>origin_country: US</code> and
+Spanish-language, and are among the largest gaps in the current list.</p>
+<p><strong>Outcome-based exclusion, windowed.</strong> A show is excluded on measured coverage only
+when the measurement comes from a healthy window (currently: before 2026-06-11, plus
+anything measured after 1a to 1f land) and the sample is at least 20 episodes.
+Threshold: below 20%. Shows with no trustworthy measurement stay in the list and are
+measured by the repaired harvester.</p>
+<p><strong>Genre as ordering prior, not a filter.</strong> Kids animation and reality rank last in
+harvest order rather than being excluded, so a wrong prior costs scheduling position
+rather than permanent omission. This keeps <em>Archer</em>, <em>Rick and Morty</em>, <em>South Park</em>
+and <em>Futurama</em>, which are commonly ripped from disc.</p>
+<p><strong>Extension.</strong> Grow well beyond the current 448 rows via
+<code>fetch_shows_by_vote_count</code>, filtered as above.</p>
+<h3 id="3-server-deployment">3. Server deployment</h3>
+<p>Target: <code>jsakkos@192.168.1.122</code> (Ubuntu VM <code>pve-docker</code>, 357 GB free, Python 3.12.3,
+<code>gh</code> 2.45.0 authenticated as <code>Jsakkos</code> with <code>repo</code> scope, <code>crontab</code> and user systemd
+both available, TMDB/OpenSubtitles/GitHub all reachable).</p>
+<ul>
+<li><strong>Checkout.</strong> Upgrade the existing <code>~/engram</code> checkout from v0.8.1 to current
+  <code>main</code> (approved; the deployment there is not in active use). Install <code>uv</code>, which
+  is currently absent.</li>
+<li><strong>Scheduler.</strong> systemd user timer rather than cron: real logs via <code>journalctl</code>,
+  health via <code>systemctl status</code>, no <code>MAILTO</code> noise, and <code>Persistent=true</code> to catch
+  runs missed while the box was down.</li>
+<li><strong>Secrets.</strong> A <code>0600</code> <code>EnvironmentFile</code> supplying <code>TMDB_API_KEY</code>,
+  <code>OPENSUBTITLES_API_KEY</code>, <code>OPENSUBTITLES_USERNAME</code>, <code>OPENSUBTITLES_PASSWORD</code>, which
+  the build script already bootstraps from env. <strong>The user writes this file; the
+  credentials are not to be copied or handled on their behalf.</strong></li>
+<li><strong>Publish step.</strong> After a successful build, <code>gh release upload
+  subtitle-cache-latest ... --clobber</code>.</li>
+</ul>
+<h3 id="4-cutover">4. Cutover</h3>
+<p>Quota is per-account, so exactly one machine may harvest. Two harvesters would race
+for the same 1,000/day bucket, and each would record coverage the other cannot see:
+the loser writes zeros and skip-lists seasons the winner already holds, which is
+defect 2 firing across machines.</p>
+<ol>
+<li><code>rsync</code> <code>~/.engram/cache/data</code> (1.7 GB, 36,809 SRTs) to the server.</li>
+<li><code>rsync</code> <code>~/.engram/cache/tmdb_cache.sqlite</code>, which carries <code>subtitle_coverage</code>.
+   Without it the server re-harvests 36,000 episodes it already has on disk.</li>
+<li>Verify a dry run ships from disk at zero quota cost.</li>
+<li>Retire the laptop build. The laptop keeps its corpus as a backup but must not run
+   <code>build_subtitle_cache.py</code> again.</li>
+</ol>
+<h2 id="testing">Testing</h2>
+<ul>
+<li><strong>Unit:</strong> <code>coverage_tracker</code> window semantics (<code>is_done</code> no longer expires;
+  <code>should_skip</code> still does); degraded-season suppression of <code>record()</code>; budget
+  counter arithmetic.</li>
+<li><strong>Integration:</strong> a simulated quota exhaustion mid-run asserts that (a) the run
+  stops, (b) no coverage rows are written for unmeasured seasons, (c) the exit code
+  is non-zero.</li>
+<li><strong>Regression guard:</strong> a test asserting that a season returning zero episodes with
+  <code>degraded=True</code> writes no coverage row. This is the specific defect that cost
+  664 seasons.</li>
+<li><strong>Live validation:</strong> re-harvest a known-poisoned show (Full House, 1/192) and
+  confirm recovery, as ER already demonstrated.</li>
+</ul>
+<h2 id="risks">Risks</h2>
+<ul>
+<li><strong>Re-measuring the purged window costs quota.</strong> Roughly 978 season rows return to
+  the unmeasured pool. At 900/day this is several days of harvesting. Acceptable:
+  it is the price of replacing bad data with real data, and it is one-time.</li>
+<li><strong>Healthy-window samples are uneven.</strong> JP (24 shows), MX (3) and CO (1) have small
+  trustworthy samples skewed toward higher-ranked titles, so their true long-tail
+  rates are unknown. This does not affect the English-only scope, but it means the
+  20% exclusion threshold should not be applied to thin samples, hence the
+  20-episode minimum.</li>
+<li><strong>Server upgrade from v0.8.1 to main</strong> crosses roughly 60 commits of schema
+  migrations. The deployment is not in active use, and the cache builder does not
+  depend on the deployment's database, but the upgrade should be verified rather
+  than assumed.</li>
+<li><strong>Schema reconciler faults observed on the dev DB</strong> (<code>no such column:
+  app_config.always_review</code>, then <code>table fingerprint_contributions already exists</code>
+  during <code>init_db()</code>). These did not block the ER diagnostic but indicate drift in
+  the migration path that the server build will also traverse.</li>
+</ul>
+<h2 id="open-items">Open items</h2>
+<ul>
+<li>Exact size of the recoverable English backlog cannot be stated until the purge and
+  a first repaired sweep complete. The pre-purge estimate of "~4,000 to 5,000
+  recoverable episodes" is not reliable and is deliberately not committed to here.</li>
+<li>Whether to shard the tarball if it grows past a few hundred MB more. Noted, not
+  designed.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
