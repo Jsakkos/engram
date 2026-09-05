@@ -537,7 +537,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "faster-whisper", specifier = ">=1.2.1" },
     { name = "gputil", marker = "extra == 'gpu'", specifier = ">=1.4.0" },
-    { name = "greenlet", specifier = ">=3.0.0" },
+    { name = "greenlet", specifier = ">=3.5.5" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.2.0" },
     { name = "librosa", specifier = ">=0.11.0" },
