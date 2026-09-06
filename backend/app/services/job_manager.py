@@ -46,6 +46,7 @@ from app.services.finalization_coordinator import FinalizationCoordinator
 from app.services.identification_coordinator import (
     NO_TITLE_REVIEW_REASON,
     IdentificationCoordinator,
+    next_state_after_identify,
 )
 from app.services.identity_prompts import BLOCKING_KINDS, ResumeAction
 from app.services.import_guard import (
@@ -290,6 +291,7 @@ class JobManager:
             on_match_task_done=self._matching.on_match_task_done,
             check_job_completion=self._finalization.check_job_completion,
             run_ripping=self._run_ripping,
+            run_backup=self._run_backup,
             finalize_disc_job=self._finalization.finalize_disc_job,
         )
         self._finalization.set_callbacks(
@@ -1188,11 +1190,22 @@ class JobManager:
             if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
                 raise ValueError(f"Cannot start job in state: {job.state}")
 
-            job.state = JobState.RIPPING
+            # A resume from review honours backup_before_rip exactly as a
+            # fresh identification does; next_state_after_identify is the one
+            # place that decision is made.
+            from app.services.config_service import get_config
+
+            next_state = next_state_after_identify(await get_config(), job.drive_id)
+            job.state = next_state
             job.updated_at = datetime.now(UTC)
             await session.commit()
 
-            task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
+            coro = (
+                self._run_backup(job_id)
+                if next_state is JobState.BACKING_UP
+                else self._run_ripping(job_id)
+            )
+            task = asyncio.create_task(with_job_log_context(job_id, coro))
             task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
             self._active_jobs[job_id] = task
 
