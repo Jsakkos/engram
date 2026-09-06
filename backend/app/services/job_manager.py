@@ -24,6 +24,8 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
+from app.core.backup_paths import backup_destination, has_room_for_backup
+from app.core.disc_source import DiscSource, resolve_disc_index
 from app.core.extractor import (
     STALL_FAILURE_REASON,
     MakeMKVExtractor,
@@ -37,6 +39,7 @@ from app.core.sentinel import DriveMonitor
 from app.database import async_session
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.services.backup_reconcile import ReconcileOutcome, reconcile_titles
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.finalization_coordinator import FinalizationCoordinator
@@ -160,6 +163,29 @@ def _is_rip_failure_review(title: "DiscTitle") -> bool:
     if not isinstance(details, dict):
         return False
     return details.get("error") in RIP_FAILURE_ERROR_CODES
+
+
+# DiscJob.backup_status values. "pending" is written before the copy starts, so
+# a backup interrupted by a crash is distinguishable from one never attempted.
+BACKUP_PENDING = "pending"
+BACKUP_COMPLETED = "completed"
+BACKUP_FAILED = "failed"
+BACKUP_SKIPPED = "skipped"
+
+
+def _has_existing_backup(dest: Path) -> bool:
+    """Whether a usable backup already sits at ``dest``.
+
+    Re-inserting a disc that was backed up last month must not cost another
+    40 GB, so a non-empty destination is adopted as-is rather than re-copied.
+    An unreadable destination answers False: the caller then takes the normal
+    route (check space, copy) instead of adopting a directory it cannot read.
+    """
+    try:
+        return dest.is_dir() and any(dest.iterdir())
+    except OSError as e:
+        logger.warning(f"Could not inspect existing backup at {dest}: {e}")
+        return False
 
 
 # Create domain-specific event broadcaster
@@ -2759,6 +2785,285 @@ class JobManager:
         )
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
+
+    # --- Backup phase (backup_before_rip) ---------------------------------
+
+    async def _run_backup(self, job_id: int) -> None:
+        """Copy the whole disc to the backup shelf, then rip from the copy.
+
+        Every backup problem degrades to a direct rip from the drive, which is
+        exactly what the job would have done with the setting off: turning
+        backups on must never make a disc less likely to finish. The single
+        exception is a backup that SUCCEEDED but whose re-scan cannot be
+        reconciled against the disc scan. That parks for review instead of
+        falling back, because the drive has already been released by then and
+        the disc may be out of it.
+
+        Self-tags its log context (see apply_review, #563) so the phase's lines
+        carry ``job=<id>`` however the coroutine was reached, not only when a
+        spawner wrapped it in ``with_job_log_context``.
+        """
+        with job_log_context(job_id):
+            try:
+                outcome = await self._copy_disc_to_backup(job_id)
+            except Exception as e:
+                # Catch-all on purpose: an unforeseen failure in the backup
+                # phase must still leave the job rippable, never dead.
+                # CancelledError is a BaseException, so a user cancel or a
+                # shutdown still propagates.
+                logger.exception(
+                    f"Job {sanitize_log_value(job_id)}: backup phase failed unexpectedly"
+                )
+                await self._fall_back_to_direct_rip(
+                    job_id, BACKUP_FAILED, str(e), f"the backup failed unexpectedly: {e}"
+                )
+                return
+
+            if outcome is None:
+                # Already fell back to a direct rip (or the job row is gone).
+                return
+
+            drive_id, dest = outcome
+            # _release_drive is the documented single chokepoint for "Engram is
+            # done with this disc", and a completed backup satisfies it
+            # literally: the disc is copied, so it can leave the drive. It runs
+            # BEFORE reconciling so even an unreconcilable backup frees it.
+            await self._release_drive(job_id, drive_id, "Backed up")
+            if await self._reconcile_backup_titles(job_id, dest):
+                await self._enter_ripping(job_id)
+
+    async def _copy_disc_to_backup(self, job_id: int) -> tuple[str, Path] | None:
+        """Run the backup itself, returning ``(drive_id, dest)`` on success.
+
+        Returns None when the job fell back to a direct rip (every failure
+        mode does) or when the job row has disappeared. Mirrors _run_ripping's
+        session discipline: a short-lived setup session, released before the
+        potentially multi-hour copy is awaited, so no aiosqlite connection is
+        held across it.
+        """
+        safe_job = sanitize_log_value(job_id)
+        loop = asyncio.get_running_loop()
+
+        from app.core.discdb_exporter import get_makemkv_log_dir
+        from app.services.config_service import get_config
+
+        config = await get_config()
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return None
+            drive_id = job.drive_id
+            titles = (
+                (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+                .scalars()
+                .all()
+            )
+            # The disc-size estimate: the scan's per-title sizes are all we know
+            # before the copy starts.
+            total_bytes = sum(t.file_size_bytes or 0 for t in titles)
+            dest = backup_destination(job, config) if config else None
+        # Setup session released: nothing is held across the copy.
+
+        if dest is None:
+            await self._skip_backup(job_id, "not_configured", "no backup location is configured")
+            return None
+
+        if _has_existing_backup(dest):
+            logger.info(f"Job {safe_job}: reusing the existing backup at {dest}")
+            await self._record_backup_status(
+                job_id, BACKUP_COMPLETED, dest=dest, use_as_source=True
+            )
+            return drive_id, dest
+
+        if not has_room_for_backup(dest, total_bytes):
+            await self._skip_backup(
+                job_id, "insufficient_space", f"not enough free space for a backup at {dest}"
+            )
+            return None
+
+        disc_spec = await resolve_disc_index(drive_id, config.makemkv_path)
+        if not disc_spec:
+            await self._skip_backup(
+                job_id,
+                "no_disc_index",
+                f"MakeMKV could not address drive {sanitize_log_value(drive_id)} as a disc index",
+            )
+            return None
+
+        await self._record_backup_status(job_id, BACKUP_PENDING, dest=dest)
+
+        last_percent = -1
+
+        def on_progress(percent: float) -> None:
+            """Extractor-thread progress callback, throttled to whole percent.
+
+            A 40 GB copy emits progress constantly and every message fans out
+            to every connected client, so anything finer than one message per
+            percent is pure noise on the wire.
+            """
+            nonlocal last_percent
+            whole = int(percent)
+            if whole <= last_percent:
+                return
+            last_percent = whole
+            current = int(total_bytes * percent / 100) if total_bytes > 0 else 0
+            self._note_activity(job_id)
+            asyncio.run_coroutine_threadsafe(
+                event_broadcaster.broadcast_backup_progress(job_id, current, total_bytes),
+                loop,
+            )
+
+        result = await self._extractor.backup_disc(
+            DiscSource.for_drive_index(drive_id, disc_spec),
+            dest,
+            progress_callback=on_progress,
+            log_dir=get_makemkv_log_dir(job_id),
+            job_id=job_id,
+        )
+
+        if not result.success:
+            reason = result.error_message or "the backup did not complete"
+            await self._fall_back_to_direct_rip(
+                job_id, BACKUP_FAILED, reason, f"the backup failed: {reason}"
+            )
+            return None
+
+        final_dest = result.dest or dest
+        await self._record_backup_status(
+            job_id, BACKUP_COMPLETED, dest=final_dest, use_as_source=True
+        )
+        logger.info(f"Job {safe_job}: backed up to {final_dest}; extraction will read from it")
+        return drive_id, final_dest
+
+    async def _record_backup_status(
+        self,
+        job_id: int,
+        status: str,
+        reason: str | None = None,
+        *,
+        dest: Path | None = None,
+        use_as_source: bool = False,
+    ) -> None:
+        """Persist the backup's outcome on the job row (own short-lived session).
+
+        ``use_as_source`` is what actually redirects extraction: it points
+        ``source_spec`` at ``file:<dest>`` so every later MakeMKV call reads the
+        copy instead of the drive. Deliberately separate from writing
+        ``backup_path``, which is also written for a *pending* backup so a
+        crashed copy can still be found.
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            job.backup_status = status
+            job.backup_status_reason = reason
+            if dest is not None:
+                job.backup_path = str(dest)
+                if use_as_source:
+                    job.source_spec = f"file:{dest}"
+            job.updated_at = datetime.now(UTC)
+            await session.commit()
+
+    async def _skip_backup(self, job_id: int, reason: str, detail: str) -> None:
+        """Record a backup that was never attempted, and rip from the drive."""
+        await self._fall_back_to_direct_rip(job_id, BACKUP_SKIPPED, reason, detail)
+
+    async def _fall_back_to_direct_rip(
+        self, job_id: int, status: str, reason: str, detail: str
+    ) -> None:
+        """Degrade to today's behaviour: rip straight from the disc.
+
+        The drive is deliberately NOT released here: extraction still needs the
+        disc in it. ``source_spec`` is left alone for the same reason.
+        """
+        logger.warning(f"Job {sanitize_log_value(job_id)}: {detail}; ripping from the disc instead")
+        await self._record_backup_status(job_id, status, reason)
+        await self._enter_ripping(job_id)
+
+    async def _enter_ripping(self, job_id: int) -> None:
+        """Transition to RIPPING and spawn the rip, exactly as start_ripping does."""
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            if not await state_machine.transition(job, JobState.RIPPING, session):
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: cannot enter RIPPING from "
+                    f"{job.state.value}; not starting the rip"
+                )
+                return
+
+        task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
+        self._active_jobs[job_id] = task
+
+    async def _reconcile_backup_titles(self, job_id: int, dest: Path) -> bool:
+        """Re-scan the backup and line its titles up with the stored ones.
+
+        Returns True when the job may proceed to ripping (the enumeration was
+        identical, or it was remapped unambiguously and the rows were updated).
+        Returns False after parking the job in REVIEW_NEEDED: ripping the wrong
+        index files an episode under another episode's name with no error
+        anywhere, so a guess is never worth making.
+        """
+        safe_job = sanitize_log_value(job_id)
+
+        from app.core.discdb_exporter import get_makemkv_log_dir
+
+        try:
+            scanned, _ = await self._extractor.scan_disc(
+                DiscSource.for_backup(dest), log_dir=get_makemkv_log_dir(job_id), job_id=job_id
+            )
+        except Exception as e:
+            # Any scan failure (timeout, missing binary, unreadable copy) is
+            # treated as an empty scan, which reconcile_titles reports as
+            # AMBIGUOUS and so parks for review. Crashing here would leave the
+            # job stranded mid-phase instead.
+            logger.warning(f"Job {safe_job}: could not scan the backup at {dest}: {e}")
+            scanned = []
+
+        async with async_session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(DiscTitle)
+                        .where(DiscTitle.job_id == job_id)
+                        .order_by(DiscTitle.title_index)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            result = reconcile_titles(list(rows), list(scanned))
+
+            if result.outcome is ReconcileOutcome.AMBIGUOUS:
+                job = await session.get(DiscJob, job_id)
+                if not job:
+                    return False
+                reason = (
+                    f"The disc was backed up to {dest}, but its tracks could not be matched "
+                    f"to the tracks Engram found on the disc, so it will not guess which "
+                    f"track to rip. {result.reason or ''} The backup itself is safe and "
+                    f"nothing has been deleted."
+                ).strip()
+                await state_machine.transition_to_review(job, session, reason=reason)
+                logger.warning(
+                    f"Job {safe_job}: the backup re-scan is unreconcilable; parked for review"
+                )
+                return False
+
+            if result.remap:
+                for row in rows:
+                    new_index = result.remap.get(row.title_index)
+                    if new_index is not None and new_index != row.title_index:
+                        row.title_index = new_index
+                        session.add(row)
+                await session.commit()
+                logger.info(f"Job {safe_job}: remapped {len(result.remap)} title indices")
+
+        return True
 
     async def _run_ripping(self, job_id: int) -> None:
         """Execute the ripping process.
