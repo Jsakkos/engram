@@ -146,6 +146,11 @@ class DiscSource:
 _DRIVE_LISTING_INDEX = "disc:9999"
 
 # DRV:index,visible,enabled,flags,"drive name","disc name","device"
+# Known limitation: the quoted fields are matched with "[^"]*", so a drive or
+# disc name containing an escaped quote drops that whole line. The failure is
+# safe (the drive is simply missing from the mapping and the caller degrades to
+# a direct rip) but silent, so look here first if one specific drive will never
+# back up.
 _DRV_RE = re.compile(r'^DRV:(\d+),\d+,\d+,\d+,"[^"]*","[^"]*","([^"]*)"')
 
 _DRIVE_LISTING_TIMEOUT = 30.0
@@ -202,8 +207,19 @@ async def resolve_disc_index(drive: str, makemkv_path: str) -> str | None:
         if device.rstrip("\\").lower() == normalized.lower():
             return f"disc:{index}"
 
-    logger.warning(
-        f"Drive {normalized} not found in MakeMKV drive listing "
-        f"(saw: {sorted(mapping)}); cannot back up"
-    )
+    # An empty listing and a missing drive both end in None, but they are very
+    # different problems: no drives at all means MakeMKV itself is unusable
+    # (missing binary, expired licence, corrupt install), which would otherwise
+    # read in the logs exactly like the routine "this drive cannot be backed up"
+    # case that the caller degrades from every day.
+    if not mapping:
+        logger.warning(
+            "MakeMKV listed no drives at all; check that MakeMKV is installed "
+            f"and licensed. Cannot back up from {normalized}"
+        )
+    else:
+        logger.warning(
+            f"Drive {normalized} not found in MakeMKV drive listing "
+            f"(saw: {sorted(mapping)}); cannot back up"
+        )
     return None
