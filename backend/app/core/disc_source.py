@@ -123,10 +123,12 @@ class DiscSource:
         """Key for the per-source MakeMKV serialization lock.
 
         Physical drives normalize so "E:", "dev:E:" and "dev:E:\\" contend for
-        one lock. A file source keys on its own path instead: two makemkvcon
-        processes reading different backups do not contend, and a backup on
-        drive E: must not block the optical drive at E:.
+        one lock. ``parse`` has already stripped the scheme by the time it
+        reaches ``value``, so only the trailing separator is left to normalize.
+        A file source keys on its own path instead: two makemkvcon processes
+        reading different backups do not contend, and a backup on drive E: must
+        not block the optical drive at E:.
         """
         if self.is_physical:
-            return "drive:" + self.value.replace("dev:", "").replace("disc:", "").rstrip("\\")
+            return "drive:" + self.value.rstrip("\\")
         return "path:" + str(Path(self.value))
