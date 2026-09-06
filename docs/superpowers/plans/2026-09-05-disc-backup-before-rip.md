@@ -41,7 +41,7 @@
 
 | File | Change |
 | --- | --- |
-| `backend/app/models/disc_job.py` | `JobState.BACKING_UP`; `source_spec`, `backup_path`, `backup_status` columns. |
+| `backend/app/models/disc_job.py` | `JobState.BACKING_UP`; `source_spec`, `backup_path`, `backup_status`, `backup_status_reason` columns. |
 | `backend/app/models/app_config.py` | `backup_before_rip`, `backup_path`, `timeout_backing_up_seconds`. |
 | `backend/app/core/extractor.py` | `_to_source_spec`, `DiscSource`-aware locking, `backup_disc()`, `BackupResult`. |
 | `backend/app/core/import_scanner.py` | `DiscImageUnit` detection and short-circuit. |
@@ -740,16 +740,22 @@ Add to `DiscJob`, in the Paths block after `import_manifest_json`:
     # Where this job's backup landed. Kept for history and for re-import; Engram
     # never deletes it.
     backup_path: str | None = Field(default=None)
-    # "pending" | "completed" | "failed:<reason>" | "skipped:<reason>".
-    # None means no backup was attempted (the feature is off).
+    # "pending" | "completed" | "failed" | "skipped". None means no backup was
+    # attempted (the feature is off). Mirrors subtitle_status: a small closed set
+    # of literals here, with the free-text explanation in its own column, so no
+    # consumer has to parse a delimiter out of a status.
     backup_status: str | None = Field(default=None)
+    # Why the backup failed or was skipped, e.g. "insufficient_space",
+    # "not_configured", "no_disc_index", "unsupported_disc", or a MakeMKV error
+    # string. None when backup_status is pending or completed.
+    backup_status_reason: str | None = Field(default=None)
 ```
 
 In `backend/app/models/app_config.py`, add next to the other path fields (near line 43):
 
 ```python
     # Root for full decrypted disc backups. Empty means the feature cannot run,
-    # which the backup phase reports as skipped:not_configured rather than failing.
+    # which the backup phase reports as a "not_configured" skip rather than failing.
     backup_path: str = ""
 ```
 
@@ -815,6 +821,9 @@ def upgrade() -> None:
     op.add_column("disc_jobs", sa.Column("backup_path", sa.String(), nullable=True))
     op.add_column("disc_jobs", sa.Column("backup_status", sa.String(), nullable=True))
     op.add_column(
+        "disc_jobs", sa.Column("backup_status_reason", sa.String(), nullable=True)
+    )
+    op.add_column(
         "app_config",
         sa.Column("backup_path", sa.String(), nullable=False, server_default=sa.text("''")),
     )
@@ -843,6 +852,7 @@ def downgrade() -> None:
         batch_op.drop_column("backup_before_rip")
         batch_op.drop_column("backup_path")
     with op.batch_alter_table("disc_jobs", schema=None) as batch_op:
+        batch_op.drop_column("backup_status_reason")
         batch_op.drop_column("backup_status")
         batch_op.drop_column("backup_path")
         batch_op.drop_column("source_spec")
@@ -1022,7 +1032,7 @@ def backup_destination(job: DiscJob, backup_root: str) -> Path | None:
     """Compute where this job's backup should be written.
 
     Returns None when no root is configured, which the caller reports as
-    skipped:not_configured.
+    a "not_configured" skip.
     """
     if not backup_root:
         return None
@@ -1899,7 +1909,8 @@ class TestFallbacks:
         )), patch.object(job_manager, "_run_ripping", new=AsyncMock()):
             await job_manager._run_backup(job_id)
         job = await _reload(job_id)
-        assert job.backup_status == "skipped:not_configured"
+        assert job.backup_status == "skipped"
+        assert job.backup_status_reason == "not_configured"
         assert job.state == JobState.RIPPING
 
     @pytest.mark.asyncio
@@ -1911,7 +1922,8 @@ class TestFallbacks:
              patch.object(job_manager, "_run_ripping", new=AsyncMock()):
             await job_manager._run_backup(job_id)
         job = await _reload(job_id)
-        assert job.backup_status == "skipped:insufficient_space"
+        assert job.backup_status == "skipped"
+        assert job.backup_status_reason == "insufficient_space"
         assert job.state == JobState.RIPPING
 
     @pytest.mark.asyncio
@@ -1924,7 +1936,8 @@ class TestFallbacks:
              patch.object(job_manager, "_run_ripping", new=AsyncMock()):
             await job_manager._run_backup(job_id)
         job = await _reload(job_id)
-        assert job.backup_status == "skipped:no_disc_index"
+        assert job.backup_status == "skipped"
+        assert job.backup_status_reason == "no_disc_index"
         assert job.state == JobState.RIPPING
 
     @pytest.mark.asyncio
@@ -1939,8 +1952,8 @@ class TestFallbacks:
              )), patch.object(job_manager, "_run_ripping", new=AsyncMock()):
             await job_manager._run_backup(job_id)
         job = await _reload(job_id)
-        assert job.backup_status.startswith("failed:")
-        assert "read error" in job.backup_status
+        assert job.backup_status == "failed"
+        assert "read error" in job.backup_status_reason
         assert job.state == JobState.RIPPING
         # The drive was never released: extraction still needs the disc.
         assert job.source_spec is None
@@ -2053,12 +2066,19 @@ Add the method next to `_run_ripping`:
 
         safe_job = sanitize_log_value(job_id)
 
-        async def _record(status: str, *, path: str | None = None, spec: str | None = None):
+        async def _record(
+            status: str,
+            *,
+            reason: str | None = None,
+            path: str | None = None,
+            spec: str | None = None,
+        ):
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
                 if not job:
                     return
                 job.backup_status = status
+                job.backup_status_reason = reason
                 if path is not None:
                     job.backup_path = path
                 if spec is not None:
@@ -2066,9 +2086,11 @@ Add the method next to `_run_ripping`:
                 job.updated_at = datetime.now(UTC)
                 await session.commit()
 
-        async def _fall_back(status: str) -> None:
-            logger.warning(f"Job {safe_job}: {status}; ripping directly from the drive")
-            await _record(status)
+        async def _fall_back(status: str, reason: str) -> None:
+            logger.warning(
+                f"Job {safe_job}: backup {status} ({reason}); ripping directly from the drive"
+            )
+            await _record(status, reason=reason)
             await self._enter_ripping(job_id)
 
         try:
@@ -2089,7 +2111,7 @@ Add the method next to `_run_ripping`:
             config = await get_config()
             dest = backup_destination(job, config.backup_path if config else "")
             if dest is None:
-                await _fall_back("skipped:not_configured")
+                await _fall_back("skipped", "not_configured")
                 return
 
             # Already backed up (a re-inserted disc, or a retried job). Reuse it
@@ -2103,12 +2125,12 @@ Add the method next to `_run_ripping`:
                 return
 
             if not has_room_for_backup(dest, total_bytes):
-                await _fall_back("skipped:insufficient_space")
+                await _fall_back("skipped", "insufficient_space")
                 return
 
             disc_spec = await resolve_disc_index(drive_id, str(self.extractor.makemkv_path))
             if disc_spec is None:
-                await _fall_back("skipped:no_disc_index")
+                await _fall_back("skipped", "no_disc_index")
                 return
 
             await _record("pending", path=str(dest))
@@ -2139,7 +2161,7 @@ Add the method next to `_run_ripping`:
             )
 
             if not result.success:
-                await _fall_back(f"failed:{result.error_message or 'unknown error'}")
+                await _fall_back("failed", result.error_message or "unknown error")
                 return
 
             await _record("completed", path=str(result.dest), spec=f"file:{result.dest}")
@@ -2154,7 +2176,7 @@ Add the method next to `_run_ripping`:
 
         except Exception as e:
             logger.error(f"Job {safe_job}: backup phase crashed: {e}", exc_info=True)
-            await _fall_back(f"failed:{e}")
+            await _fall_back("failed", str(e))
 
     async def _enter_ripping(self, job_id: int) -> None:
         """Transition into RIPPING and start the rip task."""
@@ -2878,7 +2900,7 @@ Expected: `KeyError: 'backup_status'`.
 
 - [ ] **Step 3: Write the implementation**
 
-In `build_job_detail`, add `backup_status`, `backup_path` and `source_spec` to the job dict alongside the other `DiscJob` scalars. The bundle's markdown summary and log collection need no change: `_run_backup` logs inside `with_job_log_context`, so its lines already carry the `job=<id>` tag the bundle greps, and `backup_disc` writes `backup_job<id>.log` into the same log dir the scan and rip logs use.
+In `build_job_detail`, add `backup_status`, `backup_status_reason`, `backup_path` and `source_spec` to the job dict alongside the other `DiscJob` scalars. The bundle's markdown summary and log collection need no change: `_run_backup` logs inside `with_job_log_context`, so its lines already carry the `job=<id>` tag the bundle greps, and `backup_disc` writes `backup_job<id>.log` into the same log dir the scan and rip logs use.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -3288,7 +3310,7 @@ Expected: `Unable to find an element with the text: /disc backup/i`.
 
 In `ImportModal.tsx`, render `disc_image` and `iso` entries with a distinct icon and a "DISC BACKUP" / "ISO" tag, and add a preview line reading "N disc backup(s) will be scanned and extracted" so the user knows this path runs MakeMKV rather than filing existing MKVs. Include disc images in the selection and confirmation counts.
 
-In the History detail panel, render the backup path and status next to the other job paths. Render a warning row when `backup_status` starts with `skipped:` or `failed:`, mapping the suffix to plain text ("No backup folder configured", "Not enough free space", "MakeMKV could not enumerate the drive", "This disc type cannot be backed up", "Backup failed: <reason>").
+In the History detail panel, render the backup path and status next to the other job paths. Render a warning row when `backup_status` is `skipped` or `failed`, mapping `backup_status_reason` to plain text ("No backup folder configured", "Not enough free space", "MakeMKV could not enumerate the drive", "This disc type cannot be backed up", "Backup failed: <reason>").
 
 In `DiscMetadata.tsx`, show the same one-line note on the card for a live job.
 
@@ -3494,7 +3516,7 @@ curl -X POST localhost:8000/api/simulate/insert-disc -H "Content-Type: applicati
 Verify, and record the answers in the spec's Open Questions section:
 
 1. A Blu-ray with the setting on: the backup lands at the expected path, the tray opens when the backup finishes rather than when extraction finishes, and extraction reads from the backup.
-2. A DVD with the setting on: does `makemkvcon backup` accept it? If not, confirm the job records `skipped:unsupported_disc` and rips directly.
+2. A DVD with the setting on: does `makemkvcon backup` accept it? If not, confirm the job records `backup_status="skipped"` with `backup_status_reason="unsupported_disc"` and rips directly.
 3. Whether `makemkvcon backup` emits `PRGV` lines. If it does not, the progress bar will sit at zero, and `_run_backup` needs the filesystem-polling fallback that `_run_ripping` already demonstrates.
 4. An existing backup folder and an ISO imported through the modal.
 
@@ -3525,4 +3547,4 @@ Spec coverage checked section by section. Every spec section maps to a task: dat
 Two deliberate deviations from the spec, both improvements found while planning:
 
 1. The spec's frontend section assumed a new UI state. Task 17 instead repurposes the orphaned `archiving_iso` / `isoProgress` scaffolding, which no backend code has ever emitted. Adding an eleventh state beside a dead tenth one would create exactly the drift `discState.ts` warns about.
-2. `next_state_after_identify` returns `RIPPING` when `backup_before_rip` is on but `backup_path` is empty, rather than entering `BACKING_UP` and immediately falling back. The `skipped:not_configured` path in `_run_backup` remains as the backstop for a root that is emptied mid-job, so both are covered.
+2. `next_state_after_identify` returns `RIPPING` when `backup_before_rip` is on but `backup_path` is empty, rather than entering `BACKING_UP` and immediately falling back. The `skipped` / `not_configured` path in `_run_backup` remains as the backstop for a root that is emptied mid-job, so both are covered.
