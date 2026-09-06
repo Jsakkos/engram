@@ -21,14 +21,23 @@ class JobStateMachine:
     VALID_TRANSITIONS = {
         JobState.IDLE: {JobState.IDENTIFYING, JobState.FAILED},
         JobState.IDENTIFYING: {
+            JobState.BACKING_UP,  # backup_before_rip: copy the disc, then extract from it
             JobState.RIPPING,
             JobState.MATCHING,  # import/staging path skips RIPPING (files already exist)
             JobState.ORGANIZING,  # import/staging movie path skips RIPPING + matching
             JobState.REVIEW_NEEDED,
             JobState.FAILED,
         },
+        # No edge to MATCHING or ORGANIZING: a backup produces no MKVs, so a job
+        # that skipped RIPPING from here would have nothing to match or organize.
+        JobState.BACKING_UP: {
+            JobState.RIPPING,
+            JobState.REVIEW_NEEDED,
+            JobState.FAILED,
+        },
         JobState.REVIEW_NEEDED: {
             JobState.IDENTIFYING,  # Re-identify with corrected title
+            JobState.BACKING_UP,  # Answered a pre-rip prompt with backup enabled
             JobState.RIPPING,
             JobState.MATCHING,  # Re-match with corrected metadata (post-rip)
             JobState.COMPLETED,

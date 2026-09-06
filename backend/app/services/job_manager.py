@@ -382,6 +382,7 @@ class JobManager:
         """
         stale_states = [
             JobState.IDENTIFYING,
+            JobState.BACKING_UP,
             JobState.RIPPING,
             JobState.MATCHING,
         ]
@@ -671,6 +672,7 @@ class JobManager:
                 disc_required_states = (
                     JobState.IDLE,
                     JobState.IDENTIFYING,
+                    JobState.BACKING_UP,
                     JobState.RIPPING,
                 )
                 post_eject_states = (JobState.MATCHING, JobState.ORGANIZING)
@@ -1999,6 +2001,7 @@ class JobManager:
         """Per-phase no-activity ceiling (seconds), or None for resting/untimed states."""
         return {
             JobState.IDENTIFYING: config.timeout_identifying_seconds,
+            JobState.BACKING_UP: config.timeout_backing_up_seconds,
             JobState.RIPPING: config.timeout_ripping_seconds,
             JobState.MATCHING: config.timeout_matching_seconds,
             JobState.ORGANIZING: config.timeout_organizing_seconds,
@@ -2088,6 +2091,7 @@ class JobManager:
 
         watched = (
             JobState.IDENTIFYING,
+            JobState.BACKING_UP,
             JobState.RIPPING,
             JobState.MATCHING,
             JobState.ORGANIZING,

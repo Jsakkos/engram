@@ -663,6 +663,7 @@ async def test_watchdog_review_needed_is_resting_state(tmp_path):
 def test_phase_timeout_reads_config():
     cfg = AppConfig()
     assert job_manager._phase_timeout(cfg, JobState.IDENTIFYING) == cfg.timeout_identifying_seconds
+    assert job_manager._phase_timeout(cfg, JobState.BACKING_UP) == cfg.timeout_backing_up_seconds
     assert job_manager._phase_timeout(cfg, JobState.RIPPING) == cfg.timeout_ripping_seconds
     assert job_manager._phase_timeout(cfg, JobState.MATCHING) == cfg.timeout_matching_seconds
     assert job_manager._phase_timeout(cfg, JobState.ORGANIZING) == cfg.timeout_organizing_seconds

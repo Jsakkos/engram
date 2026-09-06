@@ -645,6 +645,7 @@ class UpdateChecker:
         # not ghost-block an update restart.
         active_states = [
             JobState.IDENTIFYING,
+            JobState.BACKING_UP,
             JobState.RIPPING,
             JobState.MATCHING,
             JobState.ORGANIZING,
