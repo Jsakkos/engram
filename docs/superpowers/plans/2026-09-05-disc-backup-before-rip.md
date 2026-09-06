@@ -1125,6 +1125,23 @@ git commit -m "feat(backup): compute backup destinations and preflight free spac
 - Modify: `backend/app/core/extractor.py`
 - Test: `backend/tests/unit/test_backup_disc.py`
 
+> **Corrected during implementation and review.** Four things below are wrong as
+> written. (1) The `_parse_backup_progress` fixtures contradict the reference
+> implementation directly beneath them: in `PRGV:current,total,max`, `current` is
+> the per-title bar and `total` is the overall bar, pinned by a verbatim real rip
+> log in `tests/unit/test_rip_progress.py`, so `total/maximum` is right and the
+> fixtures had the fields swapped. Reading `current` would run the backup bar
+> backwards once per sub-operation. (2) `_run_backup_process` is an instance
+> method, not a staticmethod, so it can register its `Popen` in `self._processes`
+> and be cancelled; a staticmethod leaves a multi-hour backup uncancellable.
+> (3) The log file is `backup.log`, matching `scan.log` and `rip.log`, because
+> callers already pass a per-job log dir. (4) `_last_msg_text` parses the first
+> quoted field by regex rather than `split(",", 4)[4]`, because MakeMKV's MSG
+> format puts the format string at index 4 and a comma inside the message breaks
+> the naive split. Review then added a guarded `mkdir`, a clean-working-directory
+> rule for a retried backup (at most one stale `.partial` preserved), and a
+> `BackupResult.already_existed` flag. See commits `38598c54` and `8d4b1ce0`.
+
 - [ ] **Step 1: Write the failing tests**
 
 Create `backend/tests/unit/test_backup_disc.py`:
