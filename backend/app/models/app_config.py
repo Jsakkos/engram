@@ -38,14 +38,13 @@ class AppConfig(SQLModel, table=True):
     staging_path: str = ""  # Platform-aware default set on first run
     library_movies_path: str = ""
     library_tv_path: str = ""
+    # Root for full decrypted disc backups. Empty means the feature cannot run,
+    # which the backup phase reports as skipped:not_configured rather than failing.
+    backup_path: str = ""
 
     # Episode Matcher Settings
     subtitles_cache_path: str = "~/.engram/cache"
     matcher_min_confidence: float = 0.6
-
-    # Root for full decrypted disc backups. Empty means the feature cannot run,
-    # which the backup phase reports as skipped:not_configured rather than failing.
-    backup_path: str = ""
 
     # Precomputed subtitle-vector cache (downloaded from GitHub Releases on first run).
     # server_default="1" so the column is added enabled for pre-existing databases.

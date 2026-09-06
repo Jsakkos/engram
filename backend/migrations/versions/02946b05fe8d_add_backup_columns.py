@@ -23,6 +23,7 @@ def upgrade() -> None:
     op.add_column("disc_jobs", sa.Column("source_spec", sa.String(), nullable=True))
     op.add_column("disc_jobs", sa.Column("backup_path", sa.String(), nullable=True))
     op.add_column("disc_jobs", sa.Column("backup_status", sa.String(), nullable=True))
+    op.add_column("disc_jobs", sa.Column("backup_status_reason", sa.String(), nullable=True))
     op.add_column(
         "app_config",
         sa.Column("backup_path", sa.String(), nullable=False, server_default=sa.text("''")),
@@ -50,6 +51,7 @@ def downgrade() -> None:
         batch_op.drop_column("backup_before_rip")
         batch_op.drop_column("backup_path")
     with op.batch_alter_table("disc_jobs", schema=None) as batch_op:
+        batch_op.drop_column("backup_status_reason")
         batch_op.drop_column("backup_status")
         batch_op.drop_column("backup_path")
         batch_op.drop_column("source_spec")

@@ -97,12 +97,20 @@ class DiscJob(SQLModel, table=True):
     # Diverges from drive_id exactly once: after a successful backup, drive_id is
     # still the drive the disc came from while source_spec has become the copy.
     source_spec: str | None = Field(default=None)
-    # Where this job's backup landed. Kept for history and for re-import; Engram
-    # never deletes it.
+    # Where this job's backup landed. Kept for history and for re-import. No
+    # cleanup path touches it today, and that is deliberate: backups are the
+    # user's preservation copy, so any future cleanup must exclude this root
+    # explicitly rather than inheriting staging's rules.
     backup_path: str | None = Field(default=None)
-    # "pending" | "completed" | "failed:<reason>" | "skipped:<reason>".
-    # None means no backup was attempted (the feature is off).
+    # "pending" | "completed" | "failed" | "skipped". None means no backup was
+    # attempted (the feature is off). Mirrors subtitle_status: a small closed set
+    # of literals here, with the free-text explanation in its own column, so no
+    # consumer has to parse a delimiter out of a status.
     backup_status: str | None = Field(default=None)
+    # Why the backup failed or was skipped, e.g. "insufficient_space",
+    # "not_configured", "no_disc_index", "unsupported_disc", or a MakeMKV error
+    # string. None when backup_status is pending or completed.
+    backup_status_reason: str | None = Field(default=None)
 
     # Progress Tracking
     state: JobState = JobState.IDLE
