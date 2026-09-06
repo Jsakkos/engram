@@ -90,7 +90,26 @@ def _same_duration(a: int, b: int) -> bool:
 
 
 def _is_identical(db_titles: list[Any], scanned_titles: list[Any]) -> bool:
-    """True when the backup enumerated exactly what the disc scan did."""
+    """True when the backup enumerated exactly what the disc scan did.
+
+    Index and duration alone are not enough: two adjacent titles of similar
+    length that swapped position would satisfy both checks pair-for-pair while
+    holding each other's content. So whenever BOTH sides of a pair carry
+    identity metadata (``source_filename``/``segment_map``), that metadata
+    must also agree before the pair counts as identical. Only a pair with NO
+    metadata on either side (e.g. a DVD scan where neither field was ever
+    populated) skips that comparison and relies on index+duration alone, which
+    is the case this fast path exists for.
+
+    A pair where exactly one side carries metadata and the other doesn't is
+    treated as NOT identical, on purpose: a backup re-scan losing metadata the
+    disc scan had (or gaining metadata it lacked) means the two enumerations
+    disagree about what there is to compare, which is itself a sign they may
+    not correspond. Falling through to the fingerprint pass below is safe here
+    because that pass keys strictly on matching metadata; a one-sided pair
+    will fail to find a candidate there and correctly resolve to AMBIGUOUS
+    rather than a silent (and possibly wrong) IDENTICAL.
+    """
     if len(db_titles) != len(scanned_titles):
         return False
     for db, sc in zip(db_titles, scanned_titles, strict=True):
@@ -98,6 +117,19 @@ def _is_identical(db_titles: list[Any], scanned_titles: list[Any]) -> bool:
             db.duration_seconds, sc.duration_seconds
         ):
             return False
+        db_key = _identity_key(db.source_filename, db.segment_map)
+        sc_key = _identity_key(
+            getattr(sc, "source_filename", None), getattr(sc, "segment_map", None)
+        )
+        db_has_meta = db_key != ("", "")
+        sc_has_meta = sc_key != ("", "")
+        if db_has_meta and sc_has_meta:
+            if db_key != sc_key:
+                return False
+        elif db_has_meta != sc_has_meta:
+            return False
+        # else: neither side has metadata; index+duration (already checked
+        # above) is all there is, exactly as before this fix.
     return True
 
 
@@ -107,7 +139,14 @@ def reconcile_titles(db_titles: list[Any], scanned_titles: list[Any]) -> Reconci
     Returns IDENTICAL (reuse the stored indices), REMAPPED (with a
     ``{old: new}`` mapping to apply), or AMBIGUOUS (park the job for review;
     the ``reason`` is written to be shown to a person).
+
+    Both inputs are sorted by index internally, so callers need not pre-sort
+    either list (and a future change to either query's ORDER BY cannot change
+    this function's answer).
     """
+    db_titles = sorted(db_titles, key=lambda t: t.title_index)
+    scanned_titles = sorted(scanned_titles, key=lambda t: t.index)
+
     if not scanned_titles:
         return ReconcileResult(
             ReconcileOutcome.AMBIGUOUS,

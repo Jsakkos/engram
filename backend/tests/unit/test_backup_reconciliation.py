@@ -49,6 +49,50 @@ class TestIdenticalEnumeration:
         assert result.outcome is ReconcileOutcome.REMAPPED
         assert result.remap == {0: 0}
 
+    def test_titles_with_no_metadata_on_either_side_are_identical(self):
+        # Pin the case the fast path exists for: a DVD scan where neither side
+        # ever carries source_filename/segment_map. Index + duration alone
+        # must still be enough so this doesn't fall into fingerprinting, which
+        # cannot distinguish anything here.
+        db = [_title(0, 2600), _title(1, 900)]
+        scan = [_scanned(0, 2600), _scanned(1, 900)]
+        result = reconcile_titles(db, scan)
+        assert result.outcome is ReconcileOutcome.IDENTICAL
+        assert result.remap == {}
+
+    def test_matching_metadata_in_same_positions_is_identical(self):
+        db = [_title(0, 2600, "00001.m2ts", "1,2"), _title(1, 2610, "00002.m2ts", "3,4")]
+        scan = [_scanned(0, 2600, "00001.m2ts", "1,2"), _scanned(1, 2610, "00002.m2ts", "3,4")]
+        result = reconcile_titles(db, scan)
+        assert result.outcome is ReconcileOutcome.IDENTICAL
+        assert result.remap == {}
+
+    def test_swapped_content_at_matching_indices_is_not_identical(self):
+        # THE silent-misfile regression guard: two adjacent, similar-length TV
+        # episodes whose content swapped position. Index and duration alone
+        # agree pair-for-pair, so the old fast path declared this IDENTICAL and
+        # each slot would then extract the OTHER episode's content with no
+        # error anywhere. source_filename disagreement must block the fast
+        # path; the fingerprint pass below then correctly untangles the swap.
+        db = [_title(0, 1320, "00001.m2ts"), _title(1, 1321, "00002.m2ts")]
+        scan = [_scanned(0, 1321, "00002.m2ts"), _scanned(1, 1320, "00001.m2ts")]
+        result = reconcile_titles(db, scan)
+        assert result.outcome is ReconcileOutcome.REMAPPED
+        assert result.remap == {0: 1, 1: 0}
+
+    def test_metadata_present_on_only_one_side_is_not_identical(self):
+        # The backup rescan lost the source_filename the disc scan had. That
+        # disagreement about what there is to compare is itself a signal the
+        # two enumerations may not correspond, so this must not fast-path to
+        # IDENTICAL. The fingerprint pass below can't find a same-key
+        # candidate either (a title with metadata never matches a bucket keyed
+        # on an empty one), so this correctly resolves to AMBIGUOUS rather
+        # than a guess.
+        db = [_title(0, 2600, "00001.m2ts")]
+        scan = [_scanned(0, 2600)]
+        result = reconcile_titles(db, scan)
+        assert result.outcome is ReconcileOutcome.AMBIGUOUS
+
 
 class TestRemapped:
     def test_shifted_indices_remap_by_source_filename(self):
@@ -87,6 +131,18 @@ class TestRemapped:
         result = reconcile_titles(db, scan)
         assert result.outcome is ReconcileOutcome.REMAPPED
         assert result.remap == {0: 5, 1: 6, 2: 7}
+
+
+class TestOrderingIndependence:
+    def test_reversed_input_order_gives_the_same_outcome(self):
+        # reconcile_titles sorts both lists by index internally, so a caller's
+        # ORDER BY (or lack of one) cannot flip IDENTICAL into REMAPPED for
+        # otherwise unchanged content.
+        db = [_title(1, 2610), _title(0, 2600)]
+        scan = [_scanned(1, 2610), _scanned(0, 2600)]
+        result = reconcile_titles(db, scan)
+        assert result.outcome is ReconcileOutcome.IDENTICAL
+        assert result.remap == {}
 
 
 class TestAmbiguous:
