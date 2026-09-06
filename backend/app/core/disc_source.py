@@ -108,6 +108,14 @@ class DiscSource:
         plain ``dev:E:`` form: a backup and a sentinel scan of one physical
         drive must contend, or two makemkvcon processes stall each other.
 
+        NOT round-trippable through ``parse``. The originating drive lives only
+        on the instance, so ``parse(source.spec)`` (i.e. ``parse("disc:0")``)
+        comes back with no ``_drive_id`` and a ``lock_key`` of ``"drive:0"``,
+        which is exactly the collision this constructor exists to avoid. So a
+        source built here must be constructed, never stored: do not write its
+        spec to ``DiscJob.source_spec``. Today nothing does, and a backup's
+        persisted source is the ``file:<dest>`` copy instead.
+
         Args:
             drive: the drive identifier the index was resolved from, in any
                 form ``parse`` accepts ("E:", "dev:E:", "/dev/sr0").

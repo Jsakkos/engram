@@ -2869,14 +2869,18 @@ class JobManager:
             await self._skip_backup(job_id, "not_configured", "no backup location is configured")
             return None
 
-        if _has_existing_backup(dest):
+        # Both probes below touch the filesystem, and the backup shelf is
+        # routinely a network share or a spun-down external disk where a stat or
+        # a disk_usage can block for seconds. Off the event loop they go, for the
+        # same reason api.routes.import_browse does it.
+        if await asyncio.to_thread(_has_existing_backup, dest):
             logger.info(f"Job {safe_job}: reusing the existing backup at {dest}")
             await self._record_backup_status(
                 job_id, BACKUP_COMPLETED, dest=dest, use_as_source=True
             )
             return drive_id, dest
 
-        if not has_room_for_backup(dest, total_bytes):
+        if not await asyncio.to_thread(has_room_for_backup, dest, total_bytes):
             await self._skip_backup(
                 job_id, "insufficient_space", f"not enough free space for a backup at {dest}"
             )
@@ -2966,9 +2970,18 @@ class JobManager:
             job.updated_at = datetime.now(UTC)
             await session.commit()
 
-    async def _skip_backup(self, job_id: int, reason: str, detail: str) -> None:
-        """Record a backup that was never attempted, and rip from the drive."""
-        await self._fall_back_to_direct_rip(job_id, BACKUP_SKIPPED, reason, detail)
+    async def _skip_backup(self, job_id: int, code: str, detail: str) -> None:
+        """Record a backup that was never attempted, and rip from the drive.
+
+        ``detail`` (not ``code``) is what gets persisted. The failure path
+        already stores prose in ``backup_status_reason``, and the history detail
+        panel has no dictionary to expand "not_configured" with, so storing the
+        short code here meant a skipped backup could only be explained by
+        digging through logs. Nothing machine-reads the codes; they stay in the
+        log line for grepping.
+        """
+        logger.debug(f"Job {sanitize_log_value(job_id)}: backup skipped ({code})")
+        await self._fall_back_to_direct_rip(job_id, BACKUP_SKIPPED, detail, detail)
 
     async def _fall_back_to_direct_rip(
         self, job_id: int, status: str, reason: str, detail: str
@@ -3054,14 +3067,51 @@ class JobManager:
                 )
                 return False
 
-            if result.remap:
-                for row in rows:
-                    new_index = result.remap.get(row.title_index)
-                    if new_index is not None and new_index != row.title_index:
-                        row.title_index = new_index
-                        session.add(row)
+            # Both surviving outcomes rewrite the rip targets from the backup's
+            # own enumeration.
+            #
+            # title_index is not the only one that matters:
+            # ripping_helpers.expected_native_index PREFERS output_index, and
+            # every site that maps a produced "..._tNN.mkv" back onto a row goes
+            # through it. A remap that rewrote only title_index therefore left
+            # the resolution sites reading a stale disc-scan number: two titles
+            # the backup enumerated in the opposite order would resolve onto
+            # each other's rows, filing one episode under the other's name with
+            # no error anywhere, which is the exact mis-file this reconciliation
+            # exists to prevent.
+            #
+            # Clearing output_index instead was rejected: the fallback is
+            # title_index, and MakeMKV's native _tNN is not guaranteed to equal
+            # the scan-order index (issue #517). It is re-derived from the
+            # backup scan's suggested filename with the same helper
+            # identification_coordinator uses, so the two paths cannot drift.
+            # None is written when the backup scan supplied no suggested
+            # filename: that is the legitimate fall-back-to-title_index case.
+            #
+            # This runs on the IDENTICAL path too (where the mapping is the
+            # identity), because backup_reconcile._is_identical deliberately
+            # does not compare disc_title: a backup can enumerate identically
+            # and still suggest different _tNN numbers.
+            scanned_by_index = {sc.index: sc for sc in scanned}
+            changed = 0
+            for row in rows:
+                new_index = result.remap.get(row.title_index, row.title_index)
+                matched = scanned_by_index.get(new_index)
+                if matched is None:
+                    continue
+                native = title_index_from_filename(getattr(matched, "disc_title", "") or "")
+                if new_index == row.title_index and native == row.output_index:
+                    continue
+                row.title_index = new_index
+                row.output_index = native
+                session.add(row)
+                changed += 1
+            if changed:
                 await session.commit()
-                logger.info(f"Job {safe_job}: remapped {len(result.remap)} title indices")
+                logger.info(
+                    f"Job {safe_job}: rewrote {changed} title rows from the backup scan "
+                    f"({len(result.remap)} index remaps)"
+                )
 
         return True
 

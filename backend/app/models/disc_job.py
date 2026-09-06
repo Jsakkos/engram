@@ -107,9 +107,12 @@ class DiscJob(SQLModel, table=True):
     # of literals here, with the free-text explanation in its own column, so no
     # consumer has to parse a delimiter out of a status.
     backup_status: str | None = Field(default=None)
-    # Why the backup failed or was skipped, e.g. "insufficient_space",
-    # "not_configured", "no_disc_index", "unsupported_disc", or a MakeMKV error
-    # string. None when backup_status is pending or completed.
+    # Why the backup failed or was skipped, as a short sentence a person can
+    # read in a UI row ("no backup location is configured", or a MakeMKV error
+    # string). Deliberately prose for BOTH outcomes: a skip's short code
+    # ("not_configured") stays in the logs, because nothing machine-reads it and
+    # the history panel has no dictionary to expand it with. None when
+    # backup_status is pending or completed.
     backup_status_reason: str | None = Field(default=None)
 
     # Progress Tracking

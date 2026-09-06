@@ -43,6 +43,11 @@ number is only recovered by re-parsing. Worst of all it is derived from
 MakeMKV's own numbering, which is exactly the thing a re-enumeration would
 change, so it cannot corroborate itself. ``source_filename``/``segment_map``
 name disc structure instead, which is what a byte copy preserves.
+
+It is, however, a rip *target*, so it cannot be left holding its disc-scan
+value once extraction reads the backup: see
+``job_manager._reconcile_backup_titles``, which re-derives it from the backup
+scan's ``disc_title`` for every row this module lines up.
 """
 
 from __future__ import annotations
@@ -100,6 +105,17 @@ def _is_identical(db_titles: list[Any], scanned_titles: list[Any]) -> bool:
     metadata on either side (e.g. a DVD scan where neither field was ever
     populated) skips that comparison and relies on index+duration alone, which
     is the case this fast path exists for.
+
+    ``disc_title`` (MakeMKV's suggested output filename, from which
+    ``DiscTitle.output_index`` is derived) is deliberately NOT compared here.
+    Two enumerations that agree on index, duration and disc structure but
+    suggest different ``_tNN`` numbers are still the same titles in the same
+    order, and failing them into the fingerprint pass would risk parking a
+    perfectly good backup as AMBIGUOUS. The stale-``output_index`` hazard that
+    difference would otherwise create is closed at the caller instead:
+    ``job_manager._reconcile_backup_titles`` re-derives ``output_index`` from
+    the backup scan for EVERY row, on the IDENTICAL path as well as the
+    REMAPPED one, so this function never has to be the thing that notices.
 
     A pair where exactly one side carries metadata and the other doesn't is
     treated as NOT identical, on purpose: a backup re-scan losing metadata the

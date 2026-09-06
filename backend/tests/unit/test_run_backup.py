@@ -15,7 +15,7 @@ spawns a Discord notification task that leaks a pooled connection in tests.
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -23,6 +23,7 @@ from app.core.extractor import BackupResult
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_manager import job_manager
+from app.services.ripping_helpers import expected_native_index
 from tests.unit.conftest import _unit_session_factory
 
 _JM = sys.modules["app.services.job_manager"]
@@ -56,7 +57,8 @@ def spies(monkeypatch, tmp_path):
     monkeypatch.setattr(_JM.event_broadcaster, "broadcast_backup_progress", broadcast)
 
     # Module-level names are looked up on the module, not through the singleton.
-    monkeypatch.setattr(_JM, "has_room_for_backup", lambda dest, needed: True)
+    has_room = MagicMock(return_value=True)
+    monkeypatch.setattr(_JM, "has_room_for_backup", has_room)
     monkeypatch.setattr(_JM, "resolve_disc_index", AsyncMock(return_value="disc:0"))
 
     config = SimpleNamespace(
@@ -73,6 +75,7 @@ def spies(monkeypatch, tmp_path):
         backup_disc=backup_disc,
         scan_disc=scan_disc,
         broadcast=broadcast,
+        has_room=has_room,
         config=config,
     )
 
@@ -86,7 +89,14 @@ def dest(monkeypatch, tmp_path, spies):
     return target
 
 
-async def _seed(*, indices=(0, 1), durations=(2600, 2601)) -> int:
+async def _seed(*, indices=(0, 1), durations=(2600, 2601), output_indices=None) -> int:
+    """Seed a job with two titles, as a modern disc scan would leave them.
+
+    ``output_index`` is populated on purpose: identification_coordinator sets it
+    on every scan, and ``ripping_helpers.expected_native_index`` PREFERS it over
+    ``title_index``. A seed that left it None made every resolution site fall
+    back to ``title_index`` and so hid the stale-``output_index`` bug entirely.
+    """
     async with _unit_session_factory() as session:
         job = DiscJob(
             drive_id="E:",
@@ -100,11 +110,13 @@ async def _seed(*, indices=(0, 1), durations=(2600, 2601)) -> int:
         session.add(job)
         await session.commit()
         await session.refresh(job)
-        for idx, dur in zip(indices, durations, strict=True):
+        outs = output_indices if output_indices is not None else indices
+        for idx, dur, out in zip(indices, durations, outs, strict=True):
             session.add(
                 DiscTitle(
                     job_id=job.id,
                     title_index=idx,
+                    output_index=out,
                     duration_seconds=dur,
                     file_size_bytes=5 * 1024**3,
                     state=TitleState.PENDING,
@@ -122,13 +134,26 @@ async def _load(job_id: int) -> DiscJob:
 
 
 class _ScannedTitle:
-    """Shape of extractor.TitleInfo as reconcile_titles reads it."""
+    """Shape of extractor.TitleInfo as reconcile_titles reads it.
 
-    def __init__(self, index: int, duration: int, source_filename: str, segment_map: str):
+    ``disc_title`` is MakeMKV's suggested output filename (TINFO attr 27); it is
+    what ``output_index`` is derived from, on the disc scan and on the backup
+    re-scan alike.
+    """
+
+    def __init__(
+        self,
+        index: int,
+        duration: int,
+        source_filename: str,
+        segment_map: str,
+        disc_title: str | None = None,
+    ):
         self.index = index
         self.duration_seconds = duration
         self.source_filename = source_filename
         self.segment_map = segment_map
+        self.disc_title = f"SHOW_t{index:02d}.mkv" if disc_title is None else disc_title
 
 
 def _matching_scan():
@@ -136,6 +161,18 @@ def _matching_scan():
         _ScannedTitle(0, 2600, "00000.m2ts", "1"),
         _ScannedTitle(1, 2601, "00001.m2ts", "2"),
     ]
+
+
+async def _titles(job_id: int) -> list[DiscTitle]:
+    async with _unit_session_factory() as session:
+        from sqlmodel import select
+
+        rows = (
+            (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+            .scalars()
+            .all()
+        )
+        return sorted(rows, key=lambda r: r.id)
 
 
 class TestFallbackMatrix:
@@ -150,7 +187,7 @@ class TestFallbackMatrix:
 
         job = await _load(job_id)
         assert job.backup_status == "skipped"
-        assert job.backup_status_reason == "not_configured"
+        assert job.backup_status_reason == "no backup location is configured"
         assert job.source_spec is None
         assert job.state == JobState.RIPPING
         spies.release.assert_not_called()
@@ -165,7 +202,7 @@ class TestFallbackMatrix:
 
         job = await _load(job_id)
         assert job.backup_status == "skipped"
-        assert job.backup_status_reason == "insufficient_space"
+        assert "not enough free space" in job.backup_status_reason
         assert job.source_spec is None
         assert job.state == JobState.RIPPING
         spies.release.assert_not_called()
@@ -180,7 +217,7 @@ class TestFallbackMatrix:
 
         job = await _load(job_id)
         assert job.backup_status == "skipped"
-        assert job.backup_status_reason == "no_disc_index"
+        assert "could not address drive E:" in job.backup_status_reason
         assert job.source_spec is None
         assert job.state == JobState.RIPPING
         spies.release.assert_not_called()
@@ -260,6 +297,9 @@ class TestSuccess:
         await job_manager._run_backup(job_id)
 
         spies.backup_disc.assert_not_called()
+        # Nothing is about to be written, so the (potentially slow, potentially
+        # networked) free-space probe must not run either.
+        spies.has_room.assert_not_called()
         job = await _load(job_id)
         assert job.backup_status == "completed"
         assert job.source_spec == f"file:{dest}"
@@ -301,6 +341,101 @@ class TestSuccess:
         assert sorted(r.title_index for r in rows) == [7, 9]
         job = await _load(job_id)
         assert job.state == JobState.RIPPING
+
+
+class TestRemapRewritesTheRipTarget:
+    """A remap must move ``output_index`` too, or files land on the wrong rows.
+
+    ``ripping_helpers.expected_native_index`` PREFERS ``output_index`` over
+    ``title_index``, and every site that maps a produced ``..._tNN.mkv`` back
+    onto a ``DiscTitle`` goes through it. So these assertions are deliberately
+    on ``expected_native_index``, not on ``title_index``: rewriting only the
+    latter leaves the resolution path reading the stale disc-scan number, which
+    is the silent mis-file this whole module exists to prevent.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_swapped_pair_does_not_invert_onto_each_other(self, spies, dest):
+        # The backup enumerated the two titles in the opposite order: the
+        # content of scan-index 0 is the backup's title 1 and vice versa.
+        spies.scan_disc.return_value = (
+            [
+                _ScannedTitle(0, 2601, "00001.m2ts", "2"),
+                _ScannedTitle(1, 2600, "00000.m2ts", "1"),
+            ],
+            "",
+        )
+        job_id = await _seed()
+
+        await job_manager._run_backup(job_id)
+
+        rows = await _titles(job_id)
+        by_source = {r.source_filename: r for r in rows}
+        a, b = by_source["00000.m2ts"], by_source["00001.m2ts"]
+        # Row A's content is title 1 in the backup, row B's is title 0.
+        assert (a.title_index, b.title_index) == (1, 0)
+        # Without the output_index rewrite these would still read (0, 1), and
+        # LABEL_t01.mkv (A's content) would resolve onto row B.
+        assert expected_native_index(a) == 1
+        assert expected_native_index(b) == 0
+
+    @pytest.mark.asyncio
+    async def test_a_scan_with_no_suggested_filename_falls_back_to_title_index(self, spies, dest):
+        spies.scan_disc.return_value = (
+            [
+                _ScannedTitle(7, 2600, "00000.m2ts", "1", disc_title=""),
+                _ScannedTitle(9, 2601, "00001.m2ts", "2", disc_title=""),
+            ],
+            "",
+        )
+        job_id = await _seed()
+
+        await job_manager._run_backup(job_id)
+
+        rows = await _titles(job_id)
+        assert [r.output_index for r in rows] == [None, None]
+        # None is the legitimate fallback case, not a stale number.
+        assert sorted(expected_native_index(r) for r in rows) == [7, 9]
+
+    @pytest.mark.asyncio
+    async def test_an_identical_scan_still_refreshes_the_native_numbers(self, spies, dest):
+        # Same order, same durations, same disc structure: reconcile_titles
+        # reports IDENTICAL. But the backup suggests different _tNN numbers,
+        # and _is_identical deliberately does not compare disc_title, so the
+        # refresh has to happen unconditionally at the caller.
+        spies.scan_disc.return_value = (
+            [
+                _ScannedTitle(0, 2600, "00000.m2ts", "1", disc_title="SHOW_t04.mkv"),
+                _ScannedTitle(1, 2601, "00001.m2ts", "2", disc_title="SHOW_t05.mkv"),
+            ],
+            "",
+        )
+        job_id = await _seed()
+
+        await job_manager._run_backup(job_id)
+
+        rows = await _titles(job_id)
+        assert [r.title_index for r in rows] == [0, 1]
+        assert [expected_native_index(r) for r in rows] == [4, 5]
+
+    @pytest.mark.asyncio
+    async def test_an_offset_numbered_backup_keeps_its_native_numbers(self, spies, dest):
+        # Issue #517: a disc whose native _tNN does not equal its scan index.
+        # Clearing output_index instead of recomputing it would fall back to
+        # title_index and look for the wrong files.
+        spies.scan_disc.return_value = (
+            [
+                _ScannedTitle(0, 2600, "00000.m2ts", "1", disc_title="SHOW_t01.mkv"),
+                _ScannedTitle(1, 2601, "00001.m2ts", "2", disc_title="SHOW_t02.mkv"),
+            ],
+            "",
+        )
+        job_id = await _seed()
+
+        await job_manager._run_backup(job_id)
+
+        rows = await _titles(job_id)
+        assert [expected_native_index(r) for r in rows] == [1, 2]
 
 
 class TestUnreconcilableBackup:
@@ -353,6 +488,23 @@ class TestProgressThrottling:
 
         # One message per whole percent crossed: 0, 1, 2, 3.
         assert spies.broadcast.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_a_repeated_or_backwards_percentage_says_nothing_new(self, spies, dest):
+        # MakeMKV re-reports the current percent, and a multi-pass copy can even
+        # step backwards. Neither is news, so neither reaches the wire.
+        async def _fake_backup(source, target, progress_callback=None, log_dir=None, job_id=0):
+            for pct in (5.0, 5.0, 5.7, 3.0, 0.0, 5.9):
+                progress_callback(pct)
+            return BackupResult(success=True, dest=target)
+
+        spies.backup_disc.side_effect = _fake_backup
+        spies.scan_disc.return_value = (_matching_scan(), "")
+        job_id = await _seed()
+
+        await job_manager._run_backup(job_id)
+
+        assert spies.broadcast.call_count == 1
 
     @pytest.mark.asyncio
     async def test_progress_is_reported_in_bytes_against_the_disc_estimate(self, spies, dest):
