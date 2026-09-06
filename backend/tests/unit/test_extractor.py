@@ -23,7 +23,7 @@ from app.core.extractor import (
     _is_stalled,
     _safe_callback,
     _save_makemkv_log,
-    _to_drive_spec,
+    _to_source_spec,
     compute_content_hash,
     title_index_from_filename,
 )
@@ -34,7 +34,7 @@ def _extractor() -> MakeMKVExtractor:
 
 
 @pytest.mark.unit
-class TestToDriveSpec:
+class TestToSourceSpec:
     @pytest.mark.parametrize(
         "drive, expected",
         [
@@ -44,7 +44,7 @@ class TestToDriveSpec:
         ],
     )
     def test_normalization(self, drive, expected):
-        assert _to_drive_spec(drive) == expected
+        assert _to_source_spec(drive) == expected
 
 
 @pytest.mark.unit
@@ -354,11 +354,11 @@ class TestParseResolution:
 class TestDriveLock:
     def test_same_lock_for_equivalent_drive_specs(self):
         ex = _extractor()
-        assert ex._get_drive_lock("F:") is ex._get_drive_lock("dev:F:")
+        assert ex._get_source_lock("F:") is ex._get_source_lock("dev:F:")
 
     def test_different_drives_get_different_locks(self):
         ex = _extractor()
-        assert ex._get_drive_lock("F:") is not ex._get_drive_lock("disc:0")
+        assert ex._get_source_lock("F:") is not ex._get_source_lock("disc:0")
 
 
 @pytest.mark.unit

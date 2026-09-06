@@ -17,9 +17,13 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.core.analyst import TitleInfo
 from app.core.security import sanitize_log_value
+
+if TYPE_CHECKING:
+    from app.core.disc_source import DiscSource
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +66,17 @@ STALL_POLL_INTERVAL = 5.0
 FS_POLL_INTERVAL = 3.0
 
 
-def _to_drive_spec(drive: str) -> str:
-    """Normalize a drive identifier into a MakeMKV drive spec.
+def _to_source_spec(source: "DiscSource | str") -> str:
+    """Normalize a source into the argument makemkvcon accepts.
 
-    Drive letters/device paths become ``dev:<drive>``; ``disc:N`` specs pass through.
+    Accepts a DiscSource, a bare drive identifier, or an already-schemed spec,
+    so existing call sites that pass ``job.drive_id`` keep working unchanged.
     """
-    if not drive.startswith("disc:"):
-        return f"dev:{drive}"
-    return drive
+    from app.core.disc_source import DiscSource
+
+    if isinstance(source, DiscSource):
+        return source.makemkv_arg
+    return DiscSource.parse(source).makemkv_arg
 
 
 def _is_stalled(now: float, last_progress: float, timeout: float) -> bool:
@@ -654,9 +661,9 @@ class MakeMKVExtractor:
         # finished file. Single-writer per job under the rip thread + async
         # skip calls; set mutation is atomic under the GIL.
         self._skipped_indices: dict[int, set[int]] = {}
-        # Per-drive locks prevent concurrent MakeMKV operations on the same drive.
-        # Two makemkvcon processes fighting over one drive causes both to stall/fail.
-        self._drive_locks: dict[str, asyncio.Lock] = {}
+        # Per-source locks prevent concurrent MakeMKV operations on one source.
+        # Two makemkvcon processes fighting over one drive causes both to stall.
+        self._source_locks: dict[str, asyncio.Lock] = {}
 
     @property
     def makemkv_path(self) -> Path:
@@ -667,48 +674,58 @@ class MakeMKVExtractor:
 
         return Path(get_config_sync().makemkv_path)
 
-    def _get_drive_lock(self, drive: str) -> asyncio.Lock:
-        """Get or create a per-drive lock to serialize MakeMKV operations."""
-        # Normalize drive key (e.g., "F:" and "dev:F:" should use same lock)
-        key = drive.replace("dev:", "").replace("disc:", "").rstrip("\\")
-        if key not in self._drive_locks:
-            self._drive_locks[key] = asyncio.Lock()
-        return self._drive_locks[key]
+    def _get_source_lock(self, source: "DiscSource | str") -> asyncio.Lock:
+        """Get or create the per-source lock serializing MakeMKV operations.
+
+        Two makemkvcon processes fighting over one optical drive stall both, so
+        every physical drive form keys to one lock. A backup or ISO keys on its
+        own path instead: reading a backup does not touch the drive, and making
+        it wait for the drive lock would silently serialize work that is now
+        genuinely independent.
+        """
+        from app.core.disc_source import DiscSource
+
+        parsed = source if isinstance(source, DiscSource) else DiscSource.parse(source)
+        key = parsed.lock_key
+        if key not in self._source_locks:
+            self._source_locks[key] = asyncio.Lock()
+        return self._source_locks[key]
 
     async def scan_disc(
-        self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
+        self, source: "DiscSource | str", log_dir: Path | None = None, *, job_id: int = 0
     ) -> tuple[list[TitleInfo], str]:
-        """Scan a disc and return title information and the disc display name.
+        """Scan a source and return title information and the disc display name.
 
         Args:
-            drive: Drive letter (e.g., "E:") or disc index (e.g., "disc:0")
+            source: A DiscSource, a drive letter (e.g., "E:"), a disc index
+                (e.g., "disc:0") or a backup/ISO spec (e.g., "file:/backups/x")
             log_dir: Optional directory for saving MakeMKV scan logs
 
         Returns:
-            (titles, disc_name) — list of titles and the CINFO:2 disc display name
+            (titles, disc_name) - list of titles and the CINFO:2 disc display name
             (disc_name is empty string when not present in MakeMKV output)
         """
-        lock = self._get_drive_lock(drive)
+        lock = self._get_source_lock(source)
         if lock.locked():
             logger.warning(
-                f"Drive {drive} is already in use by another MakeMKV operation, "
+                f"Source {source} is already in use by another MakeMKV operation, "
                 f"waiting for it to finish"
             )
 
         async with lock:
-            return await self._scan_disc_unlocked(drive, log_dir=log_dir, job_id=job_id)
+            return await self._scan_disc_unlocked(source, log_dir=log_dir, job_id=job_id)
 
     async def _scan_disc_unlocked(
-        self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
+        self, source: "DiscSource | str", log_dir: Path | None = None, *, job_id: int = 0
     ) -> tuple[list[TitleInfo], str]:
-        """Internal scan implementation (caller must hold drive lock)."""
-        drive_spec = _to_drive_spec(drive)
+        """Internal scan implementation (caller must hold the source lock)."""
+        source_spec = _to_source_spec(source)
 
         cmd = [
             str(self.makemkv_path),
             "-r",  # Robot mode (machine-readable output)
             "info",
-            drive_spec,
+            source_spec,
         ]
 
         start = time.monotonic()
@@ -763,15 +780,17 @@ class MakeMKVExtractor:
             return [], ""
         except subprocess.TimeoutExpired as e:
             elapsed = time.monotonic() - start
-            logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for drive {drive}")
-            raise ScanTimeoutError(f"Disc scan timed out after 10 minutes on drive {drive}") from e
+            logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for source {source}")
+            raise ScanTimeoutError(
+                f"Disc scan timed out after 10 minutes on source {source}"
+            ) from e
         except Exception as e:
             logger.exception(f"Error scanning disc: {e}")
             return [], ""
 
     async def rip_titles(
         self,
-        drive: str,
+        source: "DiscSource | str",
         output_dir: Path,
         title_indices: list[int] | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
@@ -785,7 +804,7 @@ class MakeMKVExtractor:
         """Rip selected titles from a disc.
 
         Args:
-            drive: Drive letter or disc specification
+            source: A DiscSource, a drive letter, a disc index, or a backup/ISO spec
             output_dir: Directory to save MKV files
             title_indices: List of title indices to rip, or None for all
             title_complete_callback: Optional callback when a title finishes ripping
@@ -804,16 +823,16 @@ class MakeMKVExtractor:
         Returns:
             RipResult with success status and output files
         """
-        lock = self._get_drive_lock(drive)
+        lock = self._get_source_lock(source)
         if lock.locked():
             logger.warning(
-                f"Drive {drive} is already in use by another MakeMKV operation, "
+                f"Source {source} is already in use by another MakeMKV operation, "
                 f"waiting for it to finish"
             )
 
         async with lock:
             return await self._rip_titles_unlocked(
-                drive,
+                source,
                 output_dir,
                 title_indices,
                 title_complete_callback,
@@ -826,7 +845,7 @@ class MakeMKVExtractor:
 
     async def _rip_titles_unlocked(
         self,
-        drive: str,
+        source: "DiscSource | str",
         output_dir: Path,
         title_indices: list[int] | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
@@ -837,17 +856,17 @@ class MakeMKVExtractor:
         job_id: int = 0,
         disc_title_map: dict[int, int] | None = None,
     ) -> RipResult:
-        """Internal rip implementation (caller must hold drive lock)."""
+        """Internal rip implementation (caller must hold the source lock)."""
         self._cancelled_jobs.discard(job_id)
         self._ejected_jobs.discard(job_id)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        drive_spec = _to_drive_spec(drive)
+        source_spec = _to_source_spec(source)
 
         # Prepare commands to run
         commands = _build_rip_commands(
             str(self.makemkv_path),
-            drive_spec,
+            source_spec,
             str(output_dir),
             title_indices,
         )
