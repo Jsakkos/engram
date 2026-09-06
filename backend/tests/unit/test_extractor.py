@@ -35,16 +35,11 @@ def _extractor() -> MakeMKVExtractor:
 
 @pytest.mark.unit
 class TestToSourceSpec:
-    @pytest.mark.parametrize(
-        "drive, expected",
-        [
-            ("E:", "dev:E:"),
-            ("/dev/sr0", "dev:/dev/sr0"),
-            ("disc:0", "disc:0"),
-        ],
-    )
-    def test_normalization(self, drive, expected):
-        assert _to_source_spec(drive) == expected
+    # The "E:" and "disc:0" cases live in test_extractor_source.py::TestToSourceSpec
+    # alongside the DiscSource-object and file-spec cases; this is the one form
+    # not covered there.
+    def test_posix_device_gets_a_dev_prefix(self):
+        assert _to_source_spec("/dev/sr0") == "dev:/dev/sr0"
 
 
 @pytest.mark.unit
@@ -351,12 +346,15 @@ class TestParseResolution:
 
 
 @pytest.mark.unit
-class TestDriveLock:
-    def test_same_lock_for_equivalent_drive_specs(self):
-        ex = _extractor()
-        assert ex._get_source_lock("F:") is ex._get_source_lock("dev:F:")
-
-    def test_different_drives_get_different_locks(self):
+class TestSourceLockKeying:
+    # test_same_lock_for_equivalent_drive_specs was removed here: it verbatim
+    # restated TestSourceLocking::test_drive_forms_share_one_lock in
+    # test_extractor_source.py.
+    def test_a_disc_index_currently_keys_separately_from_a_letter(self):
+        # This pins CURRENT behaviour, not a requirement: "F:" and "disc:0" may
+        # well be the same physical drive. A drive letter and its resolved
+        # disc:N index refer to the same hardware and are expected to share a
+        # lock once index resolution is wired up in a later task.
         ex = _extractor()
         assert ex._get_source_lock("F:") is not ex._get_source_lock("disc:0")
 

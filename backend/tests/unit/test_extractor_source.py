@@ -29,6 +29,12 @@ class TestToSourceSpec:
     def test_iso_is_handed_to_makemkv_as_a_file_source(self):
         assert _to_source_spec(DiscSource.parse("iso:/b/x.iso")) == "file:/b/x.iso"
 
+    def test_an_unrecognized_spec_is_rejected(self):
+        # The old _to_drive_spec silently prefixed dev: to anything, which
+        # turned a typo into a confusing MakeMKV error much later.
+        with pytest.raises(ValueError):
+            _to_source_spec("not a drive or a path")
+
 
 @pytest.mark.unit
 class TestSourceLocking:

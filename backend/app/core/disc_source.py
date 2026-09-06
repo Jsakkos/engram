@@ -139,6 +139,14 @@ class DiscSource:
             return "drive:" + self.value.rstrip("\\")
         return "path:" + str(Path(self.value))
 
+    def __str__(self) -> str:
+        """Render as the spec string.
+
+        A DiscSource is interpolated into log and error messages all over the
+        extractor, where the dataclass repr would be unreadable noise.
+        """
+        return self.spec
+
 
 # makemkvcon -r info disc:9999 lists drives without touching a disc. 9999 is
 # MakeMKV's documented "no such drive" index: the scan fails, but the DRV lines

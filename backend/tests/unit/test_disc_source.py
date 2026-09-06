@@ -149,3 +149,16 @@ class TestResolveDiscIndex:
     async def test_subprocess_failure_returns_none(self):
         with patch("app.core.disc_source._run_drive_listing", side_effect=OSError("boom")):
             assert await resolve_disc_index("E:", makemkv_path="mmk") is None
+
+
+class TestStr:
+    def test_a_drive_renders_as_its_spec(self):
+        assert str(DiscSource.parse("E:")) == "dev:E:"
+
+    def test_a_backup_renders_as_its_spec(self):
+        assert str(DiscSource.parse("file:/b/x")) == "file:/b/x"
+
+    def test_an_iso_renders_as_its_own_scheme_not_the_makemkv_arg(self):
+        # str() is for humans reading logs, so it shows what the user picked;
+        # makemkv_arg is what the subprocess needs.
+        assert str(DiscSource.parse("iso:/b/x.iso")) == "iso:/b/x.iso"

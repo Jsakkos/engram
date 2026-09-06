@@ -17,13 +17,10 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from app.core.analyst import TitleInfo
+from app.core.disc_source import DiscSource
 from app.core.security import sanitize_log_value
-
-if TYPE_CHECKING:
-    from app.core.disc_source import DiscSource
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +63,27 @@ STALL_POLL_INTERVAL = 5.0
 FS_POLL_INTERVAL = 3.0
 
 
-def _to_source_spec(source: "DiscSource | str") -> str:
+def _as_source(source: DiscSource | str) -> DiscSource:
+    """Coerce a source argument into a DiscSource.
+
+    Call sites still pass a bare ``job.drive_id`` string, so every entry point
+    that takes a source accepts either form and normalizes here.
+    """
+    return source if isinstance(source, DiscSource) else DiscSource.parse(source)
+
+
+def _to_source_spec(source: DiscSource | str) -> str:
     """Normalize a source into the argument makemkvcon accepts.
 
     Accepts a DiscSource, a bare drive identifier, or an already-schemed spec,
     so existing call sites that pass ``job.drive_id`` keep working unchanged.
-    """
-    from app.core.disc_source import DiscSource
 
-    if isinstance(source, DiscSource):
-        return source.makemkv_arg
-    return DiscSource.parse(source).makemkv_arg
+    Raises:
+        ValueError: if *source* is a string that is not a recognized scheme
+            (``dev:``, ``disc:``, ``file:``, ``iso:``) and not a bare drive
+            identifier either.
+    """
+    return _as_source(source).makemkv_arg
 
 
 def _is_stalled(now: float, last_progress: float, timeout: float) -> bool:
@@ -674,7 +681,7 @@ class MakeMKVExtractor:
 
         return Path(get_config_sync().makemkv_path)
 
-    def _get_source_lock(self, source: "DiscSource | str") -> asyncio.Lock:
+    def _get_source_lock(self, source: DiscSource | str) -> asyncio.Lock:
         """Get or create the per-source lock serializing MakeMKV operations.
 
         Two makemkvcon processes fighting over one optical drive stall both, so
@@ -683,16 +690,13 @@ class MakeMKVExtractor:
         it wait for the drive lock would silently serialize work that is now
         genuinely independent.
         """
-        from app.core.disc_source import DiscSource
-
-        parsed = source if isinstance(source, DiscSource) else DiscSource.parse(source)
-        key = parsed.lock_key
+        key = _as_source(source).lock_key
         if key not in self._source_locks:
             self._source_locks[key] = asyncio.Lock()
         return self._source_locks[key]
 
     async def scan_disc(
-        self, source: "DiscSource | str", log_dir: Path | None = None, *, job_id: int = 0
+        self, source: DiscSource | str, log_dir: Path | None = None, *, job_id: int = 0
     ) -> tuple[list[TitleInfo], str]:
         """Scan a source and return title information and the disc display name.
 
@@ -716,7 +720,7 @@ class MakeMKVExtractor:
             return await self._scan_disc_unlocked(source, log_dir=log_dir, job_id=job_id)
 
     async def _scan_disc_unlocked(
-        self, source: "DiscSource | str", log_dir: Path | None = None, *, job_id: int = 0
+        self, source: DiscSource | str, log_dir: Path | None = None, *, job_id: int = 0
     ) -> tuple[list[TitleInfo], str]:
         """Internal scan implementation (caller must hold the source lock)."""
         source_spec = _to_source_spec(source)
@@ -780,9 +784,9 @@ class MakeMKVExtractor:
             return [], ""
         except subprocess.TimeoutExpired as e:
             elapsed = time.monotonic() - start
-            logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for source {source}")
+            logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for source {source_spec}")
             raise ScanTimeoutError(
-                f"Disc scan timed out after 10 minutes on source {source}"
+                f"Disc scan timed out after 10 minutes on source {source_spec}"
             ) from e
         except Exception as e:
             logger.exception(f"Error scanning disc: {e}")
@@ -790,7 +794,7 @@ class MakeMKVExtractor:
 
     async def rip_titles(
         self,
-        source: "DiscSource | str",
+        source: DiscSource | str,
         output_dir: Path,
         title_indices: list[int] | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
@@ -845,7 +849,7 @@ class MakeMKVExtractor:
 
     async def _rip_titles_unlocked(
         self,
-        source: "DiscSource | str",
+        source: DiscSource | str,
         output_dir: Path,
         title_indices: list[int] | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
