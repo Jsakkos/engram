@@ -11,8 +11,13 @@ import logging
 import shutil
 from pathlib import Path
 
-from app.core.organizer import sanitize_filename
-from app.models import ContentType, DiscJob
+from app.core.organizer import (
+    format_movie_folder,
+    format_season_folder,
+    format_tv_show_folder,
+    sanitize_filename,
+)
+from app.models import AppConfig, ContentType, DiscJob
 
 logger = logging.getLogger(__name__)
 
@@ -27,41 +32,61 @@ _ASSUMED_DISC_BYTES = 50 * 1024**3
 
 
 def _safe_name(raw: str) -> str:
-    """Sanitize one path component, reusing the Organizer's rules."""
+    """Sanitize one path component, reusing the Organizer's rules.
+
+    Returns "" when nothing survives sanitization, so each call site chooses
+    its own fallback instead of everyone sharing one sentinel string (a disc
+    genuinely labelled "Unknown" must not be treated the same as a title that
+    sanitized away to nothing).
+    """
     cleaned = sanitize_filename(raw or "")
     # sanitize_filename already strips '/' and '\\' along with the rest of the
     # Windows-illegal character set, which is what keeps a crafted title from
     # introducing a new path component and climbing out of the backup root.
-    return cleaned or "Unknown"
+    return cleaned
 
 
-def backup_destination(job: DiscJob, backup_root: str) -> Path | None:
+def _job_fallback(job: DiscJob) -> str:
+    """The "nothing nameable survived" fallback, shared by every branch."""
+    return f"job-{job.id}" if job.id else "job-unknown"
+
+
+def backup_destination(job: DiscJob, config: AppConfig) -> Path | None:
     """Compute where this job's backup should be written.
 
-    Returns None when no root is configured, which the caller reports as a
-    "not_configured" skip.
+    Builds the same folder shape the Organizer would for the library, using
+    the user's configured naming formats, so the backup shelf mirrors the
+    library layout and the two cannot drift.
+
+    Returns None when no config or no root is configured, which the caller
+    reports as a "not_configured" skip.
     """
-    if not backup_root:
+    if not config or not config.backup_path:
         return None
 
-    root = Path(backup_root).expanduser()
+    root = Path(config.backup_path).expanduser()
     name = job.tmdb_name or job.detected_title
 
     if job.content_type == ContentType.MOVIE and name:
-        folder = f"{_safe_name(name)} ({job.tmdb_year})" if job.tmdb_year else _safe_name(name)
+        folder = format_movie_folder(config.naming_movie_format, name, job.tmdb_year, job.tmdb_id)
+        folder = folder or _job_fallback(job)
         return root / "Movies" / folder
 
     if job.content_type == ContentType.TV and name:
-        show = f"{_safe_name(name)} ({job.tmdb_year})" if job.tmdb_year else _safe_name(name)
-        disc = _safe_name(job.discdb_disc_slug or f"Disc {job.disc_number or 1}")
+        show = format_tv_show_folder(config.naming_tv_show_format, name, job.tmdb_year, job.tmdb_id)
+        show = show or _job_fallback(job)
+        disc = _safe_name(job.discdb_disc_slug or f"Disc {job.disc_number or 1}") or _job_fallback(
+            job
+        )
         base = root / "TV" / show
         if job.detected_season is not None:
-            return base / f"Season {job.detected_season:02d}" / disc
+            season = format_season_folder(config.naming_season_format, job.detected_season)
+            return base / season / disc
         return base / disc
 
     label = _safe_name(job.volume_label) if job.volume_label else ""
-    if not label or label == "Unknown":
-        label = f"job-{job.id}" if job.id else "job-unknown"
+    if not label:
+        label = _job_fallback(job)
     return root / "Unidentified" / label
 
 
