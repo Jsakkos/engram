@@ -182,7 +182,27 @@ class TestBackupDisc:
         result = await _extractor().backup_disc("disc:0", dest, job_id=1)
 
         assert result.success is True
+        assert result.already_existed is True
         assert (dest / "BDMV" / "keep.txt").read_text(encoding="utf-8") == "original"
+
+    @pytest.mark.asyncio
+    async def test_an_uncreatable_destination_parent_fails_cleanly(self, tmp_path, monkeypatch):
+        # dest.parent needs to be a directory but a plain FILE already occupies
+        # that path, so mkdir(parents=True) raises OSError/NotADirectoryError on
+        # both Windows and POSIX. backup_disc must report this like every other
+        # failure mode instead of letting the exception escape.
+        blocker = tmp_path / "blocker"
+        blocker.write_text("occupying the path", encoding="utf-8")
+        dest = blocker / "subdir" / "Movie"
+
+        def fake_run(cmd, on_line, job_id):  # pragma: no cover - must not run
+            raise AssertionError("MakeMKV must not be launched when the dest parent can't exist")
+
+        monkeypatch.setattr(MakeMKVExtractor, "_run_backup_process", staticmethod(fake_run))
+        result = await _extractor().backup_disc("disc:0", dest, job_id=1)
+
+        assert result.success is False
+        assert result.error_message
 
     @pytest.mark.asyncio
     async def test_the_log_is_written_next_to_the_scan_and_rip_logs(self, tmp_path, monkeypatch):
@@ -214,6 +234,68 @@ class TestBackupDisc:
         assert "cancel" in (result.error_message or "").lower()
         # The partial survives a cancel too: the user may resume or salvage it.
         assert (tmp_path / "X.partial").exists()
+
+    @pytest.mark.asyncio
+    async def test_a_stale_partial_is_moved_aside_before_the_run(self, tmp_path, monkeypatch):
+        # Debris from a previous failed attempt at the same disc must not sit
+        # in MakeMKV's way: its behaviour against a non-empty target is
+        # unspecified.
+        stale = tmp_path / "X.partial"
+        (stale / "BDMV").mkdir(parents=True)
+        (stale / "BDMV" / "old.m2ts").write_text("stale bytes", encoding="utf-8")
+
+        seen_partial_at_launch = []
+
+        def fake_run(cmd, on_line, job_id):
+            seen_partial_at_launch.append((tmp_path / "X.partial").exists())
+            (tmp_path / "X.partial").mkdir(parents=True)
+            return 0, ""
+
+        monkeypatch.setattr(MakeMKVExtractor, "_run_backup_process", staticmethod(fake_run))
+        result = await _extractor().backup_disc("disc:0", tmp_path / "X", job_id=1)
+
+        assert seen_partial_at_launch == [False]
+        assert result.success is True
+        previous = tmp_path / "X.partial.previous"
+        assert (previous / "BDMV" / "old.m2ts").read_text(encoding="utf-8") == "stale bytes"
+
+    @pytest.mark.asyncio
+    async def test_an_existing_partial_previous_is_replaced_by_the_newer_stale_partial(
+        self, tmp_path, monkeypatch
+    ):
+        # At most one stale partial is preserved, so a disc that fails
+        # repeatedly does not accumulate unbounded debris.
+        older_previous = tmp_path / "X.partial.previous"
+        (older_previous / "BDMV").mkdir(parents=True)
+        (older_previous / "BDMV" / "ancient.m2ts").write_text("ancient", encoding="utf-8")
+
+        newer_stale = tmp_path / "X.partial"
+        (newer_stale / "BDMV").mkdir(parents=True)
+        (newer_stale / "BDMV" / "recent.m2ts").write_text("recent", encoding="utf-8")
+
+        def fake_run(cmd, on_line, job_id):
+            (tmp_path / "X.partial").mkdir(parents=True)
+            return 0, ""
+
+        monkeypatch.setattr(MakeMKVExtractor, "_run_backup_process", staticmethod(fake_run))
+        result = await _extractor().backup_disc("disc:0", tmp_path / "X", job_id=1)
+
+        assert result.success is True
+        previous = tmp_path / "X.partial.previous"
+        assert (previous / "BDMV" / "recent.m2ts").read_text(encoding="utf-8") == "recent"
+        assert not (previous / "BDMV" / "ancient.m2ts").exists()
+
+    @pytest.mark.asyncio
+    async def test_no_stale_partial_leaves_partial_previous_untouched(self, tmp_path, monkeypatch):
+        def fake_run(cmd, on_line, job_id):
+            (tmp_path / "X.partial").mkdir(parents=True)
+            return 0, ""
+
+        monkeypatch.setattr(MakeMKVExtractor, "_run_backup_process", staticmethod(fake_run))
+        result = await _extractor().backup_disc("disc:0", tmp_path / "X", job_id=1)
+
+        assert result.success is True
+        assert not (tmp_path / "X.partial.previous").exists()
 
 
 class _FakeProc:
@@ -273,3 +355,4 @@ class TestBackupResult:
         r = BackupResult(success=True)
         assert r.dest is None
         assert r.error_message is None
+        assert r.already_existed is False

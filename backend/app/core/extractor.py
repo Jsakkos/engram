@@ -9,6 +9,7 @@ import contextlib
 import hashlib
 import logging
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -394,6 +395,10 @@ class BackupResult:
     success: bool
     dest: Path | None = None
     error_message: str | None = None
+    # True when dest already existed and this run did not create it. The caller
+    # still has a usable backup at dest, but this run did not verify it: it is
+    # whatever was on disk already.
+    already_existed: bool = False
 
 
 class ScanTimeoutError(Exception):
@@ -1632,6 +1637,25 @@ class MakeMKVExtractor:
         crashed backup never leaves something that looks complete. On failure
         the ``.partial`` is left in place: a partial backup of a dying disc has
         salvage value, and discarding it is the user's call.
+
+        Every attempt starts from a clean ``<dest>.partial`` working directory.
+        MakeMKV's behaviour on a non-empty backup target is unspecified (it
+        might resume, silently skip existing files, or fail in a way this code
+        would misreport as a generic "exited N"), so a stale ``.partial`` left
+        by a previous failed attempt is moved aside to ``<dest>.partial.previous``
+        before MakeMKV is launched. That keeps the most recent failed attempt
+        around for salvage while dropping the older one: a disc that fails
+        repeatedly would otherwise accumulate tens of gigabytes per attempt
+        without bound. This debris is from a *failed* attempt, not a completed
+        backup, so Engram's "never delete a backup" rule (which is about
+        completed backups under the backup root) does not apply to it.
+
+        Deliberately has no stall watchdog, unlike ``rip_titles``. A backup is
+        a single sequential read of the whole disc with no per-title boundary
+        to skip to, so the rip's "kill it and move to the next title" recovery
+        has no analogue here. Cancellation is the escape hatch for an
+        interactive user, and the job-level phase watchdog
+        (``timeout_backing_up_seconds``) is the unattended backstop.
         """
         spec = _to_source_spec(source)
 
@@ -1654,7 +1678,21 @@ class MakeMKVExtractor:
 
         async with lock:
             self._cancelled_jobs.discard(job_id)
-            dest.parent.mkdir(parents=True, exist_ok=True)
+
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                logger.error(f"Job {job_id}: could not create {dest.parent}: {e}", exc_info=True)
+                return BackupResult(success=False, error_message=str(e))
+
+            previous = dest.with_name(dest.name + ".partial.previous")
+            if partial.exists():
+                if previous.exists():
+                    shutil.rmtree(previous)
+                    logger.info(f"Job {job_id}: discarding older stale partial: {previous}")
+                partial.rename(previous)
+                logger.info(f"Job {job_id}: moved stale partial {partial} aside to {previous}")
+
             logger.info(f"Job {job_id}: backing up disc: {' '.join(cmd)}")
 
             def on_line(line: str) -> None:
@@ -1686,17 +1724,27 @@ class MakeMKVExtractor:
 
             if returncode != 0 or not partial.exists():
                 reason = _last_msg_text(output) or f"makemkvcon backup exited {returncode}"
-                logger.error(f"Job {job_id}: backup failed: {sanitize_log_value(reason)}")
+                kept_note = ""
+                if partial.exists():
+                    kept_note = f" The partial backup at {partial} was kept for salvage."
+                logger.error(
+                    f"Job {job_id}: backup failed: {sanitize_log_value(reason)}.{kept_note}"
+                )
                 return BackupResult(success=False, error_message=reason)
 
             try:
                 if dest.exists():
-                    # Destination appeared while we were copying. Keep the
-                    # existing one and drop ours rather than clobbering a
-                    # complete backup with a fresh one.
-                    logger.warning(f"Job {job_id}: {dest} already exists; keeping it")
-                else:
-                    partial.rename(dest)
+                    # Destination appeared while we were copying (another attempt
+                    # finished first). Keep the existing directory as the usable
+                    # backup and leave ours at `partial` untouched: it is not
+                    # deleted, per the "most recent stale partial is preserved"
+                    # rule above, and the next attempt will move it aside.
+                    logger.warning(
+                        f"Job {job_id}: {dest} already exists; keeping it. "
+                        f"Our own copy is orphaned at {partial}."
+                    )
+                    return BackupResult(success=True, dest=dest, already_existed=True)
+                partial.rename(dest)
             except OSError as e:
                 logger.error(f"Job {job_id}: could not finalize backup: {e}", exc_info=True)
                 return BackupResult(success=False, error_message=str(e))
