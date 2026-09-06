@@ -1,8 +1,10 @@
 """Unit tests for the DiscSource value object."""
 
+from unittest.mock import patch
+
 import pytest
 
-from app.core.disc_source import DiscSource, SourceKind
+from app.core.disc_source import DiscSource, SourceKind, parse_drive_listing, resolve_disc_index
 
 
 class TestParse:
@@ -101,3 +103,49 @@ class _FakeJob:
     def __init__(self, drive_id: str, source_spec: str | None):
         self.drive_id = drive_id
         self.source_spec = source_spec
+
+
+# Real makemkvcon -r info disc:9999 output shape. DRV lines are:
+# DRV:index,visible,enabled,flags,"drive name","disc name","device"
+_LISTING = (
+    'DRV:0,2,999,1,"BD-RE HL-DT-ST BH16NS40 1.05","THE_SWEETEST_THING","E:"\n'
+    'DRV:1,0,999,0,"","",""\n'
+    'DRV:2,2,999,1,"HL-DT-ST DVDRAM GH24","INCEPTION","F:"\n'
+    "TCOUNT:0\n"
+)
+
+
+class TestParseDriveListing:
+    def test_maps_device_to_index(self):
+        assert parse_drive_listing(_LISTING) == {"E:": 0, "F:": 2}
+
+    def test_ignores_empty_drive_slots(self):
+        assert "" not in parse_drive_listing(_LISTING)
+
+    def test_empty_output_maps_nothing(self):
+        assert parse_drive_listing("") == {}
+
+    def test_malformed_line_is_skipped_not_raised(self):
+        assert parse_drive_listing('DRV:garbage\nDRV:0,2,999,1,"n","d","E:"\n') == {"E:": 0}
+
+
+class TestResolveDiscIndex:
+    @pytest.mark.asyncio
+    async def test_resolves_a_known_drive(self):
+        with patch("app.core.disc_source._run_drive_listing", return_value=_LISTING):
+            assert await resolve_disc_index("E:", makemkv_path="mmk") == "disc:0"
+
+    @pytest.mark.asyncio
+    async def test_case_insensitive_on_windows_letters(self):
+        with patch("app.core.disc_source._run_drive_listing", return_value=_LISTING):
+            assert await resolve_disc_index("e:", makemkv_path="mmk") == "disc:0"
+
+    @pytest.mark.asyncio
+    async def test_unknown_drive_returns_none(self):
+        with patch("app.core.disc_source._run_drive_listing", return_value=_LISTING):
+            assert await resolve_disc_index("Z:", makemkv_path="mmk") is None
+
+    @pytest.mark.asyncio
+    async def test_subprocess_failure_returns_none(self):
+        with patch("app.core.disc_source._run_drive_listing", side_effect=OSError("boom")):
+            assert await resolve_disc_index("E:", makemkv_path="mmk") is None
