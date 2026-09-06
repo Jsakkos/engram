@@ -319,6 +319,15 @@ class ConnectionManager:
         A distinct message type rather than rip_progress: a client that renders
         "ripping" from rip_progress would be reporting a phase that produces no
         MKV at all.
+
+        Unlike broadcast_job_update, ``speed`` and ``eta`` are always present
+        even when None. That method omits its optional fields because it is a
+        partial patch over a whole job row, where a null would erase a value
+        the client already had. This message is a self-contained progress
+        sample, so a null means "not known for this sample" and the client
+        coalesces it against what it is already showing. Expect ``speed`` to
+        stay None in practice: MakeMKV's backup reports a percentage, not a
+        byte rate, so there is no rate to derive without timing the samples.
         """
         await self.broadcast(
             {
