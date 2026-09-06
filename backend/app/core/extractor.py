@@ -210,6 +210,66 @@ def _build_rip_commands(
     return [(idx, [*base, str(idx), output_dir]) for idx in title_indices]
 
 
+# PRGV:current,total,max is MakeMKV's global progress line. `current` is the
+# current operation's bar and `total` the overall one, both on the same `max`
+# scale (a fixed 65536 in practice): see the rip reader loop, which reads these
+# lines for liveness only and deliberately derives no per-title progress from
+# them.
+_PRGV_RE = re.compile(r"^PRGV:(\d+),(\d+),(\d+)")
+
+# MSG:code,flags,count,"message","format","param0",...: the already-formatted
+# human message is the FIRST quoted field, not the format string after it.
+_MSG_TEXT_RE = re.compile(r'^MSG:\d+,\d+,\d+,"([^"]*)"')
+
+
+def _build_backup_command(makemkv_path: str, source_spec: str, dest: str) -> list[str]:
+    """Build the argv for a full decrypted disc backup.
+
+    ``makemkvcon backup`` accepts only a ``disc:N`` source, never ``dev:`` and
+    never ``file:``. Rejecting anything else here turns a 40-minute mystery into
+    an immediate, named fallback.
+    """
+    if not source_spec.startswith("disc:"):
+        raise ValueError(
+            f"makemkvcon backup requires a disc:N source, got {source_spec!r}. "
+            f"Resolve it with disc_source.resolve_disc_index() first."
+        )
+    return [
+        makemkv_path,
+        "-r",
+        "--progress=-same",
+        "--decrypt",
+        "backup",
+        source_spec,
+        dest,
+    ]
+
+
+def _parse_backup_progress(line: str) -> float | None:
+    """Percentage from a PRGV line, or None if the line carries no progress.
+
+    Reads ``total/max``, the overall bar. ``current/max`` is the current
+    sub-operation and would sawtooth back to 0 repeatedly across one backup.
+    """
+    m = _PRGV_RE.match(line.strip())
+    if not m:
+        return None
+    _current, total, maximum = (int(g) for g in m.groups())
+    if maximum <= 0:
+        return None
+    return min(100.0, total / maximum * 100.0)
+
+
+def _last_msg_text(output: str) -> str | None:
+    """The text of the last MSG line in MakeMKV output, for error reporting."""
+    last = None
+    for line in output.splitlines():
+        m = _MSG_TEXT_RE.match(line.strip())
+        if m:
+            last = m.group(1)
+    return last
+
+
 def should_abort_all_pass(
     opened_native: int,
     disc_title_map: dict[int, int] | None,
@@ -325,6 +385,15 @@ class RipResult:
     # aborted_for_skip there is no per-title fallback pass afterward, because
     # the disc is no longer in the drive.
     aborted_for_eject: bool = False
+
+
+@dataclass
+class BackupResult:
+    """Result of a full-disc backup operation."""
+
+    success: bool
+    dest: Path | None = None
+    error_message: str | None = None
 
 
 class ScanTimeoutError(Exception):
@@ -1509,6 +1578,131 @@ class MakeMKVExtractor:
                 output_files=[],
                 error_message=str(e),
             )
+
+    def _run_backup_process(
+        self, cmd: list[str], on_line: Callable[[str], None], job_id: int
+    ) -> tuple[int, str]:
+        """Run makemkvcon backup, streaming stdout to ``on_line``.
+
+        A separate seam so tests can substitute it without a real subprocess.
+        Runs in a thread (Windows asyncio subprocess workaround), matching how
+        scan_disc and rip_titles already invoke MakeMKV.
+
+        The process is registered in ``self._processes`` for the duration, so
+        ``cancel()`` (and ``shutdown()``) can terminate a multi-hour backup the
+        same way they terminate a rip.
+        """
+        collected: list[str] = []
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        self._processes[job_id] = proc
+        try:
+            for line in proc.stdout or []:
+                if job_id in self._cancelled_jobs:
+                    _terminate_proc(proc, label=f"backup job {job_id}")
+                    break
+                collected.append(line)
+                on_line(line)
+        finally:
+            try:
+                proc.wait()
+            finally:
+                self._processes.pop(job_id, None)
+        return proc.returncode, "".join(collected)
+
+    async def backup_disc(
+        self,
+        source: DiscSource | str,
+        dest: Path,
+        progress_callback: Callable[[float], None] | None = None,
+        log_dir: Path | None = None,
+        *,
+        job_id: int = 0,
+    ) -> BackupResult:
+        """Write a full decrypted copy of the disc to ``dest``.
+
+        Writes to ``<dest>.partial`` and renames on success, so a killed or
+        crashed backup never leaves something that looks complete. On failure
+        the ``.partial`` is left in place: a partial backup of a dying disc has
+        salvage value, and discarding it is the user's call.
+        """
+        spec = _to_source_spec(source)
+
+        # Built before the lock is taken: an unusable source is a caller bug,
+        # and there is no reason to make it queue behind a live drive operation.
+        try:
+            cmd = _build_backup_command(str(self.makemkv_path), spec, str(dest) + ".partial")
+        except ValueError as e:
+            logger.error(f"Job {job_id}: cannot back up from {spec}: {e}")
+            return BackupResult(success=False, error_message=str(e))
+
+        partial = dest.with_name(dest.name + ".partial")
+
+        lock = self._get_source_lock(source)
+        if lock.locked():
+            logger.warning(
+                f"Source {source} is already in use by another MakeMKV operation, "
+                f"waiting for it to finish"
+            )
+
+        async with lock:
+            self._cancelled_jobs.discard(job_id)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Job {job_id}: backing up disc: {' '.join(cmd)}")
+
+            def on_line(line: str) -> None:
+                pct = _parse_backup_progress(line)
+                if pct is not None and progress_callback is not None:
+                    _safe_callback(progress_callback, pct, label="backup progress callback")
+
+            try:
+                returncode, output = await asyncio.to_thread(
+                    self._run_backup_process, cmd, on_line, job_id
+                )
+            except FileNotFoundError:
+                logger.error(f"MakeMKV not found at: {self.makemkv_path}")
+                return BackupResult(
+                    success=False, error_message=f"MakeMKV not found at {self.makemkv_path}"
+                )
+            except Exception as e:
+                logger.exception(f"Job {job_id}: error during disc backup")
+                return BackupResult(success=False, error_message=str(e))
+
+            if log_dir is not None and output:
+                # Same per-job log directory the scan and rip paths write into.
+                _save_makemkv_log(Path(log_dir) / "backup.log", output)
+
+            if job_id in self._cancelled_jobs:
+                self._cancelled_jobs.discard(job_id)
+                logger.info(f"Job {job_id}: backup cancelled by user")
+                return BackupResult(success=False, error_message="Backup cancelled by user")
+
+            if returncode != 0 or not partial.exists():
+                reason = _last_msg_text(output) or f"makemkvcon backup exited {returncode}"
+                logger.error(f"Job {job_id}: backup failed: {sanitize_log_value(reason)}")
+                return BackupResult(success=False, error_message=reason)
+
+            try:
+                if dest.exists():
+                    # Destination appeared while we were copying. Keep the
+                    # existing one and drop ours rather than clobbering a
+                    # complete backup with a fresh one.
+                    logger.warning(f"Job {job_id}: {dest} already exists; keeping it")
+                else:
+                    partial.rename(dest)
+            except OSError as e:
+                logger.error(f"Job {job_id}: could not finalize backup: {e}", exc_info=True)
+                return BackupResult(success=False, error_message=str(e))
+
+            logger.info(f"Job {job_id}: backup complete at {dest}")
+            return BackupResult(success=True, dest=dest)
 
     def skip_title_index(self, job_id: int, title_index: int) -> None:
         """Register a title_index to skip in the per-title rip loop for a job."""
