@@ -108,6 +108,7 @@ _STALE_PHASE_FAILURE_MESSAGES = {
     JobState.RIPPING: "Ripping stalled — no progress after {timeout}s",
     JobState.MATCHING: "Matching stalled — no progress after {timeout}s",
     JobState.ORGANIZING: "Organizing stalled — no progress after {timeout}s",
+    JobState.BACKING_UP: "Backup stalled: no progress after {timeout}s",
 }
 
 
