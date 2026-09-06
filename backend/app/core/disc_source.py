@@ -48,6 +48,14 @@ class DiscSource:
     # Which MakeMKV scheme to emit for a DRIVE. Preserved rather than recomputed
     # so a caller that resolved "E:" to "disc:0" keeps that resolution.
     _scheme: str = "dev:"
+    # For a DRIVE that was resolved from a drive identifier to a MakeMKV disc
+    # index: the drive it came from, normalized ("E:", "/dev/sr0"). ``value``
+    # holds the index because that is what MakeMKV needs, so without this the
+    # originating drive would be unrecoverable and ``lock_key`` would have
+    # nothing to normalize to -- ``disc:0`` and ``dev:E:`` would key to
+    # different locks while naming one physical drive, and two makemkvcon
+    # processes would be free to stall each other on it.
+    _drive_id: str | None = None
 
     @classmethod
     def parse(cls, spec: str) -> DiscSource:
@@ -89,6 +97,29 @@ class DiscSource:
         if not drive_id or drive_id == "import":
             raise ValueError(f"Job has no MakeMKV source: drive_id={drive_id!r}, source_spec=None")
         return cls.parse(drive_id)
+
+    @classmethod
+    def for_drive_index(cls, drive: str, disc_spec: str) -> DiscSource:
+        """A physical drive addressed by its resolved MakeMKV disc index.
+
+        ``makemkvcon backup`` accepts only ``disc:N``, so a backup has to
+        address the drive that way. The originating drive identifier is kept
+        alongside it so the source still locks against the SAME key as the
+        plain ``dev:E:`` form: a backup and a sentinel scan of one physical
+        drive must contend, or two makemkvcon processes stall each other.
+
+        Args:
+            drive: the drive identifier the index was resolved from, in any
+                form ``parse`` accepts ("E:", "dev:E:", "/dev/sr0").
+            disc_spec: the resolved index, as ``"disc:0"`` or ``"0"``.
+        """
+        drive_source = cls.parse(drive)
+        if not drive_source.is_physical:
+            raise ValueError(f"Not a drive: {drive!r}")
+        index = disc_spec[len("disc:") :] if disc_spec.startswith("disc:") else disc_spec
+        if not index:
+            raise ValueError(f"Disc index spec has no value: {disc_spec!r}")
+        return cls(SourceKind.DRIVE, index, "disc:", drive_source.value)
 
     @classmethod
     def for_backup(cls, path: Path | str) -> DiscSource:
@@ -134,9 +165,13 @@ class DiscSource:
         A file source keys on its own path instead: two makemkvcon processes
         reading different backups do not contend, and a backup on drive E: must
         not block the optical drive at E:.
+
+        A drive resolved to a disc index (``for_drive_index``) keys on the
+        drive it was resolved FROM, not on the index: ``disc:0`` and ``dev:E:``
+        are one piece of hardware and must share one lock.
         """
         if self.is_physical:
-            return "drive:" + self.value.rstrip("\\")
+            return "drive:" + (self._drive_id or self.value).rstrip("\\")
         return "path:" + str(Path(self.value))
 
     def __str__(self) -> str:

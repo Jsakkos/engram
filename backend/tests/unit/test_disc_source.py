@@ -1,5 +1,6 @@
 """Unit tests for the DiscSource value object."""
 
+from dataclasses import FrozenInstanceError
 from unittest.mock import patch
 
 import pytest
@@ -77,6 +78,64 @@ class TestLockKey:
         a = DiscSource.parse("file:/backups/x")
         b = DiscSource.parse("file:/backups/x")
         assert a.lock_key == b.lock_key
+
+
+class TestForDriveIndex:
+    """A drive addressed by its resolved MakeMKV disc index.
+
+    ``makemkvcon backup`` accepts only ``disc:N``, but the resulting source
+    still names one physical drive, so it has to lock like one.
+    """
+
+    def test_makemkv_arg_is_the_disc_index_form(self):
+        s = DiscSource.for_drive_index("E:", "disc:0")
+        assert s.makemkv_arg == "disc:0"
+        assert s.spec == "disc:0"
+
+    def test_lock_key_matches_the_plain_drive_form(self):
+        # The whole point: a backup addressed as disc:0 must contend with a
+        # scan of the same drive addressed as dev:E:, or two makemkvcon
+        # processes stall each other on one drive.
+        assert (
+            DiscSource.parse("E:").lock_key == DiscSource.for_drive_index("E:", "disc:0").lock_key
+        )
+
+    def test_lock_key_normalizes_the_drive_form_it_was_given(self):
+        keys = {
+            DiscSource.for_drive_index(d, "disc:0").lock_key
+            for d in ("E:", "dev:E:", "dev:E:\\", "E:\\")
+        }
+        assert keys == {DiscSource.parse("E:").lock_key}
+
+    def test_a_different_drive_keeps_its_own_lock(self):
+        a = DiscSource.for_drive_index("E:", "disc:0")
+        b = DiscSource.for_drive_index("F:", "disc:1")
+        assert a.lock_key != b.lock_key
+
+    def test_linux_device_resolves_and_locks_like_its_drive(self):
+        s = DiscSource.for_drive_index("/dev/sr0", "disc:2")
+        assert s.makemkv_arg == "disc:2"
+        assert s.lock_key == DiscSource.parse("/dev/sr0").lock_key
+
+    def test_is_still_physical(self):
+        assert DiscSource.for_drive_index("E:", "disc:0").is_physical is True
+        assert DiscSource.for_drive_index("E:", "disc:0").kind is SourceKind.DRIVE
+
+    def test_bare_index_is_accepted(self):
+        assert DiscSource.for_drive_index("E:", "3").makemkv_arg == "disc:3"
+
+    def test_stays_frozen(self):
+        s = DiscSource.for_drive_index("E:", "disc:0")
+        with pytest.raises(FrozenInstanceError):
+            s.value = "9"  # type: ignore[misc]
+
+    def test_a_non_drive_source_is_rejected(self):
+        with pytest.raises(ValueError):
+            DiscSource.for_drive_index("file:/backups/x", "disc:0")
+
+    def test_an_empty_index_is_rejected(self):
+        with pytest.raises(ValueError):
+            DiscSource.for_drive_index("E:", "disc:")
 
 
 class TestFromJob:
