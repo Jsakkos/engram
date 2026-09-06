@@ -191,3 +191,49 @@ class TestWebSocketMessageShapes:
 
         finally:
             manager.broadcast = original_broadcast
+
+
+class TestBackupProgressContract:
+    """The parameter names must match across broadcaster, manager, and wire.
+
+    This chain has produced two production bugs already (error= vs
+    error_message=), so it is asserted end to end rather than per layer.
+    """
+
+    @pytest.mark.asyncio
+    async def test_broadcaster_reaches_the_wire_with_the_documented_fields(self):
+        from unittest.mock import AsyncMock
+
+        from app.services.event_broadcaster import EventBroadcaster
+
+        ws = AsyncMock()
+        broadcaster = EventBroadcaster(ws)
+        await broadcaster.broadcast_backup_progress(
+            job_id=7, current_bytes=100, total_bytes=400, speed="2.5x", eta_seconds=90
+        )
+
+        ws.broadcast_backup_progress.assert_awaited_once_with(
+            7, current_bytes=100, total_bytes=400, speed="2.5x", eta=90
+        )
+
+    @pytest.mark.asyncio
+    async def test_manager_emits_the_documented_message_shape(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.api.websocket import ConnectionManager
+
+        mgr = ConnectionManager()
+        with patch.object(mgr, "broadcast", new=AsyncMock()) as bcast:
+            await mgr.broadcast_backup_progress(
+                7, current_bytes=100, total_bytes=400, speed="2.5x", eta=90
+            )
+
+        msg = bcast.await_args.args[0]
+        assert msg["type"] == "backup_progress"
+        assert msg["data"] == {
+            "job_id": 7,
+            "current_bytes": 100,
+            "total_bytes": 400,
+            "speed": "2.5x",
+            "eta": 90,
+        }

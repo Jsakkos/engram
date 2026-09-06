@@ -86,6 +86,25 @@ class EventBroadcaster:
             job_id, JobState.COMPLETED.value, identity_prompt_json=identity_prompt_json
         )
 
+    # --- Backup Events ---
+
+    async def broadcast_backup_progress(
+        self,
+        job_id: int,
+        current_bytes: int,
+        total_bytes: int,
+        speed: str | None = None,
+        eta_seconds: int | None = None,
+    ) -> None:
+        """Broadcast disc-backup copy progress."""
+        await self._ws.broadcast_backup_progress(
+            job_id,
+            current_bytes=current_bytes,
+            total_bytes=total_bytes,
+            speed=speed,
+            eta=eta_seconds,
+        )
+
     # --- Title Discovery Events ---
 
     async def broadcast_titles_discovered(

@@ -305,6 +305,34 @@ class ConnectionManager:
             }
         )
 
+    async def broadcast_backup_progress(
+        self,
+        job_id: int,
+        *,
+        current_bytes: int,
+        total_bytes: int,
+        speed: str | None = None,
+        eta: int | None = None,
+    ) -> None:
+        """Broadcast disc-backup copy progress.
+
+        A distinct message type rather than rip_progress: a client that renders
+        "ripping" from rip_progress would be reporting a phase that produces no
+        MKV at all.
+        """
+        await self.broadcast(
+            {
+                "type": "backup_progress",
+                "data": {
+                    "job_id": job_id,
+                    "current_bytes": current_bytes,
+                    "total_bytes": total_bytes,
+                    "speed": speed,
+                    "eta": eta,
+                },
+            }
+        )
+
 
 # Singleton instance
 manager = ConnectionManager()
