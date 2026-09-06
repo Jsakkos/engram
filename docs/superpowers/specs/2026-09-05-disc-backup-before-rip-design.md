@@ -227,13 +227,28 @@ list[DiscImageUnit]` alongside `units`.
 Computed after identification, mirroring the library layout so the backup shelf
 browses the same way the library does:
 
-- Movie: `<backup_path>/Movies/<Name> (<Year>)/`
-- TV: `<backup_path>/TV/<Show> (<Year>)/Season <NN>/<disc slug>/`
+- Movie: `<backup_path>/Movies/<movie folder>/`
+- TV: `<backup_path>/TV/<show folder>/<season folder>/<disc slug>/`
 - Unidentified: `<backup_path>/Unidentified/<sanitized volume label>/`
 
-The disc slug is `discdb_disc_slug` when known (for example `S01D01`), otherwise
-`Disc <disc_number>`. Naming reuses the Organizer's existing name-sanitization
-helpers rather than reimplementing them, so the two cannot drift. If the
+The folder names are not built here. Library naming is user-configurable
+(`naming_movie_format`, `naming_tv_show_format`, `naming_season_format`), so
+`backup_destination` delegates to the Organizer's own `format_movie_folder`,
+`format_tv_show_folder` and `format_season_folder`, passing `tmdb_id` through so
+a backup folder carries the same media-server disambiguation tag its library
+folder would. Reproducing the default shape locally would give any user with a
+customized format a backup tree that no longer mirrored their library, which is
+the one outcome this section exists to prevent. It follows that a TV backup
+folder carries no year under the shipped default `naming_tv_show_format`
+(`"{show}"`), exactly as the library folder does not.
+
+Only the disc level is built here, because the library has no per-disc level:
+`discdb_disc_slug` when known (for example `S01D01`), otherwise
+`Disc <disc_number>`, sanitized with the Organizer's `sanitize_filename`.
+
+A name that survives sanitization as an empty string falls back to `job-<id>`
+rather than a shared literal, so two unnameable discs cannot collide in one
+folder. If the
 destination already exists and is non-empty, the job treats the backup as
 already done (`backup_status = "completed"`, `source_spec` pointed at it) rather
 than overwriting: re-inserting a disc that was backed up before should not cost

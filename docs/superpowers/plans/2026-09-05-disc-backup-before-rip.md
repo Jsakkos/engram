@@ -884,6 +884,19 @@ git commit -m "feat(backup): add BACKING_UP state and backup columns"
 - Create: `backend/app/core/backup_paths.py`
 - Test: `backend/tests/unit/test_backup_paths.py`
 
+> **Superseded during review.** The code listed below hardcodes `Name (Year)` and
+> `Season NN`, which was wrong: library naming is user-configurable through
+> `naming_movie_format`, `naming_tv_show_format` and `naming_season_format`, and
+> the Organizer builds its folders with `format_movie_folder`,
+> `format_tv_show_folder` and `format_season_folder`. Hardcoding the default
+> shape gave a user with a custom format a backup tree that no longer mirrored
+> their library, which is the one thing this module exists to prevent. The
+> shipped implementation takes `backup_destination(job, config)` (an `AppConfig`,
+> not a root string) and delegates to those three helpers. Note the consequence:
+> the default `naming_tv_show_format` is `"{show}"`, so a TV backup folder
+> carries no year by default, exactly as the library folder does not. See
+> commit `af801b57`.
+
 - [ ] **Step 1: Write the failing tests**
 
 Create `backend/tests/unit/test_backup_paths.py`:
@@ -2109,7 +2122,7 @@ Add the method next to `_run_ripping`:
                 )
 
             config = await get_config()
-            dest = backup_destination(job, config.backup_path if config else "")
+            dest = backup_destination(job, config)
             if dest is None:
                 await _fall_back("skipped", "not_configured")
                 return
