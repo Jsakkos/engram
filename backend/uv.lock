@@ -565,7 +565,7 @@ provides-extras = ["gpu", "dev", "docs"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "hypothesis", specifier = ">=6.151.9" },
+    { name = "hypothesis", specifier = ">=6.167.1" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
     { name = "pytest-cov", specifier = ">=4.1.0" },
