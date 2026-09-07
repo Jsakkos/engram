@@ -450,6 +450,25 @@ Both were answered on real hardware (MakeMKV 1.18.3, Pioneer BDR-S13U,
    reading `total / max` is correct. Reading `current` would run the user's
    backup bar backwards once per sub-operation.
 
+### Blu-ray verification
+
+Re-run against a Blu-ray (`SOUTHPARK6_DISC2`), which exercises paths a DVD
+cannot: a DVD backup produces `VIDEO_TS`, a Blu-ray produces `BDMV/STREAM`,
+and two pieces of this feature key on the latter.
+
+- `is_disc_image_dir` detects a real MakeMKV `BDMV` tree, and `import_scanner`
+  emits it as one disc-image unit with zero MKV units. `total_files` came back
+  0, confirming the walk short-circuits at the image rather than pulling
+  thousands of stream files into the scanner's budget.
+- **An imported backup gets the same ContentHash as the disc it came from**,
+  which is what makes a TheDiscDB lookup work for an import. Verified rather
+  than assumed: of the stream files the interrupted backup had finished, 7 of 7
+  were byte-identical in size to the disc (the 8th was mid-write), and the hash
+  is an MD5 over those sizes in filename order, so a complete copy necessarily
+  hashes the same. `compute_content_hash("F:")` returned
+  `F1CBB868B97BA9965F3DF3FA0EB846A2`, matching an independent reimplementation
+  of the algorithm over the disc's own stream sizes.
+
 **A third thing surfaced that neither question anticipated, and it is the one
 with teeth.** MakeMKV refuses a destination directory that already exists,
 *even an empty one*: `MSG:5068 "Folder ... already contains a backup, please
