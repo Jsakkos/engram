@@ -458,3 +458,26 @@ describe('BACKING UP action affordances', () => {
     expect(screen.getByText(/BACKING UP DISC/)).toBeInTheDocument();
   });
 });
+
+describe('DiscCard: disc backup outcome', () => {
+  it('warns with the backend reason when the backup was skipped', () => {
+    render(<DiscCard disc={makeDisc({ backupStatus: 'skipped', backupStatusReason: 'no backup location is configured' })} />);
+    expect(screen.getByTestId('sv-backup-warning')).toHaveTextContent(
+      'Backup skipped: no backup location is configured',
+    );
+  });
+
+  it('warns when the backup failed', () => {
+    render(<DiscCard disc={makeDisc({ backupStatus: 'failed', backupStatusReason: 'not enough free space' })} />);
+    expect(screen.getByTestId('sv-backup-warning')).toHaveTextContent(
+      'Backup failed: not enough free space',
+    );
+  });
+
+  it('stays quiet for a pending or completed backup', () => {
+    const { rerender } = render(<DiscCard disc={makeDisc({ backupStatus: 'pending' })} />);
+    expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
+    rerender(<DiscCard disc={makeDisc({ backupStatus: 'completed' })} />);
+    expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
+  });
+});

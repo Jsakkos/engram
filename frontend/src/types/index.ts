@@ -39,6 +39,16 @@ export interface Job {
     review_reason?: string | null;
     conflict_status?: string | null;
     /**
+     * Outcome of the optional whole-disc backup that runs between identification
+     * and extraction. Absent/null when the feature never ran for this job.
+     * "skipped" and "failed" both mean the disc was ripped straight from the
+     * drive instead, which is worth telling the user about; "pending" and
+     * "completed" are the in-progress and happy paths and need no warning.
+     */
+    backup_status?: 'pending' | 'completed' | 'failed' | 'skipped' | null;
+    /** Backend-written prose explaining a skipped or failed backup. Rendered verbatim. */
+    backup_status_reason?: string | null;
+    /**
      * Human-readable cause set by the backend when classification ran WITHOUT
      * TMDB (key absent or rejected); null/absent when TMDB participated. The
      * DiscCard renders it verbatim in its degraded-mode alert (#243).

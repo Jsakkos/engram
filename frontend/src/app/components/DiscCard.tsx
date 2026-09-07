@@ -106,6 +106,11 @@ export interface DiscData {
    *  (key absent or rejected). Shown verbatim on active jobs; it also covers
    *  the configured-but-invalid-key case the global flag can't see (#243). */
   tmdbDegradedReason?: string;
+  /** Outcome of the optional whole-disc backup (pending / completed / failed /
+   *  skipped), straight from the job row. */
+  backupStatus?: string | null;
+  /** Backend prose explaining a skipped or failed backup; rendered verbatim. */
+  backupStatusReason?: string | null;
   /** True when at least one title on this disc has a rip-level failure (re-rippable). */
   hasDamagedTrack?: boolean;
   /** How this disc's identity was obtained, from the backend's
@@ -398,6 +403,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   title={disc.title}
                   subtitle={disc.subtitle}
                   discLabel={disc.discLabel}
+                  backupStatus={disc.backupStatus}
+                  backupStatusReason={disc.backupStatusReason}
                 />
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                   {isManualIdentity && (

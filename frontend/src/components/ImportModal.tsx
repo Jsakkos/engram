@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { motion } from "motion/react";
-import { IcoLibrary, IcoFilter, IcoError } from "../app/components/icons";
+import { IcoLibrary, IcoFilter, IcoError, IcoDisc } from "../app/components/icons";
 import { SvPanel, sv } from "../app/components/synapse";
 import { formatBytesScaled as fmtBytes } from "../utils/formatting";
 import {
@@ -10,6 +10,7 @@ import {
   startImport,
   type BlockedUnit,
   type BrowseEntry,
+  type PreviewDiscImage,
   type ImportStartResult,
   type PreviewResult,
 } from "../api/client";
@@ -170,6 +171,10 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
       .map((b) => b.unit_key);
     if (keys.length > 0) void runImport(keys);
   }, [conflict, runImport]);
+
+  // Optional on the type only for tolerance of an older backend; the current
+  // one always sends the key.
+  const discImages: PreviewDiscImage[] = preview?.disc_images ?? [];
 
   const seasonsByShow = (p: PreviewResult) => {
     const map = new Map<string, typeof p.units>();
@@ -374,8 +379,67 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                 )}
                 {preview && preview.total_jobs === 0 && (
                   <p style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>
-                    No MKV files found here.
+                    No MKV files or disc backups found here.
                   </p>
+                )}
+                {discImages.length > 0 && (
+                  <div style={{ marginBottom: 12 }} data-testid="import-disc-images">
+                    <div
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 13,
+                        color: sv.magenta,
+                        marginBottom: 4,
+                      }}
+                    >
+                      Disc backups
+                    </div>
+                    {discImages.map((d) => (
+                      <div
+                        key={d.path}
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center",
+                          fontFamily: sv.mono,
+                          fontSize: 11,
+                          color: sv.inkDim,
+                          padding: "3px 0",
+                        }}
+                      >
+                        <IcoDisc size={11} color={sv.magenta} />
+                        <span
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {d.name}
+                        </span>
+                        <span>{d.kind === "iso" ? "ISO" : "BACKUP"}</span>
+                        <span>{fmtBytes(d.total_bytes)}</span>
+                        <span style={{ color: sv.magenta }}>1 job</span>
+                      </div>
+                    ))}
+                    {/* An MKV import files what has already been ripped; a disc
+                        backup import starts a full extraction, which is a far
+                        longer operation. Say so before START is pressed. */}
+                    <p
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 10,
+                        lineHeight: 1.5,
+                        color: sv.inkFaint,
+                        margin: "6px 0 0 0",
+                      }}
+                    >
+                      Disc backups are scanned and extracted like a disc in the drive, not
+                      filed as-is. Expect a full rip per backup, not a quick move.
+                    </p>
+                  </div>
                 )}
                 {preview &&
                   seasonsByShow(preview).map(([show, units]) => (
@@ -479,7 +543,9 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
           >
             <span style={{ fontFamily: sv.mono, fontSize: 10, color: sv.inkFaint }}>
               {preview
-                ? `${preview.total_jobs} jobs · ${preview.total_files} files · ${fmtBytes(preview.total_bytes)}`
+                ? `${preview.total_jobs} jobs · ${preview.total_files} files${
+                    discImages.length > 0 ? ` · ${discImages.length} disc backup${discImages.length === 1 ? "" : "s"}` : ""
+                  } · ${fmtBytes(preview.total_bytes)}`
                 : ""}
             </span>
             <button
@@ -526,6 +592,14 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
   );
 }
 
+/**
+ * A disc backup is not a folder of media, so it does not get the folder icon or
+ * an "N mkv" count (it has none). It gets the disc mark in magenta plus a short
+ * kind tag, so a shelf of backups is distinguishable at a glance from the
+ * season folders sitting next to it.
+ */
+const DISC_ROW_TAG: Record<string, string> = { disc_image: "disc backup", iso: "iso" };
+
 function Row({
   label,
   count,
@@ -536,7 +610,7 @@ function Row({
 }: {
   label: string;
   count?: number;
-  kind: "dir" | "mkv";
+  kind: BrowseEntry["type"];
   active?: boolean;
   scrollTo?: boolean;
   onClick: () => void;
@@ -567,10 +641,19 @@ function Row({
         cursor: "pointer",
       }}
     >
-      <IcoFilter size={12} color={kind === "mkv" ? sv.inkFaint : sv.cyan} />
+      {DISC_ROW_TAG[kind] ? (
+        <IcoDisc size={12} color={sv.magenta} className="import-disc-icon" />
+      ) : (
+        <IcoFilter size={12} color={kind === "mkv" ? sv.inkFaint : sv.cyan} />
+      )}
       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}
       </span>
+      {DISC_ROW_TAG[kind] && (
+        <span style={{ fontSize: 9, color: sv.magenta, letterSpacing: "0.1em" }}>
+          {DISC_ROW_TAG[kind]}
+        </span>
+      )}
       {count != null && count > 0 && (
         <span style={{ fontSize: 9, color: sv.cyan }}>{count} mkv</span>
       )}

@@ -314,3 +314,59 @@ describe("ImportModal", () => {
     expect(screen.getByText("/media/Unsorted Movie Folder")).toBeInTheDocument();
   });
 });
+
+describe("ImportModal: disc backups", () => {
+  beforeEach(() => {
+    vi.mocked(client.browseDir).mockResolvedValue({
+      cwd: "/media",
+      parent: "/",
+      roots: [],
+      entries: [
+        { name: "King of Queens", path: "/media/King of Queens", type: "dir", mkv_count: 3 },
+        // No mkv_count at all: a disc image is not a folder of media.
+        { name: "INCEPTION_2010", path: "/media/INCEPTION_2010", type: "disc_image" },
+        { name: "arrival.iso", path: "/media/arrival.iso", type: "iso" },
+      ],
+    });
+  });
+
+  it("tags disc backups and ISOs distinctly from folders of media", async () => {
+    const { container } = render(
+      <ImportModal onClose={() => {}} defaultPath="/media" defaultDestinationMode="library" />,
+    );
+    await waitFor(() => expect(screen.getByText("INCEPTION_2010")).toBeInTheDocument());
+
+    expect(screen.getByText("disc backup")).toBeInTheDocument();
+    expect(screen.getByText("iso")).toBeInTheDocument();
+    // The disc mark, not the folder mark, and only on the two disc rows.
+    expect(container.querySelectorAll(".import-disc-icon")).toHaveLength(2);
+    // A plain folder keeps its mkv count; the disc rows have none to show.
+    expect(screen.getByText("3 mkv")).toBeInTheDocument();
+  });
+
+  it("summarises disc backups in the preview and counts them as jobs", async () => {
+    vi.mocked(client.previewImport).mockResolvedValue({
+      root: "/media/INCEPTION_2010",
+      units: [],
+      loose_files: [],
+      disc_images: [
+        { name: "INCEPTION_2010", path: "/media/INCEPTION_2010", kind: "backup", total_bytes: 40e9 },
+      ],
+      total_jobs: 1,
+      total_files: 0,
+      total_bytes: 40e9,
+      truncated: false,
+    });
+    render(<ImportModal onClose={() => {}} defaultPath="/media" defaultDestinationMode="library" />);
+    await waitFor(() => screen.getByText("INCEPTION_2010"));
+    fireEvent.click(screen.getByText("INCEPTION_2010"));
+
+    const panel = await screen.findByTestId("import-disc-images");
+    expect(panel).toHaveTextContent("BACKUP");
+    // The operation is a rip, not a file move; the modal must say so.
+    expect(panel).toHaveTextContent(/scanned and extracted/i);
+    // Counted as a job, so the start button is enabled and reports it.
+    expect(await screen.findByTestId("import-start-btn")).toHaveTextContent("1 JOBS");
+    expect(screen.getByText(/1 disc backup(?!s)/)).toBeInTheDocument();
+  });
+});

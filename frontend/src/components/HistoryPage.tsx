@@ -110,6 +110,11 @@ interface JobDetail {
   subtitles_failed: number;
   staging_path: string | null;
   final_path: string | null;
+  // Optional whole-disc backup. backup_status decides whether the row warns;
+  // backup_status_reason is backend prose and is rendered verbatim.
+  backup_path?: string | null;
+  backup_status?: string | null;
+  backup_status_reason?: string | null;
   titles: JobDetailTitle[];
 }
 
@@ -245,6 +250,29 @@ function SvSelect({
       ))}
     </select>
   );
+}
+
+/**
+ * A backup that was skipped or failed changed what actually happened (the disc
+ * was ripped straight from the drive and no copy was kept), so those two get
+ * the warning colour. "pending" and "completed" are the in-progress and happy
+ * paths and read as plain rows.
+ */
+function backupWentWrong(status: string | null | undefined): boolean {
+  return status === "skipped" || status === "failed";
+}
+
+/**
+ * Status row text. The backend writes prose into backup_status_reason (e.g.
+ * "no backup location is configured"), so it is appended as given rather than
+ * mapped through a local dictionary of codes.
+ */
+function backupStatusText(detail: {
+  backup_status?: string | null;
+  backup_status_reason?: string | null;
+}): string {
+  const status = detail.backup_status ?? "";
+  return detail.backup_status_reason ? `${status}: ${detail.backup_status_reason}` : status;
 }
 
 /** Key/value row used inside Classification / Subtitles / Paths panels. */
@@ -799,7 +827,7 @@ function JobDetailPanel({
           </div>
 
           {/* Paths */}
-          {(detail.staging_path || detail.final_path) && (
+          {(detail.staging_path || detail.final_path || detail.backup_path || detail.backup_status) && (
             <div>
               <SvLabel>Paths</SvLabel>
               <div style={{ marginTop: 8 }}>
@@ -807,6 +835,17 @@ function JobDetailPanel({
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, fontFamily: sv.mono, fontSize: 11 }}>
                     {detail.staging_path && <KvRow label="Staging" value={detail.staging_path} />}
                     {detail.final_path && <KvRow label="Library" value={detail.final_path} />}
+                    {detail.backup_path && (
+                      <KvRow label="Disc backup" value={detail.backup_path} alignTop />
+                    )}
+                    {detail.backup_status && (
+                      <KvRow
+                        label="Backup"
+                        value={backupStatusText(detail)}
+                        valueColor={backupWentWrong(detail.backup_status) ? sv.amber : undefined}
+                        alignTop
+                      />
+                    )}
                   </div>
                 </SvPanel>
               </div>
