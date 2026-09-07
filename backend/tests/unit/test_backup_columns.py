@@ -117,3 +117,39 @@ class TestSchemaConvergence:
             db_mod.engine = original_engine
             db_mod.async_session = original_session_factory
             await scratch_engine.dispose()
+
+
+class TestBackupConfigRoundTrip:
+    """A new AppConfig field must also exist in ConfigUpdate and ConfigResponse.
+
+    Pydantic drops unknown keys silently, so a field missing from either schema
+    is accepted by the API, never stored, and never reported: the setting simply
+    does nothing. This project has a documented history of that exact three-way
+    drift, so the round trip is asserted rather than assumed.
+    """
+
+    def test_update_schema_accepts_the_backup_fields(self):
+        from app.api.routes import ConfigUpdate
+
+        update = ConfigUpdate(backup_before_rip=True, backup_path="/b")
+        assert update.backup_before_rip is True
+        assert update.backup_path == "/b"
+
+    def test_response_schema_carries_the_backup_fields(self):
+        from app.api.routes import ConfigResponse
+
+        assert "backup_before_rip" in ConfigResponse.model_fields
+        assert "backup_path" in ConfigResponse.model_fields
+        assert "timeout_backing_up_seconds" in ConfigResponse.model_fields
+
+    def test_every_backup_app_config_field_reaches_both_schemas(self):
+        # The guard that actually catches drift: enumerate the model rather
+        # than listing names a future field would not join.
+        from app.api.routes import ConfigResponse, ConfigUpdate
+        from app.models import AppConfig
+
+        backup_fields = {name for name in AppConfig.model_fields if name.startswith("backup_")} | {
+            "timeout_backing_up_seconds"
+        }
+        assert backup_fields <= set(ConfigUpdate.model_fields)
+        assert backup_fields <= set(ConfigResponse.model_fields)

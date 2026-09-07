@@ -296,6 +296,10 @@ class ConfigResponse(BaseModel):
     timeout_ripping_seconds: int
     timeout_matching_seconds: int
     timeout_organizing_seconds: int
+    timeout_backing_up_seconds: int
+    # Disc backup
+    backup_before_rip: bool
+    backup_path: str
     # Drive behavior
     auto_eject_enabled: bool
     # Staging cleanup
@@ -397,6 +401,10 @@ class ConfigUpdate(BaseModel):
     timeout_ripping_seconds: int | None = None
     timeout_matching_seconds: int | None = None
     timeout_organizing_seconds: int | None = None
+    timeout_backing_up_seconds: int | None = None
+    # Disc backup
+    backup_before_rip: bool | None = None
+    backup_path: str | None = None
     # Drive behavior
     auto_eject_enabled: bool | None = None
     # Staging cleanup
@@ -1668,6 +1676,10 @@ async def get_config() -> ConfigResponse:
         timeout_ripping_seconds=config.timeout_ripping_seconds,
         timeout_matching_seconds=config.timeout_matching_seconds,
         timeout_organizing_seconds=config.timeout_organizing_seconds,
+        timeout_backing_up_seconds=config.timeout_backing_up_seconds,
+        # Disc backup
+        backup_before_rip=config.backup_before_rip,
+        backup_path=config.backup_path,
         # Drive behavior
         auto_eject_enabled=config.auto_eject_enabled,
         # Staging cleanup
