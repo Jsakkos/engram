@@ -1374,9 +1374,11 @@ class IdentificationCoordinator:
                     resume_action = "resolve_movie"
             else:
                 job.review_reason = None
-                job.state = JobState.RIPPING
-                target_state = JobState.RIPPING
-                resume_action = "start_rip"
+                # Pre-rip answer: the disc is still in the drive, so this is the
+                # one resume path that can still back it up first.
+                job.state = await self._next_state_after_identify(job.drive_id)
+                target_state = job.state
+                resume_action = "start_backup" if job.state == JobState.BACKING_UP else "start_rip"
 
             job.updated_at = datetime.now(UTC)
             await session.commit()
@@ -1575,10 +1577,11 @@ class IdentificationCoordinator:
                     target_state = job.state
                     resume_action = "resolve_movie"
             else:
-                # Pre-rip: go to RIPPING
-                job.state = JobState.RIPPING
-                target_state = JobState.RIPPING
-                resume_action = "start_rip"
+                # Pre-rip: the disc is still in the drive, so this is the one
+                # re-identify path that can still back it up first.
+                job.state = await self._next_state_after_identify(job.drive_id)
+                target_state = job.state
+                resume_action = "start_backup" if job.state == JobState.BACKING_UP else "start_rip"
 
             job.updated_at = datetime.now(UTC)
             await session.commit()

@@ -130,7 +130,15 @@ def _build_coordinator(analysis, monkeypatch, *, signal):
     )
     monkeypatch.setattr(
         "app.services.config_service.get_config",
-        AsyncMock(return_value=SimpleNamespace(tmdb_api_key="testkey")),
+        AsyncMock(
+            return_value=SimpleNamespace(
+                tmdb_api_key="testkey",
+                # The resume path routes through next_state_after_identify,
+                # which reads both backup fields off the config.
+                backup_before_rip=False,
+                backup_path="",
+            )
+        ),
     )
 
     return coordinator, broadcaster_ws, module_ws
@@ -275,7 +283,15 @@ async def test_resolve_missing_tmdb_id_prefers_tv_for_box_set(monkeypatch):
     monkeypatch.setattr(idc_mod, "classify_from_tmdb", fake_classify, raising=False)
     monkeypatch.setattr(
         "app.services.config_service.get_config",
-        AsyncMock(return_value=SimpleNamespace(tmdb_api_key="testkey")),
+        AsyncMock(
+            return_value=SimpleNamespace(
+                tmdb_api_key="testkey",
+                # The resume path routes through next_state_after_identify,
+                # which reads both backup fields off the config.
+                backup_before_rip=False,
+                backup_path="",
+            )
+        ),
     )
 
     job = SimpleNamespace(

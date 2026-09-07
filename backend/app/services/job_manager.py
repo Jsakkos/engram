@@ -1023,6 +1023,11 @@ class JobManager:
 
         coro_factory = {
             "start_rip": self._run_ripping,
+            # Same pre-rip resume as "start_rip", but the disc gets copied
+            # first. The coordinator decides which by the same routing every
+            # other hand-off uses, so a name prompt answered with
+            # backup_before_rip on cannot silently skip the backup.
+            "start_backup": self._run_backup,
             "rerun_matching": self._rerun_matching,
             "resolve_movie": self._resume_movie_post_rip,
         }.get(action)
