@@ -557,3 +557,36 @@ describe('ConfigWizard: Discord finished-ripping notification', () => {
         expect(body.discord_template_ripped).toBe('{{title}} done');
     });
 });
+
+describe('ConfigWizard: disc backup before ripping', () => {
+    it('reveals the backup folder field only once the toggle is on', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="paths" />);
+
+        const toggle = await screen.findByLabelText(/back up disc before ripping/i);
+        expect(toggle).not.toBeChecked();
+        expect(screen.queryByLabelText('Disc Backup Folder')).not.toBeInTheDocument();
+
+        fireEvent.click(toggle);
+        expect(await screen.findByLabelText('Disc Backup Folder')).toBeInTheDocument();
+    });
+
+    it('sends both backup keys when saving', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="paths" />);
+
+        fireEvent.click(await screen.findByLabelText(/back up disc before ripping/i));
+        fireEvent.change(await screen.findByLabelText('Disc Backup Folder'), {
+            target: { value: '/mnt/backups' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+        await waitFor(() =>
+            expect((fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls.some((c) => c[1]?.method === 'PUT')).toBe(true),
+        );
+        const putCall = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls.find(
+            (c) => c[1]?.method === 'PUT',
+        );
+        const body = JSON.parse(putCall?.[1]?.body as string);
+        expect(body.backup_before_rip).toBe(true);
+        expect(body.backup_path).toBe('/mnt/backups');
+    });
+});

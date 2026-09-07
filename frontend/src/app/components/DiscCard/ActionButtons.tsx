@@ -132,13 +132,18 @@ interface ActionButtonsProps {
 }
 
 // States where Force-advance makes sense (job is actively processing).
-const ACTIVE_STATES = ["scanning", "ripping", "matching", "organizing", "processing"];
+// backing_up qualifies: the whole-disc copy is real work the user may want to
+// step past.
+const ACTIVE_STATES = ["scanning", "backing_up", "ripping", "matching", "organizing", "processing"];
 // Cancel was historically shown only during rip-phase states; keep that scope so it
 // doesn't surface during organizing, where cancelling could leave files partially moved.
-const CANCELABLE_STATES = ["scanning", "ripping", "processing"];
+// backing_up belongs here: a full-disc copy can run for hours and aborting it only
+// abandons a scratch copy, never the library.
+const CANCELABLE_STATES = ["scanning", "backing_up", "ripping", "processing"];
 // Eject only makes sense while the drive physically holds the disc. Post-rip
 // states (matching, organizing) run after auto-eject has already fired.
-const EJECTABLE_STATES = ["scanning", "ripping"];
+// backing_up reads the disc directly, so it is still loaded.
+const EJECTABLE_STATES = ["scanning", "backing_up", "ripping"];
 
 interface Tone {
     fg: string;        // foreground / icon / text

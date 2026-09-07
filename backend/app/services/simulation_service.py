@@ -93,6 +93,7 @@ class SimulationService:
         detected_title = params.get("detected_title", default_title)
         detected_season = params.get("detected_season", 1)
         simulate_ripping = params.get("simulate_ripping", False)
+        simulate_backup = params.get("simulate_backup", False)
         rip_speed_multiplier = params.get("rip_speed_multiplier", 10)
         title_params = params.get("titles", [])
         identity_pending = params.get("identity_pending")
@@ -216,6 +217,37 @@ class SimulationService:
                     review_reason=job.review_reason,
                     total_titles=len(title_params),
                 )
+            elif simulate_backup:
+                # Park in BACKING_UP with a synthetic backup and STOP: no auto
+                # advance. The synthetic path follows the same
+                # staging_path-relative "sim_*" convention as the staging path
+                # above; nothing is written to disk and no real copy runs.
+                sim_backup_path = str(
+                    Path((await get_sim_config()).staging_path)
+                    / f"sim_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                )
+                job.state = JobState.BACKING_UP
+                job.backup_status = "pending"
+                job.backup_path = sim_backup_path
+                await session.commit()
+                await ws_manager.broadcast_job_update(
+                    job.id,
+                    JobState.BACKING_UP.value,
+                    content_type=content_type.value,
+                    detected_title=detected_title,
+                    detected_season=effective_season,
+                    total_titles=len(title_params),
+                )
+
+                # A plausible disc-size estimate for progress broadcasts only,
+                # nothing is measured or copied.
+                sim_total_bytes = 40 * 1024 * 1024 * 1024
+                for pct in (25, 50, 75, 100):
+                    await asyncio.sleep(0.1)
+                    current_bytes = int(sim_total_bytes * pct / 100)
+                    await self._broadcaster.broadcast_backup_progress(
+                        job.id, current_bytes, sim_total_bytes
+                    )
             elif simulate_ripping:
                 # Apply identity_prompt_json before spawning the rip task so the
                 # RIPPING broadcast inside _simulate_ripping carries it.

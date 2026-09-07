@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Matches "Season 1", "season 01", "Season 12", etc. (mirrors the old watcher).
@@ -26,10 +26,22 @@ _SEASON_RE = re.compile(r"^[Ss]eason\s*0*(\d+)$")
 # not shows, so a "Show / Disc N / *.mkv" layout resolves to one show, not many.
 _DISC_RE = re.compile(r"^[Dd]isc\s*0*\d+$")
 
+# A directory holding one of these is a disc backup, not a folder of media.
+_DISC_IMAGE_MARKERS = ("BDMV", "VIDEO_TS")
+
 # Bound the walk so a user pointing at a huge tree (or a symlink loop) can't
 # hang the request. Surfaced as ImportScan.truncated when hit.
 _MAX_FILES = 5000
 _MAX_DEPTH = 12
+
+# Bound the best-effort size sum for a single disc image. A real BDMV/VIDEO_TS
+# backup has at most a few hundred entries (stat() is O(1) regardless of the
+# multi-GB size of each stream file), so this never triggers on a genuine
+# single-disc backup. It exists only to stop a pathological/misidentified tree
+# (e.g. a "BDMV" folder someone nested other data under) from turning an
+# interactive folder-picker scan into a slow recursive walk. When the cap is
+# hit we stop early and return the partial sum rather than blocking.
+_MAX_DISC_IMAGE_SIZE_ENTRIES = 2000
 
 
 @dataclass
@@ -41,6 +53,53 @@ class ImportUnit:
 
 
 @dataclass
+class DiscImageUnit:
+    """A disc backup folder or ISO file, to be scanned and extracted by MakeMKV."""
+
+    path: Path
+    name: str
+    kind: str  # "backup" | "iso"
+    total_bytes: int
+
+
+def is_disc_image_dir(path: Path) -> bool:
+    """Whether this directory is a MakeMKV disc backup."""
+    try:
+        return any((path / marker).is_dir() for marker in _DISC_IMAGE_MARKERS)
+    except OSError:
+        return False
+
+
+def _dir_size_bounded(root: Path) -> int:
+    """Best-effort recursive size of a directory, capped to stay interactive.
+
+    See _MAX_DISC_IMAGE_SIZE_ENTRIES for why this is bounded rather than a
+    plain recursive sum.
+    """
+    total = 0
+    count = 0
+    stack = [root]
+    while stack:
+        d = stack.pop()
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for entry in entries:
+            if count >= _MAX_DISC_IMAGE_SIZE_ENTRIES:
+                return total
+            count += 1
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(Path(entry.path))
+                elif entry.is_file(follow_symlinks=False):
+                    total += entry.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+@dataclass
 class ImportScan:
     root: Path
     units: list[ImportUnit]
@@ -48,6 +107,10 @@ class ImportScan:
     total_files: int
     total_bytes: int
     truncated: bool = False
+    # Disc backup folders (BDMV/VIDEO_TS) and .iso files found in the tree. These
+    # are scanned and extracted through the normal pipeline rather than filed, so
+    # they are kept separate from `units` (which are ready-made MKVs to move).
+    disc_images: list[DiscImageUnit] = field(default_factory=list)
     # True when the picked folder is a single title (holds media / Season / Disc
     # directly) rather than a parent-of-shows/library folder. Drives in-place
     # organize layout: a single-title pick organizes next to itself, not under a
@@ -100,13 +163,19 @@ def _season_from_path(file: Path, root: Path) -> int | None:
     return None
 
 
-def _iter_mkvs(root: Path) -> tuple[list[Path], bool]:
+def _iter_mkvs(root: Path) -> tuple[list[Path], list[DiscImageUnit], bool]:
     """Recursively collect .mkv files under root, bounded by count and depth.
 
     Skips symlinked directories and any file whose resolved path escapes root,
-    so a crafted symlink cannot surface outside files or cause a loop.
+    so a crafted symlink cannot surface outside files or cause a loop. A
+    directory that is itself a disc backup (BDMV/VIDEO_TS) is recorded as a
+    DiscImageUnit and NOT descended into: that short-circuit is what keeps a
+    backup's thousands of stream files out of the _MAX_FILES budget. A file
+    with a .iso suffix is likewise recorded as a DiscImageUnit rather than
+    skipped.
     """
     found: list[Path] = []
+    disc_images: list[DiscImageUnit] = []
     truncated = False
     root_resolved = root.resolve()
 
@@ -127,9 +196,19 @@ def _iter_mkvs(root: Path) -> tuple[list[Path], bool]:
                 return
             try:
                 if entry.is_dir(follow_symlinks=False):
-                    walk(Path(entry.path), depth + 1)
-                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".mkv"):
                     p = Path(entry.path)
+                    if is_disc_image_dir(p):
+                        disc_images.append(DiscImageUnit(p, p.name, "backup", _dir_size_bounded(p)))
+                        continue
+                    walk(p, depth + 1)
+                elif entry.is_file(follow_symlinks=False):
+                    p = Path(entry.path)
+                    name_lower = entry.name.lower()
+                    if name_lower.endswith(".iso"):
+                        disc_images.append(DiscImageUnit(p, p.name, "iso", _safe_size(p)))
+                        continue
+                    if not name_lower.endswith(".mkv"):
+                        continue
                     try:
                         if not p.resolve().is_relative_to(root_resolved):
                             continue
@@ -140,7 +219,7 @@ def _iter_mkvs(root: Path) -> tuple[list[Path], bool]:
                 continue
 
     walk(root, 0)
-    return found, truncated
+    return found, disc_images, truncated
 
 
 def scan(path: Path) -> ImportScan:
@@ -149,6 +228,10 @@ def scan(path: Path) -> ImportScan:
 
     # Single-file target: one flat unit; show derived from the parent folder.
     if path.is_file():
+        if path.suffix.lower() == ".iso":
+            size = _safe_size(path)
+            image = DiscImageUnit(path, path.name, "iso", size)
+            return ImportScan(path.parent, [], [], 0, 0, False, disc_images=[image])
         if path.suffix.lower() != ".mkv":
             return ImportScan(path.parent, [], [], 0, 0, False)
         size = _safe_size(path)
@@ -156,6 +239,13 @@ def scan(path: Path) -> ImportScan:
         return ImportScan(path.parent, [unit], [], 1, size, False, picked_is_show=True)
 
     root = path
+
+    # The picked folder is itself a disc backup: it's a single disc image, not
+    # a folder of MKVs to walk.
+    if is_disc_image_dir(root):
+        size = _dir_size_bounded(root)
+        image = DiscImageUnit(root, root.name, "backup", size)
+        return ImportScan(root, [], [], 0, 0, False, disc_images=[image])
 
     # Third identity case: the user navigated INTO a "Season NN" folder and picked
     # it directly. Neither the "picked folder is a show" nor the "picked folder is
@@ -166,7 +256,7 @@ def scan(path: Path) -> ImportScan:
     picked_season_match = _SEASON_RE.match(root.name)
     picked_season = int(picked_season_match.group(1)) if picked_season_match else None
 
-    files, truncated = _iter_mkvs(root)
+    files, disc_images, truncated = _iter_mkvs(root)
 
     immediate_dirs = _safe_dirs(root)
     has_loose_top = any(f.parent == root for f in files)
@@ -223,6 +313,7 @@ def scan(path: Path) -> ImportScan:
         total_files,
         total_bytes,
         truncated,
+        disc_images=disc_images,
         picked_is_show=picked_is_show,
         picked_is_season=picked_season is not None,
     )

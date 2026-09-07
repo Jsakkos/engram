@@ -162,6 +162,8 @@ interface ConfigData {
     stagingCleanupDays: number;
     extrasPolicy: string;
     alwaysReview: boolean;
+    backupBeforeRip: boolean;
+    backupPath: string;
     namingSeasonFormat: string;
     namingEpisodeFormat: string;
     namingMovieFormat: string;
@@ -254,6 +256,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         stagingCleanupDays: 7,
         extrasPolicy: 'keep',
         alwaysReview: false,
+        backupBeforeRip: false,
+        backupPath: '',
         namingSeasonFormat: 'Season {season:02d}',
         namingEpisodeFormat: '{show} - S{season:02d}E{episode:02d}',
         namingMovieFormat: '{title} ({year})',
@@ -416,6 +420,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     stagingCleanupDays: data.staging_cleanup_days ?? 7,
                     extrasPolicy: data.extras_policy || 'keep',
                     alwaysReview: data.always_review ?? false,
+                    backupBeforeRip: data.backup_before_rip ?? false,
+                    backupPath: data.backup_path || '',
                     namingSeasonFormat: data.naming_season_format || 'Season {season:02d}',
                     namingEpisodeFormat: data.naming_episode_format || '{show} - S{season:02d}E{episode:02d}',
                     namingMovieFormat: data.naming_movie_format || '{title} ({year})',
@@ -640,6 +646,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     staging_cleanup_days: config.stagingCleanupDays,
                     extras_policy: config.extrasPolicy,
                     always_review: config.alwaysReview,
+                    backup_before_rip: config.backupBeforeRip,
+                    backup_path: config.backupPath,
                     naming_season_format: config.namingSeasonFormat,
                     naming_episode_format: config.namingEpisodeFormat,
                     naming_movie_format: config.namingMovieFormat,
@@ -951,6 +959,44 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             />
                             <PathStatusHint path={config.libraryTvPath} label="TV library" />
                         </div>
+
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label checkbox-plain">
+                                <input
+                                    type="checkbox"
+                                    checked={config.backupBeforeRip}
+                                    onChange={(e) => handleInputChange('backupBeforeRip', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>Back up disc before ripping</strong>
+                                    <span className="checkbox-hint">
+                                        Writes a full copy of each disc to a separate folder and extracts
+                                        the titles from that copy, so the disc is read once instead of once
+                                        per title, and the copy is kept afterwards. The trade-off is real:
+                                        each disc takes longer, and the copies use tens of gigabytes apiece.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {config.backupBeforeRip && (
+                            <div className="form-group">
+                                <label htmlFor="backupPath">Disc Backup Folder</label>
+                                <input
+                                    id="backupPath"
+                                    type="text"
+                                    value={config.backupPath}
+                                    onChange={(e) => handleInputChange('backupPath', e.target.value)}
+                                    placeholder="e.g., D:\Media\Disc Backups or ~/engram-backups"
+                                />
+                                <span className="form-hint">
+                                    Where the whole-disc copies are written. Give it plenty of room: one
+                                    Blu-ray backup can be 40GB or more, and backups are not cleaned up
+                                    with staging.
+                                </span>
+                                <PathStatusHint path={config.backupPath} label="disc backup folder" />
+                            </div>
+                        )}
 
                     </div>
                 );

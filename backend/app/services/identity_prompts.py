@@ -21,9 +21,13 @@ BLOCKING_KINDS = frozenset({"name", "reidentify"})
 # Resume contract between IdentificationCoordinator's answer endpoints
 # (set_name_and_resume / re_identify) and JobManager._apply_identity_resume_action.
 # Semantics are documented on IdentificationCoordinator.set_name_and_resume;
-# only "start_rip" may spawn a rip task (the double-rip hazard).
+# only "start_rip" and "start_backup" may spawn a rip task (the double-rip
+# hazard). They are the same pre-rip resume, split by whether backup_before_rip
+# is on: a disc parked for a name prompt still needs its backup once the user
+# answers, and routing both through "start_rip" silently skipped it.
 ResumeAction = Literal[
     "start_rip",
+    "start_backup",
     "dispatch_matches",
     "release_movie_titles",
     "resolve_movie",

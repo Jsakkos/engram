@@ -366,13 +366,13 @@ describe('DiscCard — media-type badge vs job state (#552)', () => {
     expect(screen.getByTestId('sv-mediatype-unknown')).toHaveTextContent('ANALYZING');
   });
 
-  // archiving_iso is the state that distinguishes ACTIVE_PIPELINE_STATES from
-  // ActionButtons' deliberately narrower ACTIVE_STATES. Pin it so a future
-  // "consolidation" of those two lists can't silently change this badge.
-  it('still pulses "ANALYZING" while archiving to ISO', () => {
+  // backing_up is a mid-pipeline phase that is easy to omit from one list and
+  // not another. Pin it so a future "consolidation" of ACTIVE_PIPELINE_STATES
+  // and ActionButtons' narrower lists can't silently change this badge.
+  it('still pulses "ANALYZING" while backing up the disc', () => {
     render(
       <DiscCard
-        disc={makeDisc({ mediaType: 'unknown', state: 'archiving_iso', needsReview: false })}
+        disc={makeDisc({ mediaType: 'unknown', state: 'backing_up', needsReview: false })}
       />,
     );
 
@@ -430,5 +430,54 @@ describe('Eject button', () => {
     fireEvent.click(screen.getByTestId('eject-button'));
     fireEvent.click(screen.getByRole('button', { name: 'Keep ripping' }));
     expect(onEject).not.toHaveBeenCalled();
+  });
+});
+
+// A whole-disc backup can run for hours. If it fell off any of these lists the
+// user would be stuck watching it with no way to stop, skip or eject.
+describe('BACKING UP action affordances', () => {
+  const backingUp = () => makeDisc({ state: 'backing_up', needsReview: false });
+
+  it('offers Cancel', () => {
+    render(<DiscCard disc={backingUp()} onCancel={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Cancel job' })).toBeInTheDocument();
+  });
+
+  it('offers Eject, because the disc is still in the drive', () => {
+    render(<DiscCard disc={backingUp()} onEject={vi.fn()} />);
+    expect(screen.getByTestId('eject-button')).toBeInTheDocument();
+  });
+
+  it('offers Force-advance, because the job is actively processing', () => {
+    render(<DiscCard disc={backingUp()} onAdvance={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Force job to next step' })).toBeInTheDocument();
+  });
+
+  it('renders the backup progress panel when a percentage is present', () => {
+    render(<DiscCard disc={makeDisc({ state: 'backing_up', needsReview: false, backupProgress: 42 })} />);
+    expect(screen.getByText(/BACKING UP DISC/)).toBeInTheDocument();
+  });
+});
+
+describe('DiscCard: disc backup outcome', () => {
+  it('warns with the backend reason when the backup was skipped', () => {
+    render(<DiscCard disc={makeDisc({ backupStatus: 'skipped', backupStatusReason: 'no backup location is configured' })} />);
+    expect(screen.getByTestId('sv-backup-warning')).toHaveTextContent(
+      'Backup skipped: no backup location is configured',
+    );
+  });
+
+  it('warns when the backup failed', () => {
+    render(<DiscCard disc={makeDisc({ backupStatus: 'failed', backupStatusReason: 'not enough free space' })} />);
+    expect(screen.getByTestId('sv-backup-warning')).toHaveTextContent(
+      'Backup failed: not enough free space',
+    );
+  });
+
+  it('stays quiet for a pending or completed backup', () => {
+    const { rerender } = render(<DiscCard disc={makeDisc({ backupStatus: 'pending' })} />);
+    expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
+    rerender(<DiscCard disc={makeDisc({ backupStatus: 'completed' })} />);
+    expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
   });
 });

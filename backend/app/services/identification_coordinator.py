@@ -16,6 +16,7 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
+from app.core.disc_source import DiscSource
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError, title_index_from_filename
 from app.core.fingerprint_disc_classifier import (
     identify_disc_via_network,
@@ -61,6 +62,25 @@ PERMISSIVE_MIN_DURATION_SECONDS = 900
 # Digit-boundary (not \b) so underscores/parens count as separators:
 # FRASIER_2023 and FRASIER (2023) match; a longer number like 20231 does not.
 _YEAR_RE = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+
+
+def next_state_after_identify(config, drive_id: str) -> JobState:
+    """The state a freshly identified disc should enter.
+
+    One function rather than a condition repeated at each of the places
+    identification currently assigns JobState.RIPPING, so the sites cannot
+    drift. An import job is excluded because it already is a backup, and an
+    enabled-but-unconfigured backup is excluded because entering a phase whose
+    only possible action is to fall back would put a misleading BACKING UP on
+    the card for no reason.
+    """
+    if not config or not config.backup_before_rip or not config.backup_path:
+        return JobState.RIPPING
+    # "import" and "staging" are both non-disc sentinels, not drive ids: there
+    # is no disc to copy, and an imported backup already is one.
+    if drive_id in ("import", "staging"):
+        return JobState.RIPPING
+    return JobState.BACKING_UP
 
 
 def apply_permissive_title_selection(titles: list[DiscTitle]) -> None:
@@ -282,6 +302,7 @@ class IdentificationCoordinator:
         self._on_match_task_done: callable = None
         self._check_job_completion: callable = None
         self._run_ripping: callable = None
+        self._run_backup: callable = None
         self._finalize_disc_job: callable = None
 
     def set_callbacks(
@@ -297,6 +318,7 @@ class IdentificationCoordinator:
         on_match_task_done,
         check_job_completion,
         run_ripping,
+        run_backup,
         finalize_disc_job,
     ) -> None:
         """Set cross-coordinator callbacks after all coordinators are constructed."""
@@ -310,7 +332,27 @@ class IdentificationCoordinator:
         self._on_match_task_done = on_match_task_done
         self._check_job_completion = check_job_completion
         self._run_ripping = run_ripping
+        self._run_backup = run_backup
         self._finalize_disc_job = finalize_disc_job
+
+    async def _next_state_after_identify(self, drive_id: str) -> JobState:
+        """Read the live config and pick RIPPING or BACKING_UP for this disc."""
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        return next_state_after_identify(config, drive_id)
+
+    async def _hand_off_after_identify(self, job_id: int, state: JobState) -> None:
+        """Run the phase chosen by :func:`next_state_after_identify`.
+
+        Awaited rather than spawned, matching the direct ``_run_ripping`` await
+        every identification site already used; the backup coroutine registers
+        and log-tags itself.
+        """
+        if state is JobState.BACKING_UP:
+            await self._run_backup(job_id)
+        else:
+            await self._run_ripping(job_id)
 
     async def identify_disc(
         self, job_id: int, manual_identity: ManualIdentity | None = None
@@ -340,9 +382,20 @@ class IdentificationCoordinator:
                 try:
                     from app.core.discdb_exporter import get_makemkv_log_dir
 
+                    # The job's own source, not always the drive: a disc-image
+                    # import reads a backup folder or an ISO and has no drive at
+                    # all, and a legacy row (source_spec is None) still resolves
+                    # to drive_id.
                     titles, disc_name = await self._extractor.scan_disc(
-                        job.drive_id, log_dir=get_makemkv_log_dir(job_id), job_id=job_id
+                        DiscSource.from_job(job),
+                        log_dir=get_makemkv_log_dir(job_id),
+                        job_id=job_id,
                     )
+                except ValueError as e:
+                    await self._state_machine.transition_to_failed(
+                        job, session, f"Cannot scan this job: {e}"
+                    )
+                    return
                 except ScanTimeoutError:
                     await self._state_machine.transition_to_failed(
                         job,
@@ -650,7 +703,8 @@ class IdentificationCoordinator:
 
                         await session.commit()
 
-                        job.state = JobState.RIPPING
+                        next_state = await self._next_state_after_identify(job.drive_id)
+                        job.state = next_state
                         await session.commit()
                         await ws_manager.broadcast_job_update(
                             job_id,
@@ -659,7 +713,7 @@ class IdentificationCoordinator:
                             detected_title=job.detected_title,
                         )
 
-                        await self._run_ripping(job_id)
+                        await self._hand_off_after_identify(job_id, next_state)
                         return
 
                     # Gate C (walk-away B2): identity is uncertain but we have a
@@ -694,8 +748,10 @@ class IdentificationCoordinator:
                         broadcast=False,
                     )
                 else:
-                    # High-confidence detection - auto-start ripping
-                    job.state = JobState.RIPPING
+                    # High-confidence detection - auto-start ripping (or the
+                    # backup that precedes it when backup_before_rip is on).
+                    next_state = await self._next_state_after_identify(job.drive_id)
+                    job.state = next_state
                     await session.commit()
 
                 # Both review and high-confidence paths broadcast the same job update.
@@ -723,7 +779,7 @@ class IdentificationCoordinator:
                         f"Job {job_id} identified as {analysis.content_type.value} "
                         f"(confidence: {analysis.confidence:.1%}) - auto-starting rip"
                     )
-                    await self._run_ripping(job_id)
+                    await self._hand_off_after_identify(job_id, next_state)
                     return
 
             except Exception as e:
@@ -772,13 +828,16 @@ class IdentificationCoordinator:
         like "label unreadable" / "merged without separators") and B4's
         rip-end convergence replays them as ``review_reason``, reproducing
         today's review UX for an unanswered prompt. The transition mirrors the
-        high-confidence auto-rip path (direct RIPPING + commit + broadcast +
-        ``_run_ripping``). Blocking kinds (``name``/``reidentify``) park
-        ripped titles in QUEUED via the B3 matching gate; ``season`` is a
-        shortcut CTA and titles dispatch normally.
+        high-confidence auto-rip path (the state chosen by
+        ``next_state_after_identify`` + commit + broadcast + the matching
+        coroutine, so an enabled backup precedes the rip here too). Blocking
+        kinds (``name``/``reidentify``) park ripped titles in QUEUED via the B3
+        matching gate; ``season`` is a shortcut CTA and titles dispatch
+        normally.
         """
         job.identity_prompt_json = json.dumps({"kind": kind, "reason": reason})
-        job.state = JobState.RIPPING
+        next_state = await self._next_state_after_identify(job.drive_id)
+        job.state = next_state
         await session.commit()
         await ws_manager.broadcast_job_update(
             job_id,
@@ -794,7 +853,7 @@ class IdentificationCoordinator:
             f"Job {job_id}: rip-first with an open identity question (kind={kind}) — "
             f"auto-starting rip"
         )
-        await self._run_ripping(job_id)
+        await self._hand_off_after_identify(job_id, next_state)
 
     async def _resolve_all_season_numbers(
         self, title: str, tmdb_id: int | None = None
@@ -1329,9 +1388,11 @@ class IdentificationCoordinator:
                     resume_action = "resolve_movie"
             else:
                 job.review_reason = None
-                job.state = JobState.RIPPING
-                target_state = JobState.RIPPING
-                resume_action = "start_rip"
+                # Pre-rip answer: the disc is still in the drive, so this is the
+                # one resume path that can still back it up first.
+                job.state = await self._next_state_after_identify(job.drive_id)
+                target_state = job.state
+                resume_action = "start_backup" if job.state == JobState.BACKING_UP else "start_rip"
 
             job.updated_at = datetime.now(UTC)
             await session.commit()
@@ -1530,10 +1591,11 @@ class IdentificationCoordinator:
                     target_state = job.state
                     resume_action = "resolve_movie"
             else:
-                # Pre-rip: go to RIPPING
-                job.state = JobState.RIPPING
-                target_state = JobState.RIPPING
-                resume_action = "start_rip"
+                # Pre-rip: the disc is still in the drive, so this is the one
+                # re-identify path that can still back it up first.
+                job.state = await self._next_state_after_identify(job.drive_id)
+                target_state = job.state
+                resume_action = "start_backup" if job.state == JobState.BACKING_UP else "start_rip"
 
             job.updated_at = datetime.now(UTC)
             await session.commit()
@@ -1698,7 +1760,18 @@ class IdentificationCoordinator:
                     # insert that missed the hash. Cheap (glob + stat).
                     from app.core.extractor import compute_content_hash
 
-                    content_hash = await asyncio.to_thread(compute_content_hash, job.drive_id)
+                    # A backup folder holds the same BDMV/STREAM sizes as the
+                    # disc it was copied from, so hashing the copy yields the
+                    # same ContentHash and an imported backup still gets a
+                    # TheDiscDB lookup. A job with no MakeMKV source at all
+                    # simply has no hash.
+                    try:
+                        source = DiscSource.from_job(job)
+                    except ValueError:
+                        source = None
+                    content_hash = (
+                        await asyncio.to_thread(compute_content_hash, source) if source else None
+                    )
                     if content_hash:
                         job.content_hash = content_hash
 

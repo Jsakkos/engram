@@ -49,6 +49,9 @@ RIPPED_EVENT = NotificationEvent("ripped", "Disc Ripped", "💿", 0x3B82F6)
 RIP_OUTCOME_COMPLETE = "Complete"
 RIP_OUTCOME_STOPPED_EARLY = "Stopped early"
 RIP_OUTCOME_RERIP = "Re-rip"
+# The disc is copied and out of the drive, which is what RIPPED_EVENT means.
+# Extraction then runs off the copy, so this fires long before any MKV exists.
+RIP_OUTCOME_BACKED_UP = "Backed up"
 
 ALLOWED_TEMPLATE_VARS = frozenset(
     {

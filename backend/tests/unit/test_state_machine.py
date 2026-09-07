@@ -405,3 +405,27 @@ class TestStateTransitionSequences:
 
             # Reset for next iteration
             sample_job.state = JobState.IDLE
+
+
+class TestBackingUpTransitions:
+    def test_identifying_can_enter_backing_up(self):
+        assert JobState.BACKING_UP in JobStateMachine.VALID_TRANSITIONS[JobState.IDENTIFYING]
+
+    def test_backing_up_can_start_ripping(self):
+        assert JobState.RIPPING in JobStateMachine.VALID_TRANSITIONS[JobState.BACKING_UP]
+
+    def test_backing_up_can_park_for_review(self):
+        # Reconciliation failure parks here; it must not fall back to the drive,
+        # which may already be ejected.
+        assert JobState.REVIEW_NEEDED in JobStateMachine.VALID_TRANSITIONS[JobState.BACKING_UP]
+
+    def test_backing_up_can_fail(self):
+        assert JobState.FAILED in JobStateMachine.VALID_TRANSITIONS[JobState.BACKING_UP]
+
+    def test_backing_up_cannot_skip_straight_to_matching(self):
+        # There are no MKVs yet. Skipping RIPPING would strand the job.
+        assert JobState.MATCHING not in JobStateMachine.VALID_TRANSITIONS[JobState.BACKING_UP]
+
+    def test_review_can_return_to_backing_up(self):
+        # A disc parked for a name prompt still needs its backup once answered.
+        assert JobState.BACKING_UP in JobStateMachine.VALID_TRANSITIONS[JobState.REVIEW_NEEDED]

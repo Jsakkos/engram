@@ -38,6 +38,9 @@ class AppConfig(SQLModel, table=True):
     staging_path: str = ""  # Platform-aware default set on first run
     library_movies_path: str = ""
     library_tv_path: str = ""
+    # Root for full decrypted disc backups. Empty means the feature cannot run,
+    # which the backup phase reports as skipped:not_configured rather than failing.
+    backup_path: str = ""
 
     # Episode Matcher Settings
     subtitles_cache_path: str = "~/.engram/cache"
@@ -121,6 +124,12 @@ class AppConfig(SQLModel, table=True):
     timeout_organizing_seconds: int = Field(
         default=600, sa_column_kwargs={"server_default": text("600")}
     )
+    # A 40 GB sequential copy is slower than any other phase and, on the scratched
+    # discs this feature exists for, deliberately slow. Two hours of no output
+    # growth, not of wall clock.
+    timeout_backing_up_seconds: int = Field(
+        default=7200, sa_column_kwargs={"server_default": text("7200")}
+    )
 
     # Drive behavior
     auto_eject_enabled: bool = Field(default=True, sa_column_kwargs={"server_default": text("1")})
@@ -139,6 +148,11 @@ class AppConfig(SQLModel, table=True):
     # handles badly (segment-format cartoons, DVD orderings TMDB doesn't carry)
     # confirming each disc by hand beats discovering a mis-file after the move.
     always_review: bool = Field(default=False, sa_column_kwargs={"server_default": text("0")})
+
+    # Write a full decrypted disc copy under backup_path after identification and
+    # extract from that copy instead of the drive. server_default 0, like
+    # discord_notify_ripped: an opt-in feature must read a NULL as disabled.
+    backup_before_rip: bool = Field(default=False, sa_column_kwargs={"server_default": text("0")})
 
     # Naming conventions (Python format strings)
     naming_season_format: str = "Season {season:02d}"

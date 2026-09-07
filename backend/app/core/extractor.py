@@ -9,6 +9,7 @@ import contextlib
 import hashlib
 import logging
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.analyst import TitleInfo
+from app.core.disc_source import DiscSource, SourceKind
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -62,14 +64,27 @@ STALL_POLL_INTERVAL = 5.0
 FS_POLL_INTERVAL = 3.0
 
 
-def _to_drive_spec(drive: str) -> str:
-    """Normalize a drive identifier into a MakeMKV drive spec.
+def _as_source(source: DiscSource | str) -> DiscSource:
+    """Coerce a source argument into a DiscSource.
 
-    Drive letters/device paths become ``dev:<drive>``; ``disc:N`` specs pass through.
+    Call sites still pass a bare ``job.drive_id`` string, so every entry point
+    that takes a source accepts either form and normalizes here.
     """
-    if not drive.startswith("disc:"):
-        return f"dev:{drive}"
-    return drive
+    return source if isinstance(source, DiscSource) else DiscSource.parse(source)
+
+
+def _to_source_spec(source: DiscSource | str) -> str:
+    """Normalize a source into the argument makemkvcon accepts.
+
+    Accepts a DiscSource, a bare drive identifier, or an already-schemed spec,
+    so existing call sites that pass ``job.drive_id`` keep working unchanged.
+
+    Raises:
+        ValueError: if *source* is a string that is not a recognized scheme
+            (``dev:``, ``disc:``, ``file:``, ``iso:``) and not a bare drive
+            identifier either.
+    """
+    return _as_source(source).makemkv_arg
 
 
 def _is_stalled(now: float, last_progress: float, timeout: float) -> bool:
@@ -196,6 +211,66 @@ def _build_rip_commands(
     return [(idx, [*base, str(idx), output_dir]) for idx in title_indices]
 
 
+# PRGV:current,total,max is MakeMKV's global progress line. `current` is the
+# current operation's bar and `total` the overall one, both on the same `max`
+# scale (a fixed 65536 in practice): see the rip reader loop, which reads these
+# lines for liveness only and deliberately derives no per-title progress from
+# them.
+_PRGV_RE = re.compile(r"^PRGV:(\d+),(\d+),(\d+)")
+
+# MSG:code,flags,count,"message","format","param0",...: the already-formatted
+# human message is the FIRST quoted field, not the format string after it.
+_MSG_TEXT_RE = re.compile(r'^MSG:\d+,\d+,\d+,"([^"]*)"')
+
+
+def _build_backup_command(makemkv_path: str, source_spec: str, dest: str) -> list[str]:
+    """Build the argv for a full decrypted disc backup.
+
+    ``makemkvcon backup`` accepts only a ``disc:N`` source, never ``dev:`` and
+    never ``file:``. Rejecting anything else here turns a 40-minute mystery into
+    an immediate, named fallback.
+    """
+    if not source_spec.startswith("disc:"):
+        raise ValueError(
+            f"makemkvcon backup requires a disc:N source, got {source_spec!r}. "
+            f"Resolve it with disc_source.resolve_disc_index() first."
+        )
+    return [
+        makemkv_path,
+        "-r",
+        "--progress=-same",
+        "--decrypt",
+        "backup",
+        source_spec,
+        dest,
+    ]
+
+
+def _parse_backup_progress(line: str) -> float | None:
+    """Percentage from a PRGV line, or None if the line carries no progress.
+
+    Reads ``total/max``, the overall bar. ``current/max`` is the current
+    sub-operation and would sawtooth back to 0 repeatedly across one backup.
+    """
+    m = _PRGV_RE.match(line.strip())
+    if not m:
+        return None
+    _current, total, maximum = (int(g) for g in m.groups())
+    if maximum <= 0:
+        return None
+    return min(100.0, total / maximum * 100.0)
+
+
+def _last_msg_text(output: str) -> str | None:
+    """The text of the last MSG line in MakeMKV output, for error reporting."""
+    last = None
+    for line in output.splitlines():
+        m = _MSG_TEXT_RE.match(line.strip())
+        if m:
+            last = m.group(1)
+    return last
+
+
 def should_abort_all_pass(
     opened_native: int,
     disc_title_map: dict[int, int] | None,
@@ -311,6 +386,19 @@ class RipResult:
     # aborted_for_skip there is no per-title fallback pass afterward, because
     # the disc is no longer in the drive.
     aborted_for_eject: bool = False
+
+
+@dataclass
+class BackupResult:
+    """Result of a full-disc backup operation."""
+
+    success: bool
+    dest: Path | None = None
+    error_message: str | None = None
+    # True when dest already existed and this run did not create it. The caller
+    # still has a usable backup at dest, but this run did not verify it: it is
+    # whatever was on disk already.
+    already_existed: bool = False
 
 
 class ScanTimeoutError(Exception):
@@ -513,21 +601,42 @@ def _find_linux_mount_point(device: str) -> Path | None:
     return None
 
 
-def compute_content_hash(drive: str) -> str | None:
+def compute_content_hash(source: DiscSource | str) -> str | None:
     """Compute TheDiscDB-compatible ContentHash for a disc.
 
     The hash is MD5 of concatenated Int64 file sizes from BDMV/STREAM/*.m2ts
     (Blu-ray) or VIDEO_TS/* (DVD), sorted by filename. This matches the
     algorithm used by TheDiscDB's ImportBuddy tool.
 
+    A ``file:`` source (a MakeMKV backup folder) holds exactly that structure
+    with exactly those file sizes, so hashing the copy yields the same value as
+    hashing the disc it came from: an imported backup gets a TheDiscDB lookup
+    like any inserted disc. An ISO would have to be mounted first, so it
+    degrades to None.
+
     Args:
-        drive: Drive letter (e.g., "E:" or "E") on Windows, or device path
-               (e.g., "/dev/sr0") on Linux. On Linux the disc must be mounted
-               for the hash to be computed; returns None if not mounted.
+        source: A DiscSource, or a drive letter (e.g., "E:" or "E") on Windows
+                / a device path (e.g., "/dev/sr0") on Linux. On Linux the disc
+                must be mounted for the hash to be computed; returns None if
+                not mounted. A physical DiscSource is read through its own
+                value, which is the drive for every source ``from_job`` builds;
+                a source resolved to a bare ``disc:N`` index has no readable
+                path and returns None.
 
     Returns:
         Uppercase hex MD5 hash string, or None if disc structure not found
     """
+    if isinstance(source, DiscSource):
+        if source.kind is SourceKind.ISO:
+            logger.debug(f"ContentHash is not computable for an ISO source: {source}")
+            return None
+        if source.kind is SourceKind.BACKUP:
+            root = Path(source.value)
+            return _hash_disc_structure(root / "BDMV" / "STREAM", root / "VIDEO_TS", str(source))
+        drive = source.value
+    else:
+        drive = source
+
     if sys.platform != "win32":
         mount_point = _find_linux_mount_point(drive)
         if mount_point is None:
@@ -540,6 +649,17 @@ def compute_content_hash(drive: str) -> str | None:
         bdmv_path = Path(f"{clean_drive}:\\BDMV\\STREAM")
         dvd_path = Path(f"{clean_drive}:\\VIDEO_TS")
 
+    return _hash_disc_structure(bdmv_path, dvd_path, drive)
+
+
+def _hash_disc_structure(bdmv_path: Path, dvd_path: Path, label: str) -> str | None:
+    """MD5 the Int64 sizes of a disc structure's stream files.
+
+    ``label`` names the source in the log lines only. Shared by the drive and
+    backup-folder paths of :func:`compute_content_hash`: the structure is
+    identical either way, which is exactly why a backup hashes to the same
+    value as the disc it was copied from.
+    """
     target_path = None
     pattern = "*"
 
@@ -549,7 +669,7 @@ def compute_content_hash(drive: str) -> str | None:
     elif dvd_path.is_dir():
         target_path = dvd_path
     else:
-        logger.debug(f"No BDMV/STREAM or VIDEO_TS found on drive {drive}")
+        logger.debug(f"No BDMV/STREAM or VIDEO_TS found on {label}")
         return None
 
     try:
@@ -564,10 +684,10 @@ def compute_content_hash(drive: str) -> str | None:
             md5.update(struct.pack("<q", size))
 
         content_hash = md5.hexdigest().upper()
-        logger.info(f"Computed ContentHash for drive {drive}: {content_hash}")
+        logger.info(f"Computed ContentHash for {label}: {content_hash}")
         return content_hash
     except (OSError, PermissionError) as e:
-        logger.warning(f"Could not compute ContentHash for drive {drive}: {e}")
+        logger.warning(f"Could not compute ContentHash for {label}: {e}")
         return None
 
 
@@ -654,9 +774,9 @@ class MakeMKVExtractor:
         # finished file. Single-writer per job under the rip thread + async
         # skip calls; set mutation is atomic under the GIL.
         self._skipped_indices: dict[int, set[int]] = {}
-        # Per-drive locks prevent concurrent MakeMKV operations on the same drive.
-        # Two makemkvcon processes fighting over one drive causes both to stall/fail.
-        self._drive_locks: dict[str, asyncio.Lock] = {}
+        # Per-source locks prevent concurrent MakeMKV operations on one source.
+        # Two makemkvcon processes fighting over one drive causes both to stall.
+        self._source_locks: dict[str, asyncio.Lock] = {}
 
     @property
     def makemkv_path(self) -> Path:
@@ -667,48 +787,74 @@ class MakeMKVExtractor:
 
         return Path(get_config_sync().makemkv_path)
 
-    def _get_drive_lock(self, drive: str) -> asyncio.Lock:
-        """Get or create a per-drive lock to serialize MakeMKV operations."""
-        # Normalize drive key (e.g., "F:" and "dev:F:" should use same lock)
-        key = drive.replace("dev:", "").replace("disc:", "").rstrip("\\")
-        if key not in self._drive_locks:
-            self._drive_locks[key] = asyncio.Lock()
-        return self._drive_locks[key]
+    def _get_source_lock(self, source: DiscSource | str) -> asyncio.Lock:
+        """Get or create the per-source lock serializing MakeMKV operations.
+
+        Two makemkvcon processes fighting over one optical drive stall both, so
+        every physical drive form keys to one lock. A backup or ISO keys on its
+        own path instead: reading a backup does not touch the drive, and making
+        it wait for the drive lock would silently serialize work that is now
+        genuinely independent.
+        """
+        return self._lock_for(_as_source(source).lock_key)
+
+    def _lock_for(self, key: str) -> asyncio.Lock:
+        """Get or create the lock registered under ``key``."""
+        if key not in self._source_locks:
+            self._source_locks[key] = asyncio.Lock()
+        return self._source_locks[key]
+
+    def _get_dest_lock(self, dest: Path) -> asyncio.Lock:
+        """Get or create the per-destination lock for a backup.
+
+        The source lock is not enough here. A backup destination is derived from
+        content identity (title, year, season, disc slug) with nothing
+        drive-specific in it, so two jobs in two different drives backing up the
+        same disc compute the SAME destination while taking DIFFERENT source
+        locks. The second one's stale-partial recovery cannot tell "debris from
+        an earlier failure" from "another job writing here right now", and would
+        rename a live ``.partial`` out from under a running makemkvcon.
+
+        Always taken after the source lock, never before, so the two orderings
+        cannot deadlock against each other.
+        """
+        return self._lock_for("dest:" + str(dest))
 
     async def scan_disc(
-        self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
+        self, source: DiscSource | str, log_dir: Path | None = None, *, job_id: int = 0
     ) -> tuple[list[TitleInfo], str]:
-        """Scan a disc and return title information and the disc display name.
+        """Scan a source and return title information and the disc display name.
 
         Args:
-            drive: Drive letter (e.g., "E:") or disc index (e.g., "disc:0")
+            source: A DiscSource, a drive letter (e.g., "E:"), a disc index
+                (e.g., "disc:0") or a backup/ISO spec (e.g., "file:/backups/x")
             log_dir: Optional directory for saving MakeMKV scan logs
 
         Returns:
-            (titles, disc_name) — list of titles and the CINFO:2 disc display name
+            (titles, disc_name) - list of titles and the CINFO:2 disc display name
             (disc_name is empty string when not present in MakeMKV output)
         """
-        lock = self._get_drive_lock(drive)
+        lock = self._get_source_lock(source)
         if lock.locked():
             logger.warning(
-                f"Drive {drive} is already in use by another MakeMKV operation, "
+                f"Source {source} is already in use by another MakeMKV operation, "
                 f"waiting for it to finish"
             )
 
         async with lock:
-            return await self._scan_disc_unlocked(drive, log_dir=log_dir, job_id=job_id)
+            return await self._scan_disc_unlocked(source, log_dir=log_dir, job_id=job_id)
 
     async def _scan_disc_unlocked(
-        self, drive: str, log_dir: Path | None = None, *, job_id: int = 0
+        self, source: DiscSource | str, log_dir: Path | None = None, *, job_id: int = 0
     ) -> tuple[list[TitleInfo], str]:
-        """Internal scan implementation (caller must hold drive lock)."""
-        drive_spec = _to_drive_spec(drive)
+        """Internal scan implementation (caller must hold the source lock)."""
+        source_spec = _to_source_spec(source)
 
         cmd = [
             str(self.makemkv_path),
             "-r",  # Robot mode (machine-readable output)
             "info",
-            drive_spec,
+            source_spec,
         ]
 
         start = time.monotonic()
@@ -763,15 +909,17 @@ class MakeMKVExtractor:
             return [], ""
         except subprocess.TimeoutExpired as e:
             elapsed = time.monotonic() - start
-            logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for drive {drive}")
-            raise ScanTimeoutError(f"Disc scan timed out after 10 minutes on drive {drive}") from e
+            logger.error(f"MakeMKV scan timed out after {elapsed:.1f}s for source {source_spec}")
+            raise ScanTimeoutError(
+                f"Disc scan timed out after 10 minutes on source {source_spec}"
+            ) from e
         except Exception as e:
             logger.exception(f"Error scanning disc: {e}")
             return [], ""
 
     async def rip_titles(
         self,
-        drive: str,
+        source: DiscSource | str,
         output_dir: Path,
         title_indices: list[int] | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
@@ -785,7 +933,7 @@ class MakeMKVExtractor:
         """Rip selected titles from a disc.
 
         Args:
-            drive: Drive letter or disc specification
+            source: A DiscSource, a drive letter, a disc index, or a backup/ISO spec
             output_dir: Directory to save MKV files
             title_indices: List of title indices to rip, or None for all
             title_complete_callback: Optional callback when a title finishes ripping
@@ -804,16 +952,16 @@ class MakeMKVExtractor:
         Returns:
             RipResult with success status and output files
         """
-        lock = self._get_drive_lock(drive)
+        lock = self._get_source_lock(source)
         if lock.locked():
             logger.warning(
-                f"Drive {drive} is already in use by another MakeMKV operation, "
+                f"Source {source} is already in use by another MakeMKV operation, "
                 f"waiting for it to finish"
             )
 
         async with lock:
             return await self._rip_titles_unlocked(
-                drive,
+                source,
                 output_dir,
                 title_indices,
                 title_complete_callback,
@@ -826,7 +974,7 @@ class MakeMKVExtractor:
 
     async def _rip_titles_unlocked(
         self,
-        drive: str,
+        source: DiscSource | str,
         output_dir: Path,
         title_indices: list[int] | None = None,
         title_complete_callback: TitleCompleteCallback | None = None,
@@ -837,17 +985,17 @@ class MakeMKVExtractor:
         job_id: int = 0,
         disc_title_map: dict[int, int] | None = None,
     ) -> RipResult:
-        """Internal rip implementation (caller must hold drive lock)."""
+        """Internal rip implementation (caller must hold the source lock)."""
         self._cancelled_jobs.discard(job_id)
         self._ejected_jobs.discard(job_id)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        drive_spec = _to_drive_spec(drive)
+        source_spec = _to_source_spec(source)
 
         # Prepare commands to run
         commands = _build_rip_commands(
             str(self.makemkv_path),
-            drive_spec,
+            source_spec,
             str(output_dir),
             title_indices,
         )
@@ -1486,6 +1634,210 @@ class MakeMKVExtractor:
                 output_files=[],
                 error_message=str(e),
             )
+
+    def _run_backup_process(
+        self, cmd: list[str], on_line: Callable[[str], None], job_id: int
+    ) -> tuple[int, str]:
+        """Run makemkvcon backup, streaming stdout to ``on_line``.
+
+        A separate seam so tests can substitute it without a real subprocess.
+        Runs in a thread (Windows asyncio subprocess workaround), matching how
+        scan_disc and rip_titles already invoke MakeMKV.
+
+        The process is registered in ``self._processes`` for the duration, so
+        ``cancel()`` (and ``shutdown()``) can terminate a multi-hour backup the
+        same way they terminate a rip.
+        """
+        collected: list[str] = []
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        self._processes[job_id] = proc
+        try:
+            for line in proc.stdout or []:
+                if job_id in self._cancelled_jobs:
+                    _terminate_proc(proc, label=f"backup job {job_id}")
+                    break
+                collected.append(line)
+                on_line(line)
+        finally:
+            try:
+                proc.wait()
+            finally:
+                self._processes.pop(job_id, None)
+        return proc.returncode, "".join(collected)
+
+    async def backup_disc(
+        self,
+        source: DiscSource | str,
+        dest: Path,
+        progress_callback: Callable[[float], None] | None = None,
+        log_dir: Path | None = None,
+        *,
+        job_id: int = 0,
+    ) -> BackupResult:
+        """Write a full decrypted copy of the disc to ``dest``.
+
+        Writes to ``<dest>.partial`` and renames on success, so a killed or
+        crashed backup never leaves something that looks complete. On failure
+        the ``.partial`` is left in place: a partial backup of a dying disc has
+        salvage value, and discarding it is the user's call.
+
+        Every attempt starts from a clean ``<dest>.partial`` working directory,
+        and this is REQUIRED, not merely tidy. Verified against MakeMKV 1.18.3
+        on real hardware: a target directory that already exists is refused
+        outright, even when it is empty, with ``MSG:5068 "Folder ... already
+        contains a backup, please choose another folder"`` followed by
+        ``Backup failed``. So a stale ``.partial`` left by a previous failed
+        attempt is moved aside to ``<dest>.partial.previous`` before MakeMKV is
+        launched; without that, every retry of a failed backup would die
+        instantly on 5068. It also follows that this method must never
+        pre-create the ``.partial`` itself: only ``dest.parent`` is created
+        here. That keeps the most recent failed attempt
+        around for salvage while dropping the older one: a disc that fails
+        repeatedly would otherwise accumulate tens of gigabytes per attempt
+        without bound. This debris is from a *failed* attempt, not a completed
+        backup, so Engram's "never delete a backup" rule (which is about
+        completed backups under the backup root) does not apply to it.
+
+        Deliberately has no stall watchdog, unlike ``rip_titles``. A backup is
+        a single sequential read of the whole disc with no per-title boundary
+        to skip to, so the rip's "kill it and move to the next title" recovery
+        has no analogue here. Cancellation is the escape hatch for an
+        interactive user, and the job-level phase watchdog
+        (``timeout_backing_up_seconds``) is the unattended backstop.
+        """
+        spec = _to_source_spec(source)
+        # Every value interpolated into a log line below is user-influenced:
+        # job_id arrives on an API path, and the paths derive from the
+        # configured backup root and the disc's own metadata. A volume label
+        # can carry CR/LF, which would let a crafted disc forge log entries
+        # (py/log-injection), so they are sanitised once here and the safe
+        # locals are what the log calls use.
+        safe_job = sanitize_log_value(job_id)
+        safe_spec = sanitize_log_value(spec)
+        safe_dest = sanitize_log_value(dest)
+
+        # Built before the lock is taken: an unusable source is a caller bug,
+        # and there is no reason to make it queue behind a live drive operation.
+        try:
+            cmd = _build_backup_command(str(self.makemkv_path), spec, str(dest) + ".partial")
+        except ValueError as e:
+            logger.error(f"Job {safe_job}: cannot back up from {safe_spec}: {e}")
+            return BackupResult(success=False, error_message=str(e))
+
+        partial = dest.with_name(dest.name + ".partial")
+
+        lock = self._get_source_lock(source)
+        if lock.locked():
+            logger.warning(
+                f"Source {source} is already in use by another MakeMKV operation, "
+                f"waiting for it to finish"
+            )
+
+        # Source AND destination: see _get_dest_lock for why the source lock
+        # alone lets two drives race on one .partial. Source first, always, so
+        # the lock ordering is consistent everywhere.
+        dest_lock = self._get_dest_lock(dest)
+        if dest_lock.locked():
+            logger.warning(
+                f"Backup destination {safe_dest} is already being written by "
+                f"another job, waiting for it to finish"
+            )
+
+        async with lock, dest_lock:
+            self._cancelled_jobs.discard(job_id)
+
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                logger.error(
+                    f"Job {safe_job}: could not create {sanitize_log_value(dest.parent)}: {e}",
+                    exc_info=True,
+                )
+                return BackupResult(success=False, error_message=str(e))
+
+            previous = dest.with_name(dest.name + ".partial.previous")
+            if partial.exists():
+                if previous.exists():
+                    shutil.rmtree(previous)
+                    logger.info(
+                        f"Job {safe_job}: discarding older stale partial: "
+                        f"{sanitize_log_value(previous)}"
+                    )
+                partial.rename(previous)
+                logger.info(
+                    f"Job {safe_job}: moved stale partial "
+                    f"{sanitize_log_value(partial)} aside to {sanitize_log_value(previous)}"
+                )
+
+            logger.info(f"Job {safe_job}: backing up disc: {sanitize_log_value(' '.join(cmd))}")
+
+            def on_line(line: str) -> None:
+                pct = _parse_backup_progress(line)
+                if pct is not None and progress_callback is not None:
+                    _safe_callback(progress_callback, pct, label="backup progress callback")
+
+            try:
+                returncode, output = await asyncio.to_thread(
+                    self._run_backup_process, cmd, on_line, job_id
+                )
+            except FileNotFoundError:
+                logger.error(f"MakeMKV not found at: {self.makemkv_path}")
+                return BackupResult(
+                    success=False, error_message=f"MakeMKV not found at {self.makemkv_path}"
+                )
+            except Exception as e:
+                logger.exception(f"Job {safe_job}: error during disc backup")
+                return BackupResult(success=False, error_message=str(e))
+
+            if log_dir is not None and output:
+                # Same per-job log directory the scan and rip paths write into.
+                _save_makemkv_log(Path(log_dir) / "backup.log", output)
+
+            if job_id in self._cancelled_jobs:
+                self._cancelled_jobs.discard(job_id)
+                logger.info(f"Job {safe_job}: backup cancelled by user")
+                return BackupResult(success=False, error_message="Backup cancelled by user")
+
+            if returncode != 0 or not partial.exists():
+                reason = _last_msg_text(output) or f"makemkvcon backup exited {returncode}"
+                kept_note = ""
+                if partial.exists():
+                    kept_note = (
+                        f" The partial backup at {sanitize_log_value(partial)} "
+                        f"was kept for salvage."
+                    )
+                logger.error(
+                    f"Job {safe_job}: backup failed: {sanitize_log_value(reason)}.{kept_note}"
+                )
+                return BackupResult(success=False, error_message=reason)
+
+            try:
+                if dest.exists():
+                    # Destination appeared while we were copying (another attempt
+                    # finished first). Keep the existing directory as the usable
+                    # backup and leave ours at `partial` untouched: it is not
+                    # deleted, per the "most recent stale partial is preserved"
+                    # rule above, and the next attempt will move it aside.
+                    logger.warning(
+                        f"Job {safe_job}: {safe_dest} already exists; keeping it. "
+                        f"Our own copy is orphaned at {sanitize_log_value(partial)}."
+                    )
+                    return BackupResult(success=True, dest=dest, already_existed=True)
+                partial.rename(dest)
+            except OSError as e:
+                logger.error(f"Job {safe_job}: could not finalize backup: {e}", exc_info=True)
+                return BackupResult(success=False, error_message=str(e))
+
+            logger.info(f"Job {safe_job}: backup complete at {safe_dest}")
+            return BackupResult(success=True, dest=dest)
 
     def skip_title_index(self, job_id: int, title_index: int) -> None:
         """Register a title_index to skip in the per-title rip loop for a job."""

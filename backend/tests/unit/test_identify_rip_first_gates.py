@@ -529,3 +529,55 @@ class TestGateCUncorroboratedIdentity:
         assert not any(state == JobState.REVIEW_NEEDED.value for state, _ in gate_env)
         # identity_unconfirmed is not a collision, so subtitle prefetch ran.
         coord._start_subtitle_download.assert_called_once_with(job_id, "Ds9 Ok", 3, 580)
+
+
+@pytest.mark.unit
+class TestBackupRoutingWiring:
+    """The BACKING_UP routing is actually wired into identify_disc.
+
+    next_state_after_identify is unit-tested on its own in
+    tests/unit/test_backup_routing.py; these pin that identification really
+    consults it and spawns the matching coroutine, so the pure function cannot
+    be right while the disc still goes straight to the drive.
+    """
+
+    @staticmethod
+    def _coord_with_config(monkeypatch, *, backup_before_rip):
+        from app.models import AppConfig
+        from app.services import config_service
+
+        analysis = _make_analysis(ContentType.MOVIE, "Inception", season=None)
+        coord = _bare_coord(analysis, _GATE_TITLES, "INCEPTION_2010")
+        coord._run_backup = AsyncMock()
+
+        config = AppConfig(backup_before_rip=backup_before_rip, backup_path="/b")
+
+        async def fake_get_config():
+            return config
+
+        monkeypatch.setattr(config_service, "get_config", fake_get_config)
+        return coord
+
+    async def test_enabled_backup_enters_backing_up(self, gate_env, monkeypatch):
+        job_id = await _seed_identifying_job("INCEPTION_2010")
+        coord = self._coord_with_config(monkeypatch, backup_before_rip=True)
+
+        await coord.identify_disc(job_id)
+
+        job = await _reload_job(job_id)
+        assert job.state == JobState.BACKING_UP
+        coord._run_backup.assert_awaited_once_with(job_id)
+        coord._run_ripping.assert_not_awaited()
+        assert any(state == JobState.BACKING_UP.value for state, _ in gate_env)
+
+    async def test_disabled_backup_rips_exactly_as_before(self, gate_env, monkeypatch):
+        job_id = await _seed_identifying_job("INCEPTION_2010")
+        coord = self._coord_with_config(monkeypatch, backup_before_rip=False)
+
+        await coord.identify_disc(job_id)
+
+        job = await _reload_job(job_id)
+        assert job.state == JobState.RIPPING
+        coord._run_ripping.assert_awaited_once_with(job_id)
+        coord._run_backup.assert_not_awaited()
+        assert not any(state == JobState.BACKING_UP.value for state, _ in gate_env)

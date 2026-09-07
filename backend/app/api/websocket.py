@@ -305,6 +305,46 @@ class ConnectionManager:
             }
         )
 
+    async def broadcast_backup_progress(
+        self,
+        job_id: int,
+        *,
+        current_bytes: int,
+        total_bytes: int,
+        speed: str | None = None,
+        eta: int | None = None,
+    ) -> None:
+        """Broadcast disc-backup copy progress.
+
+        A distinct message type rather than rip_progress: a client that renders
+        "ripping" from rip_progress would be reporting a phase that produces no
+        MKV at all.
+
+        Flat, like every other message this class emits: the frontend reads
+        fields straight off the message and does no unwrapping, so a nested
+        "data" envelope silently produced an undefined job id and a progress
+        bar that never moved.
+
+        Unlike broadcast_job_update, ``speed`` and ``eta`` are always present
+        even when None. That method omits its optional fields because it is a
+        partial patch over a whole job row, where a null would erase a value
+        the client already had. This message is a self-contained progress
+        sample, so a null means "not known for this sample" and the client
+        coalesces it against what it is already showing. Expect ``speed`` to
+        stay None in practice: MakeMKV's backup reports a percentage, not a
+        byte rate, so there is no rate to derive without timing the samples.
+        """
+        await self.broadcast(
+            {
+                "type": "backup_progress",
+                "job_id": job_id,
+                "current_bytes": current_bytes,
+                "total_bytes": total_bytes,
+                "speed": speed,
+                "eta": eta,
+            }
+        )
+
 
 # Singleton instance
 manager = ConnectionManager()

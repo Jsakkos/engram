@@ -4,6 +4,7 @@ export type JobState =
     | 'idle'
     | 'identifying'
     | 'review_needed'
+    | 'backing_up'
     | 'ripping'
     | 'matching'
     | 'organizing'
@@ -37,6 +38,16 @@ export interface Job {
     subtitles_failed?: number;
     review_reason?: string | null;
     conflict_status?: string | null;
+    /**
+     * Outcome of the optional whole-disc backup that runs between identification
+     * and extraction. Absent/null when the feature never ran for this job.
+     * "skipped" and "failed" both mean the disc was ripped straight from the
+     * drive instead, which is worth telling the user about; "pending" and
+     * "completed" are the in-progress and happy paths and need no warning.
+     */
+    backup_status?: 'pending' | 'completed' | 'failed' | 'skipped' | null;
+    /** Backend-written prose explaining a skipped or failed backup. Rendered verbatim. */
+    backup_status_reason?: string | null;
     /**
      * Human-readable cause set by the backend when classification ran WITHOUT
      * TMDB (key absent or rejected); null/absent when TMDB participated. The
@@ -174,6 +185,21 @@ export interface SubtitleEvent {
     failed_count: number;
 }
 
+/**
+ * Progress of the optional whole-disc backup that runs between identification
+ * and extraction. `speed` and `eta` are always present but usually null:
+ * MakeMKV's backup reports a percentage, not a byte rate. A null must not
+ * erase what the card already shows.
+ */
+export interface BackupProgressMessage {
+    type: 'backup_progress';
+    job_id: number;
+    current_bytes: number;
+    total_bytes: number;
+    speed: string | null;
+    eta: number | null;
+}
+
 export interface TitlesDiscovered {
     type: 'titles_discovered';
     job_id: number;
@@ -265,6 +291,7 @@ export type WebSocketMessage =
     | JobUpdate
     | TitleUpdate
     | SubtitleEvent
+    | BackupProgressMessage
     | TitlesDiscovered
     | UpdateStatusMessage
     | FingerprintDisclosureRequiredMessage

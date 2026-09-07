@@ -24,6 +24,8 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
+from app.core.backup_paths import backup_destination, has_room_for_backup
+from app.core.disc_source import DiscSource, resolve_disc_index
 from app.core.extractor import (
     STALL_FAILURE_REASON,
     MakeMKVExtractor,
@@ -37,18 +39,21 @@ from app.core.sentinel import DriveMonitor
 from app.database import async_session
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.services.backup_reconcile import ReconcileOutcome, reconcile_titles
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.finalization_coordinator import FinalizationCoordinator
 from app.services.identification_coordinator import (
     NO_TITLE_REVIEW_REASON,
     IdentificationCoordinator,
+    next_state_after_identify,
 )
 from app.services.identity_prompts import BLOCKING_KINDS, ResumeAction
 from app.services.import_guard import (
     ImportBlock,
     StagingJobResult,
     classify_staging_path,
+    unit_key_for,
 )
 from app.services.job_state_machine import JobStateMachine
 from app.services.manual_identity import arm_store
@@ -108,6 +113,7 @@ _STALE_PHASE_FAILURE_MESSAGES = {
     JobState.RIPPING: "Ripping stalled — no progress after {timeout}s",
     JobState.MATCHING: "Matching stalled — no progress after {timeout}s",
     JobState.ORGANIZING: "Organizing stalled — no progress after {timeout}s",
+    JobState.BACKING_UP: "Backup stalled: no progress after {timeout}s",
 }
 
 
@@ -159,6 +165,29 @@ def _is_rip_failure_review(title: "DiscTitle") -> bool:
     if not isinstance(details, dict):
         return False
     return details.get("error") in RIP_FAILURE_ERROR_CODES
+
+
+# DiscJob.backup_status values. "pending" is written before the copy starts, so
+# a backup interrupted by a crash is distinguishable from one never attempted.
+BACKUP_PENDING = "pending"
+BACKUP_COMPLETED = "completed"
+BACKUP_FAILED = "failed"
+BACKUP_SKIPPED = "skipped"
+
+
+def _has_existing_backup(dest: Path) -> bool:
+    """Whether a usable backup already sits at ``dest``.
+
+    Re-inserting a disc that was backed up last month must not cost another
+    40 GB, so a non-empty destination is adopted as-is rather than re-copied.
+    An unreadable destination answers False: the caller then takes the normal
+    route (check space, copy) instead of adopting a directory it cannot read.
+    """
+    try:
+        return dest.is_dir() and any(dest.iterdir())
+    except OSError as e:
+        logger.warning(f"Could not inspect existing backup at {dest}: {e}")
+        return False
 
 
 # Create domain-specific event broadcaster
@@ -263,6 +292,7 @@ class JobManager:
             on_match_task_done=self._matching.on_match_task_done,
             check_job_completion=self._finalization.check_job_completion,
             run_ripping=self._run_ripping,
+            run_backup=self._run_backup,
             finalize_disc_job=self._finalization.finalize_disc_job,
         )
         self._finalization.set_callbacks(
@@ -382,6 +412,7 @@ class JobManager:
         """
         stale_states = [
             JobState.IDENTIFYING,
+            JobState.BACKING_UP,
             JobState.RIPPING,
             JobState.MATCHING,
         ]
@@ -606,6 +637,33 @@ class JobManager:
             return job.content_hash == new_hash
         return job.volume_label == volume_label
 
+    @staticmethod
+    def _holds_disc_in_drive(job: DiscJob) -> bool:
+        """True if this job really has a disc loaded in a drive.
+
+        Deliberately asks the SOURCE, not the state. ``source_spec`` is pointed
+        at the copy by the same ``_record_backup_status`` call that precedes
+        ``_release_drive``, so "reads a copy" and "the tray is already open" are
+        the same fact, and reading the source gets the answer right in every
+        state rather than in most of them.
+
+        An earlier version special-cased RIPPING and returned True for anything
+        else. That was wrong for the tail of ``_run_backup``: between the drive
+        release and ``_enter_ripping`` the job is still BACKING_UP with its
+        source already pointing at the copy, and re-scanning a full disc backup
+        is minutes, not instants. During that window a job with no disc reported
+        holding one, so an eject would cancel a backup that had actually
+        succeeded, and a genuinely new disc in the now-empty drive was refused.
+
+        An unresolvable source (a row with neither ``source_spec`` nor a usable
+        ``drive_id``) is treated as holding the drive: refusing a second job is
+        the safe side of that guess.
+        """
+        try:
+            return DiscSource.from_job(job).is_physical
+        except ValueError:
+            return True
+
     async def _create_job_for_disc(self, drive_letter: str, volume_label: str) -> None:
         """Create a new job when a disc is inserted."""
         from app.services.config_service import get_config as get_db_config
@@ -671,6 +729,7 @@ class JobManager:
                 disc_required_states = (
                     JobState.IDLE,
                     JobState.IDENTIFYING,
+                    JobState.BACKING_UP,
                     JobState.RIPPING,
                 )
                 post_eject_states = (JobState.MATCHING, JobState.ORGANIZING)
@@ -685,13 +744,19 @@ class JobManager:
                 # RIPPING job can now legitimately coexist on one drive.
                 active_jobs = result.scalars().all()
 
+                # A RIPPING job reading from a backup copy is in disc_required_states
+                # but no longer holds the disc: the drive was released when the copy
+                # finished, which is the whole point of the backup phase. It is
+                # therefore treated exactly like a post-eject job, so a re-insert of
+                # the SAME disc still resolves to it instead of spawning a duplicate,
+                # while a genuinely new disc gets through.
                 blocking_job = next(
                     (
                         j
                         for j in active_jobs
-                        if j.state in disc_required_states
+                        if (j.state in disc_required_states and self._holds_disc_in_drive(j))
                         or (
-                            j.state in post_eject_states
+                            (j.state in post_eject_states or not self._holds_disc_in_drive(j))
                             and self._same_disc(j, volume_label, new_hash)
                         )
                     ),
@@ -799,35 +864,69 @@ class JobManager:
         drive_id: str = "staging",
         import_manifest: dict | None = None,
         force: bool = False,
+        source_spec: str | None = None,
     ) -> StagingJobResult:
         """Create a job from pre-ripped MKV files in a staging directory.
 
         Returns a StagingJobResult: either a created job id, or the block tier and
         the ids of the jobs responsible for it. ``force`` suppresses the soft
         (ALREADY_IMPORTED) tier only and can never suppress the hard one.
+
+        ``source_spec`` marks the job as reading from a disc image (a MakeMKV
+        backup folder or an ISO) rather than from ready-made MKVs. That flips
+        which identification runs: the ordinary import shortcut
+        (``identify_from_staging``) exists precisely because the files already
+        exist, so it probes them and hands straight on to matching. A disc image
+        has no MKVs yet, so it takes ``identify_disc`` and the full scan,
+        identify, rip, match, organize pipeline instead. A job with no
+        ``source_spec`` is unaffected.
         """
         staging_dir = Path(staging_path)
 
         if not volume_label:
             volume_label = staging_dir.name.upper().replace(" ", "_")
 
+        # ``source_spec`` is where MakeMKV reads FROM; ``staging_path`` is where
+        # the extracted MKVs are written TO. For a disc image those are two
+        # different places, so the image gets a staging directory of its own,
+        # derived exactly the way a disc job's is. Conflating them wrote the
+        # rip's MKVs into the user's preservation copy next to BDMV/, and for an
+        # .iso the path is a FILE, so the rip's mkdir(parents=True) raised
+        # FileExistsError and killed the job right after the scan.
+        #
+        # Ownership still keys on the image path, not on this new directory:
+        # that is what ``unit_key_for`` hashes and what the user picked. See
+        # classify_staging_path, which matches ``source_spec`` for exactly this.
+        dedup_path = str(staging_dir)
+        if source_spec:
+            from app.services.config_service import get_config as get_db_config
+
+            db_config = await get_db_config()
+            # The timestamp alone is not unique here: one /api/import/start call
+            # can create several image jobs within the same second.
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            staging_dir = (
+                Path(db_config.staging_path).expanduser()
+                / f"image_{stamp}_{unit_key_for(dedup_path)[:8]}"
+            )
+
         # Hold a per-path lock across the dedup check and insert so two concurrent
         # callers (e.g. two API calls) for the same path can't both pass the guard
         # and insert duplicate jobs, mirroring _drive_locks on the disc path.
         # Widened slightly by this dedup change: retries of a path with only FAILED
         # rows now reach the check->insert that the guard used to short.
-        if str(staging_dir) not in self._staging_locks:
-            self._staging_locks[str(staging_dir)] = asyncio.Lock()
+        if dedup_path not in self._staging_locks:
+            self._staging_locks[dedup_path] = asyncio.Lock()
 
-        async with self._staging_locks[str(staging_dir)]:
+        async with self._staging_locks[dedup_path]:
             async with async_session() as session:
                 # Guard: a staging path is OWNED by an in-flight job and merely
                 # RECORDED by a finished one. See app/services/import_guard.py for
                 # why this is not the old `state != FAILED` rule, and why it is not
                 # a copy of the disc-side guard either.
-                block, blocking_ids = await classify_staging_path(session, str(staging_dir))
+                block, blocking_ids = await classify_staging_path(session, dedup_path)
                 forced = force and block is ImportBlock.ALREADY_IMPORTED
-                safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
+                safe_path = dedup_path.replace("\n", "").replace("\r", "")
                 if block is not None and not forced:
                     logger.info(
                         "Import blocked for staging path %s (%s, blocking jobs %s)",
@@ -849,6 +948,7 @@ class JobManager:
                     staging_path=str(staging_dir),
                     state=JobState.IDENTIFYING,
                     destination_mode=destination_mode,
+                    source_spec=source_spec,
                 )
 
                 if content_type in ("tv", "movie"):
@@ -881,9 +981,14 @@ class JobManager:
 
         await event_broadcaster.broadcast_drive_inserted(drive_id, volume_label)
 
-        task = asyncio.create_task(
-            with_job_log_context(job_id, self._identification.identify_from_staging(job_id))
+        # A disc image is scanned and extracted like any other disc; only a
+        # folder of finished MKVs may take the shortcut past ripping.
+        identification = (
+            self._identification.identify_disc(job_id)
+            if source_spec
+            else self._identification.identify_from_staging(job_id)
         )
+        task = asyncio.create_task(with_job_log_context(job_id, identification))
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
@@ -925,7 +1030,9 @@ class JobManager:
         """Re-identify a job with user-corrected metadata.
 
         Same resume contract as :meth:`set_name_and_resume`: the coordinator
-        returns a ``resume_action`` and only ``"start_rip"`` spawns a rip task.
+        returns a ``resume_action``; only ``"start_rip"`` and ``"start_backup"``
+        spawn a rip task (they are the same pre-rip resume, split by whether
+        backup_before_rip is on).
         """
         # A real match (or re-rip) starts now — stop background prewarming.
         # cancel_for_job prevents future chunks; the in-flight thread still
@@ -939,7 +1046,7 @@ class JobManager:
     async def _apply_identity_resume_action(self, job_id: int, action: ResumeAction) -> None:
         """Run the JobManager side of an identity answer (walk-away B5).
 
-        ``"start_rip"``/``"rerun_matching"``/``"resolve_movie"`` spawn a
+        ``"start_rip"``/``"start_backup"``/``"rerun_matching"``/``"resolve_movie"`` spawn a
         background task registered in ``_active_jobs``. ``"dispatch_matches"``
         and ``"release_movie_titles"`` act inline on already-running work — a
         mid-rip answer leaves the live rip task as the registered owner, so no
@@ -992,6 +1099,11 @@ class JobManager:
 
         coro_factory = {
             "start_rip": self._run_ripping,
+            # Same pre-rip resume as "start_rip", but the disc gets copied
+            # first. The coordinator decides which by the same routing every
+            # other hand-off uses, so a name prompt answered with
+            # backup_before_rip on cannot silently skip the backup.
+            "start_backup": self._run_backup,
             "rerun_matching": self._rerun_matching,
             "resolve_movie": self._resume_movie_post_rip,
         }.get(action)
@@ -1151,6 +1263,15 @@ class JobManager:
 
     async def start_ripping(self, job_id: int) -> None:
         """Start the ripping process for a job."""
+        # Read the config BEFORE opening the session. get_config opens one of its
+        # own, and this method is called from paths that already hold a session
+        # (the review-apply path does), so fetching it inside would be a third
+        # concurrent checkout against one SQLite file and leaves the caller's
+        # transaction in "prepared" state.
+        from app.services.config_service import get_config
+
+        config = await get_config()
+
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job:
@@ -1159,11 +1280,20 @@ class JobManager:
             if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
                 raise ValueError(f"Cannot start job in state: {job.state}")
 
-            job.state = JobState.RIPPING
+            # A resume from review honours backup_before_rip exactly as a
+            # fresh identification does; next_state_after_identify is the one
+            # place that decision is made.
+            next_state = next_state_after_identify(config, job.drive_id)
+            job.state = next_state
             job.updated_at = datetime.now(UTC)
             await session.commit()
 
-            task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
+            coro = (
+                self._run_backup(job_id)
+                if next_state is JobState.BACKING_UP
+                else self._run_ripping(job_id)
+            )
+            task = asyncio.create_task(with_job_log_context(job_id, coro))
             task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
             self._active_jobs[job_id] = task
 
@@ -1340,7 +1470,16 @@ class JobManager:
 
         IDENTIFYING: eject and cancel. Nothing was produced to salvage.
 
-        Any other state: the drive is not held, so raise.
+        BACKING_UP: eject and cancel, like IDENTIFYING. A copy that stops
+        partway produces no MKVs, so there is nothing to salvage and nothing to
+        announce; the abandoned ``.partial`` is left on disk for the user to
+        judge. This branch exists because a full-disc copy can run for hours and
+        a user who wants their disc back must not have to wait it out.
+
+        Any other state: the drive is not held, so raise. So does a RIPPING job
+        reading from a backup copy: its disc came out when the copy finished, so
+        there is no tray to open and a second "ripped" notification for one disc
+        would be wrong.
 
         The two branches differ on notifications, deliberately: RIPPING routes
         through _release_drive and so sends the "ripped" Discord event with a
@@ -1359,9 +1498,20 @@ class JobManager:
                 raise ValueError(f"Job {job_id} not found")
             state = job.state
             drive_id = job.drive_id
+            holds_disc = self._holds_disc_in_drive(job)
 
-        if state not in (JobState.IDENTIFYING, JobState.RIPPING):
+        if state not in (JobState.IDENTIFYING, JobState.BACKING_UP, JobState.RIPPING):
             raise ValueError(f"Cannot eject a job in state: {state.value}")
+
+        # A rip reading a backup copy, or an imported image, has no disc in the
+        # drive. Ejecting would open an empty tray and send a second "ripped"
+        # notification for a disc that was already released at the end of its
+        # backup, which is the one double-notification path the phase creates.
+        if not holds_disc:
+            raise ValueError(
+                "This job is reading from a disc copy, so its disc was already "
+                "released when the copy finished."
+            )
 
         safe_job = sanitize_log_value(job_id)
         safe_drive = sanitize_log_value(drive_id)
@@ -1377,7 +1527,7 @@ class JobManager:
         if state == JobState.RIPPING:
             await asyncio.to_thread(self._extractor.eject_abort, job_id)
 
-        if state == JobState.IDENTIFYING:
+        if state in (JobState.IDENTIFYING, JobState.BACKING_UP):
             from app.core.sentinel import eject_disc
 
             ejected = False
@@ -1387,8 +1537,13 @@ class JobManager:
                 logger.warning(f"Job {safe_job}: eject of {safe_drive} raised: {e}")
             if ejected:
                 self._drive_monitor.notify_ejected(drive_id)
+            # cancel_job terminates the registered makemkvcon process, which for
+            # BACKING_UP is the copy itself. Its .partial is deliberately left
+            # on disk: a partial copy of a failing disc has salvage value, and
+            # discarding it is the user's call.
             await self.cancel_job(job_id)
-            logger.info(f"Job {safe_job}: ejected during identify, job cancelled")
+            phase = "identify" if state == JobState.IDENTIFYING else "backup"
+            logger.info(f"Job {safe_job}: ejected during {phase}, job cancelled")
             return {"ejected": ejected, "action": "job_cancelled"}
 
         from app.core.discord_notifier import RIP_OUTCOME_STOPPED_EARLY
@@ -1999,6 +2154,7 @@ class JobManager:
         """Per-phase no-activity ceiling (seconds), or None for resting/untimed states."""
         return {
             JobState.IDENTIFYING: config.timeout_identifying_seconds,
+            JobState.BACKING_UP: config.timeout_backing_up_seconds,
             JobState.RIPPING: config.timeout_ripping_seconds,
             JobState.MATCHING: config.timeout_matching_seconds,
             JobState.ORGANIZING: config.timeout_organizing_seconds,
@@ -2070,6 +2226,41 @@ class JobManager:
             return
         idle = now - last
         if idle >= timeout:
+            # A stalled BACKUP degrades to a direct rip rather than failing the
+            # job, because that is this feature's governing rule: turning the
+            # setting on must never make a disc less likely to finish. It bites
+            # hardest here, on the scratched disc the feature exists for.
+            # backup_disc deliberately has no per-operation stall watchdog and
+            # defers to this one, so without this branch the stall case had no
+            # fallback anywhere and reconcile_and_advance would fail the job.
+            if job.state == JobState.BACKING_UP:
+                logger.warning(
+                    f"Watchdog: job {job.id} idle {idle:.0f}s in backing_up "
+                    f"(timeout {timeout}s), falling back to a direct rip"
+                )
+                # Retire the in-flight _run_backup task BEFORE falling back, the
+                # same way reconcile_and_advance does. Killing only the
+                # subprocess is not enough: backup_disc would see the cancel
+                # flag, return a failed BackupResult, and that task would run
+                # its OWN _fall_back_to_direct_rip. Two independent fallbacks
+                # for one job, and since _enter_ripping has no idempotency guard
+                # and the state machine allows RIPPING -> RIPPING, the second
+                # spawns a second _run_ripping against the same staging dir and
+                # title rows. Cancelling first makes the task unwind on
+                # CancelledError (a BaseException, so its catch-all does not
+                # swallow it) instead of racing us.
+                task = self._active_jobs.pop(job.id, None)
+                if task is not None and not task.done():
+                    task.cancel()
+                # Stop the copy before the rip starts, or two makemkvcon
+                # processes fight over the drive.
+                await asyncio.to_thread(self._extractor.cancel, job.id)
+                stall = f"stalled with no progress for {timeout}s"
+                await self._fall_back_to_direct_rip(
+                    job.id, BACKUP_FAILED, stall, f"the backup {stall}"
+                )
+                return
+
             logger.warning(
                 f"Watchdog: job {job.id} idle {idle:.0f}s in "
                 f"{job.state.value} (timeout {timeout}s) → auto-advancing"
@@ -2088,6 +2279,7 @@ class JobManager:
 
         watched = (
             JobState.IDENTIFYING,
+            JobState.BACKING_UP,
             JobState.RIPPING,
             JobState.MATCHING,
             JobState.ORGANIZING,
@@ -2421,6 +2613,7 @@ class JobManager:
         state_flow = {
             JobState.IDLE: JobState.IDENTIFYING,
             JobState.IDENTIFYING: JobState.RIPPING,
+            JobState.BACKING_UP: JobState.RIPPING,
             JobState.RIPPING: JobState.MATCHING,
             JobState.MATCHING: JobState.ORGANIZING,
             JobState.ORGANIZING: JobState.COMPLETED,
@@ -2432,9 +2625,18 @@ class JobManager:
             if not job:
                 raise ValueError(f"Job {job_id} not found")
 
+            old_state = job.state
             next_state = state_flow.get(job.state)
             if not next_state:
                 raise ValueError(f"Cannot advance from state: {job.state}")
+
+            if old_state == JobState.BACKING_UP and next_state == JobState.RIPPING:
+                # Mirror _record_backup_status: mark the synthetic backup
+                # complete and point source_spec at it, so a simulated job
+                # behaves like the real backup-then-rip handoff.
+                job.backup_status = BACKUP_COMPLETED
+                if job.backup_path:
+                    job.source_spec = f"file:{job.backup_path}"
 
             job.state = next_state
             job.updated_at = datetime.now(UTC)
@@ -2458,6 +2660,7 @@ class JobManager:
         state_flow = {
             JobState.IDLE: JobState.IDENTIFYING,
             JobState.IDENTIFYING: JobState.RIPPING,
+            JobState.BACKING_UP: JobState.RIPPING,
             JobState.RIPPING: JobState.MATCHING,
             JobState.MATCHING: JobState.ORGANIZING,
             JobState.ORGANIZING: JobState.COMPLETED,
@@ -2469,9 +2672,15 @@ class JobManager:
             if not job:
                 raise ValueError(f"Job {job_id} not found")
 
+            old_state = job.state
             next_state = state_flow.get(job.state)
             if not next_state:
                 raise ValueError(f"Cannot advance from state: {job.state}")
+
+            if old_state == JobState.BACKING_UP and next_state == JobState.RIPPING:
+                job.backup_status = BACKUP_COMPLETED
+                if job.backup_path:
+                    job.source_spec = f"file:{job.backup_path}"
 
             ok = await state_machine.transition(job, next_state, session)
             if not ok:
@@ -2586,6 +2795,17 @@ class JobManager:
                 )
                 return
 
+            # Re-rip reads whatever the job reads, not always the drive: after a
+            # backup the disc has already been ejected and source_spec points at
+            # the copy, so targeting drive_id would find an empty drive.
+            # Resolved BEFORE the state transition so a job with no MakeMKV
+            # source at all is never stranded in RIPPING.
+            try:
+                source = DiscSource.from_job(job)
+            except ValueError as e:
+                logger.error(f"Job {sanitize_log_value(job_id)}: cannot re-rip: {e}")
+                return
+
             # Un-hide a cleared job that is being actively re-processed.
             if job.cleared_at is not None:
                 job.cleared_at = None
@@ -2680,7 +2900,7 @@ class JobManager:
         stall_timeout = cfg.ripping_stall_timeout if cfg else 120.0
 
         result = await self._extractor.rip_titles(
-            drive_id,
+            source,
             staging_dir,
             title_indices=rip_indices,
             title_complete_callback=on_title_complete,
@@ -2708,7 +2928,11 @@ class JobManager:
         # would re-eject and contradict it with a "Re-rip" for a rip that was
         # aborted. Note an eject returns success=True, so the failure branch
         # above does not cover this.
-        if not result.aborted_for_eject:
+        #
+        # Gated on the source being physical for the same reason as the end of
+        # _run_ripping: a re-rip that read a backup folder or an ISO never held
+        # the drive, so there is nothing to eject and nothing to notify about.
+        if not result.aborted_for_eject and source.is_physical:
             from app.core.discord_notifier import RIP_OUTCOME_RERIP
 
             await self._release_drive(job_id, drive_id, RIP_OUTCOME_RERIP)
@@ -2755,6 +2979,383 @@ class JobManager:
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 
+    # --- Backup phase (backup_before_rip) ---------------------------------
+
+    async def _run_backup(self, job_id: int) -> None:
+        """Copy the whole disc to the backup shelf, then rip from the copy.
+
+        Every backup problem degrades to a direct rip from the drive, which is
+        exactly what the job would have done with the setting off: turning
+        backups on must never make a disc less likely to finish. The single
+        exception is a backup that SUCCEEDED but whose re-scan cannot be
+        reconciled against the disc scan. That parks for review instead of
+        falling back, because the drive has already been released by then and
+        the disc may be out of it.
+
+        Self-tags its log context (see apply_review, #563) so the phase's lines
+        carry ``job=<id>`` however the coroutine was reached, not only when a
+        spawner wrapped it in ``with_job_log_context``.
+        """
+        with job_log_context(job_id):
+            try:
+                outcome = await self._copy_disc_to_backup(job_id)
+            except Exception as e:
+                # Catch-all on purpose: an unforeseen failure in the backup
+                # phase must still leave the job rippable, never dead.
+                # CancelledError is a BaseException, so a user cancel or a
+                # shutdown still propagates.
+                logger.exception(
+                    f"Job {sanitize_log_value(job_id)}: backup phase failed unexpectedly"
+                )
+                await self._fall_back_to_direct_rip(
+                    job_id, BACKUP_FAILED, str(e), f"the backup failed unexpectedly: {e}"
+                )
+                return
+
+            if outcome is None:
+                # Already fell back to a direct rip (or the job row is gone).
+                return
+
+            from app.core.discord_notifier import RIP_OUTCOME_BACKED_UP
+
+            drive_id, dest = outcome
+            # The tail gets its OWN guard, and it degrades to review rather than
+            # to a direct rip. By here the copy has succeeded, so source_spec
+            # already points at it: a "direct rip" would read the copy with
+            # unreconciled title indices, which is precisely the silent
+            # mis-file reconciliation exists to prevent. Without this guard an
+            # exception below (a DB error in the reconcile commit, say) killed
+            # the task outright, leaving the job parked in BACKING_UP with no
+            # owner until the watchdog fell it back into exactly that rip.
+            try:
+                # _release_drive is the documented single chokepoint for "Engram
+                # is done with this disc", and a completed backup satisfies it
+                # literally: the disc is copied, so it can leave the drive. It
+                # runs BEFORE reconciling so even an unreconcilable backup frees
+                # it.
+                await self._release_drive(job_id, drive_id, RIP_OUTCOME_BACKED_UP)
+                if await self._reconcile_backup_titles(job_id, dest):
+                    await self._enter_ripping(job_id)
+            except Exception as e:
+                logger.exception(
+                    f"Job {sanitize_log_value(job_id)}: failed after the copy completed"
+                )
+                await self._park_backup_for_review(
+                    job_id,
+                    f"The disc was copied to {dest}, but Engram could not confirm "
+                    f"which title is which afterwards ({e}). The backup is safe; "
+                    f"re-run matching or re-import it to continue.",
+                )
+
+    async def _copy_disc_to_backup(self, job_id: int) -> tuple[str, Path] | None:
+        """Run the backup itself, returning ``(drive_id, dest)`` on success.
+
+        Returns None when the job fell back to a direct rip (every failure
+        mode does) or when the job row has disappeared. Mirrors _run_ripping's
+        session discipline: a short-lived setup session, released before the
+        potentially multi-hour copy is awaited, so no aiosqlite connection is
+        held across it.
+        """
+        safe_job = sanitize_log_value(job_id)
+        loop = asyncio.get_running_loop()
+
+        from app.core.discdb_exporter import get_makemkv_log_dir
+        from app.services.config_service import get_config
+
+        config = await get_config()
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return None
+            drive_id = job.drive_id
+            titles = (
+                (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+                .scalars()
+                .all()
+            )
+            # The disc-size estimate: the scan's per-title sizes are all we know
+            # before the copy starts.
+            total_bytes = sum(t.file_size_bytes or 0 for t in titles)
+            dest = backup_destination(job, config) if config else None
+        # Setup session released: nothing is held across the copy.
+
+        if dest is None:
+            await self._skip_backup(job_id, "not_configured", "no backup location is configured")
+            return None
+
+        # Both probes below touch the filesystem, and the backup shelf is
+        # routinely a network share or a spun-down external disk where a stat or
+        # a disk_usage can block for seconds. Off the event loop they go, for the
+        # same reason api.routes.import_browse does it.
+        if await asyncio.to_thread(_has_existing_backup, dest):
+            logger.info(f"Job {safe_job}: reusing the existing backup at {dest}")
+            await self._record_backup_status(
+                job_id, BACKUP_COMPLETED, dest=dest, use_as_source=True
+            )
+            return drive_id, dest
+
+        if not await asyncio.to_thread(has_room_for_backup, dest, total_bytes):
+            await self._skip_backup(
+                job_id, "insufficient_space", f"not enough free space for a backup at {dest}"
+            )
+            return None
+
+        disc_spec = await resolve_disc_index(drive_id, config.makemkv_path)
+        if not disc_spec:
+            await self._skip_backup(
+                job_id,
+                "no_disc_index",
+                f"MakeMKV could not address drive {sanitize_log_value(drive_id)} as a disc index",
+            )
+            return None
+
+        await self._record_backup_status(job_id, BACKUP_PENDING, dest=dest)
+
+        last_percent = -1
+
+        def on_progress(percent: float) -> None:
+            """Extractor-thread progress callback, throttled to whole percent.
+
+            A 40 GB copy emits progress constantly and every message fans out
+            to every connected client, so anything finer than one message per
+            percent is pure noise on the wire.
+            """
+            nonlocal last_percent
+            whole = int(percent)
+            if whole <= last_percent:
+                return
+            last_percent = whole
+            current = int(total_bytes * percent / 100) if total_bytes > 0 else 0
+            self._note_activity(job_id)
+            asyncio.run_coroutine_threadsafe(
+                event_broadcaster.broadcast_backup_progress(job_id, current, total_bytes),
+                loop,
+            )
+
+        result = await self._extractor.backup_disc(
+            DiscSource.for_drive_index(drive_id, disc_spec),
+            dest,
+            progress_callback=on_progress,
+            log_dir=get_makemkv_log_dir(job_id),
+            job_id=job_id,
+        )
+
+        if not result.success:
+            reason = result.error_message or "the backup did not complete"
+            await self._fall_back_to_direct_rip(
+                job_id, BACKUP_FAILED, reason, f"the backup failed: {reason}"
+            )
+            return None
+
+        if result.already_existed:
+            # The destination appeared while this copy was running, so what is
+            # on disk is not the copy this run just made and verified. Keeping
+            # it is right (never clobber a complete backup) but it is worth
+            # saying, because the extraction that follows reads it.
+            logger.warning(
+                f"Job {safe_job}: {dest} already existed when the copy finished; "
+                f"extraction will read that, not this run's copy"
+            )
+
+        final_dest = result.dest or dest
+        await self._record_backup_status(
+            job_id, BACKUP_COMPLETED, dest=final_dest, use_as_source=True
+        )
+        logger.info(f"Job {safe_job}: backed up to {final_dest}; extraction will read from it")
+        return drive_id, final_dest
+
+    async def _record_backup_status(
+        self,
+        job_id: int,
+        status: str,
+        reason: str | None = None,
+        *,
+        dest: Path | None = None,
+        use_as_source: bool = False,
+    ) -> None:
+        """Persist the backup's outcome on the job row (own short-lived session).
+
+        ``use_as_source`` is what actually redirects extraction: it points
+        ``source_spec`` at ``file:<dest>`` so every later MakeMKV call reads the
+        copy instead of the drive. Deliberately separate from writing
+        ``backup_path``, which is also written for a *pending* backup so a
+        crashed copy can still be found.
+        """
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            job.backup_status = status
+            job.backup_status_reason = reason
+            if dest is not None:
+                job.backup_path = str(dest)
+                if use_as_source:
+                    job.source_spec = f"file:{dest}"
+            job.updated_at = datetime.now(UTC)
+            await session.commit()
+
+    async def _skip_backup(self, job_id: int, code: str, detail: str) -> None:
+        """Record a backup that was never attempted, and rip from the drive.
+
+        ``detail`` (not ``code``) is what gets persisted. The failure path
+        already stores prose in ``backup_status_reason``, and the history detail
+        panel has no dictionary to expand "not_configured" with, so storing the
+        short code here meant a skipped backup could only be explained by
+        digging through logs. Nothing machine-reads the codes; they stay in the
+        log line for grepping.
+        """
+        logger.debug(f"Job {sanitize_log_value(job_id)}: backup skipped ({code})")
+        await self._fall_back_to_direct_rip(job_id, BACKUP_SKIPPED, detail, detail)
+
+    async def _fall_back_to_direct_rip(
+        self, job_id: int, status: str, reason: str, detail: str
+    ) -> None:
+        """Degrade to today's behaviour: rip straight from the disc.
+
+        The drive is deliberately NOT released here: extraction still needs the
+        disc in it. ``source_spec`` is left alone for the same reason.
+        """
+        logger.warning(f"Job {sanitize_log_value(job_id)}: {detail}; ripping from the disc instead")
+        await self._record_backup_status(job_id, status, reason)
+        await self._enter_ripping(job_id)
+
+    async def _enter_ripping(self, job_id: int) -> None:
+        """Transition to RIPPING and spawn the rip, exactly as start_ripping does."""
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                return
+            if not await state_machine.transition(job, JobState.RIPPING, session):
+                logger.error(
+                    f"Job {sanitize_log_value(job_id)}: cannot enter RIPPING from "
+                    f"{job.state.value}; not starting the rip"
+                )
+                return
+
+        task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
+        task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
+        self._active_jobs[job_id] = task
+
+    async def _park_backup_for_review(self, job_id: int, reason: str) -> None:
+        """Park a job whose copy succeeded but whose follow-up did not.
+
+        Best-effort and never raises: it is the last stop on a path that is
+        already handling a failure, so a second failure here must not replace
+        one bad outcome with an unhandled exception.
+        """
+        try:
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if job is None:
+                    return
+                await state_machine.transition_to_review(job, session, reason=reason)
+        except Exception:
+            logger.exception(f"Job {sanitize_log_value(job_id)}: could not park the job for review")
+
+    async def _reconcile_backup_titles(self, job_id: int, dest: Path) -> bool:
+        """Re-scan the backup and line its titles up with the stored ones.
+
+        Returns True when the job may proceed to ripping (the enumeration was
+        identical, or it was remapped unambiguously and the rows were updated).
+        Returns False after parking the job in REVIEW_NEEDED: ripping the wrong
+        index files an episode under another episode's name with no error
+        anywhere, so a guess is never worth making.
+        """
+        safe_job = sanitize_log_value(job_id)
+
+        from app.core.discdb_exporter import get_makemkv_log_dir
+
+        try:
+            scanned, _ = await self._extractor.scan_disc(
+                DiscSource.for_backup(dest), log_dir=get_makemkv_log_dir(job_id), job_id=job_id
+            )
+        except Exception as e:
+            # Any scan failure (timeout, missing binary, unreadable copy) is
+            # treated as an empty scan, which reconcile_titles reports as
+            # AMBIGUOUS and so parks for review. Crashing here would leave the
+            # job stranded mid-phase instead.
+            logger.warning(f"Job {safe_job}: could not scan the backup at {dest}: {e}")
+            scanned = []
+
+        async with async_session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(DiscTitle)
+                        .where(DiscTitle.job_id == job_id)
+                        .order_by(DiscTitle.title_index)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            result = reconcile_titles(list(rows), list(scanned))
+
+            if result.outcome is ReconcileOutcome.AMBIGUOUS:
+                job = await session.get(DiscJob, job_id)
+                if not job:
+                    return False
+                reason = (
+                    f"The disc was backed up to {dest}, but its tracks could not be matched "
+                    f"to the tracks Engram found on the disc, so it will not guess which "
+                    f"track to rip. {result.reason or ''} The backup itself is safe and "
+                    f"nothing has been deleted."
+                ).strip()
+                await state_machine.transition_to_review(job, session, reason=reason)
+                logger.warning(
+                    f"Job {safe_job}: the backup re-scan is unreconcilable; parked for review"
+                )
+                return False
+
+            # Both surviving outcomes rewrite the rip targets from the backup's
+            # own enumeration.
+            #
+            # title_index is not the only one that matters:
+            # ripping_helpers.expected_native_index PREFERS output_index, and
+            # every site that maps a produced "..._tNN.mkv" back onto a row goes
+            # through it. A remap that rewrote only title_index therefore left
+            # the resolution sites reading a stale disc-scan number: two titles
+            # the backup enumerated in the opposite order would resolve onto
+            # each other's rows, filing one episode under the other's name with
+            # no error anywhere, which is the exact mis-file this reconciliation
+            # exists to prevent.
+            #
+            # Clearing output_index instead was rejected: the fallback is
+            # title_index, and MakeMKV's native _tNN is not guaranteed to equal
+            # the scan-order index (issue #517). It is re-derived from the
+            # backup scan's suggested filename with the same helper
+            # identification_coordinator uses, so the two paths cannot drift.
+            # None is written when the backup scan supplied no suggested
+            # filename: that is the legitimate fall-back-to-title_index case.
+            #
+            # This runs on the IDENTICAL path too (where the mapping is the
+            # identity), because backup_reconcile._is_identical deliberately
+            # does not compare disc_title: a backup can enumerate identically
+            # and still suggest different _tNN numbers.
+            scanned_by_index = {sc.index: sc for sc in scanned}
+            changed = 0
+            for row in rows:
+                new_index = result.remap.get(row.title_index, row.title_index)
+                matched = scanned_by_index.get(new_index)
+                if matched is None:
+                    continue
+                native = title_index_from_filename(getattr(matched, "disc_title", "") or "")
+                if new_index == row.title_index and native == row.output_index:
+                    continue
+                row.title_index = new_index
+                row.output_index = native
+                session.add(row)
+                changed += 1
+            if changed:
+                await session.commit()
+                logger.info(
+                    f"Job {safe_job}: rewrote {changed} title rows from the backup scan "
+                    f"({len(result.remap)} index remaps)"
+                )
+
+        return True
+
     async def _run_ripping(self, job_id: int) -> None:
         """Execute the ripping process.
 
@@ -2780,6 +3381,15 @@ class JobManager:
                 # detached once this block exits, so nothing downstream touches it.
                 content_type = job.content_type
                 drive_id = job.drive_id
+                # What MakeMKV is pointed at, captured with the other scalars:
+                # after a backup this is the copy (file:<dest>), for a disc-image
+                # import it is the imported folder or ISO, and for a legacy row
+                # (source_spec is None) it resolves back to drive_id.
+                try:
+                    source = DiscSource.from_job(job)
+                except ValueError as e:
+                    await self._fail_job(job_id, f"Cannot rip this job: {e}")
+                    return
                 staging_path = job.staging_path
                 volume_label = job.volume_label
                 detected_title = job.detected_title
@@ -3078,7 +3688,7 @@ class JobManager:
                 from app.core.discdb_exporter import get_makemkv_log_dir
 
                 result = await self._extractor.rip_titles(
-                    drive_id,
+                    source,
                     output_dir,
                     title_indices=rip_indices,
                     title_complete_callback=on_title_complete,
@@ -3219,7 +3829,7 @@ class JobManager:
                     fallback_monitor.add_done_callback(_background_tasks.discard)
                     try:
                         result = await self._extractor.rip_titles(
-                            drive_id,
+                            source,
                             output_dir,
                             title_indices=[t.title_index for t in missing],
                             title_complete_callback=on_title_complete,
@@ -3276,7 +3886,13 @@ class JobManager:
             # `ejected_mid_rip` guards the notification as well as the eject: the
             # abort path already opened the tray AND already sent its own
             # "Stopped early" ping, so re-notifying here would double-fire.
-            if not ejected_mid_rip:
+            #
+            # Also gated on the source being physical: after a backup the disc
+            # was already ejected (and the RIPPED event already sent) at the end
+            # of the backup phase, and a disc-image import never held a drive at
+            # all. Releasing here would open a tray for a disc that is not in it
+            # and notify the user twice for one disc.
+            if not ejected_mid_rip and source.is_physical:
                 from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
 
                 await self._release_drive(job_id, drive_id, RIP_OUTCOME_COMPLETE)
@@ -4160,7 +4776,10 @@ class JobManager:
 
     async def _cancel_jobs_for_drive(self, drive_letter: str) -> None:
         """Cancel jobs that need the disc; leave post-ripping jobs running."""
-        disc_required_states = [JobState.IDLE, JobState.IDENTIFYING]
+        # BACKING_UP belongs here: the copy is reading the disc that was just
+        # removed, so it cannot succeed and should not be left to discover that
+        # through a MakeMKV error minutes later.
+        disc_required_states = [JobState.IDLE, JobState.IDENTIFYING, JobState.BACKING_UP]
         async with async_session() as session:
             result = await session.execute(
                 select(DiscJob).where(

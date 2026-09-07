@@ -18,7 +18,7 @@ export function generateMockDiscs(): DiscData[] {
       progress: 35,
       currentSpeed: "6.5x",
       etaSeconds: 1840,
-      isoProgress: 100,
+      backupProgress: 100,
       tracks: [
         {
           id: "t1",
@@ -83,7 +83,7 @@ export function generateMockDiscs(): DiscData[] {
       progress: 62,
       currentSpeed: "8.2x",
       etaSeconds: 920,
-      isoProgress: 100,
+      backupProgress: 100,
       tracks: [
         {
           id: "m1",
@@ -105,7 +105,7 @@ export function generateMockDiscs(): DiscData[] {
       mediaType: "tv",
       state: "scanning",
       progress: 0,
-      isoProgress: 0,
+      backupProgress: 0,
       tracks: [],
     },
 
@@ -119,7 +119,7 @@ export function generateMockDiscs(): DiscData[] {
       mediaType: "movie",
       state: "completed",
       progress: 100,
-      isoProgress: 100,
+      backupProgress: 100,
       tracks: [
         {
           id: "m2",

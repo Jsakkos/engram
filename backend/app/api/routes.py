@@ -130,6 +130,18 @@ class JobResponse(BaseModel):
     # Null when no prompt is pending; set by identify_disc's B2 gates and
     # cleared by the answer endpoints / B4 rip-end convergence.
     identity_prompt_json: str | None = None
+    # backup_before_rip: "pending" while the whole-disc copy is in flight,
+    # then "completed" / "failed" / "skipped". Null when backup isn't in use
+    # for this job (the common case today).
+    backup_status: str | None = None
+    # Why the backup was skipped or failed, in prose the card can show as is.
+    # The dashboard needs both: backup_status decides whether to warn at all,
+    # this says what to warn about.
+    backup_status_reason: str | None = None
+    # What MakeMKV is pointed at. The one field that separates a disc-image
+    # import from an MKV import (both carry drive_id "import"), and the one
+    # that says whether a rip read the disc or the copy.
+    source_spec: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -296,6 +308,10 @@ class ConfigResponse(BaseModel):
     timeout_ripping_seconds: int
     timeout_matching_seconds: int
     timeout_organizing_seconds: int
+    timeout_backing_up_seconds: int
+    # Disc backup
+    backup_before_rip: bool
+    backup_path: str
     # Drive behavior
     auto_eject_enabled: bool
     # Staging cleanup
@@ -397,6 +413,10 @@ class ConfigUpdate(BaseModel):
     timeout_ripping_seconds: int | None = None
     timeout_matching_seconds: int | None = None
     timeout_organizing_seconds: int | None = None
+    timeout_backing_up_seconds: int | None = None
+    # Disc backup
+    backup_before_rip: bool | None = None
+    backup_path: str | None = None
     # Drive behavior
     auto_eject_enabled: bool | None = None
     # Staging cleanup
@@ -1110,6 +1130,13 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "subtitles_failed": job.subtitles_failed,
         "staging_path": job.staging_path,
         "final_path": job.final_path,
+        # Disc backup. source_spec is included because it is the one field that
+        # says whether this job's MKVs came off the disc or out of the copy,
+        # which is the first thing to check when a rip looks wrong.
+        "source_spec": job.source_spec,
+        "backup_path": job.backup_path,
+        "backup_status": job.backup_status,
+        "backup_status_reason": job.backup_status_reason,
         "titles": titles,
     }
 
@@ -1668,6 +1695,10 @@ async def get_config() -> ConfigResponse:
         timeout_ripping_seconds=config.timeout_ripping_seconds,
         timeout_matching_seconds=config.timeout_matching_seconds,
         timeout_organizing_seconds=config.timeout_organizing_seconds,
+        timeout_backing_up_seconds=config.timeout_backing_up_seconds,
+        # Disc backup
+        backup_before_rip=config.backup_before_rip,
+        backup_path=config.backup_path,
         # Drive behavior
         auto_eject_enabled=config.auto_eject_enabled,
         # Staging cleanup
@@ -2699,6 +2730,15 @@ class SimulateDiscRequest(BaseModel):
     rip_speed_multiplier: int = 10
     force_review_needed: bool = False
     review_reason: str | None = None
+    simulate_backup: bool = False
+    """Park the job in BACKING_UP with a synthetic backup instead of RIPPING.
+
+    Broadcasts a few ``backup_progress`` messages, then STOPS in BACKING_UP
+    (no auto-advance, and ``simulate_ripping`` is ignored) so a test can
+    observe the phase before manually advancing the job to RIPPING via
+    ``POST /api/simulate/advance-job/{job_id}``. DEBUG-only; no real copy is
+    made and nothing is written to disk.
+    """
     identity_pending: str | None = None
     """Inject a walk-away identity prompt on the RIPPING job (DEBUG only).
 
@@ -3007,7 +3047,13 @@ async def import_browse(path: str = "") -> dict:
     directory names with a shallow direct-child
     MKV count, plus selectable .mkv files. Never returns file contents. Empty
     path returns the drive roots (Windows) or / and home (POSIX).
+
+    A directory holding BDMV/VIDEO_TS and a .iso file are reported as their own
+    types: they are scanned and extracted through the normal pipeline rather
+    than filed like ready-made MKVs.
     """
+    from app.core import import_scanner
+
     if not path:
         if os.name == "nt":
             # Probing 26 drive letters can each block for seconds on a stale
@@ -3031,6 +3077,14 @@ async def import_browse(path: str = "") -> dict:
         for entry in os.scandir(p):
             try:
                 if entry.is_dir(follow_symlinks=False):
+                    # Checked before the MKV count: a disc backup is not a
+                    # folder of media, and counting its (zero) MKVs would render
+                    # it as an empty, unimportable directory.
+                    if import_scanner.is_disc_image_dir(Path(entry.path)):
+                        entries.append(
+                            {"name": entry.name, "path": entry.path, "type": "disc_image"}
+                        )
+                        continue
                     count = 0
                     try:
                         for f in os.scandir(entry.path):
@@ -3043,6 +3097,8 @@ async def import_browse(path: str = "") -> dict:
                     )
                 elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".mkv"):
                     entries.append({"name": entry.name, "path": entry.path, "type": "mkv"})
+                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".iso"):
+                    entries.append({"name": entry.name, "path": entry.path, "type": "iso"})
             except OSError:
                 continue
     except OSError as exc:
@@ -3082,7 +3138,12 @@ async def import_preview(req: ImportPathRequest) -> dict:
         "root": str(scan.root),
         "units": units,
         "loose_files": [str(f) for f in scan.loose_files],
-        "total_jobs": len(scan.units),
+        "disc_images": [
+            {"name": d.name, "path": str(d.path), "kind": d.kind, "total_bytes": d.total_bytes}
+            for d in scan.disc_images
+        ],
+        # Each disc image becomes its own job, exactly as each MKV unit does.
+        "total_jobs": len(scan.units) + len(scan.disc_images),
         "total_files": scan.total_files,
         "total_bytes": scan.total_bytes,
         "truncated": scan.truncated,
@@ -3115,14 +3176,46 @@ async def import_start(req: ImportStartRequest) -> ImportStartResponse:
         raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
 
     scan = await asyncio.to_thread(import_scanner.scan, p)
-    if not scan.units:
-        raise HTTPException(status_code=400, detail="No MKV files found to import")
+    if not scan.units and not scan.disc_images:
+        raise HTTPException(status_code=400, detail="No MKV files or disc backups found to import")
 
     root_str = str(scan.root)
     force_keys = set(req.force_keys)
     seen_keys: set[str] = set()
     job_ids: list[int] = []
     blocked: list[BlockedImportUnit] = []
+
+    # Disc backups and ISOs are not ready-made media: each one is scanned and
+    # extracted through the normal MakeMKV pipeline, so it carries a source_spec
+    # and no file manifest. Ownership is guarded exactly as an MKV unit is, on
+    # the image's own path.
+    for image in scan.disc_images:
+        image_path = str(image.path)
+        key = unit_key_for(image_path)
+        seen_keys.add(key)
+        result = await job_manager.create_job_from_staging(
+            staging_path=image_path,
+            content_type="unknown",
+            detected_title=image.name,
+            destination_mode=req.destination_mode,
+            drive_id="import",
+            source_spec=(f"iso:{image.path}" if image.kind == "iso" else f"file:{image.path}"),
+            force=key in force_keys,
+        )
+        if result.job_id is not None:
+            job_ids.append(result.job_id)
+        else:
+            blocked.append(
+                BlockedImportUnit(
+                    unit_key=key,
+                    show_name=image.name,
+                    season=None,
+                    display_path=image_path,
+                    reason=result.block,
+                    job_ids=list(result.blocking_job_ids),
+                )
+            )
+
     for unit in scan.units:
         files = [str(f) for f in unit.files]
         # The dedup path (and therefore unit_key) is the single file's parent, or

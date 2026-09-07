@@ -82,9 +82,24 @@ async def classify_staging_path(
     ``(None, [])`` when the path is free. In-flight beats completed: a path with
     both a finished and a live job is owned by the live one. Ids within a tier
     are returned in ascending order.
+
+    ``source_spec`` is matched as well as ``staging_path`` because a disc-image
+    import reads from the path and writes its extracted MKVs to a staging
+    directory of its own, so its row does NOT carry the image path in
+    ``staging_path``. Ownership still has to key on the image, which is what
+    ``unit_key_for`` hashes and what the user actually picked. The same clause
+    makes a completed disc backup that a live rip is still reading from
+    (``source_spec == "file:<backup>"``) block an import of that backup, which
+    is correct for the same reason.
     """
     result = await session.execute(
-        sa_select(DiscJob).where(DiscJob.staging_path == staging_path).order_by(DiscJob.id)
+        sa_select(DiscJob)
+        .where(
+            (DiscJob.staging_path == staging_path)
+            | (DiscJob.source_spec == f"file:{staging_path}")
+            | (DiscJob.source_spec == f"iso:{staging_path}")
+        )
+        .order_by(DiscJob.id)
     )
     jobs = list(result.scalars().all())
 

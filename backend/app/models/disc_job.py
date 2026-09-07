@@ -12,6 +12,7 @@ class JobState(StrEnum):
 
     IDLE = "idle"
     IDENTIFYING = "identifying"  # Scanning disc structure
+    BACKING_UP = "backing_up"  # Writing a full decrypted disc copy before extraction
     REVIEW_NEEDED = "review_needed"  # Human-in-the-Loop trigger
     RIPPING = "ripping"  # Active extraction
     MATCHING = "matching"  # Audio fingerprinting
@@ -89,6 +90,30 @@ class DiscJob(SQLModel, table=True):
     # a non-recursive glob, so files nested in Disc/ subfolders import correctly;
     # "root" is the in-place organize base for destination_mode == "in_place".
     import_manifest_json: str | None = Field(default=None)
+
+    # What MakeMKV is pointed at for this job: "dev:E:", "disc:0",
+    # "file:<backup folder>" or "iso:<file>". None on every row written before
+    # backup support, meaning "legacy: derive from drive_id" (DiscSource.from_job).
+    # Diverges from drive_id exactly once: after a successful backup, drive_id is
+    # still the drive the disc came from while source_spec has become the copy.
+    source_spec: str | None = Field(default=None)
+    # Where this job's backup landed. Kept for history and for re-import. No
+    # cleanup path touches it today, and that is deliberate: backups are the
+    # user's preservation copy, so any future cleanup must exclude this root
+    # explicitly rather than inheriting staging's rules.
+    backup_path: str | None = Field(default=None)
+    # "pending" | "completed" | "failed" | "skipped". None means no backup was
+    # attempted (the feature is off). Mirrors subtitle_status: a small closed set
+    # of literals here, with the free-text explanation in its own column, so no
+    # consumer has to parse a delimiter out of a status.
+    backup_status: str | None = Field(default=None)
+    # Why the backup failed or was skipped, as a short sentence a person can
+    # read in a UI row ("no backup location is configured", or a MakeMKV error
+    # string). Deliberately prose for BOTH outcomes: a skip's short code
+    # ("not_configured") stays in the logs, because nothing machine-reads it and
+    # the history panel has no dictionary to expand it with. None when
+    # backup_status is pending or completed.
+    backup_status_reason: str | None = Field(default=None)
 
     # Progress Tracking
     state: JobState = JobState.IDLE

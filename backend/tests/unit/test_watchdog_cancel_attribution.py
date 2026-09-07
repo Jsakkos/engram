@@ -155,6 +155,7 @@ async def test_watchdog_passes_stall_specific_failure_message(rip_env, monkeypat
     monkeypatch.setattr(job_manager, "_rip_task_alive", lambda jid: False)
     config = SimpleNamespace(
         timeout_identifying_seconds=0,
+        timeout_backing_up_seconds=0,
         timeout_ripping_seconds=1200,
         timeout_matching_seconds=0,
         timeout_organizing_seconds=0,

@@ -318,10 +318,15 @@ export async function commitManualSubtitles(
 // Manual import
 // ---------------------------------------------------------------------------
 
+/**
+ * One row in the import picker. "disc_image" is a folder holding a BDMV or
+ * VIDEO_TS tree (a whole-disc backup) and "iso" is a disc image file; neither
+ * carries an mkv_count, because neither is a folder of finished media.
+ */
 export interface BrowseEntry {
   name: string;
   path: string;
-  type: "dir" | "mkv";
+  type: "dir" | "mkv" | "disc_image" | "iso";
   mkv_count?: number;
 }
 
@@ -339,10 +344,24 @@ export interface PreviewUnit {
   total_bytes: number;
 }
 
+/** A whole-disc backup folder or ISO found by the scan; each becomes one job. */
+export interface PreviewDiscImage {
+  name: string;
+  path: string;
+  /** "backup" for a BDMV/VIDEO_TS folder, "iso" for a disc image file. */
+  kind: string;
+  total_bytes: number;
+}
+
 export interface PreviewResult {
   root: string;
   units: PreviewUnit[];
   loose_files: string[];
+  /**
+   * Optional only for tolerance of an older backend: the current one always
+   * sends the key. Read it through `?? []`.
+   */
+  disc_images?: PreviewDiscImage[];
   total_jobs: number;
   total_files: number;
   total_bytes: number;

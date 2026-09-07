@@ -4,6 +4,26 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Optionally back up a disc before ripping it.** Engram can write a full
+  decrypted MakeMKV copy of each disc to a folder you choose and then extract
+  from that copy instead of from the drive. The disc is read once, sequentially,
+  rather than once per title, which is much gentler on a scratched disc that has
+  no in-print replacement; the disc is released as soon as the copy finishes
+  rather than when the whole rip does; extraction from local storage is faster
+  and survives a marginal read; and the copy is kept for preservation, since
+  Engram never deletes one. Backups mirror your library layout and honour your
+  own naming settings. If anything prevents a backup, Engram rips directly from
+  the drive as before and says why on the job card, so turning this on cannot
+  make a disc less likely to finish. Off by default: enable it under Settings
+  and pick a backup folder. (#NNN)
+- **Import a disc backup you already have.** The Import button now recognises a
+  folder containing `BDMV` or `VIDEO_TS`, or an `.iso` file, and runs it through
+  the normal scan, identify, rip, match and organize pipeline instead of filing
+  it as finished media. Point it at a shelf of backups and it queues one job per
+  disc. (#NNN)
+
 ### Fixed
 
 - **The subtitle-cache builder no longer records a provider outage as missing

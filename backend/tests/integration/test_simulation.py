@@ -691,3 +691,64 @@ async def test_drain_cancels_match_tasks_without_routing_them_to_review():
     # failure of whatever match task is dispatched next.
     assert title_id not in job_manager._match_tasks
     assert title_id not in job_manager._suppress_match_done
+
+
+class TestSimulatedBackup:
+    @pytest.mark.asyncio
+    async def test_simulated_disc_passes_through_backing_up(self, client):
+        resp = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "INCEPTION_2010",
+                "content_type": "movie",
+                "simulate_backup": True,
+                "simulate_ripping": False,
+            },
+        )
+        assert resp.status_code == 200
+        job_id = resp.json()["job_id"]
+
+        # The simulated backup does not auto-advance, so the job rests here.
+        job = (await client.get(f"/api/jobs/{job_id}")).json()
+        assert job["state"] == "backing_up"
+        assert job["backup_status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_advancing_a_simulated_backup_reaches_ripping(self, client):
+        resp = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "INCEPTION_2010",
+                "content_type": "movie",
+                "simulate_backup": True,
+                "simulate_ripping": False,
+            },
+        )
+        job_id = resp.json()["job_id"]
+        await client.post(f"/api/simulate/advance-job/{job_id}")
+        job = (await client.get(f"/api/jobs/{job_id}")).json()
+        assert job["state"] == "ripping"
+        assert job["backup_status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_simulate_backup_defaults_off(self, client):
+        """simulate_backup must default False so every existing simulated disc
+
+        is unaffected: omitting it entirely must behave exactly like the
+        pre-existing simulate_ripping=False static-RIPPING path, never
+        parking in BACKING_UP.
+        """
+        resp = await client.post(
+            "/api/simulate/insert-disc",
+            json={
+                "volume_label": "INCEPTION_2010",
+                "content_type": "movie",
+                "simulate_ripping": False,
+            },
+        )
+        assert resp.status_code == 200
+        job_id = resp.json()["job_id"]
+
+        job = (await client.get(f"/api/jobs/{job_id}")).json()
+        assert job["state"] == "ripping"
+        assert job["backup_status"] is None
