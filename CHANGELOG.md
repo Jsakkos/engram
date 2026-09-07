@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-09-07
+
+_Highlights: back up a disc before ripping it, and import backups you already have._
+
 ### Added
 
 - **Optionally back up a disc before ripping it.** Engram can write a full
@@ -17,12 +21,12 @@ All notable changes to Engram will be documented in this file.
   own naming settings. If anything prevents a backup, Engram rips directly from
   the drive as before and says why on the job card, so turning this on cannot
   make a disc less likely to finish. Off by default: enable it under Settings
-  and pick a backup folder. (#NNN)
+  and pick a backup folder. (#638)
 - **Import a disc backup you already have.** The Import button now recognises a
   folder containing `BDMV` or `VIDEO_TS`, or an `.iso` file, and runs it through
   the normal scan, identify, rip, match and organize pipeline instead of filing
   it as finished media. Point it at a shelf of backups and it queues one job per
-  disc. (#NNN)
+  disc. (#638)
 
 ### Fixed
 
@@ -38,7 +42,7 @@ All notable changes to Engram will be documented in this file.
   obvious rather than silent. Coverage that already succeeded no longer expires
   on a timer either, which is what used to trigger the oversized re-harvests
   that exhausted the quota in the first place. Run summaries also credit
-  OpenSubtitles correctly instead of reporting its downloads as cache hits.
+  OpenSubtitles correctly instead of reporting its downloads as cache hits. (#631)
 
 - **The same protection now covers the subtitle scrapers.** The fix above read
   only OpenSubtitles' health, so a build where OpenSubtitles was fine but both
@@ -46,7 +50,16 @@ All notable changes to Engram will be documented in this file.
   having no subtitles and stopped retrying them for 30 days. A scraper that
   goes down is now told apart from one that simply has nothing, so a season
   nobody could reach is left unmeasured and picked up on the next run, and the
-  run summary names the provider that never answered.
+  run summary names the provider that never answered. (#636)
+
+- **A non-ASCII show title no longer aborts a subtitle-cache harvest.** A
+  448-show run died partway through on a title spelled with a macron: Windows
+  opens both the console and a redirected pipe with the legacy ANSI codepage,
+  so rendering that one title's progress bar raised an encoding error and took
+  the whole multi-hour run down with it, discarding the completed work for
+  every show that had already succeeded. Output now forces UTF-8 up front, so
+  an unrepresentable character degrades to a placeholder instead of ending the
+  run. (#635)
 
 ## [0.34.0] - 2026-08-31
 
