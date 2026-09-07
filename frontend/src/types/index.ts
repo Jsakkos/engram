@@ -4,6 +4,7 @@ export type JobState =
     | 'idle'
     | 'identifying'
     | 'review_needed'
+    | 'backing_up'
     | 'ripping'
     | 'matching'
     | 'organizing'
@@ -174,6 +175,21 @@ export interface SubtitleEvent {
     failed_count: number;
 }
 
+/**
+ * Progress of the optional whole-disc backup that runs between identification
+ * and extraction. `speed` and `eta` are always present but usually null:
+ * MakeMKV's backup reports a percentage, not a byte rate. A null must not
+ * erase what the card already shows.
+ */
+export interface BackupProgressMessage {
+    type: 'backup_progress';
+    job_id: number;
+    current_bytes: number;
+    total_bytes: number;
+    speed: string | null;
+    eta: number | null;
+}
+
 export interface TitlesDiscovered {
     type: 'titles_discovered';
     job_id: number;
@@ -265,6 +281,7 @@ export type WebSocketMessage =
     | JobUpdate
     | TitleUpdate
     | SubtitleEvent
+    | BackupProgressMessage
     | TitlesDiscovered
     | UpdateStatusMessage
     | FingerprintDisclosureRequiredMessage

@@ -9,6 +9,7 @@ import type {
   SubtitleEvent,
   WebSocketMessage,
   FingerprintDisclosureRequiredMessage,
+  BackupProgressMessage,
 } from "../../../types";
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,7 @@ vi.mock("../../../hooks/useWebSocket", () => ({
 }));
 
 // Imported after the mocks so the hook picks up the mocked useWebSocket.
-import { useJobManagement } from "../useJobManagement";
+import { useJobManagement, applyBackupProgress } from "../useJobManagement";
 
 /**
  * Tests for the job management logic extracted from useJobManagement.
@@ -740,5 +741,59 @@ describe("fingerprint_disclosure_required WS handling", () => {
     });
 
     expect(result.current.disclosure).toBeNull();
+  });
+});
+
+describe("applyBackupProgress", () => {
+  const msg = (over: Partial<BackupProgressMessage> = {}) => ({
+    job_id: 1,
+    current_bytes: 0,
+    total_bytes: 0,
+    speed: null,
+    eta: null,
+    ...over,
+  }) as Omit<BackupProgressMessage, "type">;
+
+  it("writes the percentage, speed and eta onto the matching job", () => {
+    const jobs = [makeJob(1), makeJob(2)];
+    const result = applyBackupProgress(
+      jobs,
+      msg({ current_bytes: 5_000, total_bytes: 20_000, speed: "12.0 MB/s", eta: 90 }),
+    );
+
+    expect(result[0].progress_percent).toBe(25);
+    expect(result[0].current_speed).toBe("12.0 MB/s");
+    expect(result[0].eta_seconds).toBe(90);
+    // Untouched jobs keep their identity, so their cards do not re-render.
+    expect(result[1]).toBe(jobs[1]);
+  });
+
+  it("returns the SAME array reference for an unknown job id", () => {
+    const jobs = [makeJob(1)];
+    const result = applyBackupProgress(jobs, msg({ job_id: 999, current_bytes: 1, total_bytes: 2 }));
+    expect(result).toBe(jobs);
+  });
+
+  it("yields 0 rather than dividing by zero when total_bytes is 0", () => {
+    const jobs = [makeJob(1, { progress_percent: 42 })];
+    const result = applyBackupProgress(jobs, msg({ current_bytes: 1_000, total_bytes: 0 }));
+    expect(result[0].progress_percent).toBe(0);
+  });
+
+  it("caps the percentage at 100 when the backup overshoots its estimate", () => {
+    const jobs = [makeJob(1)];
+    const result = applyBackupProgress(jobs, msg({ current_bytes: 30, total_bytes: 20 }));
+    expect(result[0].progress_percent).toBe(100);
+  });
+
+  it("leaves speed and eta intact when the message sends them as null", () => {
+    // MakeMKV's backup reports a percentage, not a byte rate, so null is the
+    // common case. It must not blank what the card is already showing.
+    const jobs = [makeJob(1, { current_speed: "8.0x", eta_seconds: 600 })];
+    const result = applyBackupProgress(jobs, msg({ current_bytes: 1, total_bytes: 4 }));
+
+    expect(result[0].progress_percent).toBe(25);
+    expect(result[0].current_speed).toBe("8.0x");
+    expect(result[0].eta_seconds).toBe(600);
   });
 });

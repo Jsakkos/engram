@@ -15,7 +15,7 @@ import { sv, SvPanel, SvLabel, SvDiscInsert, SvProgressBar, type DiscInsertPhase
 import { formatEta } from "../../utils/formatting";
 
 export type MediaType = "movie" | "tv" | "unknown";
-export type DiscState = "idle" | "scanning" | "review_needed" | "archiving_iso" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
+export type DiscState = "idle" | "scanning" | "review_needed" | "backing_up" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
 export type TrackState = "pending" | "ripping" | "queued" | "matching" | "matched" | "review" | "failed" | "completed" | "skipped";
 
 export interface MatchCandidate {
@@ -69,7 +69,10 @@ export interface DiscData {
   mediaType: MediaType;
   state: DiscState;
   progress: number;
-  isoProgress?: number;
+  /** Percent complete (0-100) of the whole-disc backup that optionally runs
+   *  between identification and extraction. Only supplied while the job is in
+   *  the `backing_up` state; the backup panel is gated on it being defined. */
+  backupProgress?: number;
   tracks?: Track[];
   currentSpeed?: string;
   etaSeconds?: number;
@@ -672,8 +675,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                 );
               })()}
 
-              {/* ISO archiving */}
-              {disc.state === "archiving_iso" && disc.isoProgress !== undefined && (
+              {/* Whole-disc backup (runs before extraction when enabled) */}
+              {disc.state === "backing_up" && disc.backupProgress !== undefined && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div
                     style={{
@@ -688,9 +691,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     }}
                   >
                     <Database size={14} />
-                    <span>› ARCHIVING TO ISO…</span>
+                    <span>› BACKING UP DISC…</span>
                   </div>
-                  <SvProgressBar progress={disc.isoProgress} color="magenta" label="ISO ARCHIVE" />
+                  <SvProgressBar progress={disc.backupProgress} color="magenta" label="DISC BACKUP" />
                 </div>
               )}
 

@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { apiFetch, apiFetchVoid } from '../../api/client';
-import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage } from '../../types';
+import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage, BackupProgressMessage } from '../../types';
 import type { ArmedIdentity } from '../components/ArmedDriveCard';
 
 // Trailing-debounce window for refetches triggered by a burst of unknown
@@ -51,6 +51,33 @@ function toUpdateStatus(raw: Omit<UpdateStatusMessage, 'type'>): UpdateStatus {
         last_update_success_version: raw.last_update_success_version ?? null,
         is_frozen: raw.is_frozen ?? false,
     };
+}
+
+/**
+ * Fold a `backup_progress` message into the job list. Returns the SAME array
+ * reference when no job matched, so React skips the re-render.
+ *
+ * `speed` and `eta` are coalesced rather than assigned: the backend always
+ * sends both keys, but MakeMKV's backup reports a percentage and not a byte
+ * rate, so they are usually null. A null must leave the card's existing
+ * readout alone instead of blanking it.
+ */
+export function applyBackupProgress(jobs: Job[], data: Omit<BackupProgressMessage, 'type'>): Job[] {
+    const idx = jobs.findIndex(j => j.id === data.job_id);
+    if (idx === -1) return jobs;
+
+    const pct = data.total_bytes > 0
+        ? Math.min(100, Math.round((data.current_bytes / data.total_bytes) * 100))
+        : 0;
+
+    const next = [...jobs];
+    next[idx] = {
+        ...next[idx],
+        progress_percent: pct,
+        current_speed: data.speed ?? next[idx].current_speed,
+        eta_seconds: data.eta ?? next[idx].eta_seconds,
+    };
+    return next;
 }
 
 export function useJobManagement(devMode: boolean = false) {
@@ -426,6 +453,10 @@ export function useJobManagement(devMode: boolean = false) {
                         });
                     }
                     fetchRef.current?.();
+                    break;
+
+                case 'backup_progress':
+                    setJobs(prev => applyBackupProgress(prev, message));
                     break;
 
                 case 'subtitle_event':

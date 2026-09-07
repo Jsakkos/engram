@@ -13,6 +13,7 @@ export function mapJobStateToDiscState(jobState: Job['state']): DiscState {
     'idle': 'idle',
     'identifying': 'scanning',
     'review_needed': 'review_needed',
+    'backing_up': 'backing_up',
     'ripping': 'ripping',
     'matching': 'matching',
     'organizing': 'organizing',
@@ -155,6 +156,10 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     mediaType: mediaType,
     state: mapJobStateToDiscState(job.state),
     progress: job.progress_percent || 0,
+    // The backup panel is gated on backupProgress being defined, so only feed it
+    // while the copy is actually running. progress_percent carries the backup
+    // percentage during that phase (see applyBackupProgress).
+    backupProgress: job.state === 'backing_up' ? (job.progress_percent || 0) : undefined,
     currentSpeed: job.current_speed,
     etaSeconds: job.eta_seconds,
     subtitleStatus: job.subtitle_status || undefined,

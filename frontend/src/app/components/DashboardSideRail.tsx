@@ -16,7 +16,7 @@ interface Props {
   titlesMap: Record<number, DiscTitle[]>;
 }
 
-const ACTIVE_JOB_STATES: JobState[] = ["identifying", "ripping", "matching", "organizing"];
+const ACTIVE_JOB_STATES: JobState[] = ["identifying", "backing_up", "ripping", "matching", "organizing"];
 const TERMINAL_TITLE_STATES: TitleState[] = ["matched", "completed", "review", "failed"];
 
 /**

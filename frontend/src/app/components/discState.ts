@@ -28,7 +28,7 @@ export const DISC_STATE_CONFIG: Record<DiscState, StateConfig> = {
   idle:           { label: "IDLE",          badgeState: "idle",     color: sv.inkDim,   glow: sv.inkDim,   icon: IcoIdle },
   scanning:       { label: "SCANNING",      badgeState: "scanning", color: sv.yellow,   glow: sv.yellow,   icon: IcoScan },
   review_needed:  { label: "REVIEW NEEDED", badgeState: "review",   color: sv.yellow,   glow: sv.yellow,   icon: IcoReview },
-  archiving_iso:  { label: "ARCHIVING",     badgeState: "matching", color: sv.purple,   glow: sv.purple,   icon: IcoLibrary },
+  backing_up:     { label: "BACKING UP",    badgeState: "matching", color: sv.purple,   glow: sv.purple,   icon: IcoLibrary },
   ripping:        { label: "RIPPING",       badgeState: "ripping",  color: sv.magenta,  glow: sv.magenta,  icon: IcoRipping },
   matching:       { label: "MATCHING",      badgeState: "matching", color: sv.amber,    glow: sv.amber,    icon: IcoMatching },
   organizing:     { label: "ORGANIZING",    badgeState: "matching", color: sv.purple,   glow: sv.purple,   icon: IcoLibrary },
@@ -48,12 +48,14 @@ export const DISC_STATE_CONFIG: Record<DiscState, StateConfig> = {
  * pulsed "ANALYZING" forever next to its own ERROR badge (#552).
  *
  * NOT the same as ActionButtons' ACTIVE_STATES / CANCELABLE_STATES. Those look
- * similar but answer a different question ("is this action safe here?") and are
- * deliberately narrower — force-advance and cancel both exclude archiving_iso.
+ * similar but answer a different question ("is this action safe here?") and
+ * stay narrower: organizing is active here but is not cancelable there, because
+ * aborting a move leaves files half-filed. backing_up is on every one of those
+ * lists (a copy is in flight, is safe to abort, and the disc is still loaded).
  */
 export const ACTIVE_PIPELINE_STATES: ReadonlySet<DiscState> = new Set<DiscState>([
   "scanning",
-  "archiving_iso",
+  "backing_up",
   "ripping",
   "matching",
   "organizing",
