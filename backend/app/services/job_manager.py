@@ -1029,7 +1029,9 @@ class JobManager:
         """Re-identify a job with user-corrected metadata.
 
         Same resume contract as :meth:`set_name_and_resume`: the coordinator
-        returns a ``resume_action`` and only ``"start_rip"`` spawns a rip task.
+        returns a ``resume_action``; only ``"start_rip"`` and ``"start_backup"``
+        spawn a rip task (they are the same pre-rip resume, split by whether
+        backup_before_rip is on).
         """
         # A real match (or re-rip) starts now — stop background prewarming.
         # cancel_for_job prevents future chunks; the in-flight thread still
@@ -1043,7 +1045,7 @@ class JobManager:
     async def _apply_identity_resume_action(self, job_id: int, action: ResumeAction) -> None:
         """Run the JobManager side of an identity answer (walk-away B5).
 
-        ``"start_rip"``/``"rerun_matching"``/``"resolve_movie"`` spawn a
+        ``"start_rip"``/``"start_backup"``/``"rerun_matching"``/``"resolve_movie"`` spawn a
         background task registered in ``_active_jobs``. ``"dispatch_matches"``
         and ``"release_movie_titles"`` act inline on already-running work — a
         mid-rip answer leaves the live rip task as the registered owner, so no
@@ -1467,7 +1469,16 @@ class JobManager:
 
         IDENTIFYING: eject and cancel. Nothing was produced to salvage.
 
-        Any other state: the drive is not held, so raise.
+        BACKING_UP: eject and cancel, like IDENTIFYING. A copy that stops
+        partway produces no MKVs, so there is nothing to salvage and nothing to
+        announce; the abandoned ``.partial`` is left on disk for the user to
+        judge. This branch exists because a full-disc copy can run for hours and
+        a user who wants their disc back must not have to wait it out.
+
+        Any other state: the drive is not held, so raise. So does a RIPPING job
+        reading from a backup copy: its disc came out when the copy finished, so
+        there is no tray to open and a second "ripped" notification for one disc
+        would be wrong.
 
         The two branches differ on notifications, deliberately: RIPPING routes
         through _release_drive and so sends the "ripped" Discord event with a
@@ -1486,9 +1497,20 @@ class JobManager:
                 raise ValueError(f"Job {job_id} not found")
             state = job.state
             drive_id = job.drive_id
+            holds_disc = self._holds_disc_in_drive(job)
 
-        if state not in (JobState.IDENTIFYING, JobState.RIPPING):
+        if state not in (JobState.IDENTIFYING, JobState.BACKING_UP, JobState.RIPPING):
             raise ValueError(f"Cannot eject a job in state: {state.value}")
+
+        # A rip reading a backup copy, or an imported image, has no disc in the
+        # drive. Ejecting would open an empty tray and send a second "ripped"
+        # notification for a disc that was already released at the end of its
+        # backup, which is the one double-notification path the phase creates.
+        if not holds_disc:
+            raise ValueError(
+                "This job is reading from a disc copy, so its disc was already "
+                "released when the copy finished."
+            )
 
         safe_job = sanitize_log_value(job_id)
         safe_drive = sanitize_log_value(drive_id)
@@ -1504,7 +1526,7 @@ class JobManager:
         if state == JobState.RIPPING:
             await asyncio.to_thread(self._extractor.eject_abort, job_id)
 
-        if state == JobState.IDENTIFYING:
+        if state in (JobState.IDENTIFYING, JobState.BACKING_UP):
             from app.core.sentinel import eject_disc
 
             ejected = False
@@ -1514,8 +1536,13 @@ class JobManager:
                 logger.warning(f"Job {safe_job}: eject of {safe_drive} raised: {e}")
             if ejected:
                 self._drive_monitor.notify_ejected(drive_id)
+            # cancel_job terminates the registered makemkvcon process, which for
+            # BACKING_UP is the copy itself. Its .partial is deliberately left
+            # on disk: a partial copy of a failing disc has salvage value, and
+            # discarding it is the user's call.
             await self.cancel_job(job_id)
-            logger.info(f"Job {safe_job}: ejected during identify, job cancelled")
+            phase = "identify" if state == JobState.IDENTIFYING else "backup"
+            logger.info(f"Job {safe_job}: ejected during {phase}, job cancelled")
             return {"ejected": ejected, "action": "job_cancelled"}
 
         from app.core.discord_notifier import RIP_OUTCOME_STOPPED_EARLY
@@ -2198,6 +2225,27 @@ class JobManager:
             return
         idle = now - last
         if idle >= timeout:
+            # A stalled BACKUP degrades to a direct rip rather than failing the
+            # job, because that is this feature's governing rule: turning the
+            # setting on must never make a disc less likely to finish. It bites
+            # hardest here, on the scratched disc the feature exists for.
+            # backup_disc deliberately has no per-operation stall watchdog and
+            # defers to this one, so without this branch the stall case had no
+            # fallback anywhere and reconcile_and_advance would fail the job.
+            if job.state == JobState.BACKING_UP:
+                logger.warning(
+                    f"Watchdog: job {job.id} idle {idle:.0f}s in backing_up "
+                    f"(timeout {timeout}s), falling back to a direct rip"
+                )
+                # Stop the copy before the rip starts, or two makemkvcon
+                # processes fight over the drive.
+                await asyncio.to_thread(self._extractor.cancel, job.id)
+                stall = f"stalled with no progress for {timeout}s"
+                await self._fall_back_to_direct_rip(
+                    job.id, BACKUP_FAILED, stall, f"the backup {stall}"
+                )
+                return
+
             logger.warning(
                 f"Watchdog: job {job.id} idle {idle:.0f}s in "
                 f"{job.state.value} (timeout {timeout}s) → auto-advancing"
@@ -2953,12 +3001,14 @@ class JobManager:
                 # Already fell back to a direct rip (or the job row is gone).
                 return
 
+            from app.core.discord_notifier import RIP_OUTCOME_BACKED_UP
+
             drive_id, dest = outcome
             # _release_drive is the documented single chokepoint for "Engram is
             # done with this disc", and a completed backup satisfies it
             # literally: the disc is copied, so it can leave the drive. It runs
             # BEFORE reconciling so even an unreconcilable backup frees it.
-            await self._release_drive(job_id, drive_id, "Backed up")
+            await self._release_drive(job_id, drive_id, RIP_OUTCOME_BACKED_UP)
             if await self._reconcile_backup_titles(job_id, dest):
                 await self._enter_ripping(job_id)
 
@@ -3062,6 +3112,16 @@ class JobManager:
                 job_id, BACKUP_FAILED, reason, f"the backup failed: {reason}"
             )
             return None
+
+        if result.already_existed:
+            # The destination appeared while this copy was running, so what is
+            # on disk is not the copy this run just made and verified. Keeping
+            # it is right (never clobber a complete backup) but it is worth
+            # saying, because the extraction that follows reads it.
+            logger.warning(
+                f"Job {safe_job}: {dest} already existed when the copy finished; "
+                f"extraction will read that, not this run's copy"
+            )
 
         final_dest = result.dest or dest
         await self._record_backup_status(
@@ -4665,7 +4725,10 @@ class JobManager:
 
     async def _cancel_jobs_for_drive(self, drive_letter: str) -> None:
         """Cancel jobs that need the disc; leave post-ripping jobs running."""
-        disc_required_states = [JobState.IDLE, JobState.IDENTIFYING]
+        # BACKING_UP belongs here: the copy is reading the disc that was just
+        # removed, so it cannot succeed and should not be left to discover that
+        # through a MakeMKV error minutes later.
+        disc_required_states = [JobState.IDLE, JobState.IDENTIFYING, JobState.BACKING_UP]
         async with async_session() as session:
             result = await session.execute(
                 select(DiscJob).where(

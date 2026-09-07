@@ -579,3 +579,90 @@ class TestHoldsDiscInDrive:
         # Refusing a second job is the safe side of the guess.
         job = DiscJob(drive_id="", state=JobState.RIPPING)
         assert JobManager._holds_disc_in_drive(job) is True
+
+
+class TestEjectDuringBackup:
+    """A user must be able to get their disc back out of a long copy.
+
+    A full-disc backup can run for hours. Before this, the Eject button was
+    offered during BACKING_UP but the backend rejected the state, so the button
+    was dead for the whole phase.
+    """
+
+    @pytest.mark.asyncio
+    async def test_ejecting_during_a_backup_cancels_the_job(self, monkeypatch):
+        job_id = await _seed()
+        cancelled = []
+
+        monkeypatch.setattr(sys.modules["app.core.sentinel"], "eject_disc", lambda drive: True)
+        monkeypatch.setattr(
+            job_manager, "cancel_job", AsyncMock(side_effect=lambda jid: cancelled.append(jid))
+        )
+        monkeypatch.setattr(job_manager._drive_monitor, "notify_ejected", MagicMock())
+
+        result = await job_manager.eject_disc_for_job(job_id)
+
+        assert result == {"ejected": True, "action": "job_cancelled"}
+        assert cancelled == [job_id]
+
+    @pytest.mark.asyncio
+    async def test_a_backup_sourced_rip_has_no_disc_to_eject(self, monkeypatch):
+        # The disc came out when the copy finished. Ejecting would open an empty
+        # tray and send a second "ripped" notification for one disc.
+        job_id = await _seed()
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            job.state = JobState.RIPPING
+            job.source_spec = "file:/b/Show/Season 01/S01D01"
+            await session.commit()
+
+        release = AsyncMock()
+        monkeypatch.setattr(job_manager, "_release_drive", release)
+
+        with pytest.raises(ValueError, match="already released"):
+            await job_manager.eject_disc_for_job(job_id)
+
+        release.assert_not_awaited()
+
+
+class TestStalledBackupDegrades:
+    """A stalled copy falls back to a direct rip instead of failing the job.
+
+    This is the feature's governing rule and it bites hardest here: the disc
+    most likely to stall a copy is the scratched one the feature exists for, so
+    failing the job would make enabling the setting actively worse than leaving
+    it off. backup_disc has no per-operation stall watchdog and defers to this
+    job-level one, so this branch is the only fallback the stall case has.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_stalled_backup_ends_in_ripping_not_failed(self, monkeypatch):
+        job_id = await _seed()
+        enter_ripping = AsyncMock()
+        monkeypatch.setattr(job_manager, "_enter_ripping", enter_ripping)
+        cancel = MagicMock()
+        monkeypatch.setattr(job_manager._extractor, "cancel", cancel)
+
+        config = SimpleNamespace(
+            timeout_identifying_seconds=0,
+            timeout_backing_up_seconds=60,
+            timeout_ripping_seconds=0,
+            timeout_matching_seconds=0,
+            timeout_organizing_seconds=0,
+        )
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            # Idle well past the ceiling.
+            job_manager._last_activity[job_id] = 0.0
+            await job_manager._watchdog_check_job(job, config, now=10_000.0)
+
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+
+        assert job.state is not JobState.FAILED
+        assert job.backup_status == "failed"
+        assert "stalled" in (job.backup_status_reason or "")
+        enter_ripping.assert_awaited_once_with(job_id)
+        # The copy must be stopped before the rip starts, or two makemkvcon
+        # processes fight over one drive.
+        cancel.assert_called_once_with(job_id)

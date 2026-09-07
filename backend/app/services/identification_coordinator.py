@@ -76,7 +76,9 @@ def next_state_after_identify(config, drive_id: str) -> JobState:
     """
     if not config or not config.backup_before_rip or not config.backup_path:
         return JobState.RIPPING
-    if drive_id == "import":
+    # "import" and "staging" are both non-disc sentinels, not drive ids: there
+    # is no disc to copy, and an imported backup already is one.
+    if drive_id in ("import", "staging"):
         return JobState.RIPPING
     return JobState.BACKING_UP
 
