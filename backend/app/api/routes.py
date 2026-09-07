@@ -130,6 +130,10 @@ class JobResponse(BaseModel):
     # Null when no prompt is pending; set by identify_disc's B2 gates and
     # cleared by the answer endpoints / B4 rip-end convergence.
     identity_prompt_json: str | None = None
+    # backup_before_rip: "pending" while the whole-disc copy is in flight,
+    # then "completed" / "failed" / "skipped". Null when backup isn't in use
+    # for this job (the common case today).
+    backup_status: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -2718,6 +2722,15 @@ class SimulateDiscRequest(BaseModel):
     rip_speed_multiplier: int = 10
     force_review_needed: bool = False
     review_reason: str | None = None
+    simulate_backup: bool = False
+    """Park the job in BACKING_UP with a synthetic backup instead of RIPPING.
+
+    Broadcasts a few ``backup_progress`` messages, then STOPS in BACKING_UP
+    (no auto-advance, and ``simulate_ripping`` is ignored) so a test can
+    observe the phase before manually advancing the job to RIPPING via
+    ``POST /api/simulate/advance-job/{job_id}``. DEBUG-only; no real copy is
+    made and nothing is written to disk.
+    """
     identity_pending: str | None = None
     """Inject a walk-away identity prompt on the RIPPING job (DEBUG only).
 

@@ -2486,6 +2486,7 @@ class JobManager:
         state_flow = {
             JobState.IDLE: JobState.IDENTIFYING,
             JobState.IDENTIFYING: JobState.RIPPING,
+            JobState.BACKING_UP: JobState.RIPPING,
             JobState.RIPPING: JobState.MATCHING,
             JobState.MATCHING: JobState.ORGANIZING,
             JobState.ORGANIZING: JobState.COMPLETED,
@@ -2497,9 +2498,18 @@ class JobManager:
             if not job:
                 raise ValueError(f"Job {job_id} not found")
 
+            old_state = job.state
             next_state = state_flow.get(job.state)
             if not next_state:
                 raise ValueError(f"Cannot advance from state: {job.state}")
+
+            if old_state == JobState.BACKING_UP and next_state == JobState.RIPPING:
+                # Mirror _record_backup_status: mark the synthetic backup
+                # complete and point source_spec at it, so a simulated job
+                # behaves like the real backup-then-rip handoff.
+                job.backup_status = BACKUP_COMPLETED
+                if job.backup_path:
+                    job.source_spec = f"file:{job.backup_path}"
 
             job.state = next_state
             job.updated_at = datetime.now(UTC)
@@ -2523,6 +2533,7 @@ class JobManager:
         state_flow = {
             JobState.IDLE: JobState.IDENTIFYING,
             JobState.IDENTIFYING: JobState.RIPPING,
+            JobState.BACKING_UP: JobState.RIPPING,
             JobState.RIPPING: JobState.MATCHING,
             JobState.MATCHING: JobState.ORGANIZING,
             JobState.ORGANIZING: JobState.COMPLETED,
@@ -2534,9 +2545,15 @@ class JobManager:
             if not job:
                 raise ValueError(f"Job {job_id} not found")
 
+            old_state = job.state
             next_state = state_flow.get(job.state)
             if not next_state:
                 raise ValueError(f"Cannot advance from state: {job.state}")
+
+            if old_state == JobState.BACKING_UP and next_state == JobState.RIPPING:
+                job.backup_status = BACKUP_COMPLETED
+                if job.backup_path:
+                    job.source_spec = f"file:{job.backup_path}"
 
             ok = await state_machine.transition(job, next_state, session)
             if not ok:
