@@ -323,7 +323,7 @@ All WebSocket messages follow the format: `{"type": "...", "data": {...}}`
 | `subtitle_progress` | `{"job_id": int, "downloaded": int, "total": int, "failed": int}` | Subtitle download progress |
 | `title_discovered` | `{"job_id": int, "title": DiscTitle}` | New title found during ripping |
 | `rip_progress` | `{"job_id": int, "current_bytes": int, "total_bytes": int, "speed": str, "eta": int}` | Ripping progress update |
-| `backup_progress` | `{"job_id": int, "current_bytes": int, "total_bytes": int, "speed": str, "eta": int}` | Full-disc backup copy progress |
+| `backup_progress` | `job_id`, `current_bytes`, `total_bytes`, `speed`, `eta` (flat, not nested under `data`) | Full-disc backup copy progress |
 | `title_ripping_started` | `{"job_id": int, "title_id": int}` | Title ripping started |
 | `title_ripping_progress` | `{"job_id": int, "title_id": int, ...}` | Per-track ripping progress |
 | `title_matching_started` | `{"job_id": int, "title_id": int}` | Title matching started |

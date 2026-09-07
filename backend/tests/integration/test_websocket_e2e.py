@@ -228,9 +228,11 @@ class TestBackupProgressContract:
                 7, current_bytes=100, total_bytes=400, speed="2.5x", eta=90
             )
 
-        msg = bcast.await_args.args[0]
-        assert msg["type"] == "backup_progress"
-        assert msg["data"] == {
+        # Flat, like every other message this manager emits. The frontend reads
+        # fields straight off the message, so a nested "data" envelope produced
+        # an undefined job id and a progress bar that never moved.
+        assert bcast.await_args.args[0] == {
+            "type": "backup_progress",
             "job_id": 7,
             "current_bytes": 100,
             "total_bytes": 400,

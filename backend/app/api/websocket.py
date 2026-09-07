@@ -320,6 +320,11 @@ class ConnectionManager:
         "ripping" from rip_progress would be reporting a phase that produces no
         MKV at all.
 
+        Flat, like every other message this class emits: the frontend reads
+        fields straight off the message and does no unwrapping, so a nested
+        "data" envelope silently produced an undefined job id and a progress
+        bar that never moved.
+
         Unlike broadcast_job_update, ``speed`` and ``eta`` are always present
         even when None. That method omits its optional fields because it is a
         partial patch over a whole job row, where a null would erase a value
@@ -332,13 +337,11 @@ class ConnectionManager:
         await self.broadcast(
             {
                 "type": "backup_progress",
-                "data": {
-                    "job_id": job_id,
-                    "current_bytes": current_bytes,
-                    "total_bytes": total_bytes,
-                    "speed": speed,
-                    "eta": eta,
-                },
+                "job_id": job_id,
+                "current_bytes": current_bytes,
+                "total_bytes": total_bytes,
+                "speed": speed,
+                "eta": eta,
             }
         )
 
