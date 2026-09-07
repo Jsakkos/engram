@@ -796,10 +796,29 @@ class MakeMKVExtractor:
         it wait for the drive lock would silently serialize work that is now
         genuinely independent.
         """
-        key = _as_source(source).lock_key
+        return self._lock_for(_as_source(source).lock_key)
+
+    def _lock_for(self, key: str) -> asyncio.Lock:
+        """Get or create the lock registered under ``key``."""
         if key not in self._source_locks:
             self._source_locks[key] = asyncio.Lock()
         return self._source_locks[key]
+
+    def _get_dest_lock(self, dest: Path) -> asyncio.Lock:
+        """Get or create the per-destination lock for a backup.
+
+        The source lock is not enough here. A backup destination is derived from
+        content identity (title, year, season, disc slug) with nothing
+        drive-specific in it, so two jobs in two different drives backing up the
+        same disc compute the SAME destination while taking DIFFERENT source
+        locks. The second one's stale-partial recovery cannot tell "debris from
+        an earlier failure" from "another job writing here right now", and would
+        rename a live ``.partial`` out from under a running makemkvcon.
+
+        Always taken after the source lock, never before, so the two orderings
+        cannot deadlock against each other.
+        """
+        return self._lock_for("dest:" + str(dest))
 
     async def scan_disc(
         self, source: DiscSource | str, log_dir: Path | None = None, *, job_id: int = 0
@@ -1717,7 +1736,17 @@ class MakeMKVExtractor:
                 f"waiting for it to finish"
             )
 
-        async with lock:
+        # Source AND destination: see _get_dest_lock for why the source lock
+        # alone lets two drives race on one .partial. Source first, always, so
+        # the lock ordering is consistent everywhere.
+        dest_lock = self._get_dest_lock(dest)
+        if dest_lock.locked():
+            logger.warning(
+                f"Backup destination {safe_dest} is already being written by "
+                f"another job, waiting for it to finish"
+            )
+
+        async with lock, dest_lock:
             self._cancelled_jobs.discard(job_id)
 
             try:

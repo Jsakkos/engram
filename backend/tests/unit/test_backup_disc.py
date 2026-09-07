@@ -1,5 +1,6 @@
 """makemkvcon backup wrapper."""
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -356,3 +357,50 @@ class TestBackupResult:
         assert r.dest is None
         assert r.error_message is None
         assert r.already_existed is False
+
+
+class TestDestinationLocking:
+    """Two drives backing up the same disc must not race on one .partial.
+
+    A backup destination comes from content identity with nothing drive-specific
+    in it, so two jobs in two drives compute the SAME destination while taking
+    DIFFERENT source locks. The loser's stale-partial recovery cannot tell
+    debris from a live copy, and would rename a running makemkvcon's output away.
+    """
+
+    def test_the_same_destination_shares_one_lock(self, tmp_path):
+        ex = _extractor()
+        assert ex._get_dest_lock(tmp_path / "X") is ex._get_dest_lock(tmp_path / "X")
+
+    def test_different_destinations_do_not_contend(self, tmp_path):
+        ex = _extractor()
+        assert ex._get_dest_lock(tmp_path / "X") is not ex._get_dest_lock(tmp_path / "Y")
+
+    def test_a_destination_lock_is_not_a_source_lock(self, tmp_path):
+        # Distinct namespaces: a backup whose destination happens to sit on
+        # drive E: must not contend with the optical drive at E:.
+        ex = _extractor()
+        assert ex._get_dest_lock(tmp_path / "X") is not ex._get_source_lock("E:")
+
+    @pytest.mark.asyncio
+    async def test_a_second_job_waits_for_the_destination(self, tmp_path, monkeypatch):
+        dest = tmp_path / "Inception (2010)"
+        started = []
+
+        def fake_run(self_or_cmd, *args, **kwargs):
+            started.append(dest)
+            (tmp_path / "Inception (2010).partial").mkdir(parents=True, exist_ok=True)
+            return 0, ""
+
+        monkeypatch.setattr(MakeMKVExtractor, "_run_backup_process", fake_run)
+        ex = _extractor()
+        # Hold the destination lock; the backup must not proceed past it.
+        held = ex._get_dest_lock(dest)
+        await held.acquire()
+        try:
+            task = asyncio.create_task(ex.backup_disc("disc:0", dest, job_id=1))
+            await asyncio.sleep(0.05)
+            assert started == [], "backup ran while another job held the destination"
+        finally:
+            held.release()
+        assert await asyncio.wait_for(task, timeout=5)

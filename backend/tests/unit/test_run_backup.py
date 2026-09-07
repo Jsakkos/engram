@@ -12,6 +12,7 @@ Every job here stays NON-terminal on purpose: a job reaching COMPLETED/FAILED
 spawns a Discord notification task that leaks a pooled connection in tests.
 """
 
+import asyncio
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -575,6 +576,18 @@ class TestHoldsDiscInDrive:
         job = DiscJob(drive_id="E:", state=JobState.BACKING_UP)
         assert JobManager._holds_disc_in_drive(job) is True
 
+    def test_a_finished_copy_stops_holding_it_before_the_state_moves(self):
+        # The window between _release_drive and _enter_ripping: the copy is done
+        # and the tray is open, but the job is still BACKING_UP. Answering from
+        # the state alone said "holding", which would cancel a succeeded backup
+        # on an eject and refuse a genuinely new disc in the empty drive.
+        job = DiscJob(
+            drive_id="E:",
+            state=JobState.BACKING_UP,
+            source_spec="file:/b/Show/Season 01/S01D01",
+        )
+        assert JobManager._holds_disc_in_drive(job) is False
+
     def test_an_unresolvable_source_is_assumed_to_hold_it(self):
         # Refusing a second job is the safe side of the guess.
         job = DiscJob(drive_id="", state=JobState.RIPPING)
@@ -666,3 +679,81 @@ class TestStalledBackupDegrades:
         # The copy must be stopped before the rip starts, or two makemkvcon
         # processes fight over one drive.
         cancel.assert_called_once_with(job_id)
+
+
+class TestWatchdogDoesNotDoubleRip:
+    """A stalled backup must produce exactly one rip, not two.
+
+    Killing only the subprocess left the in-flight _run_backup task alive; it
+    would see the cancel flag, return a failed BackupResult, and run its OWN
+    fallback. Two fallbacks for one job, and since _enter_ripping has no
+    idempotency guard and the state machine allows RIPPING to RIPPING, the
+    second spawned a second _run_ripping against the same staging dir.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_in_flight_backup_task_is_cancelled_first(self, monkeypatch):
+        job_id = await _seed()
+        monkeypatch.setattr(job_manager, "_enter_ripping", AsyncMock())
+        monkeypatch.setattr(job_manager._extractor, "cancel", MagicMock())
+
+        async def _never_finishes():
+            await asyncio.Event().wait()
+
+        task = asyncio.create_task(_never_finishes())
+        job_manager._active_jobs[job_id] = task
+
+        config = SimpleNamespace(
+            timeout_identifying_seconds=0,
+            timeout_backing_up_seconds=60,
+            timeout_ripping_seconds=0,
+            timeout_matching_seconds=0,
+            timeout_organizing_seconds=0,
+        )
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            job_manager._last_activity[job_id] = 0.0
+            await job_manager._watchdog_check_job(job, config, now=10_000.0)
+
+        assert task.cancelled() or task.cancelling() or task.done()
+        # And it is no longer the registered owner, so its unwind cannot clobber
+        # the rip task the fallback installs.
+        assert job_manager._active_jobs.get(job_id) is not task
+        task.cancel()
+
+
+class TestPostCopyFailureParksForReview:
+    """A failure after the copy degrades to review, never to a direct rip.
+
+    By that point source_spec already points at the copy, so a "direct rip"
+    would read it with unreconciled indices: the exact silent mis-file
+    reconciliation exists to prevent.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_reconcile_error_parks_instead_of_ripping(self, monkeypatch, tmp_path):
+        job_id = await _seed()
+        dest = tmp_path / "Inception (2010)"
+
+        monkeypatch.setattr(
+            job_manager,
+            "_copy_disc_to_backup",
+            AsyncMock(return_value=("E:", dest)),
+        )
+        monkeypatch.setattr(job_manager, "_release_drive", AsyncMock(return_value=True))
+        monkeypatch.setattr(
+            job_manager,
+            "_reconcile_backup_titles",
+            AsyncMock(side_effect=RuntimeError("database is locked")),
+        )
+        enter_ripping = AsyncMock()
+        monkeypatch.setattr(job_manager, "_enter_ripping", enter_ripping)
+
+        await job_manager._run_backup(job_id)
+
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+
+        assert job.state is JobState.REVIEW_NEEDED
+        assert "database is locked" in (job.review_reason or "")
+        enter_ripping.assert_not_awaited()

@@ -639,25 +639,26 @@ class JobManager:
 
     @staticmethod
     def _holds_disc_in_drive(job: DiscJob) -> bool:
-        """True if a job in a disc-required state really has the disc loaded.
+        """True if this job really has a disc loaded in a drive.
 
-        A RIPPING job reading from a backup copy does not: the drive was
-        released the moment the copy finished, which is the entire point of the
-        backup phase (the disc leaves the drive in minutes rather than hours).
-        Such a job is treated exactly like a post-eject MATCHING/ORGANIZING job
-        below: it no longer blocks the drive, but a re-insert of the SAME disc
-        still resolves to it rather than spawning a duplicate.
+        Deliberately asks the SOURCE, not the state. ``source_spec`` is pointed
+        at the copy by the same ``_record_backup_status`` call that precedes
+        ``_release_drive``, so "reads a copy" and "the tray is already open" are
+        the same fact, and reading the source gets the answer right in every
+        state rather than in most of them.
 
-        BACKING_UP is unaffected: ``source_spec`` is only pointed at the copy
-        once the copy has COMPLETED (see ``_record_backup_status``), so a job
-        that is still copying reports the drive it is reading, and still blocks.
+        An earlier version special-cased RIPPING and returned True for anything
+        else. That was wrong for the tail of ``_run_backup``: between the drive
+        release and ``_enter_ripping`` the job is still BACKING_UP with its
+        source already pointing at the copy, and re-scanning a full disc backup
+        is minutes, not instants. During that window a job with no disc reported
+        holding one, so an eject would cancel a backup that had actually
+        succeeded, and a genuinely new disc in the now-empty drive was refused.
 
         An unresolvable source (a row with neither ``source_spec`` nor a usable
         ``drive_id``) is treated as holding the drive: refusing a second job is
         the safe side of that guess.
         """
-        if job.state is not JobState.RIPPING:
-            return True
         try:
             return DiscSource.from_job(job).is_physical
         except ValueError:
@@ -2237,6 +2238,20 @@ class JobManager:
                     f"Watchdog: job {job.id} idle {idle:.0f}s in backing_up "
                     f"(timeout {timeout}s), falling back to a direct rip"
                 )
+                # Retire the in-flight _run_backup task BEFORE falling back, the
+                # same way reconcile_and_advance does. Killing only the
+                # subprocess is not enough: backup_disc would see the cancel
+                # flag, return a failed BackupResult, and that task would run
+                # its OWN _fall_back_to_direct_rip. Two independent fallbacks
+                # for one job, and since _enter_ripping has no idempotency guard
+                # and the state machine allows RIPPING -> RIPPING, the second
+                # spawns a second _run_ripping against the same staging dir and
+                # title rows. Cancelling first makes the task unwind on
+                # CancelledError (a BaseException, so its catch-all does not
+                # swallow it) instead of racing us.
+                task = self._active_jobs.pop(job.id, None)
+                if task is not None and not task.done():
+                    task.cancel()
                 # Stop the copy before the rip starts, or two makemkvcon
                 # processes fight over the drive.
                 await asyncio.to_thread(self._extractor.cancel, job.id)
@@ -3004,13 +3019,33 @@ class JobManager:
             from app.core.discord_notifier import RIP_OUTCOME_BACKED_UP
 
             drive_id, dest = outcome
-            # _release_drive is the documented single chokepoint for "Engram is
-            # done with this disc", and a completed backup satisfies it
-            # literally: the disc is copied, so it can leave the drive. It runs
-            # BEFORE reconciling so even an unreconcilable backup frees it.
-            await self._release_drive(job_id, drive_id, RIP_OUTCOME_BACKED_UP)
-            if await self._reconcile_backup_titles(job_id, dest):
-                await self._enter_ripping(job_id)
+            # The tail gets its OWN guard, and it degrades to review rather than
+            # to a direct rip. By here the copy has succeeded, so source_spec
+            # already points at it: a "direct rip" would read the copy with
+            # unreconciled title indices, which is precisely the silent
+            # mis-file reconciliation exists to prevent. Without this guard an
+            # exception below (a DB error in the reconcile commit, say) killed
+            # the task outright, leaving the job parked in BACKING_UP with no
+            # owner until the watchdog fell it back into exactly that rip.
+            try:
+                # _release_drive is the documented single chokepoint for "Engram
+                # is done with this disc", and a completed backup satisfies it
+                # literally: the disc is copied, so it can leave the drive. It
+                # runs BEFORE reconciling so even an unreconcilable backup frees
+                # it.
+                await self._release_drive(job_id, drive_id, RIP_OUTCOME_BACKED_UP)
+                if await self._reconcile_backup_titles(job_id, dest):
+                    await self._enter_ripping(job_id)
+            except Exception as e:
+                logger.exception(
+                    f"Job {sanitize_log_value(job_id)}: failed after the copy completed"
+                )
+                await self._park_backup_for_review(
+                    job_id,
+                    f"The disc was copied to {dest}, but Engram could not confirm "
+                    f"which title is which afterwards ({e}). The backup is safe; "
+                    f"re-run matching or re-import it to continue.",
+                )
 
     async def _copy_disc_to_backup(self, job_id: int) -> tuple[str, Path] | None:
         """Run the backup itself, returning ``(drive_id, dest)`` on success.
@@ -3201,6 +3236,22 @@ class JobManager:
         task = asyncio.create_task(with_job_log_context(job_id, self._run_ripping(job_id)))
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
+
+    async def _park_backup_for_review(self, job_id: int, reason: str) -> None:
+        """Park a job whose copy succeeded but whose follow-up did not.
+
+        Best-effort and never raises: it is the last stop on a path that is
+        already handling a failure, so a second failure here must not replace
+        one bad outcome with an unhandled exception.
+        """
+        try:
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if job is None:
+                    return
+                await state_machine.transition_to_review(job, session, reason=reason)
+        except Exception:
+            logger.exception(f"Job {sanitize_log_value(job_id)}: could not park the job for review")
 
     async def _reconcile_backup_titles(self, job_id: int, dest: Path) -> bool:
         """Re-scan the backup and line its titles up with the stored ones.
