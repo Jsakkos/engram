@@ -1690,13 +1690,22 @@ class MakeMKVExtractor:
         (``timeout_backing_up_seconds``) is the unattended backstop.
         """
         spec = _to_source_spec(source)
+        # Every value interpolated into a log line below is user-influenced:
+        # job_id arrives on an API path, and the paths derive from the
+        # configured backup root and the disc's own metadata. A volume label
+        # can carry CR/LF, which would let a crafted disc forge log entries
+        # (py/log-injection), so they are sanitised once here and the safe
+        # locals are what the log calls use.
+        safe_job = sanitize_log_value(job_id)
+        safe_spec = sanitize_log_value(spec)
+        safe_dest = sanitize_log_value(dest)
 
         # Built before the lock is taken: an unusable source is a caller bug,
         # and there is no reason to make it queue behind a live drive operation.
         try:
             cmd = _build_backup_command(str(self.makemkv_path), spec, str(dest) + ".partial")
         except ValueError as e:
-            logger.error(f"Job {job_id}: cannot back up from {spec}: {e}")
+            logger.error(f"Job {safe_job}: cannot back up from {safe_spec}: {e}")
             return BackupResult(success=False, error_message=str(e))
 
         partial = dest.with_name(dest.name + ".partial")
@@ -1714,18 +1723,27 @@ class MakeMKVExtractor:
             try:
                 dest.parent.mkdir(parents=True, exist_ok=True)
             except OSError as e:
-                logger.error(f"Job {job_id}: could not create {dest.parent}: {e}", exc_info=True)
+                logger.error(
+                    f"Job {safe_job}: could not create {sanitize_log_value(dest.parent)}: {e}",
+                    exc_info=True,
+                )
                 return BackupResult(success=False, error_message=str(e))
 
             previous = dest.with_name(dest.name + ".partial.previous")
             if partial.exists():
                 if previous.exists():
                     shutil.rmtree(previous)
-                    logger.info(f"Job {job_id}: discarding older stale partial: {previous}")
+                    logger.info(
+                        f"Job {safe_job}: discarding older stale partial: "
+                        f"{sanitize_log_value(previous)}"
+                    )
                 partial.rename(previous)
-                logger.info(f"Job {job_id}: moved stale partial {partial} aside to {previous}")
+                logger.info(
+                    f"Job {safe_job}: moved stale partial "
+                    f"{sanitize_log_value(partial)} aside to {sanitize_log_value(previous)}"
+                )
 
-            logger.info(f"Job {job_id}: backing up disc: {' '.join(cmd)}")
+            logger.info(f"Job {safe_job}: backing up disc: {sanitize_log_value(' '.join(cmd))}")
 
             def on_line(line: str) -> None:
                 pct = _parse_backup_progress(line)
@@ -1742,7 +1760,7 @@ class MakeMKVExtractor:
                     success=False, error_message=f"MakeMKV not found at {self.makemkv_path}"
                 )
             except Exception as e:
-                logger.exception(f"Job {job_id}: error during disc backup")
+                logger.exception(f"Job {safe_job}: error during disc backup")
                 return BackupResult(success=False, error_message=str(e))
 
             if log_dir is not None and output:
@@ -1751,16 +1769,19 @@ class MakeMKVExtractor:
 
             if job_id in self._cancelled_jobs:
                 self._cancelled_jobs.discard(job_id)
-                logger.info(f"Job {job_id}: backup cancelled by user")
+                logger.info(f"Job {safe_job}: backup cancelled by user")
                 return BackupResult(success=False, error_message="Backup cancelled by user")
 
             if returncode != 0 or not partial.exists():
                 reason = _last_msg_text(output) or f"makemkvcon backup exited {returncode}"
                 kept_note = ""
                 if partial.exists():
-                    kept_note = f" The partial backup at {partial} was kept for salvage."
+                    kept_note = (
+                        f" The partial backup at {sanitize_log_value(partial)} "
+                        f"was kept for salvage."
+                    )
                 logger.error(
-                    f"Job {job_id}: backup failed: {sanitize_log_value(reason)}.{kept_note}"
+                    f"Job {safe_job}: backup failed: {sanitize_log_value(reason)}.{kept_note}"
                 )
                 return BackupResult(success=False, error_message=reason)
 
@@ -1772,16 +1793,16 @@ class MakeMKVExtractor:
                     # deleted, per the "most recent stale partial is preserved"
                     # rule above, and the next attempt will move it aside.
                     logger.warning(
-                        f"Job {job_id}: {dest} already exists; keeping it. "
-                        f"Our own copy is orphaned at {partial}."
+                        f"Job {safe_job}: {safe_dest} already exists; keeping it. "
+                        f"Our own copy is orphaned at {sanitize_log_value(partial)}."
                     )
                     return BackupResult(success=True, dest=dest, already_existed=True)
                 partial.rename(dest)
             except OSError as e:
-                logger.error(f"Job {job_id}: could not finalize backup: {e}", exc_info=True)
+                logger.error(f"Job {safe_job}: could not finalize backup: {e}", exc_info=True)
                 return BackupResult(success=False, error_message=str(e))
 
-            logger.info(f"Job {job_id}: backup complete at {dest}")
+            logger.info(f"Job {safe_job}: backup complete at {safe_dest}")
             return BackupResult(success=True, dest=dest)
 
     def skip_title_index(self, job_id: int, title_index: int) -> None:
