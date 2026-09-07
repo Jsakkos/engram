@@ -138,6 +138,10 @@ class JobResponse(BaseModel):
     # The dashboard needs both: backup_status decides whether to warn at all,
     # this says what to warn about.
     backup_status_reason: str | None = None
+    # What MakeMKV is pointed at. The one field that separates a disc-image
+    # import from an MKV import (both carry drive_id "import"), and the one
+    # that says whether a rip read the disc or the copy.
+    source_spec: str | None = None
 
     model_config = {"from_attributes": True}
 
