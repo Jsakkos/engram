@@ -327,7 +327,12 @@ async def test_movie_edition_prerip_workflow(
 
     # 1. Setup Job (REVIEW_NEEDED)
     job = DiscJob(
-        drive_id="TEST_DRIVE_PRERIP",
+        # A real drive identifier, not a synthetic label: this is the one
+        # test in this file that reaches _run_ripping, which resolves the
+        # job's MakeMKV source and fails the job fast when it cannot be
+        # parsed. Every drive_id the sentinel actually writes ("E:",
+        # "/dev/sr0") parses; an invented one does not.
+        drive_id="E:",
         volume_label="LOTR_PRERIP",
         content_type=ContentType.MOVIE,
         state=JobState.REVIEW_NEEDED,

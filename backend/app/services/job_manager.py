@@ -1203,6 +1203,15 @@ class JobManager:
 
     async def start_ripping(self, job_id: int) -> None:
         """Start the ripping process for a job."""
+        # Read the config BEFORE opening the session. get_config opens one of its
+        # own, and this method is called from paths that already hold a session
+        # (the review-apply path does), so fetching it inside would be a third
+        # concurrent checkout against one SQLite file and leaves the caller's
+        # transaction in "prepared" state.
+        from app.services.config_service import get_config
+
+        config = await get_config()
+
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job:
@@ -1214,9 +1223,7 @@ class JobManager:
             # A resume from review honours backup_before_rip exactly as a
             # fresh identification does; next_state_after_identify is the one
             # place that decision is made.
-            from app.services.config_service import get_config
-
-            next_state = next_state_after_identify(await get_config(), job.drive_id)
+            next_state = next_state_after_identify(config, job.drive_id)
             job.state = next_state
             job.updated_at = datetime.now(UTC)
             await session.commit()
