@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.analyst import TitleInfo
-from app.core.disc_source import DiscSource
+from app.core.disc_source import DiscSource, SourceKind
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -601,21 +601,42 @@ def _find_linux_mount_point(device: str) -> Path | None:
     return None
 
 
-def compute_content_hash(drive: str) -> str | None:
+def compute_content_hash(source: DiscSource | str) -> str | None:
     """Compute TheDiscDB-compatible ContentHash for a disc.
 
     The hash is MD5 of concatenated Int64 file sizes from BDMV/STREAM/*.m2ts
     (Blu-ray) or VIDEO_TS/* (DVD), sorted by filename. This matches the
     algorithm used by TheDiscDB's ImportBuddy tool.
 
+    A ``file:`` source (a MakeMKV backup folder) holds exactly that structure
+    with exactly those file sizes, so hashing the copy yields the same value as
+    hashing the disc it came from: an imported backup gets a TheDiscDB lookup
+    like any inserted disc. An ISO would have to be mounted first, so it
+    degrades to None.
+
     Args:
-        drive: Drive letter (e.g., "E:" or "E") on Windows, or device path
-               (e.g., "/dev/sr0") on Linux. On Linux the disc must be mounted
-               for the hash to be computed; returns None if not mounted.
+        source: A DiscSource, or a drive letter (e.g., "E:" or "E") on Windows
+                / a device path (e.g., "/dev/sr0") on Linux. On Linux the disc
+                must be mounted for the hash to be computed; returns None if
+                not mounted. A physical DiscSource is read through its own
+                value, which is the drive for every source ``from_job`` builds;
+                a source resolved to a bare ``disc:N`` index has no readable
+                path and returns None.
 
     Returns:
         Uppercase hex MD5 hash string, or None if disc structure not found
     """
+    if isinstance(source, DiscSource):
+        if source.kind is SourceKind.ISO:
+            logger.debug(f"ContentHash is not computable for an ISO source: {source}")
+            return None
+        if source.kind is SourceKind.BACKUP:
+            root = Path(source.value)
+            return _hash_disc_structure(root / "BDMV" / "STREAM", root / "VIDEO_TS", str(source))
+        drive = source.value
+    else:
+        drive = source
+
     if sys.platform != "win32":
         mount_point = _find_linux_mount_point(drive)
         if mount_point is None:
@@ -628,6 +649,17 @@ def compute_content_hash(drive: str) -> str | None:
         bdmv_path = Path(f"{clean_drive}:\\BDMV\\STREAM")
         dvd_path = Path(f"{clean_drive}:\\VIDEO_TS")
 
+    return _hash_disc_structure(bdmv_path, dvd_path, drive)
+
+
+def _hash_disc_structure(bdmv_path: Path, dvd_path: Path, label: str) -> str | None:
+    """MD5 the Int64 sizes of a disc structure's stream files.
+
+    ``label`` names the source in the log lines only. Shared by the drive and
+    backup-folder paths of :func:`compute_content_hash`: the structure is
+    identical either way, which is exactly why a backup hashes to the same
+    value as the disc it was copied from.
+    """
     target_path = None
     pattern = "*"
 
@@ -637,7 +669,7 @@ def compute_content_hash(drive: str) -> str | None:
     elif dvd_path.is_dir():
         target_path = dvd_path
     else:
-        logger.debug(f"No BDMV/STREAM or VIDEO_TS found on drive {drive}")
+        logger.debug(f"No BDMV/STREAM or VIDEO_TS found on {label}")
         return None
 
     try:
@@ -652,10 +684,10 @@ def compute_content_hash(drive: str) -> str | None:
             md5.update(struct.pack("<q", size))
 
         content_hash = md5.hexdigest().upper()
-        logger.info(f"Computed ContentHash for drive {drive}: {content_hash}")
+        logger.info(f"Computed ContentHash for {label}: {content_hash}")
         return content_hash
     except (OSError, PermissionError) as e:
-        logger.warning(f"Could not compute ContentHash for drive {drive}: {e}")
+        logger.warning(f"Could not compute ContentHash for {label}: {e}")
         return None
 
 

@@ -174,10 +174,68 @@ async def test_rerip_titles_transitions_deletes_and_rips(monkeypatch, tmp_path):
     await job_manager.rerip_titles(job_id, [title_id])
 
     assert captured["indices"] == [2]
-    assert captured["drive"] == "F:"
+    # A legacy row (source_spec is None) still resolves to the drive.
+    assert captured["drive"].spec == "dev:F:"
     assert not stale.exists()  # stale file deleted before re-rip
     t = await _reload(title_id)
     assert t.rerip_attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_rerip_after_a_backup_reads_the_copy_and_leaves_the_tray_alone(monkeypatch, tmp_path):
+    """The disc is gone by then: a backed-up job re-rips from the copy.
+
+    And the drive release is skipped, because the tray was already opened (and
+    the RIPPED event already sent) at the end of the backup phase.
+    """
+    from app.core.extractor import RipResult
+    from app.services.job_manager import job_manager
+
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="F:",
+            volume_label="SHOW_S2D1",
+            content_type=ContentType.TV,
+            state=JobState.REVIEW_NEEDED,
+            staging_path=str(tmp_path),
+            content_hash="ABC123",
+            source_spec=f"file:{backup}",
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=2,
+            duration_seconds=2819,
+            state=TitleState.REVIEW,
+            rerip_attempts=0,
+            match_details=json.dumps({"error": "incomplete_rip", "rerip_eligible": True}),
+        )
+        session.add(title)
+        await session.commit()
+        await session.refresh(title)
+        job_id, title_id = job.id, title.id
+
+    captured = {}
+
+    async def fake_rip_titles(source, output_dir, title_indices=None, **kw):
+        captured["source"] = source
+        return RipResult(success=True, output_files=[], error_message=None, stalled_titles=None)
+
+    release = AsyncMock(return_value=True)
+    monkeypatch.setattr(job_manager._extractor, "rip_titles", fake_rip_titles)
+    monkeypatch.setattr(job_manager, "_release_drive", release)
+
+    await job_manager.rerip_titles(job_id, [title_id])
+
+    assert captured["source"].spec == f"file:{backup}"
+    release.assert_not_awaited()
 
 
 @pytest.mark.asyncio

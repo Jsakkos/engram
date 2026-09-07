@@ -16,6 +16,7 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
+from app.core.disc_source import DiscSource
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError, title_index_from_filename
 from app.core.fingerprint_disc_classifier import (
     identify_disc_via_network,
@@ -379,9 +380,20 @@ class IdentificationCoordinator:
                 try:
                     from app.core.discdb_exporter import get_makemkv_log_dir
 
+                    # The job's own source, not always the drive: a disc-image
+                    # import reads a backup folder or an ISO and has no drive at
+                    # all, and a legacy row (source_spec is None) still resolves
+                    # to drive_id.
                     titles, disc_name = await self._extractor.scan_disc(
-                        job.drive_id, log_dir=get_makemkv_log_dir(job_id), job_id=job_id
+                        DiscSource.from_job(job),
+                        log_dir=get_makemkv_log_dir(job_id),
+                        job_id=job_id,
                     )
+                except ValueError as e:
+                    await self._state_machine.transition_to_failed(
+                        job, session, f"Cannot scan this job: {e}"
+                    )
+                    return
                 except ScanTimeoutError:
                     await self._state_machine.transition_to_failed(
                         job,
@@ -1746,7 +1758,18 @@ class IdentificationCoordinator:
                     # insert that missed the hash. Cheap (glob + stat).
                     from app.core.extractor import compute_content_hash
 
-                    content_hash = await asyncio.to_thread(compute_content_hash, job.drive_id)
+                    # A backup folder holds the same BDMV/STREAM sizes as the
+                    # disc it was copied from, so hashing the copy yields the
+                    # same ContentHash and an imported backup still gets a
+                    # TheDiscDB lookup. A job with no MakeMKV source at all
+                    # simply has no hash.
+                    try:
+                        source = DiscSource.from_job(job)
+                    except ValueError:
+                        source = None
+                    content_hash = (
+                        await asyncio.to_thread(compute_content_hash, source) if source else None
+                    )
                     if content_hash:
                         job.content_hash = content_hash
 

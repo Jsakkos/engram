@@ -2651,6 +2651,17 @@ class JobManager:
                 )
                 return
 
+            # Re-rip reads whatever the job reads, not always the drive: after a
+            # backup the disc has already been ejected and source_spec points at
+            # the copy, so targeting drive_id would find an empty drive.
+            # Resolved BEFORE the state transition so a job with no MakeMKV
+            # source at all is never stranded in RIPPING.
+            try:
+                source = DiscSource.from_job(job)
+            except ValueError as e:
+                logger.error(f"Job {sanitize_log_value(job_id)}: cannot re-rip: {e}")
+                return
+
             # Un-hide a cleared job that is being actively re-processed.
             if job.cleared_at is not None:
                 job.cleared_at = None
@@ -2745,7 +2756,7 @@ class JobManager:
         stall_timeout = cfg.ripping_stall_timeout if cfg else 120.0
 
         result = await self._extractor.rip_titles(
-            drive_id,
+            source,
             staging_dir,
             title_indices=rip_indices,
             title_complete_callback=on_title_complete,
@@ -2773,7 +2784,11 @@ class JobManager:
         # would re-eject and contradict it with a "Re-rip" for a rip that was
         # aborted. Note an eject returns success=True, so the failure branch
         # above does not cover this.
-        if not result.aborted_for_eject:
+        #
+        # Gated on the source being physical for the same reason as the end of
+        # _run_ripping: a re-rip that read a backup folder or an ISO never held
+        # the drive, so there is nothing to eject and nothing to notify about.
+        if not result.aborted_for_eject and source.is_physical:
             from app.core.discord_notifier import RIP_OUTCOME_RERIP
 
             await self._release_drive(job_id, drive_id, RIP_OUTCOME_RERIP)
@@ -3174,6 +3189,15 @@ class JobManager:
                 # detached once this block exits, so nothing downstream touches it.
                 content_type = job.content_type
                 drive_id = job.drive_id
+                # What MakeMKV is pointed at, captured with the other scalars:
+                # after a backup this is the copy (file:<dest>), for a disc-image
+                # import it is the imported folder or ISO, and for a legacy row
+                # (source_spec is None) it resolves back to drive_id.
+                try:
+                    source = DiscSource.from_job(job)
+                except ValueError as e:
+                    await self._fail_job(job_id, f"Cannot rip this job: {e}")
+                    return
                 staging_path = job.staging_path
                 volume_label = job.volume_label
                 detected_title = job.detected_title
@@ -3472,7 +3496,7 @@ class JobManager:
                 from app.core.discdb_exporter import get_makemkv_log_dir
 
                 result = await self._extractor.rip_titles(
-                    drive_id,
+                    source,
                     output_dir,
                     title_indices=rip_indices,
                     title_complete_callback=on_title_complete,
@@ -3613,7 +3637,7 @@ class JobManager:
                     fallback_monitor.add_done_callback(_background_tasks.discard)
                     try:
                         result = await self._extractor.rip_titles(
-                            drive_id,
+                            source,
                             output_dir,
                             title_indices=[t.title_index for t in missing],
                             title_complete_callback=on_title_complete,
@@ -3670,7 +3694,13 @@ class JobManager:
             # `ejected_mid_rip` guards the notification as well as the eject: the
             # abort path already opened the tray AND already sent its own
             # "Stopped early" ping, so re-notifying here would double-fire.
-            if not ejected_mid_rip:
+            #
+            # Also gated on the source being physical: after a backup the disc
+            # was already ejected (and the RIPPED event already sent) at the end
+            # of the backup phase, and a disc-image import never held a drive at
+            # all. Releasing here would open a tray for a disc that is not in it
+            # and notify the user twice for one disc.
+            if not ejected_mid_rip and source.is_physical:
                 from app.core.discord_notifier import RIP_OUTCOME_COMPLETE
 
                 await self._release_drive(job_id, drive_id, RIP_OUTCOME_COMPLETE)
