@@ -830,12 +830,22 @@ class JobManager:
         drive_id: str = "staging",
         import_manifest: dict | None = None,
         force: bool = False,
+        source_spec: str | None = None,
     ) -> StagingJobResult:
         """Create a job from pre-ripped MKV files in a staging directory.
 
         Returns a StagingJobResult: either a created job id, or the block tier and
         the ids of the jobs responsible for it. ``force`` suppresses the soft
         (ALREADY_IMPORTED) tier only and can never suppress the hard one.
+
+        ``source_spec`` marks the job as reading from a disc image (a MakeMKV
+        backup folder or an ISO) rather than from ready-made MKVs. That flips
+        which identification runs: the ordinary import shortcut
+        (``identify_from_staging``) exists precisely because the files already
+        exist, so it probes them and hands straight on to matching. A disc image
+        has no MKVs yet, so it takes ``identify_disc`` and the full scan,
+        identify, rip, match, organize pipeline instead. A job with no
+        ``source_spec`` is unaffected.
         """
         staging_dir = Path(staging_path)
 
@@ -880,6 +890,7 @@ class JobManager:
                     staging_path=str(staging_dir),
                     state=JobState.IDENTIFYING,
                     destination_mode=destination_mode,
+                    source_spec=source_spec,
                 )
 
                 if content_type in ("tv", "movie"):
@@ -912,9 +923,14 @@ class JobManager:
 
         await event_broadcaster.broadcast_drive_inserted(drive_id, volume_label)
 
-        task = asyncio.create_task(
-            with_job_log_context(job_id, self._identification.identify_from_staging(job_id))
+        # A disc image is scanned and extracted like any other disc; only a
+        # folder of finished MKVs may take the shortcut past ripping.
+        identification = (
+            self._identification.identify_disc(job_id)
+            if source_spec
+            else self._identification.identify_from_staging(job_id)
         )
+        task = asyncio.create_task(with_job_log_context(job_id, identification))
         task.add_done_callback(lambda t, jid=job_id: self._on_task_done(t, jid))
         self._active_jobs[job_id] = task
 

@@ -3019,7 +3019,13 @@ async def import_browse(path: str = "") -> dict:
     directory names with a shallow direct-child
     MKV count, plus selectable .mkv files. Never returns file contents. Empty
     path returns the drive roots (Windows) or / and home (POSIX).
+
+    A directory holding BDMV/VIDEO_TS and a .iso file are reported as their own
+    types: they are scanned and extracted through the normal pipeline rather
+    than filed like ready-made MKVs.
     """
+    from app.core import import_scanner
+
     if not path:
         if os.name == "nt":
             # Probing 26 drive letters can each block for seconds on a stale
@@ -3043,6 +3049,14 @@ async def import_browse(path: str = "") -> dict:
         for entry in os.scandir(p):
             try:
                 if entry.is_dir(follow_symlinks=False):
+                    # Checked before the MKV count: a disc backup is not a
+                    # folder of media, and counting its (zero) MKVs would render
+                    # it as an empty, unimportable directory.
+                    if import_scanner.is_disc_image_dir(Path(entry.path)):
+                        entries.append(
+                            {"name": entry.name, "path": entry.path, "type": "disc_image"}
+                        )
+                        continue
                     count = 0
                     try:
                         for f in os.scandir(entry.path):
@@ -3055,6 +3069,8 @@ async def import_browse(path: str = "") -> dict:
                     )
                 elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".mkv"):
                     entries.append({"name": entry.name, "path": entry.path, "type": "mkv"})
+                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".iso"):
+                    entries.append({"name": entry.name, "path": entry.path, "type": "iso"})
             except OSError:
                 continue
     except OSError as exc:
@@ -3094,7 +3110,12 @@ async def import_preview(req: ImportPathRequest) -> dict:
         "root": str(scan.root),
         "units": units,
         "loose_files": [str(f) for f in scan.loose_files],
-        "total_jobs": len(scan.units),
+        "disc_images": [
+            {"name": d.name, "path": str(d.path), "kind": d.kind, "total_bytes": d.total_bytes}
+            for d in scan.disc_images
+        ],
+        # Each disc image becomes its own job, exactly as each MKV unit does.
+        "total_jobs": len(scan.units) + len(scan.disc_images),
         "total_files": scan.total_files,
         "total_bytes": scan.total_bytes,
         "truncated": scan.truncated,
@@ -3127,14 +3148,46 @@ async def import_start(req: ImportStartRequest) -> ImportStartResponse:
         raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
 
     scan = await asyncio.to_thread(import_scanner.scan, p)
-    if not scan.units:
-        raise HTTPException(status_code=400, detail="No MKV files found to import")
+    if not scan.units and not scan.disc_images:
+        raise HTTPException(status_code=400, detail="No MKV files or disc backups found to import")
 
     root_str = str(scan.root)
     force_keys = set(req.force_keys)
     seen_keys: set[str] = set()
     job_ids: list[int] = []
     blocked: list[BlockedImportUnit] = []
+
+    # Disc backups and ISOs are not ready-made media: each one is scanned and
+    # extracted through the normal MakeMKV pipeline, so it carries a source_spec
+    # and no file manifest. Ownership is guarded exactly as an MKV unit is, on
+    # the image's own path.
+    for image in scan.disc_images:
+        image_path = str(image.path)
+        key = unit_key_for(image_path)
+        seen_keys.add(key)
+        result = await job_manager.create_job_from_staging(
+            staging_path=image_path,
+            content_type="unknown",
+            detected_title=image.name,
+            destination_mode=req.destination_mode,
+            drive_id="import",
+            source_spec=(f"iso:{image.path}" if image.kind == "iso" else f"file:{image.path}"),
+            force=key in force_keys,
+        )
+        if result.job_id is not None:
+            job_ids.append(result.job_id)
+        else:
+            blocked.append(
+                BlockedImportUnit(
+                    unit_key=key,
+                    show_name=image.name,
+                    season=None,
+                    display_path=image_path,
+                    reason=result.block,
+                    job_ids=list(result.blocking_job_ids),
+                )
+            )
+
     for unit in scan.units:
         files = [str(f) for f in unit.files]
         # The dedup path (and therefore unit_key) is the single file's parent, or
