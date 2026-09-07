@@ -221,6 +221,17 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
   match than a genuine bonus disc, and the mis-file is invisible until someone browses the
   library. Independent of `always_review` — this is the floor, not the override.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
+- **A job's MakeMKV source is a value, not a drive.** `DiscSource`
+  (`app/core/disc_source.py`) answers "is this a physical drive?" once, for eject, sentinel
+  re-arm, disc-hash, and the MakeMKV serialization lock. `DiscJob.source_spec` is the stored
+  form (`dev:E:` / `disc:N` / `file:<backup>` / `iso:<file>`); `None` means "legacy, derive
+  from `drive_id`", which `DiscSource.from_job` implements. Two traps: a `file:` source must
+  NOT share the physical drive's `lock_key`, or extracting a backup blocks the next disc
+  from being scanned; and a drive resolved to `disc:N` for `makemkvcon backup` keeps its
+  originating letter for locking (`DiscSource.for_drive_index`), or a backup and a scan of
+  the same drive would run two makemkvcon processes at once. Every scan/rip call site reads
+  the source, not `drive_id` (they did not, and the backup was silently ripping from the
+  ejected drive).
 - **Import path ownership**: a staging path is owned by an *in-flight* job (hard block, not overridable) and merely recorded by a *completed* one (soft block, overridable via `force_keys`). `FAILED` never blocks. Rules live in `app/services/import_guard.py`; `POST /api/import/start` returns `{job_ids, blocked[]}` and never 409s.
 - **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.
 - **Review playback is a handoff, never a transcode.** The media endpoint serves
@@ -386,6 +397,18 @@ Components use updated settings
   every disc in REVIEW_NEEDED instead of finalizing. Checked AFTER the escalation ladders
   (so the review opens with the matcher's best guess pre-filled) and gated on `has_matched`
   (a disc with nothing left to organize must not be parked, or the review page can't finish it).
+- **Disc backup**: `backup_before_rip` (bool, default false, `server_default 0`) plus
+  `backup_path`. When on, `IDENTIFYING` hands the disc to `BACKING_UP`, which copies it
+  whole to `<backup_path>` and then extracts from the copy, so the drive is released at
+  the end of the backup rather than at the end of the rip. **Every backup problem degrades
+  to a direct rip** (recorded in `backup_status` / `backup_status_reason`): enabling the
+  setting must never make a disc less likely to finish. The one exception is a backup whose
+  re-scan cannot be reconciled onto the stored title indices, which parks in
+  `REVIEW_NEEDED` because the disc has already been ejected. Engram never deletes a
+  completed backup; a retried backup keeps at most one stale `.partial` (see
+  `Extractor.backup_disc`). Routing lives in one place,
+  `identification_coordinator.next_state_after_identify`, because five sites hand a disc
+  onward and they must not drift.
 - **Discord notifications**: `discord_template_completed` / `discord_template_failed` /
   `discord_template_review` (customizable embed description, chevron `{{var}}` mustache
   syntax, see `app/core/discord_notifier.py::ALLOWED_TEMPLATE_VARS`; empty string = built-in

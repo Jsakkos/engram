@@ -3578,3 +3578,49 @@ Two deliberate deviations from the spec, both improvements found while planning:
 
 1. The spec's frontend section assumed a new UI state. Task 17 instead repurposes the orphaned `archiving_iso` / `isoProgress` scaffolding, which no backend code has ever emitted. Adding an eleventh state beside a dead tenth one would create exactly the drift `discState.ts` warns about.
 2. `next_state_after_identify` returns `RIPPING` when `backup_before_rip` is on but `backup_path` is empty, rather than entering `BACKING_UP` and immediately falling back. The `skipped` / `not_configured` path in `_run_backup` remains as the backstop for a root that is emptied mid-job, so both are covered.
+
+---
+
+## Execution record: where this plan was wrong
+
+Two gaps were found during execution that the plan itself caused. Recording
+them because they are the useful part of the retrospective.
+
+**1. The plan set `source_spec` but never made anything read it (Task 14b).**
+Task 10 correctly recorded `source_spec = file:<backup>` and released the
+drive. But every MakeMKV call site still passed `job.drive_id`: the scan in
+`identification_coordinator`, and three separate `rip_titles` calls in
+`job_manager`. `DiscSource.from_job` existed and was referenced only in a
+comment. So the shipped feature would have ejected the disc and then tried to
+rip from the now-empty drive, and a disc-image import would have raised on
+`drive_id == "import"`. The whole point of the feature did not happen. Caught
+by an implementer who flagged it as an out-of-scope concern rather than
+silently working around it. Fixed in `d4d7376b`, which also gated the
+end-of-rip drive release on `DiscSource.is_physical` so one disc no longer
+produces two "ripped" notifications.
+
+Lesson: a plan that writes a field must name the task that reads it.
+
+**2. The plan missed a fifth hand-off site (the pre-rip resume).**
+Task 11 converted the three identification sites and `start_ripping`, but
+`_apply_identity_resume_action` carries its own dispatch table with
+`"start_rip"` hardcoded to `_run_ripping`. A disc parked before ripping for a
+name prompt therefore skipped its backup entirely once the user answered. That
+is precisely the case the `REVIEW_NEEDED -> BACKING_UP` state edge was added
+for, and nothing was using it. Fixed in `c4b7c249` by splitting the pre-rip
+resume into `"start_rip"` and `"start_backup"`.
+
+Lesson: `grep` for the state assignment finds the sites that set state; it does
+not find the dispatch tables that decide what runs next.
+
+**Also corrected during review, in order:** the `_parse_backup_progress`
+fixtures contradicted their own formula (a verbatim rip log already in the
+suite settled it); `backup_status` encoded its reason after a colon, which
+three consumers would have had to parse, replaced with the
+`subtitle_status`/`subtitle_error_message` shape already in the model;
+`backup_paths` hardcoded the default folder shape instead of delegating to the
+Organizer's configurable naming helpers; `_reconcile_backup_titles` rewrote
+`title_index` but not `output_index`, which `expected_native_index` prefers, so
+a swapped pair would have inverted files onto each other's rows; and the
+reconciler's fast path declared IDENTICAL on index and duration alone, ignoring
+the `source_filename` evidence that proved a swap.

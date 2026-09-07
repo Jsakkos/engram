@@ -260,6 +260,55 @@ never deleted regardless of this setting (the source folder is yours). See
 
 Disable `auto_eject_enabled` if you want to keep the disc in the drive after ripping — for example, to manually verify the output or to re-rip a title without re-inserting the disc. Applies to both normal rips and re-rips triggered from the review queue.
 
+### Disc Backup
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `backup_before_rip` | Copy the whole disc to a separate folder first, then extract from that copy | `false` |
+| `backup_path` | Where those copies go | (empty) |
+
+With this on, Engram writes a full decrypted MakeMKV copy of each disc under
+`backup_path` after identifying it, then extracts your MKVs from that copy
+instead of from the drive. Three things change:
+
+- **The disc is read once, sequentially**, instead of once per title. That is
+  much gentler on a scratched or fragile disc.
+- **The disc comes out of the drive as soon as the copy finishes**, not when the
+  whole rip finishes, so you can swap discs sooner.
+- **You keep the copy.** Engram never deletes a completed backup. It is yours to
+  move to a preservation server or re-import later.
+
+The cost is time and space: a Blu-ray backup is typically 25 to 50 GB and adds a
+full pass over the disc before extraction starts.
+
+Backups mirror your library layout, so the shelf browses the way your library
+does:
+
+```
+backups/
+  Movies/
+    Inception (2010)/
+  TV/
+    Frasier/
+      Season 01/
+        S01D01/
+  Unidentified/
+    THE_SWEETEST_THING/
+```
+
+The folder names come from your own naming settings, so if you customise
+`naming_movie_format` or `naming_tv_show_format` the backups follow.
+
+If anything prevents a backup (no folder configured, not enough free space, a
+disc MakeMKV cannot address, or a copy that fails partway) **Engram rips
+directly from the drive instead and tells you why on the job card.** Turning
+this on cannot make a disc less likely to finish.
+
+You can also point the **Import** button at a backup you already have. A folder
+containing `BDMV` or `VIDEO_TS`, or an `.iso` file, is recognised as a disc
+image and run through the normal scan, identify, rip, match and organize
+pipeline. Point it at a whole shelf of backups and it queues one job per disc.
+
 ### Naming Conventions
 
 Out of the box, organized files follow these patterns:
