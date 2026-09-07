@@ -433,18 +433,35 @@ in the job-detail JSON via `build_job_detail`.
 - A DVD with the setting on: see the open question below.
 - An existing backup folder and an ISO imported through the modal.
 
-## Open questions
+## Open questions: resolved
 
-1. **Does `makemkvcon backup` accept DVDs on current MakeMKV builds?** MakeMKV's
-   backup path is historically Blu-ray-oriented. The design already degrades to
-   a direct rip on an unsupported disc, so a negative answer costs only the
-   wording of the `skipped:unsupported_disc` message and a documentation note.
-   Verify against a real DVD before finalizing that string.
-2. **Does `makemkvcon backup` emit `PRGV` progress lines in robot mode the same
-   way `mkv` does?** If it does not, backup progress falls back to polling the
-   destination directory's size against the estimated disc size, which the
-   filesystem-progress monitor in `_run_ripping` already demonstrates. Confirm
-   during implementation; either way the `backup_progress` contract is unchanged.
+Both were answered on real hardware (MakeMKV 1.18.3, Pioneer BDR-S13U,
+`ARRESTED_Development_S1D2`, a DVD) before merge.
+
+1. **Does `makemkvcon backup` accept DVDs?** **Yes.** The backup ran in
+   LibreDrive mode and copied 448 MB before being stopped deliberately. The
+   `skipped:unsupported_disc` path stays as defensive degradation rather than
+   the expected outcome for a DVD.
+2. **Does it emit `PRGV` progress lines in robot mode?** **Yes**, 5,872 of them
+   during the copy. The run also settles the field semantics directly: during
+   device scanning it emitted `PRGV:65536,0,65536`, where the two values
+   diverge completely (current operation 100 percent, overall 0 percent). So
+   `current` is the per-operation bar and `total` is the overall one, and
+   reading `total / max` is correct. Reading `current` would run the user's
+   backup bar backwards once per sub-operation.
+
+**A third thing surfaced that neither question anticipated, and it is the one
+with teeth.** MakeMKV refuses a destination directory that already exists,
+*even an empty one*: `MSG:5068 "Folder ... already contains a backup, please
+choose another folder"`, then `Backup failed`.
+
+That turns a decision made on weak grounds into a load-bearing one. The design
+already moved a stale `.partial` aside before launching, justified only as
+"MakeMKV's behaviour on a non-empty target is unspecified". It is in fact
+specified and fatal: without that move, every retry of a failed backup would
+die instantly on 5068, which this code would have reported as a generic
+non-zero exit. It also means `backup_disc` must never pre-create its own
+`.partial` target, only `dest.parent`. Both hold in the implementation.
 
 ## Consequences
 

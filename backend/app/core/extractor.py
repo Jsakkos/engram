@@ -1689,12 +1689,17 @@ class MakeMKVExtractor:
         the ``.partial`` is left in place: a partial backup of a dying disc has
         salvage value, and discarding it is the user's call.
 
-        Every attempt starts from a clean ``<dest>.partial`` working directory.
-        MakeMKV's behaviour on a non-empty backup target is unspecified (it
-        might resume, silently skip existing files, or fail in a way this code
-        would misreport as a generic "exited N"), so a stale ``.partial`` left
-        by a previous failed attempt is moved aside to ``<dest>.partial.previous``
-        before MakeMKV is launched. That keeps the most recent failed attempt
+        Every attempt starts from a clean ``<dest>.partial`` working directory,
+        and this is REQUIRED, not merely tidy. Verified against MakeMKV 1.18.3
+        on real hardware: a target directory that already exists is refused
+        outright, even when it is empty, with ``MSG:5068 "Folder ... already
+        contains a backup, please choose another folder"`` followed by
+        ``Backup failed``. So a stale ``.partial`` left by a previous failed
+        attempt is moved aside to ``<dest>.partial.previous`` before MakeMKV is
+        launched; without that, every retry of a failed backup would die
+        instantly on 5068. It also follows that this method must never
+        pre-create the ``.partial`` itself: only ``dest.parent`` is created
+        here. That keeps the most recent failed attempt
         around for salvage while dropping the older one: a disc that fails
         repeatedly would otherwise accumulate tens of gigabytes per attempt
         without bound. This debris is from a *failed* attempt, not a completed
