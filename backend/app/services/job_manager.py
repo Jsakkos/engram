@@ -53,6 +53,7 @@ from app.services.import_guard import (
     ImportBlock,
     StagingJobResult,
     classify_staging_path,
+    unit_key_for,
 )
 from app.services.job_state_machine import JobStateMachine
 from app.services.manual_identity import arm_store
@@ -636,6 +637,32 @@ class JobManager:
             return job.content_hash == new_hash
         return job.volume_label == volume_label
 
+    @staticmethod
+    def _holds_disc_in_drive(job: DiscJob) -> bool:
+        """True if a job in a disc-required state really has the disc loaded.
+
+        A RIPPING job reading from a backup copy does not: the drive was
+        released the moment the copy finished, which is the entire point of the
+        backup phase (the disc leaves the drive in minutes rather than hours).
+        Such a job is treated exactly like a post-eject MATCHING/ORGANIZING job
+        below: it no longer blocks the drive, but a re-insert of the SAME disc
+        still resolves to it rather than spawning a duplicate.
+
+        BACKING_UP is unaffected: ``source_spec`` is only pointed at the copy
+        once the copy has COMPLETED (see ``_record_backup_status``), so a job
+        that is still copying reports the drive it is reading, and still blocks.
+
+        An unresolvable source (a row with neither ``source_spec`` nor a usable
+        ``drive_id``) is treated as holding the drive: refusing a second job is
+        the safe side of that guess.
+        """
+        if job.state is not JobState.RIPPING:
+            return True
+        try:
+            return DiscSource.from_job(job).is_physical
+        except ValueError:
+            return True
+
     async def _create_job_for_disc(self, drive_letter: str, volume_label: str) -> None:
         """Create a new job when a disc is inserted."""
         from app.services.config_service import get_config as get_db_config
@@ -716,13 +743,19 @@ class JobManager:
                 # RIPPING job can now legitimately coexist on one drive.
                 active_jobs = result.scalars().all()
 
+                # A RIPPING job reading from a backup copy is in disc_required_states
+                # but no longer holds the disc: the drive was released when the copy
+                # finished, which is the whole point of the backup phase. It is
+                # therefore treated exactly like a post-eject job, so a re-insert of
+                # the SAME disc still resolves to it instead of spawning a duplicate,
+                # while a genuinely new disc gets through.
                 blocking_job = next(
                     (
                         j
                         for j in active_jobs
-                        if j.state in disc_required_states
+                        if (j.state in disc_required_states and self._holds_disc_in_drive(j))
                         or (
-                            j.state in post_eject_states
+                            (j.state in post_eject_states or not self._holds_disc_in_drive(j))
                             and self._same_disc(j, volume_label, new_hash)
                         )
                     ),
@@ -852,23 +885,47 @@ class JobManager:
         if not volume_label:
             volume_label = staging_dir.name.upper().replace(" ", "_")
 
+        # ``source_spec`` is where MakeMKV reads FROM; ``staging_path`` is where
+        # the extracted MKVs are written TO. For a disc image those are two
+        # different places, so the image gets a staging directory of its own,
+        # derived exactly the way a disc job's is. Conflating them wrote the
+        # rip's MKVs into the user's preservation copy next to BDMV/, and for an
+        # .iso the path is a FILE, so the rip's mkdir(parents=True) raised
+        # FileExistsError and killed the job right after the scan.
+        #
+        # Ownership still keys on the image path, not on this new directory:
+        # that is what ``unit_key_for`` hashes and what the user picked. See
+        # classify_staging_path, which matches ``source_spec`` for exactly this.
+        dedup_path = str(staging_dir)
+        if source_spec:
+            from app.services.config_service import get_config as get_db_config
+
+            db_config = await get_db_config()
+            # The timestamp alone is not unique here: one /api/import/start call
+            # can create several image jobs within the same second.
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            staging_dir = (
+                Path(db_config.staging_path).expanduser()
+                / f"image_{stamp}_{unit_key_for(dedup_path)[:8]}"
+            )
+
         # Hold a per-path lock across the dedup check and insert so two concurrent
         # callers (e.g. two API calls) for the same path can't both pass the guard
         # and insert duplicate jobs, mirroring _drive_locks on the disc path.
         # Widened slightly by this dedup change: retries of a path with only FAILED
         # rows now reach the check->insert that the guard used to short.
-        if str(staging_dir) not in self._staging_locks:
-            self._staging_locks[str(staging_dir)] = asyncio.Lock()
+        if dedup_path not in self._staging_locks:
+            self._staging_locks[dedup_path] = asyncio.Lock()
 
-        async with self._staging_locks[str(staging_dir)]:
+        async with self._staging_locks[dedup_path]:
             async with async_session() as session:
                 # Guard: a staging path is OWNED by an in-flight job and merely
                 # RECORDED by a finished one. See app/services/import_guard.py for
                 # why this is not the old `state != FAILED` rule, and why it is not
                 # a copy of the disc-side guard either.
-                block, blocking_ids = await classify_staging_path(session, str(staging_dir))
+                block, blocking_ids = await classify_staging_path(session, dedup_path)
                 forced = force and block is ImportBlock.ALREADY_IMPORTED
-                safe_path = str(staging_dir).replace("\n", "").replace("\r", "")
+                safe_path = dedup_path.replace("\n", "").replace("\r", "")
                 if block is not None and not forced:
                     logger.info(
                         "Import blocked for staging path %s (%s, blocking jobs %s)",

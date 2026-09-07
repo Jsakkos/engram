@@ -156,6 +156,11 @@ class TestStart:
         assert job is not None
         assert job.source_spec == f"file:{d}"
         assert job.drive_id == "import"
+        # The extracted MKVs must NOT land inside the user's preservation copy:
+        # staging is a directory of its own, distinct from the image.
+        assert job.staging_path is not None
+        assert Path(job.staging_path) != d
+        assert not Path(job.staging_path).is_relative_to(d)
         # It reads the image with MakeMKV instead of ingesting existing MKVs.
         assert job.import_manifest_json is None
         # It already is a backup: it must never enter BACKING_UP.
@@ -180,6 +185,49 @@ class TestStart:
         assert job is not None
         assert job.source_spec == f"iso:{iso}"
         assert job.state != JobState.BACKING_UP
+        # An .iso path is a FILE. If staging_path pointed at it, the rip's
+        # output_dir.mkdir(parents=True, exist_ok=True) would raise
+        # FileExistsError and the job would die straight after the scan.
+        assert job.staging_path is not None
+        assert Path(job.staging_path) != iso
+        assert not Path(job.staging_path).exists() or Path(job.staging_path).is_dir()
+
+    async def test_disc_image_staging_directories_are_writable_and_distinct(
+        self, client, tmp_path: Path, monkeypatch
+    ):
+        """Two images imported in one call get separate, mkdir-able staging dirs."""
+        from app.services import config_service
+
+        real_get_config = config_service.get_config
+        staging_root = tmp_path / "staging"
+
+        async def fake_get_config():
+            config = await real_get_config()
+            config.staging_path = str(staging_root)
+            return config
+
+        monkeypatch.setattr(config_service, "get_config", fake_get_config)
+
+        a = _bdmv(tmp_path / "src", "Inception (2010)")
+        b = _bdmv(tmp_path / "src", "Arrival (2016)")
+
+        res = await client.post(
+            "/api/import/start",
+            json={"path": str(tmp_path / "src"), "destination_mode": "library"},
+        )
+        job_ids = res.json()["job_ids"]
+        assert len(job_ids) == 2
+
+        async with async_session() as session:
+            jobs = [await session.get(DiscJob, jid) for jid in job_ids]
+
+        staging = {Path(j.staging_path) for j in jobs}
+        assert len(staging) == 2
+        for s in staging:
+            assert s not in (a, b)
+            # This is exactly what _rip_titles_unlocked does with it.
+            s.mkdir(parents=True, exist_ok=True)
+            assert s.is_dir()
 
     async def test_a_second_import_of_a_live_backup_is_blocked(self, client, tmp_path: Path):
         _bdmv(tmp_path, "Inception (2010)")

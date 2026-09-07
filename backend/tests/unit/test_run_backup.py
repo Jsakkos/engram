@@ -22,7 +22,7 @@ import pytest
 from app.core.extractor import BackupResult
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
-from app.services.job_manager import job_manager
+from app.services.job_manager import JobManager, job_manager
 from app.services.ripping_helpers import expected_native_index
 from tests.unit.conftest import _unit_session_factory
 
@@ -545,3 +545,37 @@ class TestExistingBackupProbe:
 
         monkeypatch.setattr(Path, "iterdir", _boom)
         assert _JM._has_existing_backup(d) is False
+
+
+class TestHoldsDiscInDrive:
+    """Whether a job in a disc-required state really has the disc loaded.
+
+    This is the decision the disc-insert guard consumes to decide if a new disc
+    is refused. It matters because the backup phase releases the drive the
+    moment the copy finishes, so a RIPPING job reading the copy must stop
+    blocking the tray: otherwise the feature's headline benefit (swap discs in
+    minutes rather than hours) does not happen.
+    """
+
+    def test_a_rip_from_the_drive_holds_it(self):
+        job = DiscJob(drive_id="E:", state=JobState.RIPPING)
+        assert JobManager._holds_disc_in_drive(job) is True
+
+    def test_a_rip_from_a_backup_does_not_hold_it(self):
+        job = DiscJob(drive_id="E:", state=JobState.RIPPING, source_spec="file:/b/Inception (2010)")
+        assert JobManager._holds_disc_in_drive(job) is False
+
+    def test_a_rip_from_an_iso_does_not_hold_it(self):
+        job = DiscJob(drive_id="import", state=JobState.RIPPING, source_spec="iso:/b/x.iso")
+        assert JobManager._holds_disc_in_drive(job) is False
+
+    def test_a_job_still_copying_holds_it(self):
+        # source_spec is only pointed at the copy once the copy has COMPLETED,
+        # so a BACKING_UP job reports the drive it is reading and still blocks.
+        job = DiscJob(drive_id="E:", state=JobState.BACKING_UP)
+        assert JobManager._holds_disc_in_drive(job) is True
+
+    def test_an_unresolvable_source_is_assumed_to_hold_it(self):
+        # Refusing a second job is the safe side of the guess.
+        job = DiscJob(drive_id="", state=JobState.RIPPING)
+        assert JobManager._holds_disc_in_drive(job) is True
