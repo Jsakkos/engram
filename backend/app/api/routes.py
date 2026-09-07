@@ -1118,6 +1118,13 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "subtitles_failed": job.subtitles_failed,
         "staging_path": job.staging_path,
         "final_path": job.final_path,
+        # Disc backup. source_spec is included because it is the one field that
+        # says whether this job's MKVs came off the disc or out of the copy,
+        # which is the first thing to check when a rip looks wrong.
+        "source_spec": job.source_spec,
+        "backup_path": job.backup_path,
+        "backup_status": job.backup_status,
+        "backup_status_reason": job.backup_status_reason,
         "titles": titles,
     }
 

@@ -153,3 +153,58 @@ class TestBackupConfigRoundTrip:
         }
         assert backup_fields <= set(ConfigUpdate.model_fields)
         assert backup_fields <= set(ConfigResponse.model_fields)
+
+
+class TestBackupFieldsInJobDetail:
+    """The diagnostics job detail carries the backup fields.
+
+    source_spec in particular: it is the one field that says whether a job's
+    MKVs came off the disc or out of the copy, which is the first thing to
+    check when a rip looks wrong.
+    """
+
+    @pytest.mark.asyncio
+    async def test_job_detail_reports_the_backup_fields(self, tmp_path):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.api.routes import build_job_detail
+
+        dest = str(tmp_path / "Inception (2010)")
+        job = DiscJob(
+            drive_id="E:",
+            source_spec=f"file:{dest}",
+            backup_path=dest,
+            backup_status="completed",
+        )
+        job.id = 1
+
+        # build_job_detail only uses the session to load this job's titles.
+        session = MagicMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(return_value=result)
+
+        detail = await build_job_detail(job, session)
+
+        assert detail["source_spec"] == f"file:{dest}"
+        assert detail["backup_path"] == dest
+        assert detail["backup_status"] == "completed"
+        assert detail["backup_status_reason"] is None
+
+    @pytest.mark.asyncio
+    async def test_a_job_that_never_backed_up_reports_nulls(self, tmp_path):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.api.routes import build_job_detail
+
+        job = DiscJob(drive_id="E:")
+        job.id = 2
+        session = MagicMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        session.execute = AsyncMock(return_value=result)
+
+        detail = await build_job_detail(job, session)
+
+        assert detail["source_spec"] is None
+        assert detail["backup_status"] is None
