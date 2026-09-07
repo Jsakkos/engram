@@ -134,6 +134,10 @@ class JobResponse(BaseModel):
     # then "completed" / "failed" / "skipped". Null when backup isn't in use
     # for this job (the common case today).
     backup_status: str | None = None
+    # Why the backup was skipped or failed, in prose the card can show as is.
+    # The dashboard needs both: backup_status decides whether to warn at all,
+    # this says what to warn about.
+    backup_status_reason: str | None = None
 
     model_config = {"from_attributes": True}
 
