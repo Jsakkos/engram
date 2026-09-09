@@ -325,6 +325,7 @@ class JobManager:
         # COMPLETES (FAILED jobs never contribute). Best-effort — a raised enqueue
         # is caught here and never crashes the terminal-state dispatch.
         state_machine.on_terminal_state(self._enqueue_disc_contribution_on_terminal)
+        state_machine.on_terminal_state(self._reconcile_backup_on_terminal)
         state_machine.on_terminal_state(self._notify_discord_on_terminal)
 
         # Reset the watchdog activity clock whenever a job changes phase.
@@ -1684,6 +1685,46 @@ class JobManager:
                 await session.commit()
         except Exception as e:
             logger.warning(f"Job {job_id}: disc contribution enqueue failed: {e}", exc_info=True)
+
+    async def _reconcile_backup_on_terminal(self, job_id: int, state: JobState) -> None:
+        """on_terminal_state hook: re-home a backup named before a correction.
+
+        Runs only on COMPLETED, where extraction is provably finished, because
+        until then source_spec points AT the backup folder and renaming it would
+        pull the floor out from under the rip (#643).
+
+        Terminal callbacks fire AFTER ``JobStateMachine.transition`` has already
+        committed and broadcast, so the ``backup_path``/``source_spec`` written
+        here reach no WebSocket client: there is no follow-up ``job_update``.
+        That is fine today because the only consumer, HistoryPage's detail
+        panel, re-fetches ``GET /api/jobs/{id}/detail`` when it opens rather
+        than reading the WS-cached job. A future consumer that reads either
+        field off the cached WS object would see the stale pre-correction value
+        until a hard refresh, and would need a broadcast added here.
+        """
+        if state != JobState.COMPLETED:
+            return
+        try:
+            from app.core.backup_paths import reconcile_backup_location
+            from app.services.config_service import get_config
+
+            config = await get_config()
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if job is None or job.backup_status != BACKUP_COMPLETED:
+                    return
+                moved = await asyncio.to_thread(reconcile_backup_location, job, config)
+                if moved is None:
+                    return
+                # backup_path and source_spec must move together: source_spec
+                # still carries "file:<old path>" from the backup handoff.
+                job.backup_path = str(moved)
+                if job.source_spec and job.source_spec.startswith("file:"):
+                    job.source_spec = f"file:{moved}"
+                session.add(job)
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"Job {job_id}: backup reconciliation failed: {e}", exc_info=True)
 
     async def _notify_discord_on_terminal(self, job_id: int, state: JobState) -> None:
         """on_terminal_state hook: schedule a Discord notification and return immediately.
