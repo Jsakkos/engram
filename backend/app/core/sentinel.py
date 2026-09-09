@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 if sys.platform == "win32":
@@ -126,7 +127,7 @@ def _get_optical_drives_linux() -> list[str]:
     """Get optical drive device paths on Linux via /sys/block/sr*."""
     drives = []
     for block_dev in sorted(glob.glob("/sys/block/sr*")):
-        dev_name = os.path.basename(block_dev)
+        dev_name = Path(block_dev).name
         drives.append(f"/dev/{dev_name}")
     return drives
 
