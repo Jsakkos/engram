@@ -667,6 +667,87 @@ git add deploy/subtitle-cache/harvest.sh
 git commit -m "feat(subtitle-cache): nightly harvest wrapper for the server deployment"
 ```
 
+### Amendments after code review
+
+The code block above is the original spec. Code review found two ways the
+wrapper could corrupt the live release or fail silently, plus a set of
+smaller gaps. The shipped script differs as follows:
+
+- **The upload is retried and then verified.** `gh release upload --clobber`
+  DELETES the conflicting asset before uploading its replacement, so a network
+  blip, a token expiry, or an OOM kill between the two asset uploads leaves the
+  release either with no tarball at all (every install's download 404s) or with
+  a fresh tarball beside the previous night's `manifest.json`, whose
+  `tarball_sha256` no longer matches. The client compares those and silently
+  discards the download, so installs quietly stop updating with only a
+  debug-level client log. The call now runs up to `ENGRAM_UPLOAD_ATTEMPTS`
+  (default 3) times with a linear backoff, under the same
+  `set +o errexit` / capture / restore pattern as the harvest and guard calls,
+  and a final failure logs the inconsistency risk and the two paths to
+  re-upload by hand. A successful upload is followed by
+  `gh release view --json assets`, which must find BOTH asset names; their
+  sizes are logged. A failed verification is fatal with the same wording.
+- **A single-instance lock.** `Type=oneshot` only dedupes the unit against
+  itself; it does not stop a manual run (the documented debugging path) landing
+  on top of the timer's run, and both share `$WORK_DIR`. One run streaming
+  `$TARBALL` to `gh` while the other's packer rewrites that same path publishes
+  a torn tarball beside a manifest describing a different build, with both runs
+  reporting success, and both race the same metered quota. The script now takes
+  an exclusive non-blocking `flock` on `$WORK_DIR/.harvest.lock` (fd 9)
+  immediately after the work dir is created, and exits non-zero with
+  "another harvest is already running (lock held)" if it cannot.
+- **An `ERR` trap.** Every `errexit` abort used to die with bare shell noise
+  and no `harvest:` marker, so the operator's `journalctl | grep harvest:`
+  showed a start banner and then nothing. The trap logs
+  "FATAL: unexpected failure at line N". It is torn down and re-armed INLINE
+  around each deliberately-uncaptured call: bash saves and restores the ERR
+  trap around a function call (errtrace is off), so a `trap - ERR` issued from
+  inside a helper function is undone the instant the helper returns, which was
+  proven by driving the script under stubs.
+- **Distinct exit codes.** Exit 2 used to mean all of "quota halt WITH a
+  successful publish", "guard undecidable with NO publish", and "guard usage
+  error". With `ENGRAM_MAX_DOWNLOADS=900` against a 1000/day account the quota
+  halt is the NORMAL nightly result, so the unit would have sat in `failed`
+  almost every morning, training the operator to ignore failures and inviting a
+  manual re-run that burns the remaining quota and races the still-running job.
+  Now: `0` published and full corpus, `10` published but quota-halted (healthy),
+  `20` guard blocked, `21` guard undecidable, `1` everything else, `143`
+  SIGTERM. The table is documented in the script header, and exit 10 is
+  preceded by an unmissable "UPLOAD SUCCEEDED, do not re-run today" line.
+- **Task 3 impact: the service unit MUST carry `SuccessExitStatus=10`.** Task 3
+  has not been implemented yet, and without that line a healthy quota-halted
+  night is reported as a failed unit.
+- **The freshness check tests what it claims.** `$WORK_DIR` is never cleaned,
+  so the `-f "$TARBALL"` / `-f "$MANIFEST"` check was satisfied by the previous
+  night's leftovers and could not distinguish "the pack wrote nothing" from
+  "yesterday's files are still here". `rm -f "$TARBALL" "$MANIFEST"` now runs
+  immediately before the pack call.
+- **Toolchain preflight.** The credential loop checked the four API keys but
+  not the publishing tools, so a missing or unauthenticated `gh` cost a full
+  metered harvest before anything noticed. `uv`, `gh`, `flock`,
+  `gh auth status --hostname github.com`, and the existence of `$SHOW_LIST` are
+  each checked up front, every failure a specific FATAL with exit 1.
+- **Disk-space preflight.** Free space on `$WORK_DIR`'s filesystem must be at
+  least `ENGRAM_MIN_FREE_KB` (default 1 GiB, roughly twice the ~300 MB
+  artifact). A full disk used to surface as a Python `tarfile` traceback after
+  the quota was already spent.
+- **`$WORK_DIR` is resolved once with `realpath`** after `mkdir -p`, so the
+  shell's `$MANIFEST` (a literal sibling of `$TARBALL`) cannot diverge from the
+  packer's, which derives it from `Path(args.output).resolve()`. Behind a
+  symlinked work dir they differed, and the mismatch surfaced as a FATAL only
+  after a full night of harvesting.
+- **`${HOME:?HOME must be set}`** on the two paths that default from `$HOME`,
+  so running under `env -i` fails with a clear message rather than a bare
+  `HOME: unbound variable` before `log()` is even reachable.
+- **A `TERM` trap.** At `TimeoutStartSec=10h` systemd kills the run, and the
+  journal's last line used to be the step 1 banner with no way to tell a kill
+  from a crash. The trap logs "terminated by signal; nothing was packed or
+  published" and exits 143.
+- **`--repo` on the guard call.** The wrapper passes `$GH_REPO`
+  (`ENGRAM_REPO_SLUG`, default `Jsakkos/engram`) to `publish_guard.py` so the
+  baseline is read from the same repo the tarball is uploaded to, per Task 1's
+  second-round amendment.
+
 ---
 
 ## Task 3: systemd user units and the secrets template
