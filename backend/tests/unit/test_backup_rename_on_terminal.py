@@ -131,6 +131,39 @@ class TestReconcileBackupLocation:
         assert root.exists()
         assert (root / "TV").exists()
 
+    def test_reshapes_when_content_type_changed(self, tmp_path):
+        """A TV disc corrected to a movie must move across the whole layout.
+
+        The most common correction is a wrong show name, but the classifier can
+        also be wrong about the KIND of disc, and then the backup does not just
+        get renamed: TV/Show/Season/Disc has to become Movies/Name (Year). This
+        works because backup_destination re-derives from the CURRENT
+        content_type rather than from whatever shape the stored path has.
+        """
+        root = tmp_path
+        old_dir = root / "TV" / "Wrong Show" / "Season 01" / "Disc 1"
+        old_dir.mkdir(parents=True)
+        (old_dir / "backup.mkv").write_text("data")
+
+        job = _job(
+            content_type=ContentType.MOVIE,
+            tmdb_name="Correct Movie",
+            tmdb_year=2001,
+            backup_path=str(old_dir),
+        )
+        config = _config(backup_path=str(root))
+
+        result = reconcile_backup_location(job, config)
+
+        assert result is not None
+        # Assert the shape, not the exact folder string: the movie folder format
+        # is user-configurable, so hardcoding it here would couple this test to
+        # a default rather than to the behavior under test.
+        assert result.parent == root / "Movies"
+        assert (result / "backup.mkv").read_text() == "data"
+        assert not old_dir.exists()
+        assert not (root / "TV" / "Wrong Show").exists()
+
 
 class TestTerminalHookRegistration:
     """The helper is well covered; this guards the wiring that invokes it.
