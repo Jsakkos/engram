@@ -903,6 +903,19 @@ git add deploy/subtitle-cache/engram-subtitle-cache.service deploy/subtitle-cach
 git commit -m "feat(subtitle-cache): systemd user timer units for the harvest server"
 ```
 
+### Amendments after code review
+
+Code review of the committed Task 3 files found six issues, fixed in a follow-up commit. The blocks above are left as originally written; this records what changed on disk:
+
+- Removed the `[Install]` section from `engram-subtitle-cache.service` entirely. Only the `.timer` carries `[Install] WantedBy=timers.target`; the service is started by the timer and must never be independently enabled. Added a comment in the service file recording this, since the natural copy-paste `systemctl --user enable engram-subtitle-cache.service engram-subtitle-cache.timer` would otherwise wire the harvest to `default.target` and fire on every user-manager start (every SSH login, with lingering off), spending a second full day's quota on top of the timer's own run.
+- Replaced `IOSchedulingClass=idle` with `IOSchedulingClass=best-effort` / `IOSchedulingPriority=7` in the service, with a comment explaining that `idle` is a silent no-op under `mq-deadline`/`none` (the likely scheduler for a virtio disk on this Proxmox guest) and can starve the job to near-zero throughput under `bfq`, eventually tripping `TimeoutStartSec=10h` in a way that looks like an ordinary failure.
+- Added a warning to `engram-subtitle-cache.env.example` about CRLF line endings and trailing whitespace: systemd's `EnvironmentFile` parser takes everything after `=` verbatim to end of line, so either silently corrupts a credential and produces an opaque 02:00 auth failure. The comment points at `cat -A` for diagnosis.
+- Added a comment in `engram-subtitle-cache.timer` documenting `Persistent=true`'s catch-up behavior: a missed run fires immediately on the box's return rather than waiting for the next `OnCalendar` slot, which is safe for the quota (one catch-up, not one per missed day) but can land a low-priority harvest in the middle of a working day.
+- Documented every `ENGRAM_*` override `harvest.sh` actually reads in the env template (previously only `ENGRAM_MAX_DOWNLOADS` and `ENGRAM_CACHE_TAG` were listed): `ENGRAM_REPO`, `ENGRAM_REPO_SLUG`, `ENGRAM_SHOW_LIST`, `ENGRAM_MAX_DOWNLOADS`, `ENGRAM_CACHE_TAG`, `ENGRAM_WORK_DIR`, `ENGRAM_MIN_FREE_KB`, `ENGRAM_UPLOAD_ATTEMPTS`, `ENGRAM_UPLOAD_BACKOFF`, each commented out with its real default read from the script.
+- Added `PrivateTmp=true`, `NoNewPrivileges=true`, `ProtectSystem=full` to the service (safe: the script only writes under `$HOME`). Deliberately did NOT add `ProtectHome`, and added a comment saying so: the job needs `%h/engram`, `%h/.engram/cache`, `%h/.engram/harvest`, and `%h/.config/gh`, all under `$HOME`, which `ProtectHome` would hide from it.
+
+**Important for Task 4:** the runbook must instruct the operator to enable **only the timer** — `systemctl --user enable --now engram-subtitle-cache.timer` — and never the service. The service no longer has an `[Install]` section, so `systemctl --user enable engram-subtitle-cache.service` is now both an error and, were it to succeed another way, a quota hazard as described above.
+
 ---
 
 ## Task 4: Operator runbook
