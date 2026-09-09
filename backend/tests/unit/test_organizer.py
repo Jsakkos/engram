@@ -3,12 +3,14 @@
 Tests movie/TV naming conventions, conflict resolution, and filename sanitization.
 """
 
+import os
 from unittest.mock import patch
 
 import pytest
 
 from app.core.organizer import (
     clean_movie_name,
+    move_media_file,
     organize_movie,
     organize_tv_episode,
     organize_tv_extras,
@@ -545,15 +547,13 @@ class TestMoveMediaFileRollback:
     """
 
     def test_failed_unlink_leaves_no_destination(self, tmp_path, monkeypatch):
-        import app.core.organizer as organizer_mod
-
         src = tmp_path / "src.mkv"
         src.write_bytes(b"payload")
         dest_dir = tmp_path / "dest_dir"
         dest_dir.mkdir()
         dest = dest_dir / "dest.mkv"
 
-        real_unlink = organizer_mod.os.unlink
+        real_unlink = os.unlink
 
         def fake_replace(_src, _dst):
             raise PermissionError(13, "in use")
@@ -566,25 +566,23 @@ class TestMoveMediaFileRollback:
                 raise PermissionError(13, "in use")
             real_unlink(path)
 
-        monkeypatch.setattr(organizer_mod.os, "replace", fake_replace)
-        monkeypatch.setattr(organizer_mod.os, "unlink", fake_unlink)
+        monkeypatch.setattr(os, "replace", fake_replace)
+        monkeypatch.setattr(os, "unlink", fake_unlink)
 
         with pytest.raises(OSError):
-            organizer_mod.move_media_file(src, dest, attempts=1, delay=0)
+            move_media_file(src, dest, attempts=1, delay=0)
 
         assert src.exists() is True
         assert dest.exists() is False
 
     def test_retries_then_succeeds(self, tmp_path, monkeypatch):
-        import app.core.organizer as organizer_mod
-
         src = tmp_path / "src.mkv"
         src.write_bytes(b"payload")
         dest_dir = tmp_path / "dest_dir"
         dest_dir.mkdir()
         dest = dest_dir / "dest.mkv"
 
-        real_replace = organizer_mod.os.replace
+        real_replace = os.replace
         calls = {"count": 0}
 
         def flaky_replace(_src, _dst):
@@ -593,9 +591,9 @@ class TestMoveMediaFileRollback:
                 raise PermissionError(13, "in use")
             return real_replace(_src, _dst)
 
-        monkeypatch.setattr(organizer_mod.os, "replace", flaky_replace)
+        monkeypatch.setattr(os, "replace", flaky_replace)
 
-        organizer_mod.move_media_file(src, dest, attempts=3, delay=0)
+        move_media_file(src, dest, attempts=3, delay=0)
 
         assert dest.exists() is True
         assert src.exists() is False
@@ -603,8 +601,6 @@ class TestMoveMediaFileRollback:
 
     def test_cross_device_falls_back_immediately(self, tmp_path, monkeypatch):
         import errno
-
-        import app.core.organizer as organizer_mod
 
         src = tmp_path / "src.mkv"
         src.write_bytes(b"payload")
@@ -618,10 +614,41 @@ class TestMoveMediaFileRollback:
             calls["count"] += 1
             raise OSError(errno.EXDEV, "cross-device")
 
-        monkeypatch.setattr(organizer_mod.os, "replace", fake_replace)
+        monkeypatch.setattr(os, "replace", fake_replace)
 
-        organizer_mod.move_media_file(src, dest, attempts=3, delay=0)
+        move_media_file(src, dest, attempts=3, delay=0)
 
         assert calls["count"] == 1
         assert dest.exists() is True
         assert src.exists() is False
+
+    def test_failed_rollback_says_so_instead_of_claiming_safe_to_retry(self, tmp_path, monkeypatch):
+        """Both unlinks failing is the one case we cannot clean up after.
+
+        The orphan copy survives, so the error must NOT tell the caller this is
+        safe to retry: a retry would hit FILE_EXISTS against that very copy,
+        which is #642 all over again with a reassuring message on top.
+        """
+        src = tmp_path / "src.mkv"
+        src.write_bytes(b"payload")
+        dest_dir = tmp_path / "dest_dir"
+        dest_dir.mkdir()
+        dest = dest_dir / "dest.mkv"
+
+        def fake_replace(_src, _dst):
+            raise PermissionError(13, "in use")
+
+        def fake_unlink(_path):
+            raise PermissionError(13, "in use")
+
+        monkeypatch.setattr(os, "replace", fake_replace)
+        monkeypatch.setattr(os, "unlink", fake_unlink)
+
+        with pytest.raises(OSError) as excinfo:
+            move_media_file(src, dest, attempts=1, delay=0)
+
+        message = str(excinfo.value)
+        assert "could NOT be removed" in message
+        assert "safe to retry" not in message
+        # The orphan really is still there: the message is telling the truth.
+        assert dest.exists() is True

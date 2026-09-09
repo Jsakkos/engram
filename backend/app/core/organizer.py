@@ -367,19 +367,40 @@ def move_media_file(src: Path, dest: Path, *, attempts: int = 3, delay: float = 
     except OSError:
         # A partial copy is worse than no copy: it looks like a real library
         # file to every later run.
-        with contextlib.suppress(OSError):
+        try:
             os.unlink(dest)
+        except FileNotFoundError:
+            pass  # nothing was created, so there is nothing to clean up
+        except OSError:
+            logger.error(
+                f"Could not remove the partial copy at {dest} after a failed "
+                "copy; it has to be deleted by hand before a retry can succeed."
+            )
         raise
 
     try:
         os.unlink(src)
     except OSError as e:
-        with contextlib.suppress(OSError):
+        # The rollback can itself fail: an antivirus or indexer briefly holding
+        # the copy we just made, or a delete-restricted ACL on the library. Say
+        # which case this is, because "retry me" and "there is an orphan in the
+        # library" need opposite responses from the caller, and claiming the
+        # first while the second is true recreates #642 with a reassuring
+        # message on top of it.
+        rolled_back = True
+        try:
             os.unlink(dest)
+        except OSError:
+            rolled_back = False
+        detail = (
+            "The copy was rolled back, so this is safe to retry."
+            if rolled_back
+            else f"The copy at {dest} could NOT be removed either, so it has to "
+            "be deleted by hand before a retry can succeed."
+        )
         raise OSError(
             f"Could not remove {src} after copying it to {dest}; the file is "
-            f"in use. The copy was rolled back, so this is safe to retry. "
-            f"Original error: {e}"
+            f"in use. {detail} Original error: {e}"
         ) from (last or e)
 
 

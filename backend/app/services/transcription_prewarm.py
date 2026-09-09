@@ -42,6 +42,7 @@ from pathlib import Path
 from sqlmodel import select
 
 from app.core.log_context import with_job_log_context
+from app.core.security import sanitize_log_value
 from app.database import async_session
 from app.models import DiscJob
 from app.models.disc_job import DiscTitle, TitleState
@@ -163,8 +164,8 @@ class TranscriptionPrewarmer:
         done, _ = await asyncio.wait({task}, timeout=timeout)
         if not done:
             logger.warning(
-                f"Job {job_id}: transcript prewarm did not stop within {timeout}s; "
-                "organize will retry past the lock"
+                f"Job {sanitize_log_value(job_id)}: transcript prewarm did not stop "
+                f"within {timeout}s; organize will retry past the lock"
             )
         return bool(done)
 
