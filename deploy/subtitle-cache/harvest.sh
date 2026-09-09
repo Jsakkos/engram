@@ -61,15 +61,49 @@ MIN_FREE_KB="${ENGRAM_MIN_FREE_KB:-1048576}"
 UPLOAD_ATTEMPTS="${ENGRAM_UPLOAD_ATTEMPTS:-3}"
 UPLOAD_BACKOFF="${ENGRAM_UPLOAD_BACKOFF:-30}"
 
+case "$UPLOAD_ATTEMPTS" in
+  ''|*[!0-9]*|0)
+    printf 'harvest: FATAL: ENGRAM_UPLOAD_ATTEMPTS must be a positive integer, got "%s"\n' "$UPLOAD_ATTEMPTS" >&2
+    exit 1
+    ;;
+esac
+
+# Tracks how far publishing got, for the traps below: neither one can tell on
+# its own whether the release was ever touched, so this is the source of
+# truth they both report from.
+PUBLISH_STATE="not-started"
+
 log() { printf '%s harvest: %s\n' "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+# shellcheck disable=SC2329  # invoked indirectly, from the traps below.
+publish_state_note() {
+  case "$PUBLISH_STATE" in
+    in-progress)
+      printf 'publish was IN PROGRESS; release %s may now be INCONSISTENT (missing asset, or tarball and manifest.json from different builds); re-upload %s and %s by hand' \
+        "$CACHE_TAG" "$TARBALL" "$MANIFEST"
+      ;;
+    done)
+      printf 'publish had already completed'
+      ;;
+    *)
+      printf 'nothing was published'
+      ;;
+  esac
+}
 
 # Every errexit abort would otherwise die with bare shell noise and no
 # `harvest:` marker, so `journalctl | grep harvest:` showed a start banner and
 # then nothing at all.
 # shellcheck disable=SC2329  # invoked indirectly, from the ERR trap below.
 err_report() {
-  log "FATAL: unexpected failure at line $2 (exit $1); nothing was published"
-  exit "$1"
+  # Never propagate the failing child's own exit code here: a tool that
+  # happens to exit 10 or 20 would otherwise be misread by the systemd unit
+  # as a contractual harvest outcome (e.g. SuccessExitStatus=10) even though
+  # nothing was actually published. The header promises 1 for "anything
+  # else", so that is the only code this path may exit with; the real child
+  # code is kept in the log line instead.
+  log "FATAL: unexpected failure at line $2 (exit $1); $(publish_state_note)"
+  exit 1
 }
 trap 'err_report "$?" "$LINENO"' ERR
 
@@ -80,7 +114,7 @@ trap 'err_report "$?" "$LINENO"' ERR
 # trap around a function call (errtrace is off), so a `trap - ERR` issued from
 # inside a helper function is silently undone the moment the helper returns.
 
-trap 'log "terminated by signal; nothing was packed or published"; exit 143' TERM
+trap 'log "terminated by signal; $(publish_state_note)"; exit 143' TERM
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -119,6 +153,10 @@ LOCK_FILE="$WORK_DIR/.harvest.lock"
 # describing a different build, with both runs reporting success. They would
 # also race the same metered quota.
 require_cmd flock "install util-linux"
+# fd 9 is inherited by any child process this script spawns. A future
+# backgrounded helper that outlives the script (e.g. `foo &` left running)
+# would keep fd 9 open and hold the lock past this process's exit; `flock -n`
+# only detects a held lock, it cannot detect or warn about this case.
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
   log "FATAL: another harvest is already running (lock held); exiting without touching the quota"
@@ -149,10 +187,12 @@ if [ ! -f "$SHOW_LIST" ]; then
 fi
 
 free_kb="$(df -Pk "$WORK_DIR" | awk 'NR == 2 { print $4 }')"
-if [ -z "$free_kb" ]; then
-  log "FATAL: could not read free space for $WORK_DIR"
-  exit 1
-fi
+case "$free_kb" in
+  ''|*[!0-9]*)
+    log "FATAL: could not read free space for $WORK_DIR (got \"$free_kb\" from df)"
+    exit 1
+    ;;
+esac
 if [ "$free_kb" -lt "$MIN_FREE_KB" ]; then
   log "FATAL: only ${free_kb}KB free on $WORK_DIR's filesystem, need ${MIN_FREE_KB}KB; a full disk otherwise surfaces as a tarfile traceback after the quota is spent"
   exit 1
@@ -235,6 +275,7 @@ fi
 # stop updating with only a debug-level client log. Hence: retry, then verify.
 upload_ok=0
 attempt=1
+PUBLISH_STATE="in-progress"
 while [ "$attempt" -le "$UPLOAD_ATTEMPTS" ]; do
   log "publishing to release $CACHE_TAG (attempt $attempt/$UPLOAD_ATTEMPTS)"
   trap - ERR
@@ -284,8 +325,23 @@ if [ -z "$tarball_asset" ] || [ -z "$manifest_asset" ]; then
   exit 1
 fi
 
+# Matching names only proves an asset with that name exists, not that it is
+# the one this run just uploaded: the names are identical every night, so a
+# leftover from a previous run is otherwise indistinguishable from tonight's
+# upload. Comparing sizes against the local files catches that.
+tarball_remote_size="$(printf '%s\n' "$tarball_asset" | awk '{ print $NF }')"
+manifest_remote_size="$(printf '%s\n' "$manifest_asset" | awk '{ print $NF }')"
+tarball_local_size="$(stat -c %s "$TARBALL")"
+manifest_local_size="$(stat -c %s "$MANIFEST")"
+
+if [ "$tarball_remote_size" != "$tarball_local_size" ] || [ "$manifest_remote_size" != "$manifest_local_size" ]; then
+  log "FATAL: post-upload size mismatch (tarball: remote ${tarball_remote_size}B local ${tarball_local_size}B; manifest: remote ${manifest_remote_size}B local ${manifest_local_size}B); release $CACHE_TAG may now be INCONSISTENT (missing asset, or tarball and manifest.json from different builds); re-upload $TARBALL and $MANIFEST by hand"
+  exit 1
+fi
+
+PUBLISH_STATE="done"
 log "verified release assets: $tarball_asset bytes, $manifest_asset bytes"
-log "published $(stat -c %s "$TARBALL") local bytes; harvest exit was $harvest_rc"
+log "published $tarball_local_size local bytes; harvest exit was $harvest_rc"
 
 if [ "$harvest_rc" -eq 2 ]; then
   log "UPLOAD SUCCEEDED. The harvest stopped early only because it hit its download budget, which is the normal nightly outcome; the published cache is complete. DO NOT re-run the harvest today: a second run burns the remaining quota and can race the timer's run."

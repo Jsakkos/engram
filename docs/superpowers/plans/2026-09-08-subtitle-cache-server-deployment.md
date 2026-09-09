@@ -748,6 +748,48 @@ smaller gaps. The shipped script differs as follows:
   baseline is read from the same repo the tarball is uploaded to, per Task 1's
   second-round amendment.
 
+**Third round.** A further review approved the script but left five more
+findings, all now fixed:
+
+- **`err_report` no longer propagates the failing child's exit code.** It used
+  to end with `exit "$1"`, so a tool that happened to exit 10 or 20 made the
+  whole script exit 10 or 20, which `SuccessExitStatus=10` then rendered as a
+  green unit even though nothing was published (demonstrated with
+  `STUB_PACK_RC=10`, which produced script exit 10 before the fix). The trap
+  now always exits 1, the header's promised code for "anything else"; the real
+  child code stays in the log line.
+- **Both traps now report a tracked publish state instead of asserting one
+  they don't know.** A new `PUBLISH_STATE` variable (`not-started` /
+  `in-progress` / `done`) is set to `in-progress` right before the first
+  upload attempt and `done` once post-upload verification succeeds. The `TERM`
+  trap and `err_report` both call a shared `publish_state_note` helper instead
+  of hardcoding "nothing was packed or published": a signal landing between an
+  upload attempt and its retry, after `--clobber` has already deleted the live
+  asset, now says the release may be missing an asset and names the two local
+  paths to re-upload by hand, matching the final upload FATAL's wording.
+- **Post-upload verification now compares sizes, not just names.** Asset names
+  are identical every night, so a leftover from a previous run was
+  indistinguishable from what the current run just uploaded. The verification
+  step already read the remote size into a variable and logged the local size
+  on the next line without ever comparing them; it now diffs each asset's
+  remote size against `stat -c %s` of the corresponding local file and treats
+  a mismatch as the same "release may now be INCONSISTENT" FATAL as an upload
+  failure.
+- **`ENGRAM_UPLOAD_ATTEMPTS` is validated as a positive integer** alongside the
+  other configuration, at the top of the script. `0` used to skip the upload
+  loop entirely and still report the inconsistency FATAL for a run that never
+  attempted anything; it now fails fast with a clear message instead.
+- **The disk-space check now fails closed on a non-numeric `free_kb`.**
+  `[ "$free_kb" -lt "$MIN_FREE_KB" ]` returns 2 (not true) on a non-numeric
+  operand, which `if` reads as "enough space" -- the empty-string guard above
+  it covered the common case but not a garbage `df` line. `free_kb` is now
+  required to match a digits-only pattern, with anything else treated as a
+  pre-flight failure.
+- A comment at the `flock` fd was also added noting that fd 9 is inherited by
+  children, so a future backgrounded helper that outlives the script would
+  hold the lock and wedge the next night's run, which `flock -n` cannot
+  detect.
+
 ---
 
 ## Task 3: systemd user units and the secrets template
