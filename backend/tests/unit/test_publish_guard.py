@@ -41,8 +41,17 @@ class TestManifestTotals:
     def test_empty_manifest_is_zero(self, pg):
         assert pg.manifest_totals(_manifest({})) == (0, 0)
 
-    def test_missing_shows_key_is_zero(self, pg):
-        assert pg.manifest_totals({"cache_format_version": "3"}) == (0, 0)
+    def test_missing_shows_key_raises(self, pg):
+        # A manifest missing 'shows' entirely is structurally broken, not a
+        # deliberately empty cache; it must be undecidable (exit 2), not read
+        # as an empty-candidate block (exit 1).
+        with pytest.raises(pg.ManifestError):
+            pg.manifest_totals({"cache_format_version": "3"})
+
+    def test_explicit_empty_shows_is_zero(self, pg):
+        # {"shows": {}} is a valid, deliberately empty manifest and must still
+        # total to (0, 0) rather than raise.
+        assert pg.manifest_totals(_manifest({})) == (0, 0)
 
 
 class TestVerdictForGrowth:
@@ -190,6 +199,19 @@ class TestBaselineFetchClassification:
         status = pg.classify_gh_failure("gh: To get started, please run: gh auth login")
         assert status is pg.BaselineStatus.UNAVAILABLE
 
+    def test_http_404_from_expired_auth_is_unavailable(self, pg):
+        # gh emits a generic "Not Found" for expired/under-scoped tokens, a
+        # renamed repo, etc, not only for a genuinely absent release. Reading
+        # this as ABSENT would let a broken credential publish unvalidated.
+        status = pg.classify_gh_failure(
+            "HTTP 404: Not Found (https://api.github.com/repos/Jsakkos/engram/releases)"
+        )
+        assert status is pg.BaselineStatus.UNAVAILABLE
+
+    def test_gh_not_found_http_variant_is_unavailable(self, pg):
+        status = pg.classify_gh_failure("gh: Not Found (HTTP 404)")
+        assert status is pg.BaselineStatus.UNAVAILABLE
+
     def test_network_failure_is_unavailable(self, pg):
         status = pg.classify_gh_failure("dial tcp: lookup api.github.com: no such host")
         assert status is pg.BaselineStatus.UNAVAILABLE
@@ -221,13 +243,58 @@ class TestBaselineFetchClassification:
         pg.fetch_published_totals("some-tag")
         assert seen.get("timeout") == 60
 
+    def test_gh_call_passes_repo_flag(self, pg, monkeypatch):
+        # The guard must read the baseline from the same repo the publishing
+        # wrapper uploads to (--repo Jsakkos/engram), or a re-pointed remote
+        # or a fork compares against the wrong release.
+        seen: dict = {}
+
+        def _fake(cmd, **kwargs):
+            seen["cmd"] = cmd
+            raise FileNotFoundError("gh")
+
+        monkeypatch.setattr(pg.subprocess, "run", _fake)
+        pg.fetch_published_totals("some-tag", repo="someone/fork")
+        cmd = seen["cmd"]
+        assert "--repo" in cmd
+        assert cmd[cmd.index("--repo") + 1] == "someone/fork"
+
+    def test_gh_call_defaults_repo_to_default_repo(self, pg, monkeypatch):
+        seen: dict = {}
+
+        def _fake(cmd, **kwargs):
+            seen["cmd"] = cmd
+            raise FileNotFoundError("gh")
+
+        monkeypatch.setattr(pg.subprocess, "run", _fake)
+        pg.fetch_published_totals("some-tag")
+        cmd = seen["cmd"]
+        assert cmd[cmd.index("--repo") + 1] == pg.DEFAULT_REPO
+
+    def test_called_process_error_with_http_404_is_unavailable_end_to_end(self, pg, monkeypatch):
+        # Drives fetch_published_totals's CalledProcessError branch end to
+        # end (not just classify_gh_failure in isolation), stubbing
+        # subprocess.run the way gh actually fails on expired/under-scoped
+        # auth. No network call.
+        def _boom(cmd, **kwargs):
+            raise subprocess.CalledProcessError(
+                returncode=1,
+                cmd=cmd,
+                output="",
+                stderr="HTTP 404: Not Found (https://api.github.com/repos/Jsakkos/engram)",
+            )
+
+        monkeypatch.setattr(pg.subprocess, "run", _boom)
+        outcome = pg.fetch_published_totals("some-tag")
+        assert outcome.status is pg.BaselineStatus.UNAVAILABLE
+
 
 class TestMainExitCodes:
     """main() owns the contract the bash wrapper's safety rests on."""
 
     def _run(self, pg, monkeypatch, argv, outcome=None):
         if outcome is not None:
-            monkeypatch.setattr(pg, "fetch_published_totals", lambda tag: outcome)
+            monkeypatch.setattr(pg, "fetch_published_totals", lambda tag, repo=None: outcome)
         monkeypatch.setattr(pg.sys, "argv", ["publish_guard.py", *argv])
         return pg.main()
 
@@ -284,7 +351,7 @@ class TestMainExitCodes:
 
 class TestAllowShrinkGating:
     def _run_allow_shrink(self, pg, monkeypatch, path, outcome):
-        monkeypatch.setattr(pg, "fetch_published_totals", lambda tag: outcome)
+        monkeypatch.setattr(pg, "fetch_published_totals", lambda tag, repo=None: outcome)
         monkeypatch.setattr(
             pg.sys, "argv", ["publish_guard.py", "--candidate", path, "--allow-shrink"]
         )
@@ -320,6 +387,19 @@ class TestToleranceArgparse:
         path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
         monkeypatch.setattr(
             pg.sys, "argv", ["publish_guard.py", "--candidate", path, "--tolerance", "abc"]
+        )
+        with pytest.raises(SystemExit) as exc:
+            pg.main()
+        assert exc.value.code == 2
+
+    def test_tolerance_above_half_is_an_argparse_usage_error(self, pg, monkeypatch, tmp_path):
+        # A tolerance of 1.0 zeros every floor and waves through any shrink
+        # while still exiting 0; the CLI entry point caps well short of that.
+        # verdict_for's own [0, 1] contract is exercised separately in
+        # TestTolerance and is unaffected by this CLI-level cap.
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        monkeypatch.setattr(
+            pg.sys, "argv", ["publish_guard.py", "--candidate", path, "--tolerance", "0.9"]
         )
         with pytest.raises(SystemExit) as exc:
             pg.main()

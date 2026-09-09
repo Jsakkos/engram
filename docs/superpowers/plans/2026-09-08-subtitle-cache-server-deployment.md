@@ -476,6 +476,40 @@ exit as "do not publish", not just exit 1. Exit 1 means "deliberately blocked",
 exit 2 means "the guard could not decide"; both must stop the upload, and the
 two are worth distinguishing in the alert text.
 
+**Second round.** A reviewer found two more fail-open paths, both proven by
+execution, plus three smaller gaps:
+
+- **Generic `"not found"` marker.** `_ABSENT_MARKERS` included a bare
+  `"not found"`, which also matches `gh`'s generic 404 text for expired or
+  under-scoped auth (`HTTP 404: Not Found (https://api.github.com/repos/...)`,
+  `gh: Not Found (HTTP 404)`) as well as a genuinely missing release. A broken
+  credential was therefore classified `ABSENT` and the guard exited 0 with no
+  size comparison at all. Dropped the generic marker; the two specific ones
+  (`"release not found"`, `"no assets match"`) already cover the real
+  first-publish cases.
+- **Baseline read from the wrong repo.** `gh release download` had no
+  `--repo`, so it resolved the repo from the cwd's git remote, while the
+  wrapper's `gh release upload` targets `--repo Jsakkos/engram` explicitly. On
+  a fork or a re-pointed remote the guard could compare against a different
+  release, or find none and allow. Added a `--repo` CLI option (module
+  constant `DEFAULT_REPO = "Jsakkos/engram"`), threaded through
+  `fetch_published_totals` into the `gh` invocation; its help text says it
+  must match the wrapper's upload target.
+- **Missing `shows` key miscategorized.** A manifest with no `shows` key at
+  all totalled `(0, 0)`, which reads downstream as a deliberate
+  `EMPTY_CANDIDATE` block (exit 1) rather than the structurally broken input
+  it actually is. `manifest_totals` now raises `ManifestError` for a missing
+  key while `{"shows": {}}` still validly totals `(0, 0)`.
+- **`--tolerance 1.0` disabled the guard.** A tolerance of 1.0 zeros every
+  floor and allows any shrink while still exiting 0. The CLI's `_tolerance_arg`
+  now caps at 0.5; `verdict_for`'s own `[0, 1]` contract is unchanged since
+  that is the library-level invariant, not the unattended-CLI one.
+- **Test gap on the `CalledProcessError` path.** Only `classify_gh_failure`
+  was exercised in isolation; nothing drove `fetch_published_totals` through a
+  stubbed `subprocess.run` raising `CalledProcessError`. Added an end-to-end
+  test for that branch with an `HTTP 404: Not Found` stderr, which alone would
+  have caught the `_ABSENT_MARKERS` regression above.
+
 ---
 
 ## Task 2: The nightly wrapper script

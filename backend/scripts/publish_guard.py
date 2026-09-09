@@ -38,6 +38,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_TAG = "subtitle-cache-latest"
+# Must match the repo the publishing wrapper's `gh release upload --repo`
+# targets, or the guard validates against a baseline the wrapper never wrote.
+DEFAULT_REPO = "Jsakkos/engram"
 # 2% absorbs ordinary night-to-night churn: a subtitle provider timing out on a
 # handful of episodes, or a show temporarily failing TMDB resolution. Anything
 # larger is a defect, not weather.
@@ -45,7 +48,11 @@ DEFAULT_TOLERANCE = 0.02
 
 # gh writes these to stderr when the release or the asset genuinely does not
 # exist. Everything else (auth, DNS, 5xx, rate limit) means we could not look.
-_ABSENT_MARKERS = ("release not found", "not found", "no assets match")
+# A bare "not found" is deliberately excluded: gh also emits it for expired or
+# under-scoped auth ("HTTP 404: Not Found (https://api.github.com/repos/...)",
+# "gh: Not Found (HTTP 404)"), and reading that as ABSENT turns a broken
+# credential into a silent, unvalidated publish.
+_ABSENT_MARKERS = ("release not found", "no assets match")
 
 GH_TIMEOUT_SECONDS = 60
 
@@ -105,7 +112,7 @@ def manifest_totals(manifest: object) -> tuple[int, int]:
         raise ManifestError(f"manifest is {type(manifest).__name__}, expected an object")
 
     if "shows" not in manifest:
-        return 0, 0
+        raise ManifestError("manifest has no 'shows' key")
     shows = manifest["shows"]
     if not isinstance(shows, Mapping):
         raise ManifestError(f"manifest 'shows' is {type(shows).__name__}, expected an object")
@@ -233,16 +240,29 @@ def classify_gh_failure(stderr: str) -> BaselineStatus:
     return BaselineStatus.UNAVAILABLE
 
 
-def fetch_published_totals(tag: str) -> BaselineOutcome:
+def fetch_published_totals(tag: str, repo: str = DEFAULT_REPO) -> BaselineOutcome:
     """Download the live release manifest and total it.
 
     Returns an explicit outcome so the caller can tell "there is genuinely no
-    baseline" (allow) from "we could not find out" (exit 2).
+    baseline" (allow) from "we could not find out" (exit 2). ``repo`` must
+    match the repo the publishing wrapper uploads to, or this validates
+    against a baseline the wrapper never wrote.
     """
     with tempfile.TemporaryDirectory() as tmp:
         try:
             subprocess.run(
-                ["gh", "release", "download", tag, "--pattern", "manifest.json", "--dir", tmp],
+                [
+                    "gh",
+                    "release",
+                    "download",
+                    tag,
+                    "--repo",
+                    repo,
+                    "--pattern",
+                    "manifest.json",
+                    "--dir",
+                    tmp,
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -284,14 +304,24 @@ def fetch_published_totals(tag: str) -> BaselineOutcome:
         return BaselineOutcome(BaselineStatus.RETRIEVED, totals)
 
 
+# 1.0 would zero every floor and wave through any shrink while still exiting
+# 0; 0.5 is already a wildly permissive night-to-night tolerance, so the CLI
+# entry point caps here well short of "disables the guard". verdict_for's own
+# contract (tested separately) keeps accepting the full [0, 1] range for
+# callers that aren't this unattended CLI.
+_MAX_CLI_TOLERANCE = 0.5
+
+
 def _tolerance_arg(raw: str) -> float:
     """argparse ``type=`` for --tolerance, so a bad value is a usage error."""
     try:
         value = float(raw)
     except ValueError:
         raise argparse.ArgumentTypeError(f"must be a number, got {raw!r}") from None
-    if not 0.0 <= value <= 1.0:
-        raise argparse.ArgumentTypeError(f"must be a fraction in [0, 1], got {value}")
+    if not 0.0 <= value <= _MAX_CLI_TOLERANCE:
+        raise argparse.ArgumentTypeError(
+            f"must be a fraction in [0, {_MAX_CLI_TOLERANCE}], got {value}"
+        )
     return value
 
 
@@ -299,6 +329,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Guard against publishing a shrunken cache")
     parser.add_argument("--candidate", required=True, help="Path to the candidate manifest.json")
     parser.add_argument("--cache-tag", default=DEFAULT_TAG, help="Release tag to compare against")
+    parser.add_argument(
+        "--repo",
+        default=DEFAULT_REPO,
+        help=(
+            f"GitHub repo (owner/name) to read the baseline release from "
+            f"(default: {DEFAULT_REPO}). Must match the repo the publishing "
+            f"wrapper's `gh release upload --repo` targets, or the guard "
+            f"validates against a baseline the wrapper never wrote."
+        ),
+    )
     parser.add_argument(
         "--tolerance",
         type=_tolerance_arg,
@@ -325,7 +365,7 @@ def _run(argv: list[str] | None = None) -> int:
         print(f"publish-guard: cannot read candidate manifest {args.candidate}: {exc}")
         return 2
 
-    outcome = fetch_published_totals(args.cache_tag)
+    outcome = fetch_published_totals(args.cache_tag, args.repo)
     if outcome.status is BaselineStatus.UNAVAILABLE:
         print(
             f"publish-guard: undecidable: could not read the published baseline: {outcome.detail}"
