@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Organizing a file that another process still had open could leave a copy in the library while reporting an error, so the next save attempt failed with "file already exists" and the episode had to be discarded. The move is now retried and rolled back cleanly. (#642)
+
 ## [0.35.0] - 2026-09-07
 
 _Highlights: back up a disc before ripping it, and import backups you already have._
