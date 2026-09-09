@@ -130,3 +130,21 @@ class TestReconcileBackupLocation:
         assert not (root / "TV" / "Wrong Show").exists()
         assert root.exists()
         assert (root / "TV").exists()
+
+
+class TestTerminalHookRegistration:
+    """The helper is well covered; this guards the wiring that invokes it.
+
+    Without this, deleting the on_terminal_state registration in a refactor
+    leaves every other test green while the feature silently stops running.
+    """
+
+    def test_reconcile_hook_is_registered(self):
+        # Importing the module constructs the JobManager singleton, whose
+        # __init__ registers the terminal callbacks on the module-level
+        # state machine. Import the names directly: `import ... as mod` binds
+        # the job_manager SINGLETON rather than the module here.
+        from app.services.job_manager import state_machine
+
+        names = {getattr(cb, "__name__", "") for cb in state_machine._on_terminal_callbacks}
+        assert "_reconcile_backup_on_terminal" in names
