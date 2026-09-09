@@ -2329,10 +2329,10 @@ class JobManager:
         edition: str | None = None,
     ) -> None:
         """Apply a user's review decision for a title."""
-        # Organization (shutil.move) starts now — stop background prewarming so
-        # ffmpeg/ffprobe don't hold the file open when the rename runs. The
-        # in-flight thread finishes its current chunk (~60s) before yielding.
-        self._prewarmer.cancel_for_job(job_id)
+        # Organization (shutil.move) starts now, so wait for ffmpeg/ffprobe to let
+        # go of the file before the rename runs (#642). Bounded: move_media_file
+        # retries past a lock that outlives the wait.
+        await self._prewarmer.cancel_and_wait(job_id)
         # Bind the job into the logging context: this runs straight off an API
         # handler, so without it every line the organize sweep emits (including
         # organizer.py's traceback) is tagged job=- and the diagnostics bundle's
@@ -2342,10 +2342,10 @@ class JobManager:
 
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
         """Apply several review decisions for a job in one atomic pass."""
-        # Organization (shutil.move) starts now — stop background prewarming so
-        # ffmpeg/ffprobe don't hold the file open when the rename runs. The
-        # in-flight thread finishes its current chunk (~60s) before yielding.
-        self._prewarmer.cancel_for_job(job_id)
+        # Organization (shutil.move) starts now, so wait for ffmpeg/ffprobe to let
+        # go of the file before the rename runs (#642). Bounded: move_media_file
+        # retries past a lock that outlives the wait.
+        await self._prewarmer.cancel_and_wait(job_id)
         with job_log_context(job_id):  # see apply_review (#563)
             await self._finalization.apply_review_batch(job_id, decisions)
 

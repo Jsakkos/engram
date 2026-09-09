@@ -140,6 +140,34 @@ class TranscriptionPrewarmer:
                 f"Job {job_id}: transcript prewarm cancelled (in-flight thread finishes current chunk)"
             )
 
+    async def cancel_and_wait(self, job_id: int, timeout: float = 5.0) -> bool:
+        """Cancel ``job_id``'s prewarm task and wait for the thread to let go.
+
+        ``cancel_for_job`` is deliberately fire-and-forget, but organize needs
+        the file handle actually released, not merely asked for: an ffmpeg chunk
+        still holding the staging MKV is what makes the rename fail (#642).
+        ``asyncio.to_thread`` is not interruptible, so the in-flight chunk runs
+        to completion; we wait a short bounded time for that and let
+        ``move_media_file``'s retry cover the rest rather than blocking an API
+        handler for a full chunk.
+
+        Returns True when the task is done, False when the timeout won first.
+        """
+        task = self._tasks.pop(job_id, None)
+        if task is None or task.done():
+            return True
+        task.cancel()
+        # asyncio.wait, not await task: waiting on a cancelled task re-raises
+        # its CancelledError into this coroutine, which would abort the caller's
+        # organize. wait() reports completion without propagating.
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+        if not done:
+            logger.warning(
+                f"Job {job_id}: transcript prewarm did not stop within {timeout}s; "
+                "organize will retry past the lock"
+            )
+        return bool(done)
+
     async def on_job_terminal(self, job_id: int, _state) -> None:
         """JobStateMachine ``on_terminal_state`` hook: stop warming a finished job."""
         self.cancel_for_job(job_id)

@@ -533,3 +533,95 @@ class TestTVDisambiguation:
         assert str(r_ep["final_path"]).startswith(show_dir)
         assert str(r_ex["final_path"]).startswith(show_dir)
         assert "Extras" in str(r_ex["final_path"])
+
+
+class TestMoveMediaFileRollback:
+    """Rollback contract for move_media_file (#642).
+
+    shutil.move degrades to copy-then-delete on a failed rename, and if the
+    delete also fails (a held handle on Windows), the copy is left behind in
+    the library while the caller still sees an exception. These tests prove
+    move_media_file leaves the filesystem unchanged on failure instead.
+    """
+
+    def test_failed_unlink_leaves_no_destination(self, tmp_path, monkeypatch):
+        import app.core.organizer as organizer_mod
+
+        src = tmp_path / "src.mkv"
+        src.write_bytes(b"payload")
+        dest_dir = tmp_path / "dest_dir"
+        dest_dir.mkdir()
+        dest = dest_dir / "dest.mkv"
+
+        real_unlink = organizer_mod.os.unlink
+
+        def fake_replace(_src, _dst):
+            raise PermissionError(13, "in use")
+
+        def fake_unlink(path):
+            # Only the locked source file refuses to unlink; the rollback's
+            # own cleanup of the copy it just made must still go through, or
+            # this test could never distinguish "rolled back" from "gave up".
+            if str(path) == str(src):
+                raise PermissionError(13, "in use")
+            real_unlink(path)
+
+        monkeypatch.setattr(organizer_mod.os, "replace", fake_replace)
+        monkeypatch.setattr(organizer_mod.os, "unlink", fake_unlink)
+
+        with pytest.raises(OSError):
+            organizer_mod.move_media_file(src, dest, attempts=1, delay=0)
+
+        assert src.exists() is True
+        assert dest.exists() is False
+
+    def test_retries_then_succeeds(self, tmp_path, monkeypatch):
+        import app.core.organizer as organizer_mod
+
+        src = tmp_path / "src.mkv"
+        src.write_bytes(b"payload")
+        dest_dir = tmp_path / "dest_dir"
+        dest_dir.mkdir()
+        dest = dest_dir / "dest.mkv"
+
+        real_replace = organizer_mod.os.replace
+        calls = {"count": 0}
+
+        def flaky_replace(_src, _dst):
+            calls["count"] += 1
+            if calls["count"] <= 2:
+                raise PermissionError(13, "in use")
+            return real_replace(_src, _dst)
+
+        monkeypatch.setattr(organizer_mod.os, "replace", flaky_replace)
+
+        organizer_mod.move_media_file(src, dest, attempts=3, delay=0)
+
+        assert dest.exists() is True
+        assert src.exists() is False
+        assert calls["count"] == 3
+
+    def test_cross_device_falls_back_immediately(self, tmp_path, monkeypatch):
+        import errno
+
+        import app.core.organizer as organizer_mod
+
+        src = tmp_path / "src.mkv"
+        src.write_bytes(b"payload")
+        dest_dir = tmp_path / "dest_dir"
+        dest_dir.mkdir()
+        dest = dest_dir / "dest.mkv"
+
+        calls = {"count": 0}
+
+        def fake_replace(_src, _dst):
+            calls["count"] += 1
+            raise OSError(errno.EXDEV, "cross-device")
+
+        monkeypatch.setattr(organizer_mod.os, "replace", fake_replace)
+
+        organizer_mod.move_media_file(src, dest, attempts=3, delay=0)
+
+        assert calls["count"] == 1
+        assert dest.exists() is True
+        assert src.exists() is False
