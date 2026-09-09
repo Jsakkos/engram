@@ -143,6 +143,14 @@ def reconcile_backup_location(job: DiscJob, config: AppConfig) -> Path | None:
     if desired.exists():
         # Legitimately another disc of the same set. Merging blindly would
         # be destructive, so leave both alone and say so.
+        #
+        # This check is NOT atomic with the rename below: two jobs reconciling
+        # to the same destination could both pass it. What actually guarantees
+        # "never merge, never overwrite" is the rename itself, which refuses a
+        # non-empty directory (ENOTEMPTY on POSIX, FileExistsError on Windows)
+        # and lands in the except branch as a logged no-op. This check exists to
+        # make the common case explain itself in the log rather than to enforce
+        # the invariant, so do not "optimize" it away or rely on it alone.
         logger.warning(f"Not moving backup {current} to {desired}: the destination already exists")
         return None
 

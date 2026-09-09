@@ -1692,6 +1692,15 @@ class JobManager:
         Runs only on COMPLETED, where extraction is provably finished, because
         until then source_spec points AT the backup folder and renaming it would
         pull the floor out from under the rip (#643).
+
+        Terminal callbacks fire AFTER ``JobStateMachine.transition`` has already
+        committed and broadcast, so the ``backup_path``/``source_spec`` written
+        here reach no WebSocket client: there is no follow-up ``job_update``.
+        That is fine today because the only consumer, HistoryPage's detail
+        panel, re-fetches ``GET /api/jobs/{id}/detail`` when it opens rather
+        than reading the WS-cached job. A future consumer that reads either
+        field off the cached WS object would see the stale pre-correction value
+        until a hard refresh, and would need a broadcast added here.
         """
         if state != JobState.COMPLETED:
             return
