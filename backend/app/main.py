@@ -217,9 +217,11 @@ async def health_check():
 if getattr(sys, "_MEIPASS", None):
     _static_dir = Path(sys._MEIPASS) / "app" / "static"
 else:
-    # .parent before .resolve(), matching dirname(abspath(...)): the directory
-    # this module lives in, not the directory a symlinked module points into.
-    _static_dir = Path(__file__).parent.resolve() / "static"
+    # __file__ is already absolute for an imported module on 3.9+, so the
+    # abspath() this replaced was a no-op and no resolve() is wanted either:
+    # resolve() would canonicalize symlinked ancestors, which is the behaviour
+    # normalize_user_path deliberately keeps away from (see paths.py).
+    _static_dir = Path(__file__).parent / "static"
 
 if _static_dir.is_dir():
     from fastapi.responses import FileResponse
