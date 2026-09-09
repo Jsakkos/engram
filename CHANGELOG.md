@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- When a misidentified disc was corrected during review, the disc backup kept the wrong show name and TMDB id even though the library output was correct. The backup folder is now moved to match the corrected identity once the job completes. (#643)
+
 ## [0.35.0] - 2026-09-07
 
 _Highlights: back up a disc before ripping it, and import backups you already have._
