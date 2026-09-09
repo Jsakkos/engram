@@ -97,6 +97,11 @@ def executable_basename_allowed(path: str, allowed_basenames: Sequence[str]) -> 
     as a config path. Exact basename match (case-insensitive) — a substring
     check would let ``makemkv-exploit.sh`` through. Backslashes are normalised
     to ``/`` first so a Windows-style path is parsed correctly on any platform.
+
+    Stays on ``os.path.basename`` rather than ``PurePosixPath(...).name`` (#644):
+    basename of ``"makemkvcon/"`` is ``""`` and is denied, while ``.name`` is
+    ``"makemkvcon"`` and is allowed. A guard must not get more permissive in
+    order to look tidier.
     """
     name = os.path.basename(path.replace("\\", "/")).lower()
     return name in {allowed.lower() for allowed in allowed_basenames}

@@ -2,9 +2,9 @@
 
 import asyncio
 import mimetypes
-import os
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -215,11 +215,13 @@ async def health_check():
 # In frozen builds, _MEIPASS is the bundle root and static files are at app/static/
 # In dev, __file__ is inside app/ so we just append "static"
 if getattr(sys, "_MEIPASS", None):
-    _static_dir = os.path.join(sys._MEIPASS, "app", "static")
+    _static_dir = Path(sys._MEIPASS) / "app" / "static"
 else:
-    _static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+    # .parent before .resolve(), matching dirname(abspath(...)): the directory
+    # this module lives in, not the directory a symlinked module points into.
+    _static_dir = Path(__file__).parent.resolve() / "static"
 
-if os.path.isdir(_static_dir):
+if _static_dir.is_dir():
     from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
 
@@ -241,9 +243,7 @@ if os.path.isdir(_static_dir):
             return resp
 
     # Mount static assets (JS, CSS, images)
-    app.mount(
-        "/assets", _ImmutableStatic(directory=os.path.join(_static_dir, "assets")), name="assets"
-    )
+    app.mount("/assets", _ImmutableStatic(directory=_static_dir / "assets"), name="assets")
 
     # Root-level static files emitted by the Vite build (favicon, SVGs, etc.).
     # Built once at server startup by listing the static dir — no manual
@@ -251,14 +251,14 @@ if os.path.isdir(_static_dir):
     # Maps URL path -> on-disk path; the catch-all uses the request path only
     # as a dict key, so user input is never interpolated into a filesystem path.
     _ROOT_STATIC_FILES = {
-        _name: os.path.join(_static_dir, _name)
-        for _name in os.listdir(_static_dir)
-        if _name != "index.html" and os.path.isfile(os.path.join(_static_dir, _name))
-        # isfile() intentionally excludes subdirectories — nested assets belong
+        _entry.name: _entry
+        for _entry in _static_dir.iterdir()
+        if _entry.name != "index.html" and _entry.is_file()
+        # is_file() intentionally excludes subdirectories — nested assets belong
         # under /assets (the StaticFiles mount above). A new root-level subdir
         # from the Vite build would need its own mount.
     }
-    _INDEX_HTML = os.path.join(_static_dir, "index.html")
+    _INDEX_HTML = _static_dir / "index.html"
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
@@ -268,9 +268,9 @@ if os.path.isdir(_static_dir):
         # filesystem path. Nested assets are served by the /assets mount
         # above; any other path is a client-side route -> index.html.
         static_file = _ROOT_STATIC_FILES.get(full_path)
-        # isfile() is a runtime safety net — a file present at startup could
+        # is_file() is a runtime safety net — a file present at startup could
         # have been removed since; fall through to index.html, never a 500.
-        if static_file is not None and os.path.isfile(static_file):
+        if static_file is not None and static_file.is_file():
             return FileResponse(static_file)
         # index.html keeps a stable name across builds, so without this header the
         # browser heuristically caches it and keeps loading the OLD hashed bundles

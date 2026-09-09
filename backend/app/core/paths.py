@@ -95,10 +95,15 @@ def normalize_user_path(value: str | None) -> str:
         # describe_path names it instead.
         return cleaned
 
+    # Deliberately os.path and not pathlib on both lines below (#644).
+    # Path.expanduser() raises RuntimeError for a "~someone" whose home cannot
+    # be resolved; os.path.expanduser hands the string back unchanged. A
+    # settings screen asking "is this path ok?" must answer, not 500, on a typo.
     expanded = os.path.expanduser(cleaned)
     # normpath settles the separator style (a pasted "C:/Users/me" and a typed
     # "C:\Users\me" are one setting) and resolves any "..", without touching the
     # filesystem — this must stay usable for a path that does not exist yet.
+    # Path.resolve() is not a substitute: it stats and follows symlinks.
     expanded = os.path.normpath(expanded)
     # Trailing separators are noise except on a drive root ("C:\") — trimming
     # that would turn an absolute path into a relative one.
