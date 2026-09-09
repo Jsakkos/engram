@@ -1,0 +1,29 @@
+[Unit]
+Description=Engram nightly subtitle-cache harvest and publish
+Documentation=https://github.com/Jsakkos/engram/blob/main/docs/development/subtitle-cache-server.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Written by the operator, mode 0600. Not in git: it carries the
+# OpenSubtitles password and the TMDB read token.
+EnvironmentFile=%h/.config/engram/subtitle-cache.env
+ExecStart=%h/engram/deploy/subtitle-cache/harvest.sh
+WorkingDirectory=%h/engram/backend
+# uv installs to ~/.local/bin, which a non-login systemd unit does not inherit.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# A full corpus sweep from cold takes many hours; the quota guard bounds the
+# download volume, not the wall clock. 10h is generous and still bounded.
+TimeoutStartSec=10h
+# Never let a nightly harvest starve interactive work on this box.
+Nice=10
+IOSchedulingClass=idle
+# Exit 10 means the run published successfully but halted on the OpenSubtitles
+# quota guard, the normal nightly outcome with ENGRAM_MAX_DOWNLOADS well under
+# the account cap. Without this, a healthy quota-halted night shows as a
+# failed unit every morning and trains the operator to ignore real failures.
+SuccessExitStatus=10
+
+[Install]
+WantedBy=default.target

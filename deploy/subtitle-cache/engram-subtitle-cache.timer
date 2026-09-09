@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the Engram subtitle-cache harvest daily
+Documentation=https://github.com/Jsakkos/engram/blob/main/docs/development/subtitle-cache-server.md
+
+[Timer]
+# The server runs on Etc/UTC. OpenSubtitles daily quota resets at 00:00 UTC,
+# so starting at 02:00 UTC gives the reset room and keeps a full day's budget
+# available to one run.
+OnCalendar=*-*-* 02:00:00
+# Catch up a run missed while the box was down, rather than skipping a day.
+Persistent=true
+# Stagger against any other 02:00 job on the host.
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target
