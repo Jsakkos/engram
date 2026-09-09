@@ -436,6 +436,46 @@ git add backend/scripts/publish_guard.py backend/tests/unit/test_publish_guard.p
 git commit -m "feat(subtitle-cache): guard the rolling release against a shrinking cache"
 ```
 
+### Amendments after code review
+
+The code blocks above are the original spec. Code review found several ways the
+guard could fail OPEN (allow a publish it should have blocked), which for an
+unattended 02:00 job is far more expensive than failing closed. The shipped
+guard therefore differs as follows:
+
+- **Fail-open baseline.** `manifest_totals` used to coerce a damaged published
+  manifest (`"shows": null`, or a list) into `(0, 0)`, which is not `None`, so
+  every tolerance floor became `0.0` and any shrink was waved through while the
+  log cheerfully printed `growth`. A published baseline totalling zero shows or
+  zero episodes is now its own verdict, `BASELINE_UNUSABLE`, and blocks.
+- **`gh` failure classification.** `fetch_published_totals` collapsed four
+  outcomes into `None`: genuinely no manifest (allow), `gh` missing, `gh`
+  unauthenticated, and network/GitHub failure (allowing is wrong). It now
+  returns a typed `BaselineOutcome` with a `BaselineStatus` of `RETRIEVED`,
+  `ABSENT` (allow, first publish) or `UNAVAILABLE` (undecidable). Classification
+  reads the captured `gh` stderr, which is now echoed on the failure path so the
+  02:00 log carries evidence.
+- **Exit 2 for undecidable.** An unreadable baseline, a structurally malformed
+  manifest (well-formed JSON, wrong shape, now a dedicated `ManifestError`
+  rather than a stray `AttributeError`), and any unexpected exception all exit 2
+  instead of tracebacking out as exit 1. `main` wraps `_run` so nothing escapes.
+- **Timeout.** The `gh` subprocess call takes `timeout=60`; a stalled TCP
+  connection used to hang the pipeline forever. `TimeoutExpired` folds into
+  `UNAVAILABLE`, never into allow.
+- **`--allow-shrink` gating.** The flag is for deliberate corpus pruning, which
+  never yields an empty cache. It can no longer override `EMPTY_CANDIDATE` or
+  `BASELINE_UNUSABLE`, and its help text says so.
+- **Tolerance validation.** `--tolerance` is validated by an argparse `type=`
+  callable, so an out-of-range value is a usage error rather than a `ValueError`
+  traceback. `verdict_for` keeps its own `ValueError` as the library contract.
+- **Log honesty.** Floors print as `.1f` (a floor of 457.66 no longer renders as
+  "458") and the tolerance as `2.0%` rather than rounding 2.5% down to 2%.
+
+**Task 2 impact: the guard can now exit 2.** The wrapper must treat ANY non-zero
+exit as "do not publish", not just exit 1. Exit 1 means "deliberately blocked",
+exit 2 means "the guard could not decide"; both must stop the upload, and the
+two are worth distinguishing in the alert text.
+
 ---
 
 ## Task 2: The nightly wrapper script

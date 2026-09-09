@@ -4,6 +4,9 @@ The guard is pure arithmetic over two manifests, so these tests never touch the
 network, the real ~/.engram/cache, or the live release.
 """
 
+import json
+import subprocess
+
 import pytest
 
 
@@ -22,6 +25,12 @@ def _show(name: str, counts: dict[str, int]) -> dict:
         "seasons": [int(s) for s in counts],
         "episode_counts": counts,
     }
+
+
+def _write_manifest(tmp_path, shows) -> str:
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(_manifest(shows)), encoding="utf-8")
+    return str(path)
 
 
 class TestManifestTotals:
@@ -86,3 +95,232 @@ class TestTolerance:
     def test_out_of_range_tolerance_rejected(self, pg, tolerance):
         with pytest.raises(ValueError):
             pg.verdict_for(candidate=(1, 1), published=(1, 1), tolerance=tolerance)
+
+
+class TestManifestValidation:
+    """Well-formed JSON with the wrong shape must be diagnosed, never coerced."""
+
+    def test_shows_as_list_raises(self, pg):
+        with pytest.raises(pg.ManifestError):
+            pg.manifest_totals({"shows": [{"a": 1}]})
+
+    def test_shows_null_raises(self, pg):
+        with pytest.raises(pg.ManifestError):
+            pg.manifest_totals({"shows": None})
+
+    def test_entry_not_a_mapping_raises(self, pg):
+        with pytest.raises(pg.ManifestError):
+            pg.manifest_totals({"shows": {"1": "nope"}})
+
+    def test_episode_counts_not_a_mapping_raises(self, pg):
+        with pytest.raises(pg.ManifestError):
+            pg.manifest_totals({"shows": {"1": {"episode_counts": [1, 2]}}})
+
+    def test_non_int_episode_count_raises(self, pg):
+        with pytest.raises(pg.ManifestError):
+            pg.manifest_totals({"shows": {"1": {"episode_counts": {"1": "ten"}}}})
+
+    def test_bool_episode_count_raises(self, pg):
+        # bool is an int subclass; a truthy flag must not read as one episode.
+        with pytest.raises(pg.ManifestError):
+            pg.manifest_totals({"shows": {"1": {"episode_counts": {"1": True}}}})
+
+    def test_top_level_not_a_mapping_raises(self, pg):
+        with pytest.raises(pg.ManifestError):
+            pg.manifest_totals([1, 2, 3])
+
+
+class TestBaselineUnusable:
+    """A published baseline of zero must not silently disable every floor."""
+
+    def test_zero_zero_baseline_is_blocked(self, pg):
+        v = pg.verdict_for(candidate=(1, 1), published=(0, 0), tolerance=0.02)
+        assert v.allowed is False
+        assert v.verdict is pg.ShrinkVerdict.BASELINE_UNUSABLE
+
+    def test_zero_episode_baseline_is_blocked(self, pg):
+        v = pg.verdict_for(candidate=(500, 30000), published=(467, 0), tolerance=0.02)
+        assert v.allowed is False
+        assert v.verdict is pg.ShrinkVerdict.BASELINE_UNUSABLE
+
+    def test_reason_points_at_the_release(self, pg):
+        v = pg.verdict_for(candidate=(1, 1), published=(0, 0), tolerance=0.02)
+        assert "inspect" in v.reason.lower()
+
+
+class TestToleranceBoundary:
+    """Pin the float boundary so a later int()/round() cannot move the line."""
+
+    def test_exactly_on_the_floor_is_allowed(self, pg):
+        # 100 * 0.98 == 98.0 and 10000 * 0.98 == 9800.0, both exactly on it.
+        v = pg.verdict_for(candidate=(98, 9800), published=(100, 10000), tolerance=0.02)
+        assert v.allowed is True
+
+    def test_one_below_the_floor_is_blocked(self, pg):
+        v = pg.verdict_for(candidate=(97, 9700), published=(100, 10000), tolerance=0.02)
+        assert v.allowed is False
+        assert v.verdict is pg.ShrinkVerdict.SHOWS_SHRANK
+
+
+class TestReasonFormatting:
+    def test_floor_is_not_rounded_up_into_a_contradiction(self, pg):
+        # 467 * 0.98 = 457.66. "below the floor of 458" reads as a lie when the
+        # candidate is 458.
+        v = pg.verdict_for(candidate=(400, 36742), published=(467, 36742), tolerance=0.02)
+        assert "458" not in v.reason
+        assert "457.7" in v.reason
+
+    def test_fractional_tolerance_is_not_rounded_away(self, pg):
+        v = pg.verdict_for(candidate=(100, 100), published=(467, 36742), tolerance=0.025)
+        assert "2%" not in v.reason
+        assert "2.5" in v.reason
+
+
+class TestBaselineFetchClassification:
+    """The three baseline outcomes must stay distinguishable, no network."""
+
+    def test_release_not_found_is_absent(self, pg):
+        assert pg.classify_gh_failure("release not found") is pg.BaselineStatus.ABSENT
+
+    def test_no_assets_match_is_absent(self, pg):
+        status = pg.classify_gh_failure("no assets match the file pattern")
+        assert status is pg.BaselineStatus.ABSENT
+
+    def test_auth_failure_is_unavailable(self, pg):
+        status = pg.classify_gh_failure("gh: To get started, please run: gh auth login")
+        assert status is pg.BaselineStatus.UNAVAILABLE
+
+    def test_network_failure_is_unavailable(self, pg):
+        status = pg.classify_gh_failure("dial tcp: lookup api.github.com: no such host")
+        assert status is pg.BaselineStatus.UNAVAILABLE
+
+    def test_gh_missing_binary_is_unavailable(self, pg, monkeypatch):
+        def _boom(*args, **kwargs):
+            raise FileNotFoundError("gh")
+
+        monkeypatch.setattr(pg.subprocess, "run", _boom)
+        outcome = pg.fetch_published_totals("some-tag")
+        assert outcome.status is pg.BaselineStatus.UNAVAILABLE
+
+    def test_gh_timeout_is_unavailable(self, pg, monkeypatch):
+        def _boom(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="gh", timeout=60)
+
+        monkeypatch.setattr(pg.subprocess, "run", _boom)
+        outcome = pg.fetch_published_totals("some-tag")
+        assert outcome.status is pg.BaselineStatus.UNAVAILABLE
+
+    def test_gh_call_passes_a_timeout(self, pg, monkeypatch):
+        seen: dict = {}
+
+        def _fake(cmd, **kwargs):
+            seen.update(kwargs)
+            raise FileNotFoundError("gh")
+
+        monkeypatch.setattr(pg.subprocess, "run", _fake)
+        pg.fetch_published_totals("some-tag")
+        assert seen.get("timeout") == 60
+
+
+class TestMainExitCodes:
+    """main() owns the contract the bash wrapper's safety rests on."""
+
+    def _run(self, pg, monkeypatch, argv, outcome=None):
+        if outcome is not None:
+            monkeypatch.setattr(pg, "fetch_published_totals", lambda tag: outcome)
+        monkeypatch.setattr(pg.sys, "argv", ["publish_guard.py", *argv])
+        return pg.main()
+
+    def test_growth_exits_zero(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        outcome = pg.BaselineOutcome(pg.BaselineStatus.RETRIEVED, (1, 9))
+        assert self._run(pg, monkeypatch, ["--candidate", path], outcome) == 0
+
+    def test_shrink_exits_one(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        outcome = pg.BaselineOutcome(pg.BaselineStatus.RETRIEVED, (5, 500))
+        assert self._run(pg, monkeypatch, ["--candidate", path], outcome) == 1
+
+    def test_absent_baseline_exits_zero(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        outcome = pg.BaselineOutcome(pg.BaselineStatus.ABSENT, None)
+        assert self._run(pg, monkeypatch, ["--candidate", path], outcome) == 0
+
+    def test_unavailable_baseline_exits_two(self, pg, monkeypatch, tmp_path, capsys):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        outcome = pg.BaselineOutcome(pg.BaselineStatus.UNAVAILABLE, None, "gh exploded")
+        assert self._run(pg, monkeypatch, ["--candidate", path], outcome) == 2
+        assert "gh exploded" in capsys.readouterr().out
+
+    def test_unusable_baseline_exits_one(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        outcome = pg.BaselineOutcome(pg.BaselineStatus.RETRIEVED, (0, 0))
+        assert self._run(pg, monkeypatch, ["--candidate", path], outcome) == 1
+
+    def test_missing_candidate_exits_two(self, pg, monkeypatch, tmp_path):
+        missing = str(tmp_path / "nope.json")
+        assert self._run(pg, monkeypatch, ["--candidate", missing]) == 2
+
+    def test_malformed_candidate_shape_exits_two(self, pg, monkeypatch, tmp_path):
+        path = tmp_path / "manifest.json"
+        path.write_text('{"shows": [{"a": 1}]}', encoding="utf-8")
+        assert self._run(pg, monkeypatch, ["--candidate", str(path)]) == 2
+
+    def test_unparseable_candidate_exits_two(self, pg, monkeypatch, tmp_path):
+        path = tmp_path / "manifest.json"
+        path.write_text("{not json", encoding="utf-8")
+        assert self._run(pg, monkeypatch, ["--candidate", str(path)]) == 2
+
+    def test_unexpected_exception_exits_two_not_one(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+
+        def _boom(tag):
+            raise RuntimeError("surprise")
+
+        monkeypatch.setattr(pg, "fetch_published_totals", _boom)
+        monkeypatch.setattr(pg.sys, "argv", ["publish_guard.py", "--candidate", path])
+        assert pg.main() == 2
+
+
+class TestAllowShrinkGating:
+    def _run_allow_shrink(self, pg, monkeypatch, path, outcome):
+        monkeypatch.setattr(pg, "fetch_published_totals", lambda tag: outcome)
+        monkeypatch.setattr(
+            pg.sys, "argv", ["publish_guard.py", "--candidate", path, "--allow-shrink"]
+        )
+        return pg.main()
+
+    def test_allow_shrink_overrides_a_real_shrink(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        outcome = pg.BaselineOutcome(pg.BaselineStatus.RETRIEVED, (5, 500))
+        assert self._run_allow_shrink(pg, monkeypatch, path, outcome) == 0
+
+    def test_allow_shrink_does_not_override_an_empty_candidate(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {})
+        outcome = pg.BaselineOutcome(pg.BaselineStatus.RETRIEVED, (5, 500))
+        assert self._run_allow_shrink(pg, monkeypatch, path, outcome) == 1
+
+    def test_allow_shrink_does_not_override_an_unusable_baseline(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        outcome = pg.BaselineOutcome(pg.BaselineStatus.RETRIEVED, (0, 0))
+        assert self._run_allow_shrink(pg, monkeypatch, path, outcome) == 1
+
+
+class TestToleranceArgparse:
+    def test_out_of_range_tolerance_is_an_argparse_usage_error(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        monkeypatch.setattr(
+            pg.sys, "argv", ["publish_guard.py", "--candidate", path, "--tolerance", "5"]
+        )
+        with pytest.raises(SystemExit) as exc:
+            pg.main()
+        assert exc.value.code == 2
+
+    def test_non_numeric_tolerance_is_an_argparse_usage_error(self, pg, monkeypatch, tmp_path):
+        path = _write_manifest(tmp_path, {"1": _show("A", {"1": 10})})
+        monkeypatch.setattr(
+            pg.sys, "argv", ["publish_guard.py", "--candidate", path, "--tolerance", "abc"]
+        )
+        with pytest.raises(SystemExit) as exc:
+            pg.main()
+        assert exc.value.code == 2
