@@ -33,12 +33,15 @@ Full diagnosis and design: `docs/superpowers/specs/2026-08-31-subtitle-cache-exp
 
 ### Current published cache (baseline for the shrink guard)
 
-`https://github.com/Jsakkos/engram/releases/tag/subtitle-cache-latest`, assets last updated 2026-07-08:
+`https://github.com/Jsakkos/engram/releases/tag/subtitle-cache-latest`, republished from the laptop corpus on 2026-09-08:
 
-- `cache_format_version` `3`, `content_version` `2026-07-07`
-- **467 shows / 36,742 episodes**, tarball 304,296,796 bytes
+- `cache_format_version` `3`, `content_version` `2026-09-08`
+- **479 shows / 37,799 episodes**, tarball 311,578,628 bytes
+- `vectorizer_config_hash` `889823bd399c70d9...`, unchanged from the previous publish
 
-Laptop corpus on disk today: 642 show dirs, 37,867 SRT files.
+It replaced a 2026-07-08 artifact of 467 shows / 36,742 episodes, as a strict superset: zero shows dropped, twelve added. The unit tests below use those older numbers as arithmetic fixtures; they are illustrative constants, not a live lookup, so leave them alone.
+
+Laptop corpus on disk: 642 show dirs, 37,867 SRT files (479 of those dirs hold enough parseable SRTs to reach the packed manifest).
 
 ### The exit-code contract this plan depends on
 
@@ -413,7 +416,7 @@ gh release download subtitle-cache-latest --pattern manifest.json --dir /tmp/pg-
 uv run python scripts/publish_guard.py --candidate /tmp/pg-check/manifest.json
 ```
 
-Expected: `publish-guard: growth: 467 -> 467 shows, 36742 -> 36742 episodes` and exit 0 (the manifest compared against itself is trivially allowed). Confirm with `echo $?`.
+Expected: `publish-guard: growth: 479 -> 479 shows, 37799 -> 37799 episodes` and exit 0 (the live manifest compared against itself is trivially allowed). Confirm with `echo $?`. If the counts differ from 479/37,799 the release has been republished since this plan was written; that is fine, both sides of the comparison come from the same file, so only the verdict word `growth` and the exit code matter.
 
 - [ ] **Step 7: Lint and format**
 
@@ -1053,7 +1056,7 @@ Pack only, no harvest, no publish. This exercises the corpus, the TMDB resolutio
 ssh jsakkos@192.168.1.122 'cd ~/engram/backend && set -a && . ~/.config/engram/subtitle-cache.env && set +a && ~/.local/bin/uv run python scripts/pack_subtitle_cache.py --output ~/.engram/harvest/engram-subtitle-cache.tar.gz'
 ```
 
-Expected, in the tail of the output: `Verifying artifact...` followed by a `Packed NNN shows, NNNNN episodes` line. The show count should be in the neighbourhood of 640 and the episode count at or above 36,742 (the published baseline). A count far below that means the rsync did not land everything, so stop and re-check Step 2.
+Expected, in the tail of the output: `Verifying artifact...` followed by a `Packed NNN shows, NNNNN episodes` line. The show count should be at or above 479 and the episode count at or above 37,799 (the published baseline). A count far below that means the rsync did not land everything, so stop and re-check Step 2.
 
 - [ ] **Step 5: Run the shrink guard against that artifact**
 
@@ -1080,7 +1083,7 @@ From the laptop:
 gh api repos/Jsakkos/engram/releases/tags/subtitle-cache-latest --jq '.assets[]|"\(.name) \(.size) updated=\(.updated_at)"'
 ```
 
-Expected: today's date in `updated_at` on both assets, and a tarball size at or above 304,296,796 bytes.
+Expected: today's date in `updated_at` on both assets, and a tarball size at or above 311,578,628 bytes.
 
 - [ ] **Step 8: Enable the timer**
 
@@ -1141,7 +1144,7 @@ Expected: two runs, each ending in either a publish or a clearly-explained guard
 gh api repos/Jsakkos/engram/releases/tags/subtitle-cache-latest --jq '.assets[]|"\(.name) \(.size) updated=\(.updated_at)"'
 ```
 
-Expected: `updated_at` within the last 48 hours, tarball at or above the 304,296,796-byte baseline.
+Expected: `updated_at` within the last 48 hours, tarball at or above the 311,578,628-byte baseline.
 
 - [ ] **CHANGELOG entry**
 
