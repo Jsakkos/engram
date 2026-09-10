@@ -12,6 +12,7 @@ All notable changes to Engram will be documented in this file.
   replace the published cache with a materially smaller one, so a bad build
   cannot quietly shrink what everyone downloads. Operator runbook:
   `docs/development/subtitle-cache-server.md`.
+
 ## [0.35.1] - 2026-09-10
 
 _Highlights: a corrected disc identity now renames its backup too, and a stuck file move during organizing no longer leaves a stray copy._
