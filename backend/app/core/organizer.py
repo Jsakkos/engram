@@ -6,9 +6,12 @@ Moves ripped files from staging to the library with proper naming conventions:
 """
 
 import contextlib
+import errno
 import logging
+import os
 import re
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -318,6 +321,89 @@ def resolve_conflict(dest_file: Path, conflict_resolution: str) -> tuple[Path | 
     }
 
 
+def move_media_file(src: Path, dest: Path, *, attempts: int = 3, delay: float = 0.5) -> None:
+    """Move ``src`` onto ``dest``, leaving nothing behind when it fails.
+
+    ``shutil.move`` catches a bare ``OSError`` around ``os.rename`` and then
+    silently degrades to copy-then-delete. On Windows an open handle on the
+    source (the transcript prewarmer's ffmpeg, or a review track opened in an
+    external player) fails the rename AND the post-copy unlink, so the copy is
+    left sitting in the library while the caller sees an exception. The next
+    retry then reports FILE_EXISTS against our own orphan, and discarding the
+    episode is the only way out (#642).
+
+    So: retry the atomic rename first, because these locks are transient, and
+    if the copy fallback cannot remove the source afterwards, roll the copy
+    back. A failed organize must leave the filesystem unchanged so that a
+    retry is clean.
+
+    Raises OSError when the move could not be completed.
+    """
+    last: OSError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            # os.replace, not os.rename: the caller has already run
+            # resolve_conflict, so an existing dest is intentional
+            # ("overwrite"), and replace is atomic where rename is not.
+            os.replace(src, dest)
+            return
+        except OSError as e:
+            last = e
+            # A cross-device move can never succeed via rename. Fall through
+            # to the copy path immediately instead of sleeping out the budget.
+            if e.errno == errno.EXDEV:
+                break
+            if attempt < attempts:
+                logger.warning(
+                    f"Rename attempt {attempt}/{attempts} failed for {src.name} "
+                    f"({e}); retrying in {delay}s"
+                )
+                time.sleep(delay)
+
+    # Rename is not going to work (cross-device, or the handle outlived our
+    # budget). Copy, then delete. Both halves clean up after themselves.
+    try:
+        shutil.copy2(str(src), str(dest))
+    except OSError:
+        # A partial copy is worse than no copy: it looks like a real library
+        # file to every later run.
+        try:
+            os.unlink(dest)
+        except FileNotFoundError:
+            pass  # nothing was created, so there is nothing to clean up
+        except OSError:
+            logger.error(
+                f"Could not remove the partial copy at {dest} after a failed "
+                "copy; it has to be deleted by hand before a retry can succeed."
+            )
+        raise
+
+    try:
+        os.unlink(src)
+    except OSError as e:
+        # The rollback can itself fail: an antivirus or indexer briefly holding
+        # the copy we just made, or a delete-restricted ACL on the library. Say
+        # which case this is, because "retry me" and "there is an orphan in the
+        # library" need opposite responses from the caller, and claiming the
+        # first while the second is true recreates #642 with a reassuring
+        # message on top of it.
+        rolled_back = True
+        try:
+            os.unlink(dest)
+        except OSError:
+            rolled_back = False
+        detail = (
+            "The copy was rolled back, so this is safe to retry."
+            if rolled_back
+            else f"The copy at {dest} could NOT be removed either, so it has to "
+            "be deleted by hand before a retry can succeed."
+        )
+        raise OSError(
+            f"Could not remove {src} after copying it to {dest}; the file is "
+            f"in use. {detail} Original error: {e}"
+        ) from (last or e)
+
+
 def check_library_writable(library_path: Path | str | None, *, create: bool = True) -> str | None:
     """Return a human-readable reason ``library_path`` is unusable, or None.
 
@@ -501,7 +587,7 @@ def organize_movie(
 
     try:
         # Move main movie
-        shutil.move(str(main_file), str(dest_file))
+        move_media_file(main_file, dest_file)
 
         moved_extras = []
         extras_mapping: dict[str, Path] = {}
@@ -517,7 +603,7 @@ def organize_movie(
                     extra_name = f"Extra {i}.mkv"
                     extra_dest = extras_dir / extra_name
                     logger.info(f"Moving extra: {extra.name} -> {extra_dest}")
-                    shutil.move(str(extra), str(extra_dest))
+                    move_media_file(extra, extra_dest)
                     moved_extras.append(extra_dest)
                     extras_mapping[extra.name] = extra_dest
 
@@ -704,7 +790,7 @@ def organize_tv_episode(
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         # Move the file
-        shutil.move(str(source_file), str(dest_file))
+        move_media_file(source_file, dest_file)
 
         logger.info(f"Successfully organized: {dest_file}")
 
@@ -791,7 +877,7 @@ def organize_tv_extras(
 
     try:
         dest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source_file), str(dest_file))
+        move_media_file(source_file, dest_file)
         logger.info(f"Successfully organized extra: {dest_file}")
         return {"success": True, "final_path": dest_file, "error": None}
     except Exception as e:

@@ -378,6 +378,28 @@ class TestCancellation:
         fake_task.cancel.assert_called_once()
         assert 5 not in p._tasks
 
+    async def test_cancel_and_wait_absent_job_returns_true(self):
+        result = await TranscriptionPrewarmer().cancel_and_wait(424242)
+        assert result is True
+
+    async def test_cancel_and_wait_cancels_and_waits_for_live_task(
+        self, tmp_path, config_flags, fake_matcher, model_loader, duration_stub
+    ):
+        sem = BlockingSemaphore()
+        p = TranscriptionPrewarmer(semaphore_provider=lambda: sem)
+        p._matcher = fake_matcher
+        job_id, _f = await _seed_review_job(tmp_path)
+
+        await p.start_for_job(job_id)
+        task = p._tasks[job_id]
+        await asyncio.wait_for(sem.blocked.wait(), timeout=5)
+
+        result = await p.cancel_and_wait(job_id)
+
+        assert result is True
+        assert task.done()
+        assert job_id not in p._tasks
+
     async def test_cancel_all_sweeps_every_task(self):
         p = TranscriptionPrewarmer()
         tasks = {}
@@ -517,21 +539,23 @@ class TestJobManagerWiring:
 
     async def test_apply_review_cancels_prewarm(self, monkeypatch):
         mock_prewarmer = MagicMock()
+        mock_prewarmer.cancel_and_wait = AsyncMock(return_value=True)
         monkeypatch.setattr(jm.job_manager, "_prewarmer", mock_prewarmer)
         monkeypatch.setattr(jm.job_manager._finalization, "apply_review", AsyncMock())
 
         await jm.job_manager.apply_review(14, 100, episode_code="S01E03")
 
-        mock_prewarmer.cancel_for_job.assert_called_once_with(14)
+        mock_prewarmer.cancel_and_wait.assert_called_once_with(14)
 
     async def test_apply_review_batch_cancels_prewarm(self, monkeypatch):
         mock_prewarmer = MagicMock()
+        mock_prewarmer.cancel_and_wait = AsyncMock(return_value=True)
         monkeypatch.setattr(jm.job_manager, "_prewarmer", mock_prewarmer)
         monkeypatch.setattr(jm.job_manager._finalization, "apply_review_batch", AsyncMock())
 
         await jm.job_manager.apply_review_batch(15, [{"title_id": 1, "episode_code": "S01E01"}])
 
-        mock_prewarmer.cancel_for_job.assert_called_once_with(15)
+        mock_prewarmer.cancel_and_wait.assert_called_once_with(15)
 
 
 class TestPrewarmerTempNamespace:

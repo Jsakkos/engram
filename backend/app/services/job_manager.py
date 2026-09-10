@@ -325,6 +325,7 @@ class JobManager:
         # COMPLETES (FAILED jobs never contribute). Best-effort — a raised enqueue
         # is caught here and never crashes the terminal-state dispatch.
         state_machine.on_terminal_state(self._enqueue_disc_contribution_on_terminal)
+        state_machine.on_terminal_state(self._reconcile_backup_on_terminal)
         state_machine.on_terminal_state(self._notify_discord_on_terminal)
 
         # Reset the watchdog activity clock whenever a job changes phase.
@@ -1685,6 +1686,46 @@ class JobManager:
         except Exception as e:
             logger.warning(f"Job {job_id}: disc contribution enqueue failed: {e}", exc_info=True)
 
+    async def _reconcile_backup_on_terminal(self, job_id: int, state: JobState) -> None:
+        """on_terminal_state hook: re-home a backup named before a correction.
+
+        Runs only on COMPLETED, where extraction is provably finished, because
+        until then source_spec points AT the backup folder and renaming it would
+        pull the floor out from under the rip (#643).
+
+        Terminal callbacks fire AFTER ``JobStateMachine.transition`` has already
+        committed and broadcast, so the ``backup_path``/``source_spec`` written
+        here reach no WebSocket client: there is no follow-up ``job_update``.
+        That is fine today because the only consumer, HistoryPage's detail
+        panel, re-fetches ``GET /api/jobs/{id}/detail`` when it opens rather
+        than reading the WS-cached job. A future consumer that reads either
+        field off the cached WS object would see the stale pre-correction value
+        until a hard refresh, and would need a broadcast added here.
+        """
+        if state != JobState.COMPLETED:
+            return
+        try:
+            from app.core.backup_paths import reconcile_backup_location
+            from app.services.config_service import get_config
+
+            config = await get_config()
+            async with async_session() as session:
+                job = await session.get(DiscJob, job_id)
+                if job is None or job.backup_status != BACKUP_COMPLETED:
+                    return
+                moved = await asyncio.to_thread(reconcile_backup_location, job, config)
+                if moved is None:
+                    return
+                # backup_path and source_spec must move together: source_spec
+                # still carries "file:<old path>" from the backup handoff.
+                job.backup_path = str(moved)
+                if job.source_spec and job.source_spec.startswith("file:"):
+                    job.source_spec = f"file:{moved}"
+                session.add(job)
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"Job {job_id}: backup reconciliation failed: {e}", exc_info=True)
+
     async def _notify_discord_on_terminal(self, job_id: int, state: JobState) -> None:
         """on_terminal_state hook: schedule a Discord notification and return immediately.
 
@@ -2329,24 +2370,25 @@ class JobManager:
         edition: str | None = None,
     ) -> None:
         """Apply a user's review decision for a title."""
-        # Organization (shutil.move) starts now — stop background prewarming so
-        # ffmpeg/ffprobe don't hold the file open when the rename runs. The
-        # in-flight thread finishes its current chunk (~60s) before yielding.
-        self._prewarmer.cancel_for_job(job_id)
         # Bind the job into the logging context: this runs straight off an API
         # handler, so without it every line the organize sweep emits (including
         # organizer.py's traceback) is tagged job=- and the diagnostics bundle's
         # "| job=<id> |" grep drops it (#563).
         with job_log_context(job_id):
+            # Organization (shutil.move) starts now, so wait for ffmpeg/ffprobe
+            # to let go of the file before the rename runs (#642). Bounded:
+            # move_media_file retries past a lock that outlives the wait. Kept
+            # INSIDE the log context so the "did not stop in time" warning is
+            # job-tagged: it is the one line that explains why a later organize
+            # hit the retry path at all, so it must survive the bundle's grep.
+            await self._prewarmer.cancel_and_wait(job_id)
             await self._finalization.apply_review(job_id, title_id, episode_code, edition)
 
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
         """Apply several review decisions for a job in one atomic pass."""
-        # Organization (shutil.move) starts now — stop background prewarming so
-        # ffmpeg/ffprobe don't hold the file open when the rename runs. The
-        # in-flight thread finishes its current chunk (~60s) before yielding.
-        self._prewarmer.cancel_for_job(job_id)
         with job_log_context(job_id):  # see apply_review (#563)
+            # Inside the context for the same reason as apply_review (#642).
+            await self._prewarmer.cancel_and_wait(job_id)
             await self._finalization.apply_review_batch(job_id, decisions)
 
     async def reassign_episode(

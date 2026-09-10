@@ -116,3 +116,74 @@ def has_room_for_backup(dest: Path, needed_bytes: int) -> bool:
         )
         return False
     return True
+
+
+def reconcile_backup_location(job: DiscJob, config: AppConfig) -> Path | None:
+    """Move a completed backup to the folder the CURRENT identity implies.
+
+    The backup folder is named at BACKING_UP time, before the user has seen
+    the identification. Correcting a misidentified disc updates the library
+    output but used to leave the preservation shelf under the wrong show and
+    TMDB id forever, which defeats the point of mirroring the library layout
+    (#643).
+
+    Returns the new path when the backup was moved, or None when there was
+    nothing to do. Never raises: this is cosmetic housekeeping on the job
+    completion path.
+    """
+    if not job.backup_path:
+        return None
+    current = Path(job.backup_path)
+    if not current.is_dir():
+        return None
+
+    desired = backup_destination(job, config)
+    if desired is None or desired == current:
+        return None
+    if desired.exists():
+        # Legitimately another disc of the same set. Merging blindly would
+        # be destructive, so leave both alone and say so.
+        #
+        # This check is NOT atomic with the rename below: two jobs reconciling
+        # to the same destination could both pass it. What actually guarantees
+        # "never merge, never overwrite" is the rename itself, which refuses a
+        # non-empty directory (ENOTEMPTY on POSIX, FileExistsError on Windows)
+        # and lands in the except branch as a logged no-op. This check exists to
+        # make the common case explain itself in the log rather than to enforce
+        # the invariant, so do not "optimize" it away or rely on it alone.
+        logger.warning(f"Not moving backup {current} to {desired}: the destination already exists")
+        return None
+
+    try:
+        desired.parent.mkdir(parents=True, exist_ok=True)
+        # Same backup root means same volume, so this is a rename and not a
+        # multi-gigabyte copy.
+        current.rename(desired)
+    except OSError as e:
+        logger.warning(f"Could not move backup {current} to {desired}: {e}")
+        return None
+
+    logger.info(f"Moved backup to match the corrected identity: {desired}")
+    _prune_empty_parents(current.parent, Path(config.backup_path).expanduser())
+    return desired
+
+
+def _prune_empty_parents(start: Path, root: Path) -> None:
+    """Remove directories left empty by a rename, stopping at ``root``.
+
+    ``root`` itself is never removed: an empty backup root is a configured
+    location, not litter.
+    """
+    try:
+        root = root.resolve()
+        current = start.resolve()
+    except OSError:
+        return
+    while current != root and root in current.parents:
+        try:
+            if any(current.iterdir()):
+                return
+            current.rmdir()
+        except OSError:
+            return
+        current = current.parent
