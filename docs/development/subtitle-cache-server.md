@@ -211,7 +211,8 @@ next scheduled run or start the service manually.
 
 **Quota exhausted every night.** Check the true remaining quota; the login
 response's `allowed_downloads` is the daily CAP, not the remainder. A run that
-logs `OS quota left: 0` has nothing to do but wait ~24h.
+whose end-of-run summary reports `OS quota left:` as `0 downloads today` has
+nothing to do but wait ~24h.
 
 **Rolling back a bad publish.** There is no history on a rolling release asset.
 Re-pack from a known-good corpus and `--clobber` over it.
