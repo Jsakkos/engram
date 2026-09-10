@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-09-10
+
+_Highlights: a corrected disc identity now renames its backup too, and a stuck file move during organizing no longer leaves a stray copy._
+
 ### Fixed
 
 - When a misidentified disc was corrected during review, the disc backup kept the wrong show name and TMDB id even though the library output was correct. The backup folder is now moved to match the corrected identity once the job completes. (#643)
