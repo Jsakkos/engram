@@ -16,14 +16,34 @@ again.
 
 ## Install
 
+Before starting, make sure `gh auth login` has already been run for the
+`jsakkos` account on this host. The harvest's preflight check fails fast if
+it hasn't (see "Preflight failed" under Recovery, below), without touching
+quota, but there is no reason to discover that at 02:00 with nobody watching
+instead of now.
+
 ```bash
 # 1. uv (absent by default on this host)
 curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.local/bin/env
+uv --version
+```
 
+The installer updates shell rc files for future shells but does not put `uv`
+on `PATH` in the shell you just ran it in. If `uv --version` still fails after
+sourcing `~/.local/bin/env`, open a new shell and try again.
+
+```bash
 # 2. Bring the checkout to current main
 cd ~/engram && git fetch origin && git checkout main && git pull --ff-only
 cd backend && uv sync --no-install-project
+git -C ~/engram log -1 --oneline
+```
 
+Expected: a recent commit on `main`, not the stale `v0.8.1` tag the host
+started on.
+
+```bash
 # 3. Secrets (YOU write this file; copy the template from the repo)
 install -d -m 700 ~/.config/engram
 install -m 600 ~/engram/deploy/subtitle-cache/engram-subtitle-cache.env.example \
@@ -41,14 +61,31 @@ comments cover verifying with `cat -A`. The file is never committed and its
 contents are never pasted into a terminal transcript, an issue, or a chat
 session.
 
+Verify the file has the four keys and non-empty values, without printing the
+values themselves:
+
+```bash
+awk -F= '/^[A-Z]/ {printf "%s len=%d\n", $1, length($2)}' ~/.config/engram/subtitle-cache.env
+```
+
+Expected: four lines, `TMDB_API_KEY`, `OPENSUBTITLES_API_KEY`,
+`OPENSUBTITLES_USERNAME`, `OPENSUBTITLES_PASSWORD`, each with `len=` greater
+than zero. A `TMDB_API_KEY len=` near 32 means the short v3 API key was
+pasted instead of the long v4 Read Access Token.
+
 ```bash
 # 4. Units
 install -d -m 755 ~/.config/systemd/user
 install -m 644 ~/engram/deploy/subtitle-cache/engram-subtitle-cache.service ~/.config/systemd/user/
 install -m 644 ~/engram/deploy/subtitle-cache/engram-subtitle-cache.timer ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now engram-subtitle-cache.timer
+systemctl --user enable engram-subtitle-cache.timer
+systemctl --user list-unit-files | grep engram-subtitle-cache
 ```
+
+Expected: `engram-subtitle-cache.timer` listed as `enabled`, and
+`engram-subtitle-cache.service` listed as `static` (never `enabled`; see
+below).
 
 **Enable only the timer, never the service.** The `.service` unit
 deliberately carries no `[Install]` section: `systemctl --user enable
@@ -57,6 +94,21 @@ fire it on every user-manager start (every login, every reboot), spending the
 metered OpenSubtitles quota far more than once a day. Only the `.timer` has an
 `[Install]` section, and it activates the service directly at its scheduled
 time.
+
+**This deliberately enables the timer without starting it (no `--now`).**
+Enabling wires it to start at boot; it does not run it right now. Do not
+start the timer yet: the cache on this host is still empty, and a timer that
+fires against an empty `~/.engram/cache` re-harvests everything the laptop
+already holds, burning weeks of OpenSubtitles quota on content that already
+exists. Do the cutover below first, prove a supervised run publishes cleanly
+from the moved corpus, and only then start the timer, in "Start the timer"
+further down.
+
+**Do not add `ProtectHome` when hardening this unit further.** It would
+break the job outright: `harvest.sh` needs to read and write the checkout
+(`~/engram`), `~/.engram/cache`, and `~/.engram/harvest`, and `gh` rewrites
+`~/.config/gh` on token refresh, all of which live under `$HOME`. The
+service file's own comments carry this same warning next to `ProtectSystem`.
 
 **Lingering is required** and needs root:
 
@@ -70,8 +122,20 @@ which must print `Linger=yes`.
 
 ## Cutover from the laptop
 
-Order matters. The coverage database is what stops the server re-harvesting
-36,000 episodes it already has on disk, so it moves with the corpus.
+Order matters, and it matters more than the mechanical order the install
+commands happen to appear in above: the timer must not be started until the
+corpus and its coverage database are in place. The coverage database is what
+stops the server re-harvesting 36,000 episodes it already has on disk, so it
+moves with the corpus, and only one machine may harvest at a time, so this is
+also the point where the laptop stops running `build_subtitle_cache.py`.
+
+`~/.engram/cache` does not exist yet on a fresh host. Create the directory
+levels first: plain `rsync` creates only the final path component, not the
+parents.
+
+```bash
+ssh jsakkos@192.168.1.122 'install -d -m 755 ~/.engram/cache/data'
+```
 
 ```bash
 # From the laptop (Git Bash), corpus first, then coverage:
@@ -79,8 +143,24 @@ rsync -av --partial --progress ~/.engram/cache/data/ jsakkos@192.168.1.122:~/.en
 rsync -av --partial --progress ~/.engram/cache/tmdb_cache.sqlite jsakkos@192.168.1.122:~/.engram/cache/
 ```
 
-Then prove the server ships from disk at zero quota cost before enabling the
-timer. See "First run" below.
+Verify the transfer landed completely before moving on:
+
+```bash
+# SRT file counts must match between laptop and server:
+find ~/.engram/cache/data -name "*.srt" | wc -l
+ssh jsakkos@192.168.1.122 'find ~/.engram/cache/data -name "*.srt" | wc -l'
+
+# subtitle_coverage row counts must also match:
+python3 -c "import sqlite3; c=sqlite3.connect('$HOME/.engram/cache/tmdb_cache.sqlite'); print(c.execute('select count(*) from subtitle_coverage').fetchone()[0])"
+ssh jsakkos@192.168.1.122 'python3 -c "import sqlite3; c=sqlite3.connect(\"/home/jsakkos/.engram/cache/tmdb_cache.sqlite\"); print(c.execute(\"select count(*) from subtitle_coverage\").fetchone()[0])"'
+```
+
+Expected: both pairs of counts match. A materially lower count on the server
+means an interrupted transfer; re-run the `rsync` (`--partial` makes it
+resumable) rather than proceeding.
+
+Then prove the server ships from disk at zero quota cost with a supervised
+run, before starting the timer. See "First run" below.
 
 ## First run (supervised)
 
@@ -95,11 +175,28 @@ What a healthy first run looks like:
 - `OpenSubtitles API: ACTIVE` and a real remaining-quota number near 1000
 - a long run of seasons shipping from disk without downloads
 - `publish-guard: growth: ...` (or `within-tolerance`) with a show/episode
-  count at or above the published baseline
+  count close to the published baseline. `within-tolerance` covers a candidate
+  up to 2% below the baseline by design, so a small dip there is the guard
+  working as intended, not a warning sign; only a `blocked` or `undecided`
+  verdict needs attention.
 - `verified release assets: ... bytes, ... bytes`
 - either `harvest completed the full corpus` (exit 0) or, more commonly,
   `UPLOAD SUCCEEDED. The harvest stopped early only because it hit its
   download budget, which is the normal nightly outcome...` (exit 10)
+
+## Start the timer
+
+Only after the supervised first run above has published successfully (exit 0
+or 10, both mean the release updated) does the timer take over the nightly
+schedule:
+
+```bash
+systemctl --user start engram-subtitle-cache.timer
+systemctl --user list-timers engram-subtitle-cache.timer
+```
+
+Expected: a `NEXT` column showing tomorrow at roughly 02:00 UTC, plus the
+timer's randomized delay.
 
 ## Monitoring
 
