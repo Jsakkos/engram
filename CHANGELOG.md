@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **The shared subtitle cache can now be rebuilt and republished nightly by a
+  server instead of by hand.** The cache Engram downloads to speed up episode
+  matching is refreshed by a scheduled job, with a guard that refuses to
+  replace the published cache with a materially smaller one, so a bad build
+  cannot quietly shrink what everyone downloads. Operator runbook:
+  `docs/development/subtitle-cache-server.md`.
+
 ## [0.35.0] - 2026-09-07
 
 _Highlights: back up a disc before ripping it, and import backups you already have._
