@@ -202,7 +202,8 @@ timer's randomized delay.
 
 | Question | Command |
 |---|---|
-| Did last night run? | `systemctl --user status engram-subtitle-cache.service` |
+| Did last night run, and did it fail? | `systemctl --user status engram-subtitle-cache.service` |
+| Did it publish, and was it a full corpus or a quota halt? | `journalctl --user -u engram-subtitle-cache.service --since yesterday \| grep 'harvest:'` (see the exit-code note below: a quota halt reports as success with status 0) |
 | When does it run next? | `systemctl --user list-timers engram-subtitle-cache.timer` |
 | What happened? | `journalctl --user -u engram-subtitle-cache.service --since yesterday` |
 | Is the release fresh? | `gh release view subtitle-cache-latest --repo Jsakkos/engram` |
@@ -213,6 +214,16 @@ The service's exit status is `harvest.sh`'s own exit code, not
 `build_subtitle_cache.py`'s. Several of these codes mean the run published
 successfully even though systemd would otherwise call the unit failed; that
 is why the service unit carries `SuccessExitStatus=10` (see below).
+
+**`systemctl` will not show you exit 10.** A code listed in
+`SuccessExitStatus` is normalised away: systemd reports `Result=success` and
+`ExecMainStatus=0`, so a quota-halted night and a full-corpus night look
+identical in `systemctl --user status`. Verified on systemd 255. To tell them
+apart, read the journal: a quota halt logs `harvest exit was 2` and the
+`UPLOAD SUCCEEDED ... DO NOT re-run` banner, while a full corpus logs
+`harvest completed the full corpus`. Every other code in the table is a real
+failure and does show up in `systemctl --user status` as
+`Result=exit-code` with the true `ExecMainStatus`.
 
 | Exit | Meaning | Published? | Action |
 |---|---|---|---|
