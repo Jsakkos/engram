@@ -1,0 +1,1948 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-08-15-discord-notification-improvements-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Discord Notification Improvements: Design - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#discord-notification-improvements-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Discord Notification Improvements: Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Motivation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Current implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#problems-identified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problems identified
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#section-1-config-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section 1: Config surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#section-2-discord_notifierpy-refactor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section 2: discord_notifier.py refactor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#section-3-episode-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section 3: Episode manifest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#section-4-poster-thumbnail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section 4: Poster thumbnail
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#section-5-review-trigger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section 5: Review trigger
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#section-6-template-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section 6: Template variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#section-7-test-webhook-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section 7: Test-webhook endpoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#section-8-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Section 8: Frontend
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Risks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="discord-notification-improvements-design">Discord Notification Improvements: Design</h1>
+<p><strong>Date:</strong> 2026-08-15
+<strong>Status:</strong> Approved, ready for planning</p>
+<h2 id="motivation">Motivation</h2>
+<p>Two user requests drive this work:</p>
+<ol>
+<li><strong>Disc identity in notifications.</strong> When ripping a box set, every disc produces the
+   same notification text. The embed description defaults to <code>**{{{title}}}**</code>, where
+   <code>title</code> resolves to <code>detected_title or volume_label</code>; for a box set that is the show
+   name on every disc. There is no way to tell disc 3 of 6 from disc 4 of 6.</li>
+<li><strong>Review-needed notifications.</strong> Notifications fire only on <code>COMPLETED</code> and <code>FAILED</code>.
+   A job that parks in <code>REVIEW_NEEDED</code> is silent, so the walk-away workflow stalls
+   without telling anyone.</li>
+</ol>
+<p>A review of the existing implementation surfaced additional gaps, several of which are
+in scope here (see Scope below).</p>
+<h2 id="current-implementation">Current implementation</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>JobStateMachine.transition() -&gt; terminal (COMPLETED | FAILED) only
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  -&gt; JobManager._notify_discord_on_terminal   (on_terminal_state hook)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>     -&gt; asyncio.create_task(_send_discord_notification)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        -&gt; get_config(); return if no discord_webhook_url
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        -&gt; session.get(DiscJob, job_id)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        -&gt; build_template_context(job) -&gt; render_discord_template() -&gt; notify_discord()
+</code></pre></div>
+<ul>
+<li><code>backend/app/core/discord_notifier.py</code>: 14 allowed template variables, chevron
+  rendering, and a single <code>notify_discord()</code> that hardcodes a green/red, checkmark/cross
+  binary plus an embed title of <code>f"Disc {state.title()}"</code>.</li>
+<li>Config: <code>discord_webhook_url</code>, <code>discord_template_completed</code>, <code>discord_template_failed</code>.</li>
+<li>Templates are validated live from ConfigWizard via
+  <code>POST /api/validate/discord-template</code>, and re-validated server-side on
+  <code>PUT /api/config</code>.</li>
+<li>Delivery is fire-and-forget (<code>create_task</code>), 10s httpx timeout, all errors swallowed to
+  a <code>logger.warning</code>.</li>
+</ul>
+<h3 id="problems-identified">Problems identified</h3>
+<ol>
+<li><strong>Disc identity is absent from the payload.</strong> <code>volume_label</code>, <code>disc_number</code>, and
+   <code>discdb_disc_slug</code> all exist on <code>DiscJob</code> but are not exposed to templates.</li>
+<li><strong><code>{{drive}}</code> is misnamed.</strong> It renders <code>job.volume_label</code>, not <code>drive_id</code>
+   (<code>discord_notifier.py:72</code>), and the ConfigWizard hint reinforces the wrong meaning.
+   Changing its value would silently alter existing saved templates.</li>
+<li><strong><code>notify_discord</code> hardcodes a two-state binary.</strong> A review event would render as
+   "Disc Review_Needed" with a red error color.</li>
+<li><strong>No structured embed.</strong> Everything is crammed into one description string; no fields,
+   timestamp, footer, thumbnail, or link.</li>
+<li><strong>No way to verify a webhook.</strong> The URL is redacted to <code>***</code> after save, so a user
+   cannot confirm it works until the next disc finishes.</li>
+<li><strong>Weak notification delivery.</strong> Discord embeds without message <code>content</code> produce a
+   low-salience notification. A review ping that does not reach the user's phone, and
+   does not link to the thing needing review, does not do its job.</li>
+</ol>
+<h2 id="scope">Scope</h2>
+<p>In scope:</p>
+<ul>
+<li>Structured embed with guaranteed disc identity (request 1)</li>
+<li>Review-needed notifications (request 2)</li>
+<li>Mention on review; clickable deep link to the review UI</li>
+<li>Per-event enable toggles (completed / failed / review)</li>
+<li>"Send test message" button and backing endpoint</li>
+<li>Episode manifest on completion</li>
+<li>TMDB poster thumbnail</li>
+<li><code>{{drive}}</code> back-compat fix</li>
+</ul>
+<p>Out of scope (deliberately deferred):</p>
+<ul>
+<li>Non-Discord notification transports (ntfy, Apprise, generic webhook)</li>
+<li>Mentions on events other than review</li>
+<li>Notification batching or rate limiting</li>
+</ul>
+<h2 id="design">Design</h2>
+<h3 id="section-1-config-surface">Section 1: Config surface</h3>
+<p>Six new <code>AppConfig</code> fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>discord_template_review</code></td>
+<td><code>str</code></td>
+<td><code>""</code></td>
+<td>Third template; <code>""</code> means use the built-in default</td>
+</tr>
+<tr>
+<td><code>discord_notify_completed</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td><code>sa_column_kwargs={"server_default": text("1")}</code></td>
+</tr>
+<tr>
+<td><code>discord_notify_failed</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>same</td>
+</tr>
+<tr>
+<td><code>discord_notify_review</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>same</td>
+</tr>
+<tr>
+<td><code>discord_mention_review</code></td>
+<td><code>str</code></td>
+<td><code>""</code></td>
+<td>e.g. <code>&lt;@1234&gt;</code> or <code>@here</code>; sent as message <code>content</code></td>
+</tr>
+<tr>
+<td><code>dashboard_base_url</code></td>
+<td><code>str</code></td>
+<td><code>""</code></td>
+<td>e.g. <code>http://192.168.1.50:5173</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each field must be added in <strong>four</strong> places or Pydantic silently drops it on update:
+<code>AppConfig</code> (model), <code>ConfigUpdate</code> (request), <code>ConfigResponse</code> (response), and
+<code>ConfigWizard</code> (frontend state plus save payload). An Alembic revision is required; frozen
+builds converge schema through the <code>database.py</code> reconcilers rather than Alembic.</p>
+<p>None of the new fields are sensitive, so all are returned unredacted from
+<code>GET /api/config</code>, unlike <code>discord_webhook_url</code>, which stays <code>***</code>.</p>
+<p><strong>Validation: <code>dashboard_base_url</code> must not use <code>is_safe_remote_url</code>.</strong> That guard rejects
+private and internal hosts, and a LAN dashboard address is precisely what this field
+holds. It needs its own narrow check instead:</p>
+<ul>
+<li>scheme in <code>{http, https}</code></li>
+<li>non-empty host</li>
+<li>no embedded credentials (<code>user:pass@</code>)</li>
+</ul>
+<p>The purpose is rejecting <code>javascript:</code> and similar, because the value becomes a clickable
+embed <code>url</code>. Trailing slashes are normalized away before joining <code>/history/{job_id}</code>.</p>
+<p><code>discord_mention_review</code> requires no sanitizing. Discord does not resolve mentions inside
+embeds, only in message <code>content</code>, and <code>content</code> carries nothing but this configured
+string. Rendered template output never reaches <code>content</code>.</p>
+<h3 id="section-2-discord_notifierpy-refactor">Section 2: <code>discord_notifier.py</code> refactor</h3>
+<p>Replace the <code>state == "completed"</code> binary with an event table:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">NotificationEvent</span><span class="p">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">key</span><span class="p">:</span> <span class="nb">str</span>      <span class="c1"># "completed" | "failed" | "review"</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span>    <span class="c1"># "Disc Completed" | "Disc Failed" | "Review Needed"</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">emoji</span><span class="p">:</span> <span class="nb">str</span>    <span class="c1"># checkmark / cross / magnifier</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">color</span><span class="p">:</span> <span class="nb">int</span>    <span class="c1"># green / red / amber</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">EVENTS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">JobState</span><span class="p">,</span> <span class="n">NotificationEvent</span><span class="p">]</span>
+</code></pre></div>
+<p>New module functions:</p>
+<ul>
+<li><code>build_embed_fields(job, titles, event) -&gt; list[dict]</code></li>
+<li><code>summarize_episodes(titles) -&gt; str</code></li>
+<li><code>build_embed(job, titles, event, description, poster_url, link_url) -&gt; dict</code></li>
+</ul>
+<p><code>notify_discord(webhook_url, job_id, embed, content="")</code> takes a prebuilt embed and stops
+knowing anything about job semantics.</p>
+<p>Fields are <strong>skip-if-empty</strong>, so a movie never renders a blank Season row:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+<th>Shown when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Disc</td>
+<td><code>ARRESTED_DEVELOPMENT_S1D1 (Disc 1)</code></td>
+<td>always (see fallback below)</td>
+</tr>
+<tr>
+<td>Season</td>
+<td><code>Season 1</code></td>
+<td>TV</td>
+</tr>
+<tr>
+<td>Episodes</td>
+<td>manifest (see Section 3)</td>
+<td>COMPLETED and TV</td>
+</tr>
+<tr>
+<td>Duration</td>
+<td><code>1h 24m</code></td>
+<td><code>completed_at</code> set</td>
+</tr>
+<tr>
+<td>Tracks</td>
+<td><code>12 titles</code></td>
+<td><code>total_titles &gt; 0</code></td>
+</tr>
+<tr>
+<td>Subtitles</td>
+<td><code>18/20, 2 failed</code></td>
+<td><code>subtitle_status</code> set</td>
+</tr>
+<tr>
+<td>Reason</td>
+<td><code>review_reason</code> or <code>error_message</code></td>
+<td>review / failed</td>
+</tr>
+<tr>
+<td>Library</td>
+<td><code>final_path</code></td>
+<td>COMPLETED</td>
+</tr>
+</tbody>
+</table>
+<p>Disc field fallback chain: <code>volume_label</code>, then <code>discdb_disc_slug</code>, then
+<code>Disc {disc_number}</code>. <code>disc_number</code> is appended in parentheses when <code>volume_label</code> is
+present and <code>disc_number &gt; 1</code>, or when <code>discdb_disc_slug</code> is absent.</p>
+<p>The embed additionally carries <code>timestamp</code> (ISO-8601), <code>footer</code> (Engram version),
+<code>thumbnail</code> (Section 4), and <code>url</code> (deep link, when <code>dashboard_base_url</code> is configured).</p>
+<h3 id="section-3-episode-manifest">Section 3: Episode manifest</h3>
+<p><code>summarize_episodes(titles)</code> filters to <code>TitleState.COMPLETED</code>, non-extra rows, parses
+<code>matched_episode</code> in <code>SxxEyy</code> form, sorts, and collapses contiguous runs:</p>
+<ul>
+<li>contiguous: <code>S01E01-E04 (4 episodes)</code></li>
+<li>gapped: <code>S01E01-E03, S01E06 (4 episodes)</code></li>
+<li>single: <code>S01E01 (1 episode)</code></li>
+<li>nothing matched: <code>""</code>, which the skip-if-empty rule drops</li>
+</ul>
+<p>Rows whose <code>matched_episode</code> does not parse are counted in the total but not placed in a
+range.</p>
+<p>Movies use <code>detected_title (tmdb_year)</code> plus edition when set.</p>
+<p>This requires <code>_send_discord_notification</code> to load <code>DiscTitle</code> rows for the job; today it
+performs only <code>session.get(DiscJob, job_id)</code>. The notification runs as a background task,
+so the extra query is off the critical path.</p>
+<h3 id="section-4-poster-thumbnail">Section 4: Poster thumbnail</h3>
+<p>The TMDB poster lookup is currently inlined in <code>get_job_poster</code>
+(<code>backend/app/api/routes.py:1830</code>). Extract it to
+<code>app/core/tmdb_poster.py::resolve_poster_url(job) -&gt; str | None</code>; the route becomes a thin
+wrapper with no behavior change.</p>
+<p>The notifier calls it best-effort inside <code>try/except</code>. A TMDB failure or timeout costs the
+thumbnail, never the notification.</p>
+<h3 id="section-5-review-trigger">Section 5: Review trigger</h3>
+<p><code>REVIEW_NEEDED</code> is not terminal, so <code>on_terminal_state</code> cannot carry it. The correct
+chokepoint is <code>on_transition</code>, which the transcript prewarmer already uses for exactly
+this purpose: every review-parking path flows through it, and it fires only after the
+transition has committed.</p>
+<p><code>on_transition</code> callbacks currently receive <code>(job_id, to_state)</code>. Without <code>from_state</code>
+there is no way to distinguish a genuine entry into review from a same-state re-broadcast,
+since <code>transition()</code> returns early-True when <code>from_state == to_state</code> and still
+re-broadcasts.</p>
+<p><strong>Contract change:</strong> widen <code>on_transition</code> callbacks to <code>(job_id, to_state, from_state)</code>.
+<code>job_state_machine.py:159</code> already holds <code>from_state</code> in scope. The two existing
+observers gain a third parameter they ignore:</p>
+<ul>
+<li><code>JobManager._note_activity_on_transition</code> (<code>job_manager.py:1177</code>)</li>
+<li><code>JobManager._start_prewarm_on_review</code> (<code>job_manager.py:1184</code>)</li>
+</ul>
+<p>New observer:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_notify_discord_on_review</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">job_id</span><span class="p">,</span> <span class="n">to_state</span><span class="p">,</span> <span class="n">from_state</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="k">if</span> <span class="n">to_state</span> <span class="o">!=</span> <span class="n">JobState</span><span class="o">.</span><span class="n">REVIEW_NEEDED</span> <span class="ow">or</span> <span class="n">from_state</span> <span class="o">==</span> <span class="n">JobState</span><span class="o">.</span><span class="n">REVIEW_NEEDED</span><span class="p">:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>        <span class="k">return</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_send_discord_notification</span><span class="p">(</span><span class="n">job_id</span><span class="p">,</span> <span class="n">to_state</span><span class="p">))</span>
+</code></pre></div>
+<p><code>on_transition</code> observers are synchronous, so <code>create_task</code> matches the existing
+prewarmer pattern.</p>
+<p><strong>Dedup rule:</strong> suppress only same-state re-entry. A job that goes
+<code>REVIEW_NEEDED -&gt; IDENTIFYING -&gt; REVIEW_NEEDED</code> (re-identify, still ambiguous) re-notifies.
+That is a new question for the user, not a duplicate of the previous one.</p>
+<p><code>_send_discord_notification(job_id, state)</code> generalizes:</p>
+<ol>
+<li>Map <code>state</code> to a <code>NotificationEvent</code>; return if the state is not one of the three.</li>
+<li>Return if the per-event toggle for that event is off.</li>
+<li>Select the matching template; fall back to the built-in default when blank.</li>
+<li>Build context, render description, build fields, resolve poster, build link.</li>
+<li>Attach <code>content</code> (mention) only for the review event.</li>
+<li>Attach embed <code>url</code> only when <code>dashboard_base_url</code> is set.</li>
+<li>POST.</li>
+</ol>
+<h3 id="section-6-template-variables">Section 6: Template variables</h3>
+<p>Added to <code>ALLOWED_TEMPLATE_VARS</code>: <code>volume_label</code>, <code>drive_id</code>, <code>disc_number</code>,
+<code>discdb_disc_slug</code>, <code>review_reason</code>, <code>episodes</code>, <code>state</code>.</p>
+<p><code>{{drive}}</code> continues to render <code>volume_label</code> so existing saved templates do not silently
+change meaning. The ConfigWizard hint relabels it as a deprecated alias for
+<code>{{volume_label}}</code>.</p>
+<p>Built-in defaults stay <code>**{{{title}}}**</code> for all three events, including the new
+<code>DEFAULT_TEMPLATE_REVIEW</code>. The structured fields now carry the detail, so no existing
+user's output regresses and the disc identity appears without anyone editing a template.</p>
+<h3 id="section-7-test-webhook-endpoint">Section 7: Test-webhook endpoint</h3>
+<p><code>POST /api/validate/discord-webhook</code>, body <code>{webhook_url?: str}</code>.</p>
+<ul>
+<li>Blank or omitted <code>webhook_url</code> means use the saved config value, so a user can test an
+  already-saved (redacted) webhook.</li>
+<li><strong>Must</strong> run the same <code>is_safe_remote_url</code> guard as <code>PUT /api/config</code>. Without it the
+  endpoint is an unauthenticated SSRF probe against internal hosts.</li>
+<li>Posts a sample embed built from a synthetic <code>DiscJob</code> through the real <code>build_embed</code>
+  path, so a test message exercises the production builder.</li>
+<li>Returns the existing <code>ValidationResponse</code> shape.</li>
+</ul>
+<h3 id="section-8-frontend">Section 8: Frontend</h3>
+<p>ConfigWizard, Notifications group gains:</p>
+<ul>
+<li>Review template textarea. The debounced live-validation effect goes from two templates
+  to three.</li>
+<li>Three toggle checkboxes (completed / failed / review).</li>
+<li>Mention input, with a hint that it accepts <code>&lt;@userid&gt;</code>, <code>&lt;@&amp;roleid&gt;</code>, or <code>@here</code>.</li>
+<li>Dashboard base URL input, with a hint explaining it makes notifications clickable.</li>
+<li>"Send test message" button with <code>idle | testing | ok | error</code> status.</li>
+</ul>
+<p>The variables hint table is updated for the seven new variables and the <code>{{drive}}</code>
+deprecation note.</p>
+<p><code>frontend/src/utils/discordTemplateValidation.ts</code> needs no changes.</p>
+<h2 id="testing">Testing</h2>
+<p><strong>Unit, <code>backend/tests/unit/test_discord_notifier.py</code></strong></p>
+<ul>
+<li>Event table maps each of the three states to the right label, emoji, and color.</li>
+<li><code>build_embed_fields</code> skip-empty behavior for a movie vs a TV job.</li>
+<li>Disc field fallback chain (<code>volume_label</code>, <code>discdb_disc_slug</code>, <code>Disc N</code>).</li>
+<li><code>summarize_episodes</code>: contiguous, gapped, single, empty, unparseable rows, movie.</li>
+<li>New template variables pass validation; unknown ones still fail.</li>
+<li>Mention attached only on review.</li>
+<li>Embed <code>url</code> present only when <code>dashboard_base_url</code> is set.</li>
+<li>Poster resolution failure degrades to an embed with no thumbnail.</li>
+</ul>
+<p><strong>Unit, job_manager</strong></p>
+<ul>
+<li>Each per-event toggle suppresses its own event and no other.</li>
+<li>Review notification fires on entry to <code>REVIEW_NEEDED</code>.</li>
+<li>Review notification suppressed when <code>from_state == REVIEW_NEEDED</code>.</li>
+<li>Review notification re-fires after <code>REVIEW_NEEDED -&gt; IDENTIFYING -&gt; REVIEW_NEEDED</code>.</li>
+</ul>
+<p><strong>Unit, validation</strong></p>
+<ul>
+<li><code>dashboard_base_url</code> accepts a LAN http address, rejects <code>javascript:</code> and credentialed
+  URLs.</li>
+<li><code>POST /api/validate/discord-webhook</code> rejects internal hosts.</li>
+</ul>
+<p><strong>Regression risk</strong></p>
+<ul>
+<li><code>backend/tests/unit/test_completion_skipped.py</code> and
+  <code>backend/tests/unit/test_watchdog_cancel_attribution.py</code> exercise the transition path
+  and may break on the <code>on_transition</code> signature widening.</li>
+<li>Any test that drives a job to a terminal state must stub
+  <code>_send_discord_notification</code>, or the leaked <code>create_task</code> holds a StaticPool connection
+  open past the test.</li>
+</ul>
+<h2 id="build-order">Build order</h2>
+<ol>
+<li>Config fields, migration, four-way sync, validation (Section 1)</li>
+<li>Notifier refactor: event table, embed builder, fields (Section 2). <strong>Request 1 lands
+   here.</strong></li>
+<li>Episode manifest (Section 3) and poster extraction (Section 4)</li>
+<li><code>on_transition</code> widening, review trigger, unified send path (Sections 5 and 6).
+   <strong>Request 2 lands here.</strong></li>
+<li>Test-webhook endpoint (Section 7)</li>
+<li>ConfigWizard UI (Section 8), docs, CHANGELOG</li>
+</ol>
+<h2 id="risks">Risks</h2>
+<ul>
+<li><strong><code>on_transition</code> signature widening</strong> touches the stale-job watchdog and the transcript
+  prewarmer. Both changes are one line each, but the watchdog is load-bearing for
+  stuck-job recovery.</li>
+<li><strong><code>dashboard_base_url</code> is deliberately exempt from <code>is_safe_remote_url</code>.</strong> This is
+  correct, because the server never fetches the URL and only embeds it as a link, but the
+  exemption must be documented at the call site so a later security pass does not "fix"
+  it into uselessness.</li>
+<li><strong>Config field sync</strong> is the recurring failure mode for this codebase: a field present
+  in <code>AppConfig</code> but missing from <code>ConfigUpdate</code> is silently dropped with no error.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

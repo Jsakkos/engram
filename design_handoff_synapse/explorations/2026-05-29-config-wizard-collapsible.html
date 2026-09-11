@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Config Wizard — Direction 2: Wider + Collapsible Groups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --sv-bg0:#05070c; --sv-bg1:#0a0e18; --sv-bg2:#121827; --sv-bg3:#1a2234;
+    --sv-ink:#e6ecf5; --sv-ink-dim:#8893a8; --sv-ink-faint:#4a5369; --sv-ink-ghost:#2a3147;
+    --sv-cyan:#5eead4; --sv-cyan-hi:#9ff8e8; --sv-cyan-dim:#2dd4bf;
+    --sv-magenta:#ff3d7f; --sv-magenta-hi:#ff7aa5;
+    --sv-yellow:#fde047; --sv-amber:#fcd34d; --sv-green:#86efac; --sv-red:#ff5555; --sv-purple:#a78bfa;
+    --sv-line:rgba(94,234,212,0.14); --sv-line-mid:rgba(94,234,212,0.24); --sv-line-hi:rgba(94,234,212,0.42);
+    --mono:"JetBrains Mono", ui-monospace, monospace;
+    --display:"Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -10%, rgba(94,234,212,0.05), transparent 60%), var(--sv-bg0);
+    color: var(--sv-ink); font-family: var(--mono); min-height: 100%; background-attachment: fixed;
+  }
+  body::before {
+    content:""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(94,234,212,1) 2px, rgba(94,234,212,1) 3px);
+    opacity: 0.02;
+  }
+
+  .mock-banner {
+    position: relative; z-index: 2; max-width: 960px; margin: 1.5rem auto 0; padding: 0.75rem 1rem;
+    border: 1px dashed var(--sv-line-mid); background: rgba(94,234,212,0.03);
+    font-family: var(--mono); font-size: 0.78rem; color: var(--sv-ink-dim); line-height: 1.6;
+  }
+  .mock-banner b { color: var(--sv-cyan); }
+  .mock-banner kbd { font-family: var(--mono); font-size: 0.72rem; color: var(--sv-cyan-hi); border: 1px solid var(--sv-line-mid); padding: 0 5px; background: var(--sv-bg1); }
+
+  .wizard-overlay { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: center; padding: 1.5rem 1rem 3rem; }
+  .wizard-modal {
+    width: 100%; max-width: 960px;            /* DIRECTION 2: moderate widen */
+    max-height: 90vh; display: flex; flex-direction: column;
+    background: linear-gradient(180deg, rgba(18,24,39,0.92), rgba(10,14,24,0.96));
+    border: 1px solid var(--sv-line-hi); box-shadow: 0 0 24px rgba(94,234,212,0.14);
+    position: relative; overflow: hidden;
+  }
+
+  .modal-header { padding: 1.25rem 1.75rem; background: rgba(94,234,212,0.04); border-bottom: 1px solid var(--sv-line); display: flex; justify-content: space-between; align-items: center; }
+  .modal-title { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--sv-cyan-hi); text-transform: uppercase; letter-spacing: 0.22em; font-family: var(--display); text-shadow: 0 0 12px rgba(94,234,212,0.5); }
+  .modal-close { background: transparent; border: 1px solid rgba(255,61,127,0.45); color: var(--sv-magenta); font-size: 1.4rem; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; line-height: 1; font-family: Arial, sans-serif; }
+  .modal-close:hover { background: rgba(255,61,127,0.10); border-color: var(--sv-magenta); box-shadow: 0 0 12px rgba(255,61,127,0.45); }
+
+  .wizard-progress { display: flex; justify-content: center; gap: 2.5rem; padding: 1.5rem; background: rgba(94,234,212,0.05); border-bottom: 2px solid rgba(94,234,212,0.3); }
+  .progress-step { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; opacity: 0.4; cursor: pointer; transition: all 0.25s ease; background: none; border: none; padding: 0; }
+  .progress-step.active, .progress-step.completed { opacity: 1; }
+  .step-number { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: var(--sv-bg1); border: 2px solid rgba(94,234,212,0.5); font-size: 0.85rem; font-weight: 700; color: var(--sv-ink-faint); font-family: var(--mono); }
+  .progress-step.active .step-number { background: rgba(94,234,212,0.2); border-color: var(--sv-cyan); color: var(--sv-cyan); box-shadow: 0 0 15px rgba(94,234,212,0.5); text-shadow: 0 0 10px rgba(94,234,212,0.8); }
+  .progress-step.completed:not(.active) .step-number { background: rgba(134,239,172,0.18); border-color: var(--sv-green); color: var(--sv-green); }
+  .step-label { font-size: 0.68rem; color: var(--sv-ink-faint); text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); font-weight: 700; white-space: nowrap; }
+  .progress-step.active .step-label { color: var(--sv-cyan); text-shadow: 0 0 10px rgba(94,234,212,0.5); }
+  .progress-step.completed:not(.active) .step-label { color: var(--sv-green); }
+
+  .wizard-body { flex: 1; overflow-y: auto; padding: 2rem 2.25rem; scrollbar-width: thin; scrollbar-color: rgba(94,234,212,0.4) transparent; }
+  .wizard-body::-webkit-scrollbar { width: 5px; }
+  .wizard-body::-webkit-scrollbar-thumb { background: rgba(94,234,212,0.4); }
+  .wizard-step { display: none; }
+  .wizard-step.active { display: block; }
+
+  .step-title { font-size: 1.4rem; font-weight: 700; margin: 0 0 0.4rem; color: var(--sv-cyan); text-transform: uppercase; letter-spacing: 2px; font-family: var(--mono); text-shadow: 0 0 15px rgba(94,234,212,0.6); }
+  .step-description { color: var(--sv-ink-dim); margin: 0 0 1.5rem; line-height: 1.6; font-family: var(--mono); font-size: 0.9rem; }
+
+  .form-group { margin-bottom: 1.1rem; }
+  .form-group > label, .field-label { display: block; margin-bottom: 0.5rem; color: var(--sv-ink-dim); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.18em; font-family: var(--mono); }
+  input[type="text"], input[type="password"], input[type="number"], select.sv-select {
+    width: 100%; padding: 0.62rem 0.75rem; background: rgba(94,234,212,0.04); border: 1px solid var(--sv-line-mid);
+    color: var(--sv-ink); font-size: 0.88rem; font-family: var(--mono); transition: background 120ms, border-color 120ms, box-shadow 120ms; outline: none;
+  }
+  input::placeholder { color: var(--sv-ink-ghost); }
+  input:focus, select.sv-select:focus { border-color: var(--sv-cyan); box-shadow: 0 0 12px rgba(94,234,212,0.25); background: rgba(94,234,212,0.08); }
+  .select-wrap { position: relative; }
+  select.sv-select { appearance: none; -webkit-appearance: none; padding-right: 2rem; cursor: pointer; }
+  .select-wrap::after { content: "▾"; position: absolute; right: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--sv-cyan); pointer-events: none; font-size: 0.8rem; }
+  .form-hint { display: block; margin-top: 0.45rem; font-size: 0.74rem; color: var(--sv-ink-faint); font-family: var(--mono); letter-spacing: 0.01em; line-height: 1.55; }
+  .form-hint code, code.inline { color: var(--sv-cyan); background: rgba(94,234,212,0.08); padding: 1px 5px; font-family: var(--mono); }
+
+  .checkbox-group { margin-bottom: 1.1rem; }
+  .checkbox-label { display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; padding: 0.85rem; background: rgba(255,61,127,0.05); border: 1px solid rgba(255,61,127,0.2); transition: all 0.25s ease; }
+  .checkbox-label:hover { background: rgba(255,61,127,0.1); border-color: rgba(255,61,127,0.4); }
+  .checkbox-label input[type="checkbox"] { width: 18px; height: 18px; margin-top: 0.15rem; accent-color: var(--sv-magenta); cursor: pointer; flex: 0 0 auto; }
+  .checkbox-text { display: flex; flex-direction: column; gap: 0.3rem; font-family: var(--mono); color: var(--sv-ink); }
+  .checkbox-text strong { font-size: 0.9rem; letter-spacing: 0.02em; }
+  .checkbox-hint { font-size: 0.82rem; color: var(--sv-ink-dim); line-height: 1.55; }
+
+  .sv-btn { height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; background: var(--sv-bg0); border: 1px solid; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.20em; text-transform: uppercase; cursor: pointer; text-decoration: none; transition: all 120ms ease-out; }
+  .sv-btn--neutral { color: var(--sv-ink-dim); border-color: var(--sv-line); }
+  .sv-btn--neutral:hover { color: var(--sv-cyan-hi); border-color: var(--sv-line-hi); background: rgba(94,234,212,0.05); box-shadow: 0 0 14px rgba(94,234,212,0.4); }
+  .sv-btn--cyan { color: var(--sv-cyan); border-color: rgba(94,234,212,0.33); box-shadow: 0 0 8px rgba(94,234,212,0.2); }
+  .sv-btn--cyan:hover { color: var(--sv-cyan-hi); border-color: var(--sv-cyan); background: rgba(94,234,212,0.10); box-shadow: 0 0 14px rgba(94,234,212,0.4); }
+  .sv-btn--red { color: var(--sv-red); border-color: rgba(255,85,85,0.33); box-shadow: 0 0 8px rgba(255,85,85,0.2); }
+  .sv-btn--red:hover { color: #ff8a8a; border-color: var(--sv-red); background: rgba(255,85,85,0.10); box-shadow: 0 0 14px rgba(255,85,85,0.4); }
+
+  /* ── Collapsible group (DIRECTION 2 core idea) — native <details> ── */
+  .group { border: 1px solid var(--sv-line-mid); background: rgba(94,234,212,0.02); margin-bottom: 0.85rem; }
+  .group > summary {
+    list-style: none; cursor: pointer; display: flex; align-items: center; gap: 0.7rem;
+    padding: 0.85rem 1rem; font-family: var(--mono); font-size: 0.82rem; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--sv-cyan-hi); user-select: none;
+    transition: background 120ms;
+  }
+  .group > summary::-webkit-details-marker { display: none; }
+  .group > summary:hover { background: rgba(94,234,212,0.05); }
+  .group > summary .chev { color: var(--sv-cyan); transition: transform 150ms ease; display: inline-block; }
+  .group[open] > summary { border-bottom: 1px solid var(--sv-line); background: rgba(94,234,212,0.05); }
+  .group[open] > summary .chev { transform: rotate(90deg); }
+  .group > summary .sub { margin-left: auto; font-weight: 500; letter-spacing: 0.04em; text-transform: none; color: var(--sv-ink-faint); font-size: 0.74rem; }
+  .group .group-body { padding: 1.1rem; }
+  .group .group-body .form-group:last-child, .group .group-body .checkbox-group:last-child { margin-bottom: 0; }
+
+  /* Status badges */
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; border: 1px solid; white-space: nowrap; }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+  .badge--amber { color: var(--sv-amber); border-color: rgba(252,211,77,0.5); background: rgba(252,211,77,0.08); }
+  .badge--green { color: var(--sv-green); border-color: rgba(134,239,172,0.5); background: rgba(134,239,172,0.08); }
+  .badge--ghost { color: var(--sv-ink-faint); border-color: var(--sv-line); background: transparent; }
+
+  .id-panel { position: relative; padding: 1rem; margin-bottom: 1.1rem; border: 1px solid var(--sv-line-mid); background: rgba(94,234,212,0.04); }
+  .id-panel .corner { position: absolute; width: 8px; height: 8px; border-color: var(--sv-cyan); }
+  .id-panel .corner.tl { top: -1px; left: -1px; border-top: 1px solid; border-left: 1px solid; }
+  .id-panel .corner.tr { top: -1px; right: -1px; border-top: 1px solid; border-right: 1px solid; }
+  .id-panel .corner.bl { bottom: -1px; left: -1px; border-bottom: 1px solid; border-left: 1px solid; }
+  .id-panel .corner.br { bottom: -1px; right: -1px; border-bottom: 1px solid; border-right: 1px solid; }
+  .id-panel-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .id-panel-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--sv-ink-dim); margin-bottom: 0.4rem; }
+  .id-panel-value { font-family: var(--mono); font-size: 0.82rem; color: var(--sv-cyan); word-break: break-all; }
+
+  .tool-card { display: flex; align-items: center; gap: 0.8rem; padding: 0.85rem; border: 1px solid var(--sv-line-mid); background: rgba(94,234,212,0.03); margin-bottom: 1rem; }
+  .tool-card .status-dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+  .tool-card .ok { color: var(--sv-green); background: var(--sv-green); }
+  .tool-card .meta { font-family: var(--mono); font-size: 0.82rem; }
+  .tool-card .meta .name { color: var(--sv-ink); font-weight: 600; }
+  .tool-card .meta .ver { color: var(--sv-ink-faint); font-size: 0.74rem; }
+
+  .summary { border: 1px solid var(--sv-line); background: rgba(94,234,212,0.03); padding: 1rem 1.1rem; margin-top: 0.5rem; }
+  .summary dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1.25rem; margin: 0; }
+  .summary dt { color: var(--sv-ink-dim); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; }
+  .summary dd { margin: 0; color: var(--sv-ink); font-size: 0.82rem; }
+  .summary-title { display:flex; align-items:center; gap:0.55rem; font-family: var(--mono); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--sv-cyan); margin-top: 1.5rem; }
+  .summary-title::before { content: "▸"; color: var(--sv-cyan); }
+
+  .group-note { font-size: 0.78rem; color: var(--sv-ink-faint); line-height: 1.55; margin: 0 0 1.1rem; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1.25rem; }
+  .grid-2 .span-2 { grid-column: 1 / -1; }
+
+  .wizard-actions { padding: 1.1rem 1.75rem; background: rgba(94,234,212,0.03); border-top: 1px solid var(--sv-line); display: flex; justify-content: space-between; gap: 1rem; }
+  .wizard-actions button { padding: 0.65rem 1.6rem; font-family: var(--mono); font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.20em; border: 1px solid; background: var(--sv-bg0); cursor: pointer; transition: all 120ms ease-out; }
+  .wizard-actions .btn-secondary { color: var(--sv-ink-dim); border-color: var(--sv-line); }
+  .wizard-actions .btn-secondary:hover { color: var(--sv-cyan); border-color: var(--sv-cyan); }
+  .wizard-actions .btn-primary { color: var(--sv-magenta); border-color: var(--sv-magenta); }
+  .wizard-actions .btn-primary:hover { background: rgba(255,61,127,0.10); box-shadow: 0 0 14px rgba(255,61,127,0.5); }
+</style>
+</head>
+<body>
+
+  <div class="mock-banner">
+    <b>MOCKUP — Direction 2: wider (960px) + collapsible groups.</b> Click the stepper to move between tabs; click a group header to expand/collapse.
+    The new <b>DATA SHARING</b> tab is <kbd>5</kbd>; <b>PREFERENCES</b> <kbd>4</kbd> folds its sections so the page starts short and you open only what you need.
+  </div>
+
+  <div class="wizard-overlay">
+    <div class="wizard-modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Setup Wizard</h2>
+        <button class="modal-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="wizard-progress" id="stepper"></div>
+
+      <div class="wizard-body">
+
+        <!-- STEP 1 — PATHS -->
+        <div class="wizard-step" data-step="1">
+          <h3 class="step-title">Paths</h3>
+          <p class="step-description">Where Engram stages rips and files your finished library.</p>
+          <div class="form-group"><label>Staging Directory</label><input type="text" value="C:\Engram\staging" /><span class="form-hint">Temporary workspace for in-progress rips. Cleared automatically per your cleanup policy.</span></div>
+          <div class="form-group"><label>Movies Library</label><input type="text" value="D:\Media\Movies" /></div>
+          <div class="form-group"><label>TV Shows Library</label><input type="text" value="D:\Media\TV" /></div>
+          <div class="form-group"><label>Import Watch Folder (optional)</label><input type="text" placeholder="Drop MKV/ISO files here to auto-import" /><span class="form-hint">Files added to this folder are picked up and processed like a disc.</span></div>
+        </div>
+
+        <!-- STEP 2 — TOOLS -->
+        <div class="wizard-step" data-step="2">
+          <h3 class="step-title">Tools</h3>
+          <p class="step-description">Engram auto-detects MakeMKV and FFmpeg. Override the paths only if detection fails.</p>
+          <div class="tool-card"><span class="status-dot ok"></span><div class="meta"><div class="name">MakeMKV detected</div><div class="ver">makemkvcon64.exe · v1.17.7</div></div></div>
+          <div class="tool-card"><span class="status-dot ok"></span><div class="meta"><div class="name">FFmpeg detected</div><div class="ver">ffmpeg.exe · 7.0.2</div></div></div>
+          <div style="margin:0.5rem 0 1.5rem;"><button class="sv-btn sv-btn--neutral">Re-scan for tools</button></div>
+          <div class="form-group"><label>MakeMKV License Key</label><input type="text" placeholder="T-xxxxxxxxxxxxxxxxxxxxxxxxxxx" /><span class="form-hint">Required to rip. Paste your beta key or purchased license.</span></div>
+        </div>
+
+        <!-- STEP 3 — TMDB -->
+        <div class="wizard-step" data-step="3">
+          <h3 class="step-title">TMDB</h3>
+          <p class="step-description">Metadata and subtitle providers used to identify and enrich your rips.</p>
+          <div class="form-group"><label>TMDB Read Access Token</label><input type="password" placeholder="eyJhbGciOi… (v4 Read Access Token, not the short API key)" /><span class="form-hint">Paste the long token that starts with <code>eyJ</code> from your TMDB account → API → Read Access Token.</span></div>
+          <details class="group">
+            <summary><span class="chev">▸</span> OpenSubtitles <span class="sub">optional</span></summary>
+            <div class="group-body">
+              <div class="form-group"><label>API Key</label><input type="password" placeholder="OpenSubtitles.com API key" /></div>
+              <div class="grid-2">
+                <div class="form-group"><label>Username</label><input type="text" placeholder="username" /></div>
+                <div class="form-group"><label>Password</label><input type="password" placeholder="••••••••" /></div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- STEP 4 — PREFERENCES (collapsible) -->
+        <div class="wizard-step active" data-step="4">
+          <h3 class="step-title">Preferences</h3>
+          <p class="step-description">How Engram matches, names, and tidies up — all processed locally on this machine. Open a section to adjust it.</p>
+
+          <details class="group" open>
+            <summary><span class="chev">▸</span> Matching &amp; ordering <span class="sub">2 settings</span></summary>
+            <div class="group-body">
+              <div class="form-group"><label>Max Concurrent Matches</label><input type="number" value="4" min="1" max="4" /><span class="form-hint">Episodes matched at once (uses the GPU for speech recognition). Lower to reduce memory.</span></div>
+              <div class="form-group"><label>Episode Ordering</label><div class="select-wrap"><select class="sv-select"><option>Aired order</option><option>DVD order</option></select></div><span class="form-hint">Default ordering when a show offers both an aired and a DVD sequence.</span></div>
+            </div>
+          </details>
+
+          <details class="group">
+            <summary><span class="chev">▸</span> Organization &amp; naming <span class="sub">3 settings</span></summary>
+            <div class="group-body">
+              <div class="form-group"><label>Default Conflict Resolution</label><div class="select-wrap"><select class="sv-select"><option>Ask each time</option><option>Rename</option><option>Overwrite</option><option>Skip</option></select></div><span class="form-hint">What to do when a target file already exists in the library.</span></div>
+              <div class="form-group"><label>Extras Handling</label><div class="select-wrap"><select class="sv-select"><option>Keep (file as extras)</option><option>Skip</option><option>Ask</option></select></div><span class="form-hint">How to treat bonus features, trailers, and behind-the-scenes titles.</span></div>
+              <div class="form-group"><label>Naming Convention</label><div class="select-wrap"><select class="sv-select"><option>Plex — Show - S01E02</option><option>Kodi</option><option>Minimal</option><option>Custom…</option></select></div><span class="form-hint">Preview: <code>TV/Severance/Season 01/Severance - S01E02.mkv</code></span></div>
+            </div>
+          </details>
+
+          <details class="group">
+            <summary><span class="chev">▸</span> Maintenance &amp; watchdog <span class="sub">cleanup + timeouts</span></summary>
+            <div class="group-body">
+              <div class="grid-2">
+                <div class="form-group"><label>Staging Cleanup Policy</label><div class="select-wrap"><select class="sv-select"><option>After successful organize</option><option>On job completion</option><option>After N days</option><option>Manual only</option></select></div></div>
+                <div class="form-group"><label>Stale-Job Watchdog</label><div class="select-wrap"><select class="sv-select"><option>On</option><option>Off</option></select></div></div>
+                <div class="form-group"><label>Identifying Timeout (s)</label><input type="number" value="600" /></div>
+                <div class="form-group"><label>Ripping Timeout (s)</label><input type="number" value="14400" /></div>
+                <div class="form-group"><label>Matching Timeout (s)</label><input type="number" value="3600" /></div>
+                <div class="form-group"><label>Organizing Timeout (s)</label><input type="number" value="1200" /></div>
+              </div>
+            </div>
+          </details>
+
+          <details class="group">
+            <summary><span class="chev">▸</span> Network access <span class="sub">LAN</span></summary>
+            <div class="group-body">
+              <div class="checkbox-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" />
+                  <span class="checkbox-text"><strong>Allow access from other devices (LAN)</strong><span class="checkbox-hint">Serve the dashboard to other devices on your local network. A QR code and address appear here when enabled.</span></span>
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <div class="summary-title">Configuration summary</div>
+          <div class="summary">
+            <dl>
+              <dt>Movies</dt><dd>D:\Media\Movies</dd>
+              <dt>TV Shows</dt><dd>D:\Media\TV</dd>
+              <dt>MakeMKV key</dt><dd>✓ Saved</dd>
+              <dt>TMDB token</dt><dd>✓ Saved</dd>
+            </dl>
+          </div>
+        </div>
+
+        <!-- STEP 5 — DATA SHARING (new, collapsible) -->
+        <div class="wizard-step" data-step="5">
+          <h3 class="step-title">Data Sharing</h3>
+          <p class="step-description">
+            Everything on this tab is optional and governs data that leaves your machine. Nothing here is on by default
+            except local fingerprint extraction — and no filenames, paths, or personal information are ever sent.
+          </p>
+
+          <details class="group" open>
+            <summary><span class="chev">▸</span> Fingerprint network <span class="sub">contributing</span></summary>
+            <div class="group-body">
+              <div class="checkbox-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" checked />
+                  <span class="checkbox-text"><strong>Contribute audio fingerprints</strong>
+                    <span class="checkbox-hint">Engram extracts a perceptual audio fingerprint from each ripped title and shares it with the community catalog so everyone's rips identify faster. Only the fingerprint is sent — never audio, filenames, or paths. Untick to keep fingerprints entirely on this machine.</span>
+                  </span>
+                </label>
+              </div>
+              <div class="form-group"><label>Fingerprint Network Server URL</label><input type="text" placeholder="https://engram-fp-prod.jonathansakkos.workers.dev" /><span class="form-hint">Leave blank to use the default community network. Set a custom URL to point at your own server.</span></div>
+              <div class="id-panel">
+                <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+                <div class="id-panel-row">
+                  <div><div class="id-panel-label">Your anonymous contribution ID</div><div class="id-panel-value">9e0fad8d-3ce7-4058-a537-bd39024890f0</div></div>
+                  <span class="badge badge--amber"><span class="dot"></span>Disclosure not accepted</span>
+                </div>
+                <div style="margin-top:0.9rem;"><button class="sv-btn sv-btn--red">Forget me on the server</button></div>
+                <span class="form-hint">Forgetting deletes your raw contributions on the server, clears the local queue, and rotates your ID. Already-promoted consensus data can't be recalled.</span>
+              </div>
+              <div class="form-group">
+                <button class="sv-btn sv-btn--cyan">Contribute from existing library…</button>
+                <span class="form-hint">Seed the network from your existing TV library (reads filenames only — no files are uploaded).</span>
+              </div>
+            </div>
+          </details>
+
+          <details class="group">
+            <summary><span class="chev">▸</span> AI assistance <span class="sub">optional · API key required</span></summary>
+            <div class="group-body">
+              <div class="checkbox-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" />
+                  <span class="checkbox-text"><strong>AI-powered title resolution</strong><span class="checkbox-hint">When TMDB lookup fails (obscure titles, abbreviations), send the disc label to an LLM to identify it. Requires an API key below.</span></span>
+                </label>
+              </div>
+              <div class="grid-2">
+                <div class="form-group"><label>AI Provider</label><div class="select-wrap"><select class="sv-select"><option>Anthropic (Claude)</option><option>OpenAI</option><option>OpenRouter</option><option>Google Gemini</option></select></div></div>
+                <div class="form-group"><label>API Key</label><input type="password" placeholder="sk-ant-…" /><span class="form-hint">Used only when TMDB lookup fails.</span></div>
+              </div>
+              <div class="checkbox-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" />
+                  <span class="checkbox-text"><strong>AI-powered episode matching (TV)</strong><span class="checkbox-hint">When fingerprint matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your provider for a suggestion. Always confirmed in the review queue — never auto-organized. Gemini Flash-Lite recommended.</span></span>
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <details class="group">
+            <summary><span class="chev">▸</span> TheDiscDB <span class="sub" style="display:flex;gap:0.5rem;align-items:center;"><span class="badge badge--ghost"><span class="dot"></span>Coming soon</span></span></summary>
+            <div class="group-body">
+              <p class="group-note">Disc-layout lookup and contributions. Shown here for placement — released when the feature flag flips.</p>
+              <div class="checkbox-group">
+                <label class="checkbox-label" style="opacity:0.55;">
+                  <input type="checkbox" disabled />
+                  <span class="checkbox-text"><strong>Enable TheDiscDB lookup</strong><span class="checkbox-hint">Query TheDiscDB for known disc layouts. On a match, episodes are mapped instantly and fingerprinting is skipped. No API key required.</span></span>
+                </label>
+              </div>
+              <div class="checkbox-group">
+                <label class="checkbox-label" style="opacity:0.55;">
+                  <input type="checkbox" disabled />
+                  <span class="checkbox-text"><strong>Enable TheDiscDB contributions</strong><span class="checkbox-hint">Share disc metadata (track info, episode mappings) after each rip to help others identify their discs. No personal data is shared.</span></span>
+                </label>
+              </div>
+              <div class="grid-2" style="opacity:0.55;">
+                <div class="form-group"><label>Contribution Level</label><div class="select-wrap"><select class="sv-select" disabled><option>Automatic — share auto-collected data</option><option>Full — prompt for UPC and images</option></select></div></div>
+                <div class="form-group"><label>API Key</label><input type="password" placeholder="Optional — leave blank for local export only" disabled /><span class="form-hint">Optional. Required only for direct submission.</span></div>
+                <div class="form-group span-2"><label>Export Directory (optional)</label><input type="text" placeholder="~/.engram/discdb-exports" disabled /></div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+      </div>
+
+      <div class="wizard-actions">
+        <button class="btn-secondary">&larr; Back</button>
+        <button class="btn-primary">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const LABELS = ['Paths', 'Tools', 'TMDB', 'Preferences', 'Data Sharing'];
+  const stepper = document.getElementById('stepper');
+  const steps = [...document.querySelectorAll('.wizard-step')];
+  let current = 4;
+
+  function render() {
+    stepper.innerHTML = '';
+    LABELS.forEach((label, i) => {
+      const n = i + 1;
+      const btn = document.createElement('button');
+      btn.className = 'progress-step' + (n === current ? ' active' : '') + (n < current ? ' completed' : '');
+      btn.innerHTML = '<span class="step-number">' + (n < current ? '✓' : (n === current ? '●' : n)) + '</span>' +
+                      '<span class="step-label">' + label + '</span>';
+      btn.onclick = () => { current = n; sync(); };
+      stepper.appendChild(btn);
+    });
+  }
+  function sync() {
+    steps.forEach(s => s.classList.toggle('active', Number(s.dataset.step) === current));
+    render();
+    document.querySelector('.wizard-body').scrollTop = 0;
+  }
+  sync();
+</script>
+</body>
+</html>

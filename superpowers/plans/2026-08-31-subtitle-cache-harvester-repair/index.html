@@ -1,0 +1,2523 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-08-31-subtitle-cache-harvester-repair/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Subtitle Cache Harvester Repair Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#subtitle-cache-harvester-repair-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Subtitle Cache Harvester Repair Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="File Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-stop-is_done-expiring-on-a-timer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Stop is_done expiring on a timer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-extract-the-run-stop-decision-as-a-pure-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Extract the run-stop decision as a pure function
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-wire-the-stop-guard-into-the-harvest-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Wire the stop guard into the harvest loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-detect-degraded-seasons-in-download_subtitles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Detect degraded seasons in download_subtitles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-suppress-coverage-recording-for-degraded-seasons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Suppress coverage recording for degraded seasons
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-6-credit-opensubtitles-in-by_source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Credit OpenSubtitles in by_source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-one-time-purge-of-the-poisoned-coverage-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: One-time purge of the poisoned coverage window
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-gap-deliberately-out-of-scope-the-scrapers-have-no-failure-signal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known gap, deliberately out of scope: the scrapers have no failure signal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-gap-a-persistently-degraded-corpus-is-re-measured-forever" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known gap: a persistently degraded corpus is re-measured forever
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes-for-the-implementer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes for the implementer
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="subtitle-cache-harvester-repair-implementation-plan">Subtitle Cache Harvester Repair Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Make the subtitle cache builder incapable of recording an infrastructure failure (quota exhaustion, provider outage) as a content fact, and incapable of exceeding the daily OpenSubtitles quota.</p>
+<p><strong>Architecture:</strong> Six focused changes across three files. Decision logic is extracted into pure functions (<code>_stop_reason</code>, <code>_is_degraded</code>) that are unit-tested directly, with thin wiring at the call sites. The coverage tracker's two lookup paths get independent staleness semantics: failures still expire (retry later), successes never do (the SRTs are on disk). A standalone maintenance script purges the coverage rows written during the known-bad window.</p>
+<p><strong>Tech Stack:</strong> Python 3.11+, pytest, SQLite via <code>tmdb_persistent_cache</code>, <code>uv</code> for all commands.</p>
+<p><strong>Background:</strong> Full diagnosis in <code>docs/superpowers/specs/2026-08-31-subtitle-cache-expansion-design.md</code>. Summary: a two-day OpenSubtitles quota failure on 2026-06-11/12 was recorded as genuine zero coverage, skip-listing 664 seasons. Healthy-window coverage was 94.3%, the outage window 14.5%.</p>
+<p><strong>Scope:</strong> This plan is Phase 1 only (harvester repair). Phase 2 (English-only curation) and Phase 3 (server deployment) get their own plans once Phase 1 has run and produced honest measurements.</p>
+<hr />
+<h2 id="file-structure">File Structure</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend/app/matcher/coverage_tracker.py</code></td>
+<td>Persistent per-season coverage records</td>
+<td>Modify: <code>is_done</code> stops expiring</td>
+</tr>
+<tr>
+<td><code>backend/tests/unit/test_coverage_tracker.py</code></td>
+<td>Coverage tracker tests</td>
+<td>Modify: invert <code>test_outside_window_not_done</code></td>
+</tr>
+<tr>
+<td><code>backend/app/matcher/testing_service.py</code></td>
+<td>Subtitle download orchestration, OS client + quota state</td>
+<td>Modify: add <code>_is_degraded</code>, <code>degraded</code> in result, fix <code>by_source</code> attribution</td>
+</tr>
+<tr>
+<td><code>backend/tests/unit/test_testing_service_degraded.py</code></td>
+<td>Degraded-detection tests</td>
+<td>Create</td>
+</tr>
+<tr>
+<td><code>backend/scripts/build_subtitle_cache.py</code></td>
+<td>Cache build driver</td>
+<td>Modify: <code>_stop_reason</code>, <code>--max-downloads</code>, <code>--quota-floor</code>, skip <code>record()</code> when degraded</td>
+</tr>
+<tr>
+<td><code>backend/tests/unit/test_build_subtitle_cache.py</code></td>
+<td>Build script tests</td>
+<td>Modify: add stop-reason and degraded-suppression tests</td>
+</tr>
+<tr>
+<td><code>backend/scripts/purge_poisoned_coverage.py</code></td>
+<td>One-time maintenance: delete outage-window rows</td>
+<td>Create</td>
+</tr>
+<tr>
+<td><code>backend/tests/unit/test_purge_poisoned_coverage.py</code></td>
+<td>Purge script tests</td>
+<td>Create</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="task-1-stop-is_done-expiring-on-a-timer">Task 1: Stop <code>is_done</code> expiring on a timer</h3>
+<p><strong>Why:</strong> <code>is_done()</code> and <code>should_skip()</code> both call <code>_fresh_record()</code> with the same <code>skip_window_days</code>. For a failure, 30-day expiry is a sensible retry. For a success, expiry disables the complete-on-disk fast path, so the next run re-enumerates the entire corpus. That oversized run is what hit the quota wall. <code>--refresh</code> already exists for the "providers may have added episodes" case, so the timer buys nothing.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/coverage_tracker.py:76-95</code>
+- Test: <code>backend/tests/unit/test_coverage_tracker.py:91-100</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Rewrite the test that asserts the old behavior</strong></li>
+</ul>
+<p>Replace <code>test_outside_window_not_done</code> in <code>backend/tests/unit/test_coverage_tracker.py</code> (currently at line 91) with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_outside_window_still_done</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">        </span><span class="sd">"""A covered season does NOT expire on a timer. The SRTs are on disk;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="sd">        age says nothing about whether they are still there. Expiry here used</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="sd">        to disable the complete-on-disk fast path, forcing a full re-harvest</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="sd">        every 30 days -- the oversized run that exhausted the daily quota.</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="sd">        Use --refresh to deliberately re-harvest for newly-added episodes."""</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="n">forty_days_ago</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="mi">40</span> <span class="o">*</span> <span class="mi">86400</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">coverage_tracker</span><span class="o">.</span><span class="n">time</span><span class="p">,</span> <span class="s2">"time"</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">forty_days_ago</span><span class="p">)</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">record</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">covered</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>  <span class="c1"># 100%</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">undo</span><span class="p">()</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="n">done</span><span class="p">,</span> <span class="n">prev</span> <span class="o">=</span> <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">is_done</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">min_ratio</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">window_days</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="k">assert</span> <span class="n">done</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="k">assert</span> <span class="n">prev</span><span class="p">[</span><span class="s2">"coverage_ratio"</span><span class="p">]</span> <span class="o">==</span> <span class="n">pytest</span><span class="o">.</span><span class="n">approx</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_below_threshold_outside_window_still_not_done</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">monkeypatch</span><span class="p">):</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">        </span><span class="sd">"""Age-independence must not promote a FAILED season to done."""</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>        <span class="n">forty_days_ago</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="mi">40</span> <span class="o">*</span> <span class="mi">86400</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">coverage_tracker</span><span class="o">.</span><span class="n">time</span><span class="p">,</span> <span class="s2">"time"</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">forty_days_ago</span><span class="p">)</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>        <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">record</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">covered</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># 10%</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>        <span class="n">monkeypatch</span><span class="o">.</span><span class="n">undo</span><span class="p">()</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>        <span class="n">done</span><span class="p">,</span> <span class="n">prev</span> <span class="o">=</span> <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">is_done</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">min_ratio</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">window_days</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>        <span class="k">assert</span> <span class="n">done</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>        <span class="k">assert</span> <span class="n">prev</span> <span class="ow">is</span> <span class="kc">None</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_coverage_tracker.py::TestIsDone<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: <code>test_outside_window_still_done</code> FAILS with <code>assert False is True</code>. <code>test_below_threshold_outside_window_still_not_done</code> PASSES already (it is a guard against over-correcting).</p>
+<ul>
+<li>[ ] <strong>Step 3: Add an age-independent lookup helper</strong></li>
+</ul>
+<p>In <code>backend/app/matcher/coverage_tracker.py</code>, add immediately after <code>_fresh_record</code> (after line 53):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_any_age_record</span><span class="p">(</span><span class="n">tmdb_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">season</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="sd">"""Return the coverage row for ``(tmdb_id, season)`` regardless of age.</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="sd">    ``_fresh_record``'s age gate is correct for ``should_skip`` (a failed</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="sd">    season deserves a retry eventually) and wrong for ``is_done`` (a season</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="sd">    whose SRTs are on disk does not become un-harvested by the passage of</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="sd">    time). Splitting the two lookups is what stops the periodic full</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="sd">    re-sweep; see the 2026-08-31 harvester-repair spec.</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="sd">    """</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">conn</span> <span class="o">=</span> <span class="n">tmdb_persistent_cache</span><span class="o">.</span><span class="n">get_conn</span><span class="p">()</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">row</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>        <span class="s2">"SELECT attempted_at, total_episodes, covered_episodes, coverage_ratio "</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>        <span class="s2">"FROM subtitle_coverage WHERE tmdb_id = ? AND season = ?"</span><span class="p">,</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>        <span class="p">(</span><span class="n">tmdb_id</span><span class="p">,</span> <span class="n">season</span><span class="p">),</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="k">if</span> <span class="n">row</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="n">attempted_at</span><span class="p">,</span> <span class="n">total</span><span class="p">,</span> <span class="n">covered</span><span class="p">,</span> <span class="n">ratio</span> <span class="o">=</span> <span class="n">row</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="k">return</span> <span class="p">{</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>        <span class="s2">"attempted_at"</span><span class="p">:</span> <span class="n">attempted_at</span><span class="p">,</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>        <span class="s2">"total_episodes"</span><span class="p">:</span> <span class="n">total</span><span class="p">,</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>        <span class="s2">"covered_episodes"</span><span class="p">:</span> <span class="n">covered</span><span class="p">,</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>        <span class="s2">"coverage_ratio"</span><span class="p">:</span> <span class="n">ratio</span><span class="p">,</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>    <span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Point <code>is_done</code> at the new helper</strong></li>
+</ul>
+<p>In <code>backend/app/matcher/coverage_tracker.py</code>, replace the body and docstring of <code>is_done</code> (lines 76-95) with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">is_done</span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">tmdb_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">season</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">min_ratio</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">window_days</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">30</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="sd">"""Return ``(done, prior_row)``.</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="sd">    ``done`` is True iff a recorded attempt reached ``min_ratio`` -- i.e. the</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="sd">    season already hit the coverage threshold and can be shipped from the SRTs</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="sd">    already on disk without re-hitting TMDB/OpenSubtitles/scrapers.</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="sd">    Deliberately age-independent: ``window_days`` is accepted for call-site</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="sd">    compatibility and ignored. Success does not decay. Expiring it forced a</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="sd">    full re-harvest of the whole corpus every 30 days, which exhausted the</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="sd">    daily OpenSubtitles quota and caused every subsequent season to be</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="sd">    recorded as zero-coverage. Pass ``--refresh`` to the build script to</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="sd">    re-harvest deliberately.</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="sd">    The caller still verifies the SRTs are physically present</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="sd">    (``discover_season_srts``) and falls through to a normal harvest if they</span>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="sd">    are not, so a wiped cache directory self-heals.</span>
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="sd">    """</span>
+<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    <span class="n">row</span> <span class="o">=</span> <span class="n">_any_age_record</span><span class="p">(</span><span class="n">tmdb_id</span><span class="p">,</span> <span class="n">season</span><span class="p">)</span>
+<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>    <span class="k">if</span> <span class="n">row</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">row</span><span class="p">[</span><span class="s2">"coverage_ratio"</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">min_ratio</span><span class="p">:</span>
+<a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>        <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">None</span>
+<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>    <span class="k">return</span> <span class="kc">True</span><span class="p">,</span> <span class="n">row</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 5: Run the tests to verify they pass</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_coverage_tracker.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: all PASS, including the pre-existing <code>TestShouldSkip::test_outside_skip_window_not_skipped</code> (proving failures still expire).</p>
+<ul>
+<li>[ ] <strong>Step 6: Verify the build script's callers still pass</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_build_subtitle_cache.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: all PASS. If <code>tests/unit/test_build_subtitle_cache.py:214</code> fails, read it: it asserts <code>is_done()</code> gates the fast path, which is still true; only staleness changed.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/matcher/coverage_tracker.py<span class="w"> </span>backend/tests/unit/test_coverage_tracker.py
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix(subtitle-cache): stop is_done expiring on a timer</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="s2">A covered season does not become un-harvested by the passage of time.</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="s2">Expiry disabled the complete-on-disk fast path every 30 days, forcing a</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="s2">full corpus re-harvest that exhausted the daily OpenSubtitles quota.</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="s2">should_skip keeps its window so failures are still retried."</span>
+</code></pre></div>
+<hr />
+<h3 id="task-2-extract-the-run-stop-decision-as-a-pure-function">Task 2: Extract the run-stop decision as a pure function</h3>
+<p><strong>Why:</strong> The quota is checked only at login (<code>_get_os_client</code>). <code>_snapshot_os_quota</code> keeps updating <code>user_downloads_remaining</code> as downloads proceed, but nothing reads it, so a run that starts at 1,000 sails past zero. Two independent limits are needed: an absolute floor (protects an account that started the day partially used) and a per-run budget (<code>--max-downloads</code>).</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/scripts/build_subtitle_cache.py</code>
+- Test: <code>backend/tests/unit/test_build_subtitle_cache.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_build_subtitle_cache.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestStopReason</span><span class="p">:</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="sd">"""``_stop_reason`` is the pure decision behind the run's quota guard.</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="sd">    Returns None to continue, or a human-readable reason to stop."""</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_none_when_within_budget_and_above_floor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>        <span class="k">assert</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_stop_reason</span><span class="p">(</span><span class="n">baseline</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">remaining</span><span class="o">=</span><span class="mi">800</span><span class="p">,</span> <span class="n">max_downloads</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span> <span class="n">floor</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_stops_when_budget_spent</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>        <span class="n">reason</span> <span class="o">=</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_stop_reason</span><span class="p">(</span><span class="n">baseline</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">remaining</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">max_downloads</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span> <span class="n">floor</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>        <span class="k">assert</span> <span class="n">reason</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>        <span class="k">assert</span> <span class="s2">"budget"</span> <span class="ow">in</span> <span class="n">reason</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_stops_when_at_floor_even_if_budget_remains</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">        </span><span class="sd">"""An account that began the day partially used hits the floor long</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="sd">        before the per-run budget. This is the case the login-only check missed."""</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>        <span class="n">reason</span> <span class="o">=</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_stop_reason</span><span class="p">(</span><span class="n">baseline</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">remaining</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">max_downloads</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span> <span class="n">floor</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>        <span class="k">assert</span> <span class="n">reason</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>        <span class="k">assert</span> <span class="s2">"quota"</span> <span class="ow">in</span> <span class="n">reason</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_none_when_quota_unknown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="w">        </span><span class="sd">"""No OpenSubtitles credentials means no quota telemetry. Scrapers</span>
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="sd">        have no daily cap, so an unknown quota must not halt the run."""</span>
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>        <span class="k">assert</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_stop_reason</span><span class="p">(</span><span class="n">baseline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remaining</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_downloads</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span> <span class="n">floor</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_none_when_baseline_unknown_but_above_floor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>        <span class="k">assert</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_stop_reason</span><span class="p">(</span><span class="n">baseline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remaining</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">max_downloads</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span> <span class="n">floor</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>
+<a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_stops_at_floor_when_baseline_unknown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a>        <span class="n">reason</span> <span class="o">=</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_stop_reason</span><span class="p">(</span><span class="n">baseline</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remaining</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_downloads</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span> <span class="n">floor</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a>        <span class="k">assert</span> <span class="n">reason</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+</code></pre></div>
+<p>If <code>bsc</code> is not already imported in that file, add near the top (match the existing import style used by the file's other tests):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">scripts</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_subtitle_cache</span> <span class="k">as</span> <span class="n">bsc</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_build_subtitle_cache.py::TestStopReason<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: FAIL with <code>AttributeError: module 'scripts.build_subtitle_cache' has no attribute '_stop_reason'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement <code>_stop_reason</code></strong></li>
+</ul>
+<p>In <code>backend/scripts/build_subtitle_cache.py</code>, add immediately after the <code>RunTally</code> class (after its <code>cache_hit_rate</code> property, before <code>_ensure_db_schema</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">QuotaExhausted</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span><span class="sd">"""Raised to end a run cleanly when the download budget or quota floor is hit.</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="sd">    Carries the human-readable reason so ``main`` can log it and exit non-zero</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="sd">    without unwinding through a bare ``Exception`` handler.</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="sd">    """</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">_stop_reason</span><span class="p">(</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="n">baseline</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="n">remaining</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    <span class="n">max_downloads</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>    <span class="n">floor</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="w">    </span><span class="sd">"""Return why the run must stop, or None to continue.</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="sd">    Two independent limits:</span>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="sd">    * ``floor`` -- an absolute guard on remaining daily quota. Catches the</span>
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="sd">      account that began the day partially spent, where the per-run budget</span>
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a><span class="sd">      would never trip.</span>
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a><span class="sd">    * ``max_downloads`` -- this run's own budget, measured as</span>
+<a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a><span class="sd">      ``baseline - remaining``. Leaves headroom so a scheduled build cannot</span>
+<a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a><span class="sd">      consume the entire daily allowance.</span>
+<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>
+<a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a><span class="sd">    ``remaining is None`` means no OpenSubtitles telemetry (no credentials, or</span>
+<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a><span class="sd">    the probe failed). Scrapers carry no daily cap, so an unknown quota must</span>
+<a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a><span class="sd">    never halt the run -- returning a stop here would break credential-free</span>
+<a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a><span class="sd">    builds entirely.</span>
+<a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a><span class="sd">    """</span>
+<a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>    <span class="k">if</span> <span class="n">remaining</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a>        <span class="k">return</span> <span class="kc">None</span>
+<a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>
+<a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a>    <span class="k">if</span> <span class="n">remaining</span> <span class="o">&lt;=</span> <span class="n">floor</span><span class="p">:</span>
+<a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>        <span class="k">return</span> <span class="p">(</span>
+<a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>            <span class="sa">f</span><span class="s2">"OpenSubtitles daily quota nearly exhausted (</span><span class="si">{</span><span class="n">remaining</span><span class="si">}</span><span class="s2"> remaining, "</span>
+<a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>            <span class="sa">f</span><span class="s2">"floor </span><span class="si">{</span><span class="n">floor</span><span class="si">}</span><span class="s2">); stopping before failed downloads get recorded as "</span>
+<a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a>            <span class="s2">"zero coverage"</span>
+<a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a>        <span class="p">)</span>
+<a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>
+<a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>    <span class="k">if</span> <span class="n">baseline</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="n">baseline</span> <span class="o">-</span> <span class="n">remaining</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">max_downloads</span><span class="p">:</span>
+<a id="__codelineno-10-42" name="__codelineno-10-42" href="#__codelineno-10-42"></a>        <span class="k">return</span> <span class="p">(</span>
+<a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a>            <span class="sa">f</span><span class="s2">"run download budget spent (</span><span class="si">{</span><span class="n">baseline</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">remaining</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">max_downloads</span><span class="si">}</span><span class="s2">); "</span>
+<a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a>            <span class="s2">"stopping cleanly"</span>
+<a id="__codelineno-10-45" name="__codelineno-10-45" href="#__codelineno-10-45"></a>        <span class="p">)</span>
+<a id="__codelineno-10-46" name="__codelineno-10-46" href="#__codelineno-10-46"></a>
+<a id="__codelineno-10-47" name="__codelineno-10-47" href="#__codelineno-10-47"></a>    <span class="k">return</span> <span class="kc">None</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the tests to verify they pass</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_build_subtitle_cache.py::TestStopReason<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 6 passed.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/scripts/build_subtitle_cache.py<span class="w"> </span>backend/tests/unit/test_build_subtitle_cache.py
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"feat(subtitle-cache): add _stop_reason quota guard decision function</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="s2">Pure function behind the run-stop guard: an absolute quota floor plus a</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="s2">per-run download budget. Unknown quota never halts the run so</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="s2">credential-free scraper builds are unaffected."</span>
+</code></pre></div>
+<hr />
+<h3 id="task-3-wire-the-stop-guard-into-the-harvest-loop">Task 3: Wire the stop guard into the harvest loop</h3>
+<p><strong>Why:</strong> <code>_stop_reason</code> is inert until something calls it after each season.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/scripts/build_subtitle_cache.py</code> (argparse block at 405-467, <code>_harvest_show</code> at 240-402, <code>main</code> loop at 543-577)</p>
+<ul>
+<li>[ ] <strong>Step 1: Add the CLI flags</strong></li>
+</ul>
+<p>In <code>main()</code>'s argparse block, immediately after the <code>--skip-window-days</code> argument (ends line 467), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>        <span class="s2">"--max-downloads"</span><span class="p">,</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>        <span class="n">default</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>            <span class="s2">"Stop the run after this many OpenSubtitles downloads (default: 900). "</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>            <span class="s2">"Leaves headroom under the 1000/day VIP cap so a scheduled build "</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>            <span class="s2">"cannot exhaust the daily allowance and start recording false zeros."</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>        <span class="p">),</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>    <span class="p">)</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>        <span class="s2">"--quota-floor"</span><span class="p">,</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>            <span class="s2">"Stop the run when remaining daily OpenSubtitles quota drops to this "</span>
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>            <span class="s2">"(default: 10). Independent of --max-downloads: catches an account "</span>
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>            <span class="s2">"that began the day partially spent."</span>
+<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>        <span class="p">),</span>
+<a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a>    <span class="p">)</span>
+</code></pre></div>
+<p>Then validate them immediately after <code>args = parser.parse_args()</code>, because <code>_stop_reason</code> treats a non-positive budget as "stop immediately" rather than "unlimited", and zero-as-unlimited is a common enough CLI idiom that someone will try it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">max_downloads</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">"--max-downloads must be positive (0 does not mean unlimited)"</span><span class="p">)</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">quota_floor</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">"--quota-floor cannot be negative"</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Record the quota baseline</strong></li>
+</ul>
+<p><code>main()</code> probes the quota around line 494-499, but only inside the branch that runs when OpenSubtitles credentials are configured. The name must exist unconditionally, so initialise it first.</p>
+<p>Immediately BEFORE the <code>remaining = probe_os_quota(config)</code> line, add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>    <span class="n">quota_baseline</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">halted_reason</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Then immediately AFTER the existing <code>logger.info(f"OpenSubtitles quota: ...")</code> call inside that branch, add (matching that block's indentation):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>        <span class="n">quota_baseline</span> <span class="o">=</span> <span class="n">remaining</span>
+</code></pre></div>
+<p>Declaring both names at function scope before the branch keeps them defined on every path, including credential-free scraper-only builds where the probe never runs.</p>
+<ul>
+<li>[ ] <strong>Step 3: Check the guard after each show</strong></li>
+</ul>
+<p>In <code>main()</code>'s show loop, immediately after <code>progress.advance(shows_task)</code> (line 576), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>            <span class="n">remaining_now</span> <span class="o">=</span> <span class="p">(</span><span class="n">get_last_quota</span><span class="p">()</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"remaining"</span><span class="p">)</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>            <span class="c1"># Re-baseline on a mid-run quota refill. These runs span hours and</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>            <span class="c1"># the OpenSubtitles bucket resets daily, so a run that crosses the</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>            <span class="c1"># reset sees `remaining` rise above the baseline. Without this,</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>            <span class="c1"># `baseline - remaining` goes negative, the budget branch stops</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>            <span class="c1"># firing for the rest of the run, and only the floor is left --</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>            <span class="c1"># a run started on a partially-spent account could then draw the</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>            <span class="c1"># entire fresh allowance while the operator believes</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>            <span class="c1"># --max-downloads capped it.</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>            <span class="k">if</span> <span class="n">remaining_now</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>                <span class="n">quota_baseline</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">remaining_now</span> <span class="o">&gt;</span> <span class="n">quota_baseline</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>            <span class="p">):</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>                <span class="n">quota_baseline</span> <span class="o">=</span> <span class="n">remaining_now</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>            <span class="n">stop</span> <span class="o">=</span> <span class="n">_stop_reason</span><span class="p">(</span>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>                <span class="n">quota_baseline</span><span class="p">,</span>
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>                <span class="n">remaining_now</span><span class="p">,</span>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>                <span class="n">args</span><span class="o">.</span><span class="n">max_downloads</span><span class="p">,</span>
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>                <span class="n">args</span><span class="o">.</span><span class="n">quota_floor</span><span class="p">,</span>
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>            <span class="p">)</span>
+<a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a>            <span class="k">if</span> <span class="n">stop</span><span class="p">:</span>
+<a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a>                <span class="n">console</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="sa">f</span><span class="s2">"[yellow]STOP[/] </span><span class="si">{</span><span class="n">stop</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-17-24" name="__codelineno-17-24" href="#__codelineno-17-24"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Halting run: </span><span class="si">{</span><span class="n">stop</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-17-25" name="__codelineno-17-25" href="#__codelineno-17-25"></a>                <span class="c1"># Raised from main()'s show loop, NOT from inside</span>
+<a id="__codelineno-17-26" name="__codelineno-17-26" href="#__codelineno-17-26"></a>                <span class="c1"># _harvest_show: that function wraps download_subtitles in a</span>
+<a id="__codelineno-17-27" name="__codelineno-17-27" href="#__codelineno-17-27"></a>                <span class="c1"># broad `except Exception` (around line 391) which would</span>
+<a id="__codelineno-17-28" name="__codelineno-17-28" href="#__codelineno-17-28"></a>                <span class="c1"># swallow this halt and log it as a per-season warning. If the</span>
+<a id="__codelineno-17-29" name="__codelineno-17-29" href="#__codelineno-17-29"></a>                <span class="c1"># guard is ever moved to a per-season check, narrow that</span>
+<a id="__codelineno-17-30" name="__codelineno-17-30" href="#__codelineno-17-30"></a>                <span class="c1"># handler first.</span>
+<a id="__codelineno-17-31" name="__codelineno-17-31" href="#__codelineno-17-31"></a>                <span class="k">raise</span> <span class="n">QuotaExhausted</span><span class="p">(</span><span class="n">stop</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Catch it and package what was harvested</strong></li>
+</ul>
+<p>Wrap the <code>for idx, show in enumerate(shows, 1):</code> loop body's enclosing <code>for</code> statement in a try/except inside the <code>with Progress(...)</code> block. The <code>except</code> must sit at the same indentation as the <code>for</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>            <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">show</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">shows</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>                <span class="o">...</span>  <span class="c1"># existing loop body, unchanged</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>        <span class="k">except</span> <span class="n">QuotaExhausted</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>            <span class="n">halted_reason</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+</code></pre></div>
+<p><code>halted_reason</code> was already initialised at function scope in Step 2. Packaging continues normally after the loop, so a halted run still publishes everything it did harvest.</p>
+<ul>
+<li>[ ] <strong>Step 5: Report the halt and exit non-zero</strong></li>
+</ul>
+<p>At the end of <code>main()</code>, immediately before its final <code>return 0</code>, add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>    <span class="k">if</span> <span class="n">halted_reason</span><span class="p">:</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>            <span class="sa">f</span><span class="s2">"Run halted early: </span><span class="si">{</span><span class="n">halted_reason</span><span class="si">}</span><span class="s2">. Harvested shows were still "</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>            <span class="s2">"packaged; re-run after the daily quota resets to continue."</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>        <span class="p">)</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>        <span class="k">return</span> <span class="mi">2</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 6: Verify the script still starts and the flags are wired</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/build_subtitle_cache.py<span class="w"> </span>--help<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-A3<span class="w"> </span><span class="s2">"max-downloads\|quota-floor"</span>
+</code></pre></div>
+<p>Expected: both flags appear with their help text.</p>
+<ul>
+<li>[ ] <strong>Step 7: Run the full build-script test file</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_build_subtitle_cache.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: all PASS.</p>
+<ul>
+<li>[ ] <strong>Step 8: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/scripts/build_subtitle_cache.py
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"feat(subtitle-cache): halt the run on quota floor or download budget</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="s2">Checks _stop_reason after every show. A halted run still packages what it</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="s2">harvested and exits 2, so a scheduled build makes monotonic progress</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="s2">instead of marching past zero quota recording false zeros."</span>
+</code></pre></div>
+<hr />
+<h3 id="task-4-detect-degraded-seasons-in-download_subtitles">Task 4: Detect degraded seasons in <code>download_subtitles</code></h3>
+<p><strong>Why:</strong> <code>coverage_tracker.record()</code> cannot distinguish "the provider has nothing" from "we got nothing". The caller needs that signal, and only <code>download_subtitles</code> knows it.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/testing_service.py</code> (return dict at 800-806)
+- Create: <code>backend/tests/unit/test_testing_service_degraded.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Create <code>backend/tests/unit/test_testing_service_degraded.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="sd">"""Tests for degraded-season detection.</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="sd">A "degraded" season is one where the measurement is not trustworthy: the</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="sd">OpenSubtitles path was unavailable AND nothing was retrieved. Recording 0%</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="sd">coverage for such a season skip-lists it for 30 days on the strength of an</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="sd">infrastructure failure -- the defect that cost 664 seasons in June 2026.</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="sd">"""</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher.testing_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">_is_degraded</span>
+<a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a>
+<a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a>
+<a id="__codelineno-23-14" name="__codelineno-23-14" href="#__codelineno-23-14"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-23-15" name="__codelineno-23-15" href="#__codelineno-23-15"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestIsDegraded</span><span class="p">:</span>
+<a id="__codelineno-23-16" name="__codelineno-23-16" href="#__codelineno-23-16"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_not_degraded_when_episodes_retrieved</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-23-17" name="__codelineno-23-17" href="#__codelineno-23-17"></a>        <span class="n">episodes</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-23-18" name="__codelineno-23-18" href="#__codelineno-23-18"></a>            <span class="p">{</span><span class="s2">"code"</span><span class="p">:</span> <span class="s2">"S01E01"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"downloaded"</span><span class="p">,</span> <span class="s2">"path"</span><span class="p">:</span> <span class="s2">"/x.srt"</span><span class="p">,</span> <span class="s2">"source"</span><span class="p">:</span> <span class="s2">"addic7ed"</span><span class="p">},</span>
+<a id="__codelineno-23-19" name="__codelineno-23-19" href="#__codelineno-23-19"></a>            <span class="p">{</span><span class="s2">"code"</span><span class="p">:</span> <span class="s2">"S01E02"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"not_found"</span><span class="p">,</span> <span class="s2">"path"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"source"</span><span class="p">:</span> <span class="kc">None</span><span class="p">},</span>
+<a id="__codelineno-23-20" name="__codelineno-23-20" href="#__codelineno-23-20"></a>        <span class="p">]</span>
+<a id="__codelineno-23-21" name="__codelineno-23-21" href="#__codelineno-23-21"></a>        <span class="k">assert</span> <span class="n">_is_degraded</span><span class="p">(</span><span class="n">os_failed</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">episodes</span><span class="o">=</span><span class="n">episodes</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-23-22" name="__codelineno-23-22" href="#__codelineno-23-22"></a>
+<a id="__codelineno-23-23" name="__codelineno-23-23" href="#__codelineno-23-23"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_not_degraded_when_os_healthy_and_nothing_found</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-23-24" name="__codelineno-23-24" href="#__codelineno-23-24"></a><span class="w">        </span><span class="sd">"""OpenSubtitles worked and genuinely had nothing. That is a real</span>
+<a id="__codelineno-23-25" name="__codelineno-23-25" href="#__codelineno-23-25"></a><span class="sd">        measurement and SHOULD be recorded, so the season gets skip-listed."""</span>
+<a id="__codelineno-23-26" name="__codelineno-23-26" href="#__codelineno-23-26"></a>        <span class="n">episodes</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">"code"</span><span class="p">:</span> <span class="s2">"S01E01"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"not_found"</span><span class="p">,</span> <span class="s2">"path"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"source"</span><span class="p">:</span> <span class="kc">None</span><span class="p">}]</span>
+<a id="__codelineno-23-27" name="__codelineno-23-27" href="#__codelineno-23-27"></a>        <span class="k">assert</span> <span class="n">_is_degraded</span><span class="p">(</span><span class="n">os_failed</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">episodes</span><span class="o">=</span><span class="n">episodes</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-23-28" name="__codelineno-23-28" href="#__codelineno-23-28"></a>
+<a id="__codelineno-23-29" name="__codelineno-23-29" href="#__codelineno-23-29"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_degraded_when_os_failed_and_nothing_found</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-23-30" name="__codelineno-23-30" href="#__codelineno-23-30"></a>        <span class="n">episodes</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-23-31" name="__codelineno-23-31" href="#__codelineno-23-31"></a>            <span class="p">{</span><span class="s2">"code"</span><span class="p">:</span> <span class="s2">"S01E01"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"not_found"</span><span class="p">,</span> <span class="s2">"path"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"source"</span><span class="p">:</span> <span class="kc">None</span><span class="p">},</span>
+<a id="__codelineno-23-32" name="__codelineno-23-32" href="#__codelineno-23-32"></a>            <span class="p">{</span><span class="s2">"code"</span><span class="p">:</span> <span class="s2">"S01E02"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"not_found"</span><span class="p">,</span> <span class="s2">"path"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"source"</span><span class="p">:</span> <span class="kc">None</span><span class="p">},</span>
+<a id="__codelineno-23-33" name="__codelineno-23-33" href="#__codelineno-23-33"></a>        <span class="p">]</span>
+<a id="__codelineno-23-34" name="__codelineno-23-34" href="#__codelineno-23-34"></a>        <span class="k">assert</span> <span class="n">_is_degraded</span><span class="p">(</span><span class="n">os_failed</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">episodes</span><span class="o">=</span><span class="n">episodes</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-23-35" name="__codelineno-23-35" href="#__codelineno-23-35"></a>
+<a id="__codelineno-23-36" name="__codelineno-23-36" href="#__codelineno-23-36"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_cached_episodes_count_as_retrieved</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-23-37" name="__codelineno-23-37" href="#__codelineno-23-37"></a>        <span class="n">episodes</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">"code"</span><span class="p">:</span> <span class="s2">"S01E01"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"cached"</span><span class="p">,</span> <span class="s2">"path"</span><span class="p">:</span> <span class="s2">"/x.srt"</span><span class="p">,</span> <span class="s2">"source"</span><span class="p">:</span> <span class="s2">"cache"</span><span class="p">}]</span>
+<a id="__codelineno-23-38" name="__codelineno-23-38" href="#__codelineno-23-38"></a>        <span class="k">assert</span> <span class="n">_is_degraded</span><span class="p">(</span><span class="n">os_failed</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">episodes</span><span class="o">=</span><span class="n">episodes</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-23-39" name="__codelineno-23-39" href="#__codelineno-23-39"></a>
+<a id="__codelineno-23-40" name="__codelineno-23-40" href="#__codelineno-23-40"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_empty_episode_list_with_os_failed_is_degraded</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-23-41" name="__codelineno-23-41" href="#__codelineno-23-41"></a>        <span class="k">assert</span> <span class="n">_is_degraded</span><span class="p">(</span><span class="n">os_failed</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">episodes</span><span class="o">=</span><span class="p">[])</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-23-42" name="__codelineno-23-42" href="#__codelineno-23-42"></a>
+<a id="__codelineno-23-43" name="__codelineno-23-43" href="#__codelineno-23-43"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_empty_episode_list_with_os_healthy_is_not_degraded</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-23-44" name="__codelineno-23-44" href="#__codelineno-23-44"></a>        <span class="k">assert</span> <span class="n">_is_degraded</span><span class="p">(</span><span class="n">os_failed</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">episodes</span><span class="o">=</span><span class="p">[])</span> <span class="ow">is</span> <span class="kc">False</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_testing_service_degraded.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: FAIL with <code>ImportError: cannot import name '_is_degraded'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement <code>_is_degraded</code></strong></li>
+</ul>
+<p>In <code>backend/app/matcher/testing_service.py</code>, add immediately after <code>get_last_quota</code> (after line 129):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_is_degraded</span><span class="p">(</span><span class="n">os_failed</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">episodes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">    </span><span class="sd">"""Return True when this season's result is NOT a trustworthy measurement.</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="sd">    Degraded means the OpenSubtitles path was unavailable (exhausted quota,</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="sd">    login failure, hard error) AND the scraper cascade retrieved nothing. In</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="sd">    that state a 0% result says nothing about whether subtitles exist, so the</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="sd">    caller must not persist it as coverage: ``coverage_tracker.record(0.0)``</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="sd">    skip-lists the season for 30 days, converting a transient outage into a</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="sd">    month-long blind spot.</span>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a>
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="sd">    Conservative by design. If anything at all was retrieved, or if</span>
+<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a><span class="sd">    OpenSubtitles was healthy and simply had nothing, the measurement is real</span>
+<a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a><span class="sd">    and SHOULD be recorded so genuinely dead seasons stop consuming quota.</span>
+<a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a><span class="sd">    """</span>
+<a id="__codelineno-25-15" name="__codelineno-25-15" href="#__codelineno-25-15"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">os_failed</span><span class="p">:</span>
+<a id="__codelineno-25-16" name="__codelineno-25-16" href="#__codelineno-25-16"></a>        <span class="k">return</span> <span class="kc">False</span>
+<a id="__codelineno-25-17" name="__codelineno-25-17" href="#__codelineno-25-17"></a>    <span class="k">return</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">ep</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"status"</span><span class="p">)</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"cached"</span><span class="p">,</span> <span class="s2">"downloaded"</span><span class="p">)</span> <span class="k">for</span> <span class="n">ep</span> <span class="ow">in</span> <span class="n">episodes</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the tests to verify they pass</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_testing_service_degraded.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 6 passed.</p>
+<ul>
+<li>[ ] <strong>Step 5: Add <code>degraded</code> to the returned dict</strong></li>
+</ul>
+<p>In <code>backend/app/matcher/testing_service.py</code>, replace the return statement at lines 800-806 with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>    <span class="k">return</span> <span class="p">{</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>        <span class="s2">"show_name"</span><span class="p">:</span> <span class="n">canonical_show_name</span><span class="p">,</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>        <span class="s2">"season"</span><span class="p">:</span> <span class="n">season</span><span class="p">,</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>        <span class="s2">"total_episodes"</span><span class="p">:</span> <span class="n">episode_count</span><span class="p">,</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>        <span class="s2">"episodes"</span><span class="p">:</span> <span class="n">episodes</span><span class="p">,</span>
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>        <span class="s2">"cache_dir"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">series_cache_dir</span><span class="p">),</span>
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>        <span class="c1"># True when this result is not a trustworthy measurement -- see</span>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>        <span class="c1"># _is_degraded. The cache builder skips coverage recording for these.</span>
+<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>        <span class="s2">"degraded"</span><span class="p">:</span> <span class="n">_is_degraded</span><span class="p">(</span><span class="n">_OS</span><span class="o">.</span><span class="n">failed</span><span class="p">,</span> <span class="n">episodes</span><span class="p">),</span>
+<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>    <span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 6: Run the broader subtitle test files for regressions</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_download_subtitles_tmdb_id.py<span class="w"> </span>tests/unit/test_subtitle_dedup.py<span class="w"> </span>tests/unit/test_testing_service_degraded.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: all PASS. The new key is additive, so existing consumers that index known keys are unaffected.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/matcher/testing_service.py<span class="w"> </span>backend/tests/unit/test_testing_service_degraded.py
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"feat(subtitle-cache): flag degraded seasons in download_subtitles</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="s2">A season where OpenSubtitles was unavailable AND nothing was retrieved is</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="s2">not a measurement. Surfacing it lets the builder decline to record coverage</span>
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="s2">rather than skip-listing the season for 30 days on an outage."</span>
+</code></pre></div>
+<hr />
+<h3 id="task-5-suppress-coverage-recording-for-degraded-seasons">Task 5: Suppress coverage recording for degraded seasons</h3>
+<p><strong>Why:</strong> This is the defect that cost 664 seasons. <code>_harvest_show</code> records unconditionally.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/scripts/build_subtitle_cache.py:376-383</code>
+- Test: <code>backend/tests/unit/test_build_subtitle_cache.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing regression test</strong></li>
+</ul>
+<p>Append to <code>backend/tests/unit/test_build_subtitle_cache.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestDegradedSuppressesCoverageRecord</span><span class="p">:</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">    </span><span class="sd">"""The specific regression that cost 664 seasons in June 2026: a quota</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="sd">    failure was written to subtitle_coverage as genuine zero coverage, which</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="sd">    skip-listed those seasons for 30 days."""</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_degraded_season_is_not_recorded</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>        <span class="k">assert</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_should_record_coverage</span><span class="p">({</span><span class="s2">"degraded"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">"episodes"</span><span class="p">:</span> <span class="p">[]})</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a>
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_degraded_season_with_partial_episodes_is_not_recorded</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="w">        </span><span class="sd">"""Degraded is decided upstream by _is_degraded; the builder trusts the</span>
+<a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a><span class="sd">        flag rather than re-deriving it from the episode list."""</span>
+<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a>        <span class="n">episodes</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">"code"</span><span class="p">:</span> <span class="s2">"S01E01"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"not_found"</span><span class="p">,</span> <span class="s2">"path"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"source"</span><span class="p">:</span> <span class="kc">None</span><span class="p">}]</span>
+<a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a>        <span class="k">assert</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_should_record_coverage</span><span class="p">({</span><span class="s2">"degraded"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">"episodes"</span><span class="p">:</span> <span class="n">episodes</span><span class="p">})</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-30-15" name="__codelineno-30-15" href="#__codelineno-30-15"></a>
+<a id="__codelineno-30-16" name="__codelineno-30-16" href="#__codelineno-30-16"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_healthy_empty_season_still_records</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-30-17" name="__codelineno-30-17" href="#__codelineno-30-17"></a><span class="w">        </span><span class="sd">"""OpenSubtitles worked and had nothing: a real measurement. Recording</span>
+<a id="__codelineno-30-18" name="__codelineno-30-18" href="#__codelineno-30-18"></a><span class="sd">        it is what stops dead seasons consuming quota every single day."""</span>
+<a id="__codelineno-30-19" name="__codelineno-30-19" href="#__codelineno-30-19"></a>        <span class="k">assert</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_should_record_coverage</span><span class="p">({</span><span class="s2">"degraded"</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">"episodes"</span><span class="p">:</span> <span class="p">[]})</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-30-20" name="__codelineno-30-20" href="#__codelineno-30-20"></a>
+<a id="__codelineno-30-21" name="__codelineno-30-21" href="#__codelineno-30-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_missing_degraded_key_defaults_to_recording</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-30-22" name="__codelineno-30-22" href="#__codelineno-30-22"></a><span class="w">        </span><span class="sd">"""Backwards compatibility: a result dict without the key (e.g. the</span>
+<a id="__codelineno-30-23" name="__codelineno-30-23" href="#__codelineno-30-23"></a><span class="sd">        precomputed-skip fast path) must not silently stop being recorded."""</span>
+<a id="__codelineno-30-24" name="__codelineno-30-24" href="#__codelineno-30-24"></a>        <span class="k">assert</span> <span class="n">bsc</span><span class="o">.</span><span class="n">_should_record_coverage</span><span class="p">({</span><span class="s2">"episodes"</span><span class="p">:</span> <span class="p">[]})</span> <span class="ow">is</span> <span class="kc">True</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_build_subtitle_cache.py::TestDegradedSuppressesCoverageRecord<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: FAIL with <code>AttributeError: module 'scripts.build_subtitle_cache' has no attribute '_should_record_coverage'</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement <code>_should_record_coverage</code></strong></li>
+</ul>
+<p>In <code>backend/scripts/build_subtitle_cache.py</code>, add immediately after <code>_stop_reason</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">_should_record_coverage</span><span class="p">(</span><span class="n">result</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="w">    </span><span class="sd">"""Return whether this season's outcome is worth persisting as coverage.</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="sd">    Defaults to True when the key is absent so paths that build their own</span>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a><span class="sd">    result dict (e.g. the precomputed-cache skip) keep their existing</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a><span class="sd">    behaviour rather than silently dropping out of the coverage record.</span>
+<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a><span class="sd">    """</span>
+<a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a>    <span class="k">return</span> <span class="ow">not</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"degraded"</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the tests to verify they pass</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_build_subtitle_cache.py::TestDegradedSuppressesCoverageRecord<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 3 passed.</p>
+<ul>
+<li>[ ] <strong>Step 5: Gate the record call</strong></li>
+</ul>
+<p>In <code>backend/scripts/build_subtitle_cache.py</code>, replace lines 379-383 (the comment block and the <code>coverage_tracker.record(...)</code> call) with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>        <span class="c1"># Record EVERY season we actually MEASURED (success or genuinely</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>        <span class="c1"># below-threshold). This powers the skip-list on the next run -- without</span>
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>        <span class="c1"># it, low-coverage seasons get re-attempted every day, burning quota on</span>
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>        <span class="c1"># shows that simply don't have subtitles.</span>
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>        <span class="c1">#</span>
+<a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a>        <span class="c1"># A degraded season is NOT a measurement: OpenSubtitles was unavailable</span>
+<a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a>        <span class="c1"># and nothing was retrieved, so 0% says nothing about availability.</span>
+<a id="__codelineno-34-8" name="__codelineno-34-8" href="#__codelineno-34-8"></a>        <span class="c1"># Recording it would skip-list the season for 30 days on the strength of</span>
+<a id="__codelineno-34-9" name="__codelineno-34-9" href="#__codelineno-34-9"></a>        <span class="c1"># an outage. That defect cost 664 seasons on 2026-06-12; see the</span>
+<a id="__codelineno-34-10" name="__codelineno-34-10" href="#__codelineno-34-10"></a>        <span class="c1"># harvester-repair spec.</span>
+<a id="__codelineno-34-11" name="__codelineno-34-11" href="#__codelineno-34-11"></a>        <span class="k">if</span> <span class="n">_should_record_coverage</span><span class="p">(</span><span class="n">result</span><span class="p">):</span>
+<a id="__codelineno-34-12" name="__codelineno-34-12" href="#__codelineno-34-12"></a>            <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">record</span><span class="p">(</span><span class="n">show</span><span class="p">[</span><span class="s2">"tmdb_id"</span><span class="p">],</span> <span class="n">season</span><span class="p">,</span> <span class="n">total</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">episodes</span><span class="p">))</span>
+<a id="__codelineno-34-13" name="__codelineno-34-13" href="#__codelineno-34-13"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-34-14" name="__codelineno-34-14" href="#__codelineno-34-14"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<a id="__codelineno-34-15" name="__codelineno-34-15" href="#__codelineno-34-15"></a>                <span class="sa">f</span><span class="s2">"  </span><span class="si">{</span><span class="n">canonical</span><span class="si">}</span><span class="s2"> S</span><span class="si">{</span><span class="n">season</span><span class="si">:</span><span class="s2">02d</span><span class="si">}</span><span class="s2">: degraded result "</span>
+<a id="__codelineno-34-16" name="__codelineno-34-16" href="#__codelineno-34-16"></a>                <span class="sa">f</span><span class="s2">"(OpenSubtitles unavailable, nothing retrieved); "</span>
+<a id="__codelineno-34-17" name="__codelineno-34-17" href="#__codelineno-34-17"></a>                <span class="s2">"NOT recording coverage so the season is re-measured next run"</span>
+<a id="__codelineno-34-18" name="__codelineno-34-18" href="#__codelineno-34-18"></a>            <span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 6: Surface a degradation count in the run summary</strong></li>
+</ul>
+<p>A misconfigured run (wrong OpenSubtitles credentials, or the <code>opensubtitlescom</code> package missing) sets <code>_OS.failed</code> process-wide, so every empty season becomes degraded and NOTHING gets recorded for the whole run. That is correct by the predicate's logic but silent, and a silently-empty skip-list looks identical to a healthy run in the logs.</p>
+<p>Add a <code>seasons_degraded</code> counter to <code>RunTally</code>, increment it in the <code>else</code> branch added in Step 5, and include it in the final summary block alongside <code>seasons skipped</code>. If it is large relative to the seasons attempted, that is the signal that OpenSubtitles is misconfigured rather than that the content is missing.</p>
+<ul>
+<li>[ ] <strong>Step 7: Share the retrieved-status allowlist</strong></li>
+</ul>
+<p><code>_is_degraded</code> uses <code>("cached", "downloaded")</code> and <code>_VALID_STATUSES</code> at the top of this file encodes the same concept. Producer and consumer defining "retrieved" separately means a future third status added to one and not the other silently changes coverage semantics without failing anything.</p>
+<p>Import <code>_VALID_STATUSES</code>'s definition from one place. Since <code>testing_service</code> is the producer, export the set from there and have the build script use it, keeping the local name as an alias if that reads better at the existing call sites.</p>
+<ul>
+<li>[ ] <strong>Step 8: Run the full build-script test file</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_build_subtitle_cache.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: all PASS.</p>
+<ul>
+<li>[ ] <strong>Step 9: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/scripts/build_subtitle_cache.py<span class="w"> </span>backend/tests/unit/test_build_subtitle_cache.py
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix(subtitle-cache): never record coverage for a degraded season</span>
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="s2">The defect that cost 664 seasons: a quota failure was persisted as genuine</span>
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a><span class="s2">zero coverage and skip-listed those seasons for 30 days. No record beats a</span>
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="s2">false zero -- absence means 'measure later', 0.0 means 'never retry'."</span>
+</code></pre></div>
+<hr />
+<h3 id="task-6-credit-opensubtitles-in-by_source">Task 6: Credit OpenSubtitles in <code>by_source</code></h3>
+<p><strong>Why:</strong> The OS bulk path moves each SRT to its final target on disk, then the per-episode triage loop checks <code>find_existing_subtitle</code> FIRST and classifies the just-downloaded file as <code>cached</code>/<code>source: cache</code>. The <code>if episode in api_srt_map</code> branch is effectively dead for freshly-downloaded episodes. The ER diagnostic reported <code>new downloads: 1</code> while consuming 94 quota, hiding the June quota wall from the logs.</p>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/testing_service.py:684-701</code> and <code>718-751</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Track which episodes were downloaded this run</strong></li>
+</ul>
+<p>In <code>backend/app/matcher/testing_service.py</code>, immediately after <code>api_srt_map: dict[int, Path] = {}</code> (line 598), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>    <span class="c1"># Episodes DOWNLOADED from the API this run, as opposed to ones api_srt_map</span>
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>    <span class="c1"># merely points at because the file already existed. Without this split the</span>
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>    <span class="c1"># triage loop below sees the freshly-moved file on disk and misreports the</span>
+<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>    <span class="c1"># download as a cache hit, so by_source under-reports OpenSubtitles usage by</span>
+<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a>    <span class="c1"># ~99% and a quota wall is invisible in the run summary.</span>
+<a id="__codelineno-37-6" name="__codelineno-37-6" href="#__codelineno-37-6"></a>    <span class="n">api_fresh_eps</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Populate it on actual download</strong></li>
+</ul>
+<p>In the OS bulk block, immediately after <code>api_srt_map[ep_num] = srt_target</code> inside the <code>if srt_file and is_valid_srt_file(Path(srt_file)):</code> branch (line 697), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>                            <span class="n">api_fresh_eps</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">ep_num</span><span class="p">)</span>
+</code></pre></div>
+<p>Do NOT add it to the <code>else:</code> branch at line 700 (<code>api_srt_map[ep_num] = srt_target</code> for a pre-existing file) -- that one is a genuine cache hit.</p>
+<ul>
+<li>[ ] <strong>Step 3: Check freshly-downloaded episodes before the cache check</strong></li>
+</ul>
+<p>In the per-episode triage loop, insert this block immediately after <code>episode_code = f"S{season:02d}E{episode:02d}"</code> and the <code>srt_path = ...</code> assignment, BEFORE the <code>existing_subtitle = find_existing_subtitle(...)</code> call (before line 727):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>        <span class="k">if</span> <span class="n">episode</span> <span class="ow">in</span> <span class="n">api_fresh_eps</span><span class="p">:</span>
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>            <span class="n">pre_resolved</span><span class="p">[</span><span class="n">episode</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>                <span class="s2">"code"</span><span class="p">:</span> <span class="n">episode_code</span><span class="p">,</span>
+<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a>                <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"downloaded"</span><span class="p">,</span>
+<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a>                <span class="s2">"path"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">api_srt_map</span><span class="p">[</span><span class="n">episode</span><span class="p">]),</span>
+<a id="__codelineno-39-6" name="__codelineno-39-6" href="#__codelineno-39-6"></a>                <span class="s2">"source"</span><span class="p">:</span> <span class="s2">"opensubtitles_api"</span><span class="p">,</span>
+<a id="__codelineno-39-7" name="__codelineno-39-7" href="#__codelineno-39-7"></a>            <span class="p">}</span>
+<a id="__codelineno-39-8" name="__codelineno-39-8" href="#__codelineno-39-8"></a>            <span class="k">continue</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Verify no regressions</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_download_subtitles_tmdb_id.py<span class="w"> </span>tests/unit/test_subtitle_dedup.py<span class="w"> </span>tests/unit/test_testing_service_degraded.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: all PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Verify against a live single-season harvest</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/build_subtitle_cache.py<span class="w"> </span>--shows<span class="w"> </span><span class="s2">"Firefly"</span><span class="w"> </span>--sleep<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span>--output<span class="w"> </span>/tmp/verify-cache.tar.gz<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-25
+</code></pre></div>
+<p>Expected: the final summary's <code>by source:</code> line credits <code>opensubtitles_api=N</code> with N greater than zero if any episode was newly downloaded, and the drop in <code>OS quota left</code> matches <code>new downloads</code>. If Firefly is already fully cached locally, the run reports cache hits and zero new downloads, which is also correct: pick any show absent from <code>~/.engram/cache/data/</code> instead.</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/matcher/testing_service.py
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix(subtitle-cache): credit opensubtitles_api in by_source</span>
+<a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a>
+<a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a><span class="s2">The bulk path moves SRTs to their final target, then the triage loop saw</span>
+<a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a><span class="s2">them on disk and called them cache hits. Run summaries under-reported</span>
+<a id="__codelineno-42-6" name="__codelineno-42-6" href="#__codelineno-42-6"></a><span class="s2">OpenSubtitles usage by ~99%, which is why the June quota wall was invisible."</span>
+</code></pre></div>
+<hr />
+<h3 id="task-7-one-time-purge-of-the-poisoned-coverage-window">Task 7: One-time purge of the poisoned coverage window</h3>
+<p><strong>Why:</strong> 978 season rows written from 2026-06-11 onward are known-bad (14.5% measured vs 94.3% in the healthy window). They are already inert by age, but they corrupt any outcome-based curation in Phase 2. Deleting converts known-bad data into no-data, which the repaired harvester refills honestly.</p>
+<p><strong>Files:</strong>
+- Create: <code>backend/scripts/purge_poisoned_coverage.py</code>
+- Create: <code>backend/tests/unit/test_purge_poisoned_coverage.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<p>Create <code>backend/tests/unit/test_purge_poisoned_coverage.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="sd">"""Tests for the one-time poisoned-coverage purge."""</span>
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">importlib.util</span>
+<a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-43-6" name="__codelineno-43-6" href="#__codelineno-43-6"></a>
+<a id="__codelineno-43-7" name="__codelineno-43-7" href="#__codelineno-43-7"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-43-8" name="__codelineno-43-8" href="#__codelineno-43-8"></a>
+<a id="__codelineno-43-9" name="__codelineno-43-9" href="#__codelineno-43-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher</span><span class="w"> </span><span class="kn">import</span> <span class="n">coverage_tracker</span>
+<a id="__codelineno-43-10" name="__codelineno-43-10" href="#__codelineno-43-10"></a>
+<a id="__codelineno-43-11" name="__codelineno-43-11" href="#__codelineno-43-11"></a><span class="n">_spec</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">spec_from_file_location</span><span class="p">(</span>
+<a id="__codelineno-43-12" name="__codelineno-43-12" href="#__codelineno-43-12"></a>    <span class="s2">"purge_poisoned_coverage"</span><span class="p">,</span>
+<a id="__codelineno-43-13" name="__codelineno-43-13" href="#__codelineno-43-13"></a>    <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">"scripts"</span> <span class="o">/</span> <span class="s2">"purge_poisoned_coverage.py"</span><span class="p">,</span>
+<a id="__codelineno-43-14" name="__codelineno-43-14" href="#__codelineno-43-14"></a><span class="p">)</span>
+<a id="__codelineno-43-15" name="__codelineno-43-15" href="#__codelineno-43-15"></a><span class="n">purge_mod</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">module_from_spec</span><span class="p">(</span><span class="n">_spec</span><span class="p">)</span>
+<a id="__codelineno-43-16" name="__codelineno-43-16" href="#__codelineno-43-16"></a><span class="n">_spec</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">exec_module</span><span class="p">(</span><span class="n">purge_mod</span><span class="p">)</span>
+<a id="__codelineno-43-17" name="__codelineno-43-17" href="#__codelineno-43-17"></a>
+<a id="__codelineno-43-18" name="__codelineno-43-18" href="#__codelineno-43-18"></a>
+<a id="__codelineno-43-19" name="__codelineno-43-19" href="#__codelineno-43-19"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">unit</span>
+<a id="__codelineno-43-20" name="__codelineno-43-20" href="#__codelineno-43-20"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestPurge</span><span class="p">:</span>
+<a id="__codelineno-43-21" name="__codelineno-43-21" href="#__codelineno-43-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_dry_run_deletes_nothing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-43-22" name="__codelineno-43-22" href="#__codelineno-43-22"></a>        <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">record</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">covered</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-43-23" name="__codelineno-43-23" href="#__codelineno-43-23"></a>        <span class="n">n</span> <span class="o">=</span> <span class="n">purge_mod</span><span class="o">.</span><span class="n">purge</span><span class="p">(</span><span class="n">since</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">min_ratio</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">apply</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-43-24" name="__codelineno-43-24" href="#__codelineno-43-24"></a>        <span class="k">assert</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span>
+<a id="__codelineno-43-25" name="__codelineno-43-25" href="#__codelineno-43-25"></a>        <span class="k">assert</span> <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">get_show_coverage</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span> <span class="o">!=</span> <span class="p">[]</span>
+<a id="__codelineno-43-26" name="__codelineno-43-26" href="#__codelineno-43-26"></a>
+<a id="__codelineno-43-27" name="__codelineno-43-27" href="#__codelineno-43-27"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_apply_deletes_low_ratio_rows_after_cutoff</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-43-28" name="__codelineno-43-28" href="#__codelineno-43-28"></a>        <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">record</span><span class="p">(</span><span class="mi">101</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">covered</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-43-29" name="__codelineno-43-29" href="#__codelineno-43-29"></a>        <span class="n">n</span> <span class="o">=</span> <span class="n">purge_mod</span><span class="o">.</span><span class="n">purge</span><span class="p">(</span><span class="n">since</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">min_ratio</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">apply</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-43-30" name="__codelineno-43-30" href="#__codelineno-43-30"></a>        <span class="k">assert</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span>
+<a id="__codelineno-43-31" name="__codelineno-43-31" href="#__codelineno-43-31"></a>        <span class="k">assert</span> <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">get_show_coverage</span><span class="p">(</span><span class="mi">101</span><span class="p">)</span> <span class="o">==</span> <span class="p">[]</span>
+<a id="__codelineno-43-32" name="__codelineno-43-32" href="#__codelineno-43-32"></a>
+<a id="__codelineno-43-33" name="__codelineno-43-33" href="#__codelineno-43-33"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_high_coverage_rows_are_preserved</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-43-34" name="__codelineno-43-34" href="#__codelineno-43-34"></a><span class="w">        </span><span class="sd">"""A season that succeeded during the bad window is still a real</span>
+<a id="__codelineno-43-35" name="__codelineno-43-35" href="#__codelineno-43-35"></a><span class="sd">        success -- the outage suppressed results, it did not fabricate them."""</span>
+<a id="__codelineno-43-36" name="__codelineno-43-36" href="#__codelineno-43-36"></a>        <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">record</span><span class="p">(</span><span class="mi">102</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">covered</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<a id="__codelineno-43-37" name="__codelineno-43-37" href="#__codelineno-43-37"></a>        <span class="n">purge_mod</span><span class="o">.</span><span class="n">purge</span><span class="p">(</span><span class="n">since</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">min_ratio</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">apply</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-43-38" name="__codelineno-43-38" href="#__codelineno-43-38"></a>        <span class="k">assert</span> <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">get_show_coverage</span><span class="p">(</span><span class="mi">102</span><span class="p">)</span> <span class="o">!=</span> <span class="p">[]</span>
+<a id="__codelineno-43-39" name="__codelineno-43-39" href="#__codelineno-43-39"></a>
+<a id="__codelineno-43-40" name="__codelineno-43-40" href="#__codelineno-43-40"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_rows_before_cutoff_are_preserved</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-43-41" name="__codelineno-43-41" href="#__codelineno-43-41"></a><span class="w">        </span><span class="sd">"""Healthy-window data is the ground truth Phase 2 curation depends on."""</span>
+<a id="__codelineno-43-42" name="__codelineno-43-42" href="#__codelineno-43-42"></a>        <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">record</span><span class="p">(</span><span class="mi">103</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">covered</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-43-43" name="__codelineno-43-43" href="#__codelineno-43-43"></a>        <span class="n">future_cutoff</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">+</span> <span class="mi">3600</span>
+<a id="__codelineno-43-44" name="__codelineno-43-44" href="#__codelineno-43-44"></a>        <span class="n">n</span> <span class="o">=</span> <span class="n">purge_mod</span><span class="o">.</span><span class="n">purge</span><span class="p">(</span><span class="n">since</span><span class="o">=</span><span class="n">future_cutoff</span><span class="p">,</span> <span class="n">min_ratio</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">apply</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-43-45" name="__codelineno-43-45" href="#__codelineno-43-45"></a>        <span class="k">assert</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span>
+<a id="__codelineno-43-46" name="__codelineno-43-46" href="#__codelineno-43-46"></a>        <span class="k">assert</span> <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">get_show_coverage</span><span class="p">(</span><span class="mi">103</span><span class="p">)</span> <span class="o">!=</span> <span class="p">[]</span>
+<a id="__codelineno-43-47" name="__codelineno-43-47" href="#__codelineno-43-47"></a>
+<a id="__codelineno-43-48" name="__codelineno-43-48" href="#__codelineno-43-48"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_idempotent</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-43-49" name="__codelineno-43-49" href="#__codelineno-43-49"></a>        <span class="n">coverage_tracker</span><span class="o">.</span><span class="n">record</span><span class="p">(</span><span class="mi">104</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">covered</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-43-50" name="__codelineno-43-50" href="#__codelineno-43-50"></a>        <span class="n">purge_mod</span><span class="o">.</span><span class="n">purge</span><span class="p">(</span><span class="n">since</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">min_ratio</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">apply</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-43-51" name="__codelineno-43-51" href="#__codelineno-43-51"></a>        <span class="k">assert</span> <span class="n">purge_mod</span><span class="o">.</span><span class="n">purge</span><span class="p">(</span><span class="n">since</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">min_ratio</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">apply</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run the tests to verify they fail</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_purge_poisoned_coverage.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: FAIL at import, <code>FileNotFoundError</code> for <code>purge_poisoned_coverage.py</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Write the purge script</strong></li>
+</ul>
+<p>Create <code>backend/scripts/purge_poisoned_coverage.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a><span class="sd">"""One-time maintenance: delete coverage rows written during a known-bad window.</span>
+<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>
+<a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a><span class="sd">On 2026-06-11/12 an OpenSubtitles quota exhaustion caused the cache builder to</span>
+<a id="__codelineno-45-4" name="__codelineno-45-4" href="#__codelineno-45-4"></a><span class="sd">record 664 seasons as zero coverage. Measured rates either side of the cutoff:</span>
+<a id="__codelineno-45-5" name="__codelineno-45-5" href="#__codelineno-45-5"></a><span class="sd">94.3% before, 14.5% after. Those rows are already inert (expired by age), but</span>
+<a id="__codelineno-45-6" name="__codelineno-45-6" href="#__codelineno-45-6"></a><span class="sd">they corrupt outcome-based show curation, which reads historical coverage to</span>
+<a id="__codelineno-45-7" name="__codelineno-45-7" href="#__codelineno-45-7"></a><span class="sd">decide what to keep.</span>
+<a id="__codelineno-45-8" name="__codelineno-45-8" href="#__codelineno-45-8"></a>
+<a id="__codelineno-45-9" name="__codelineno-45-9" href="#__codelineno-45-9"></a><span class="sd">Deleting converts known-bad data into no-data, which the repaired harvester</span>
+<a id="__codelineno-45-10" name="__codelineno-45-10" href="#__codelineno-45-10"></a><span class="sd">refills honestly. Legitimately-zero seasons inside the window are re-measured;</span>
+<a id="__codelineno-45-11" name="__codelineno-45-11" href="#__codelineno-45-11"></a><span class="sd">that costs quota once and is the point.</span>
+<a id="__codelineno-45-12" name="__codelineno-45-12" href="#__codelineno-45-12"></a>
+<a id="__codelineno-45-13" name="__codelineno-45-13" href="#__codelineno-45-13"></a><span class="sd">Defaults to a dry run. Pass --apply to mutate.</span>
+<a id="__codelineno-45-14" name="__codelineno-45-14" href="#__codelineno-45-14"></a>
+<a id="__codelineno-45-15" name="__codelineno-45-15" href="#__codelineno-45-15"></a><span class="sd">Usage (from backend/):</span>
+<a id="__codelineno-45-16" name="__codelineno-45-16" href="#__codelineno-45-16"></a><span class="sd">    uv run python scripts/purge_poisoned_coverage.py</span>
+<a id="__codelineno-45-17" name="__codelineno-45-17" href="#__codelineno-45-17"></a><span class="sd">    uv run python scripts/purge_poisoned_coverage.py --apply</span>
+<a id="__codelineno-45-18" name="__codelineno-45-18" href="#__codelineno-45-18"></a><span class="sd">"""</span>
+<a id="__codelineno-45-19" name="__codelineno-45-19" href="#__codelineno-45-19"></a>
+<a id="__codelineno-45-20" name="__codelineno-45-20" href="#__codelineno-45-20"></a><span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<a id="__codelineno-45-21" name="__codelineno-45-21" href="#__codelineno-45-21"></a><span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<a id="__codelineno-45-22" name="__codelineno-45-22" href="#__codelineno-45-22"></a><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<a id="__codelineno-45-23" name="__codelineno-45-23" href="#__codelineno-45-23"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-45-24" name="__codelineno-45-24" href="#__codelineno-45-24"></a>
+<a id="__codelineno-45-25" name="__codelineno-45-25" href="#__codelineno-45-25"></a><span class="n">_backend_dir</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span><span class="p">)</span>
+<a id="__codelineno-45-26" name="__codelineno-45-26" href="#__codelineno-45-26"></a><span class="k">if</span> <span class="n">_backend_dir</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
+<a id="__codelineno-45-27" name="__codelineno-45-27" href="#__codelineno-45-27"></a>    <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">_backend_dir</span><span class="p">)</span>
+<a id="__codelineno-45-28" name="__codelineno-45-28" href="#__codelineno-45-28"></a>
+<a id="__codelineno-45-29" name="__codelineno-45-29" href="#__codelineno-45-29"></a><span class="kn">from</span><span class="w"> </span><span class="nn">app.matcher</span><span class="w"> </span><span class="kn">import</span> <span class="n">tmdb_persistent_cache</span>  <span class="c1"># noqa: E402</span>
+<a id="__codelineno-45-30" name="__codelineno-45-30" href="#__codelineno-45-30"></a>
+<a id="__codelineno-45-31" name="__codelineno-45-31" href="#__codelineno-45-31"></a><span class="c1"># 2026-06-11 00:00 local. The first run whose success rate collapsed; see the</span>
+<a id="__codelineno-45-32" name="__codelineno-45-32" href="#__codelineno-45-32"></a><span class="c1"># 2026-08-31 harvester-repair spec for the per-day breakdown.</span>
+<a id="__codelineno-45-33" name="__codelineno-45-33" href="#__codelineno-45-33"></a><span class="n">DEFAULT_CUTOFF</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">(</span><span class="mi">2026</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">)</span><span class="o">.</span><span class="n">timestamp</span><span class="p">()</span>
+<a id="__codelineno-45-34" name="__codelineno-45-34" href="#__codelineno-45-34"></a>
+<a id="__codelineno-45-35" name="__codelineno-45-35" href="#__codelineno-45-35"></a>
+<a id="__codelineno-45-36" name="__codelineno-45-36" href="#__codelineno-45-36"></a><span class="k">def</span><span class="w"> </span><span class="nf">purge</span><span class="p">(</span><span class="n">since</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">min_ratio</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">apply</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-45-37" name="__codelineno-45-37" href="#__codelineno-45-37"></a><span class="w">    </span><span class="sd">"""Delete (or count, when ``apply`` is False) poisoned coverage rows.</span>
+<a id="__codelineno-45-38" name="__codelineno-45-38" href="#__codelineno-45-38"></a>
+<a id="__codelineno-45-39" name="__codelineno-45-39" href="#__codelineno-45-39"></a><span class="sd">    A row is poisoned when it was attempted at or after ``since`` AND fell</span>
+<a id="__codelineno-45-40" name="__codelineno-45-40" href="#__codelineno-45-40"></a><span class="sd">    below ``min_ratio``. Rows that succeeded during the window are preserved:</span>
+<a id="__codelineno-45-41" name="__codelineno-45-41" href="#__codelineno-45-41"></a><span class="sd">    the outage suppressed results, it did not fabricate them.</span>
+<a id="__codelineno-45-42" name="__codelineno-45-42" href="#__codelineno-45-42"></a>
+<a id="__codelineno-45-43" name="__codelineno-45-43" href="#__codelineno-45-43"></a><span class="sd">    Returns the number of rows matched.</span>
+<a id="__codelineno-45-44" name="__codelineno-45-44" href="#__codelineno-45-44"></a><span class="sd">    """</span>
+<a id="__codelineno-45-45" name="__codelineno-45-45" href="#__codelineno-45-45"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">tmdb_persistent_cache</span><span class="o">.</span><span class="n">CACHE_DB_PATH</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+<a id="__codelineno-45-46" name="__codelineno-45-46" href="#__codelineno-45-46"></a>        <span class="k">return</span> <span class="mi">0</span>
+<a id="__codelineno-45-47" name="__codelineno-45-47" href="#__codelineno-45-47"></a>
+<a id="__codelineno-45-48" name="__codelineno-45-48" href="#__codelineno-45-48"></a>    <span class="n">conn</span> <span class="o">=</span> <span class="n">tmdb_persistent_cache</span><span class="o">.</span><span class="n">get_conn</span><span class="p">()</span>
+<a id="__codelineno-45-49" name="__codelineno-45-49" href="#__codelineno-45-49"></a>    <span class="n">matched</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-45-50" name="__codelineno-45-50" href="#__codelineno-45-50"></a>        <span class="s2">"SELECT COUNT(*) FROM subtitle_coverage "</span>
+<a id="__codelineno-45-51" name="__codelineno-45-51" href="#__codelineno-45-51"></a>        <span class="s2">"WHERE attempted_at &gt;= ? AND coverage_ratio &lt; ?"</span><span class="p">,</span>
+<a id="__codelineno-45-52" name="__codelineno-45-52" href="#__codelineno-45-52"></a>        <span class="p">(</span><span class="n">since</span><span class="p">,</span> <span class="n">min_ratio</span><span class="p">),</span>
+<a id="__codelineno-45-53" name="__codelineno-45-53" href="#__codelineno-45-53"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-45-54" name="__codelineno-45-54" href="#__codelineno-45-54"></a>
+<a id="__codelineno-45-55" name="__codelineno-45-55" href="#__codelineno-45-55"></a>    <span class="k">if</span> <span class="n">apply</span> <span class="ow">and</span> <span class="n">matched</span><span class="p">:</span>
+<a id="__codelineno-45-56" name="__codelineno-45-56" href="#__codelineno-45-56"></a>        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-45-57" name="__codelineno-45-57" href="#__codelineno-45-57"></a>            <span class="s2">"DELETE FROM subtitle_coverage WHERE attempted_at &gt;= ? AND coverage_ratio &lt; ?"</span><span class="p">,</span>
+<a id="__codelineno-45-58" name="__codelineno-45-58" href="#__codelineno-45-58"></a>            <span class="p">(</span><span class="n">since</span><span class="p">,</span> <span class="n">min_ratio</span><span class="p">),</span>
+<a id="__codelineno-45-59" name="__codelineno-45-59" href="#__codelineno-45-59"></a>        <span class="p">)</span>
+<a id="__codelineno-45-60" name="__codelineno-45-60" href="#__codelineno-45-60"></a>        <span class="n">conn</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+<a id="__codelineno-45-61" name="__codelineno-45-61" href="#__codelineno-45-61"></a>
+<a id="__codelineno-45-62" name="__codelineno-45-62" href="#__codelineno-45-62"></a>    <span class="k">return</span> <span class="n">matched</span>
+<a id="__codelineno-45-63" name="__codelineno-45-63" href="#__codelineno-45-63"></a>
+<a id="__codelineno-45-64" name="__codelineno-45-64" href="#__codelineno-45-64"></a>
+<a id="__codelineno-45-65" name="__codelineno-45-65" href="#__codelineno-45-65"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<a id="__codelineno-45-66" name="__codelineno-45-66" href="#__codelineno-45-66"></a>    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="vm">__doc__</span><span class="p">)</span>
+<a id="__codelineno-45-67" name="__codelineno-45-67" href="#__codelineno-45-67"></a>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<a id="__codelineno-45-68" name="__codelineno-45-68" href="#__codelineno-45-68"></a>        <span class="s2">"--since"</span><span class="p">,</span>
+<a id="__codelineno-45-69" name="__codelineno-45-69" href="#__codelineno-45-69"></a>        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-45-70" name="__codelineno-45-70" href="#__codelineno-45-70"></a>        <span class="n">default</span><span class="o">=</span><span class="s2">"2026-06-11"</span><span class="p">,</span>
+<a id="__codelineno-45-71" name="__codelineno-45-71" href="#__codelineno-45-71"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"Cutoff date YYYY-MM-DD; rows attempted on/after this are candidates"</span><span class="p">,</span>
+<a id="__codelineno-45-72" name="__codelineno-45-72" href="#__codelineno-45-72"></a>    <span class="p">)</span>
+<a id="__codelineno-45-73" name="__codelineno-45-73" href="#__codelineno-45-73"></a>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<a id="__codelineno-45-74" name="__codelineno-45-74" href="#__codelineno-45-74"></a>        <span class="s2">"--min-ratio"</span><span class="p">,</span>
+<a id="__codelineno-45-75" name="__codelineno-45-75" href="#__codelineno-45-75"></a>        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+<a id="__codelineno-45-76" name="__codelineno-45-76" href="#__codelineno-45-76"></a>        <span class="n">default</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span>
+<a id="__codelineno-45-77" name="__codelineno-45-77" href="#__codelineno-45-77"></a>        <span class="n">help</span><span class="o">=</span><span class="s2">"Rows below this coverage ratio are treated as poisoned (default: 0.6)"</span><span class="p">,</span>
+<a id="__codelineno-45-78" name="__codelineno-45-78" href="#__codelineno-45-78"></a>    <span class="p">)</span>
+<a id="__codelineno-45-79" name="__codelineno-45-79" href="#__codelineno-45-79"></a>    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+<a id="__codelineno-45-80" name="__codelineno-45-80" href="#__codelineno-45-80"></a>        <span class="s2">"--apply"</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Actually delete (default: dry run)"</span>
+<a id="__codelineno-45-81" name="__codelineno-45-81" href="#__codelineno-45-81"></a>    <span class="p">)</span>
+<a id="__codelineno-45-82" name="__codelineno-45-82" href="#__codelineno-45-82"></a>    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+<a id="__codelineno-45-83" name="__codelineno-45-83" href="#__codelineno-45-83"></a>
+<a id="__codelineno-45-84" name="__codelineno-45-84" href="#__codelineno-45-84"></a>    <span class="n">since</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">strptime</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">since</span><span class="p">,</span> <span class="s2">"%Y-%m-</span><span class="si">%d</span><span class="s2">"</span><span class="p">)</span><span class="o">.</span><span class="n">timestamp</span><span class="p">()</span>
+<a id="__codelineno-45-85" name="__codelineno-45-85" href="#__codelineno-45-85"></a>    <span class="n">n</span> <span class="o">=</span> <span class="n">purge</span><span class="p">(</span><span class="n">since</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">min_ratio</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">apply</span><span class="p">)</span>
+<a id="__codelineno-45-86" name="__codelineno-45-86" href="#__codelineno-45-86"></a>
+<a id="__codelineno-45-87" name="__codelineno-45-87" href="#__codelineno-45-87"></a>    <span class="n">verb</span> <span class="o">=</span> <span class="s2">"Deleted"</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply</span> <span class="k">else</span> <span class="s2">"Would delete (dry run)"</span>
+<a id="__codelineno-45-88" name="__codelineno-45-88" href="#__codelineno-45-88"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">verb</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2"> coverage rows attempted on/after </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">since</span><span class="si">}</span><span class="s2"> below </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">min_ratio</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-45-89" name="__codelineno-45-89" href="#__codelineno-45-89"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">apply</span> <span class="ow">and</span> <span class="n">n</span><span class="p">:</span>
+<a id="__codelineno-45-90" name="__codelineno-45-90" href="#__codelineno-45-90"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">"Re-run with --apply to delete."</span><span class="p">)</span>
+<a id="__codelineno-45-91" name="__codelineno-45-91" href="#__codelineno-45-91"></a>    <span class="k">return</span> <span class="mi">0</span>
+<a id="__codelineno-45-92" name="__codelineno-45-92" href="#__codelineno-45-92"></a>
+<a id="__codelineno-45-93" name="__codelineno-45-93" href="#__codelineno-45-93"></a>
+<a id="__codelineno-45-94" name="__codelineno-45-94" href="#__codelineno-45-94"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+<a id="__codelineno-45-95" name="__codelineno-45-95" href="#__codelineno-45-95"></a>    <span class="k">raise</span> <span class="ne">SystemExit</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run the tests to verify they pass</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/test_purge_poisoned_coverage.py<span class="w"> </span>-v
+</code></pre></div>
+<p>Expected: 5 passed.</p>
+<ul>
+<li>[ ] <strong>Step 5: Dry-run against the real cache and confirm the count</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/purge_poisoned_coverage.py
+</code></pre></div>
+<p>Expected: reports roughly 900 to 980 rows. If it reports zero, the cache DB path differs from <code>~/.engram/cache/tmdb_cache.sqlite</code>; investigate before proceeding rather than passing <code>--apply</code>.</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit (do NOT run --apply yet)</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/scripts/purge_poisoned_coverage.py<span class="w"> </span>backend/tests/unit/test_purge_poisoned_coverage.py
+<a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"feat(subtitle-cache): add one-time poisoned-coverage purge</span>
+<a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a>
+<a id="__codelineno-48-4" name="__codelineno-48-4" href="#__codelineno-48-4"></a><span class="s2">Deletes coverage rows from the 2026-06-11 onward outage window that fell</span>
+<a id="__codelineno-48-5" name="__codelineno-48-5" href="#__codelineno-48-5"></a><span class="s2">below threshold. Known-bad data becomes no-data, which the repaired</span>
+<a id="__codelineno-48-6" name="__codelineno-48-6" href="#__codelineno-48-6"></a><span class="s2">harvester refills honestly. Dry-run by default."</span>
+</code></pre></div>
+<p>The actual <code>--apply</code> run is a data-mutation step held for explicit user approval; it is listed in Verification below, not performed as part of implementation.</p>
+<hr />
+<h2 id="verification">Verification</h2>
+<ul>
+<li>[ ] <strong>Full unit suite</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/<span class="w"> </span>-q
+</code></pre></div>
+<p>Expected: no failures. Per the project memory note, avoid <code>-p no:logging</code> here: it errors caplog-based tests.</p>
+<ul>
+<li>[ ] <strong>Lint and format</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>--check<span class="w"> </span>.
+</code></pre></div>
+<p>Expected: clean.</p>
+<ul>
+<li>[ ] <strong>End-to-end recovery proof on a known-poisoned show</strong></li>
+</ul>
+<p>Full House (tmdb 4313) recorded 1/192 episodes across S01 to S08, all on 2026-06-12. After the repair it should recover the way ER did (330/331 on 2026-08-31).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'rank,tmdb_id,name\n1,4313,Full House\n'</span><span class="w"> </span>&gt;<span class="w"> </span>/tmp/fh.csv<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/build_subtitle_cache.py<span class="w"> </span>--show-list<span class="w"> </span>/tmp/fh.csv<span class="w"> </span>--sleep<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span>--max-downloads<span class="w"> </span><span class="m">250</span><span class="w"> </span>--output<span class="w"> </span>/tmp/fh-cache.tar.gz<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-25
+</code></pre></div>
+<p>Expected: seasons report substantial coverage rather than 0/22, and the summary's <code>by source</code> credits <code>opensubtitles_api</code>. The <code>--max-downloads 250</code> cap bounds the quota spend for this check.</p>
+<ul>
+<li>[ ] <strong>User-approved data mutation: purge the poisoned window</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/purge_poisoned_coverage.py<span class="w"> </span>--apply
+</code></pre></div>
+<p>This is irreversible and returns ~978 seasons to the unmeasured pool, costing several days of quota to re-measure. Hold for explicit approval.</p>
+<hr />
+<h2 id="known-gap-deliberately-out-of-scope-the-scrapers-have-no-failure-signal">Known gap, deliberately out of scope: the scrapers have no failure signal</h2>
+<blockquote>
+<p><strong>CLOSED 2026-09-03.</strong> <code>run_jobs</code> now returns a <code>SchedulerRun</code> carrying per-provider
+health, and <code>_is_degraded</code> takes a <code>providers_failed</code> axis alongside the OpenSubtitles
+one. Design: <code>docs/superpowers/specs/2026-09-03-scraper-failure-signal-design.md</code>.
+The analysis below is kept as the diagnosis that motivated it.</p>
+</blockquote>
+<p><code>_is_degraded</code> covers the OpenSubtitles half of the cascade only. The scraper
+scheduler (<code>app/matcher/provider_scheduler.py</code>) emits exactly two per-episode
+statuses, <code>downloaded</code> and <code>not_found</code>, and its <code>_CircuitBreaker</code> trips after three
+consecutive transport failures and thereafter skips the provider without changing
+the result shape.</p>
+<p>So if OpenSubtitles is healthy but BOTH Addic7ed and TVsubtitles are down, every
+episode comes back <code>not_found</code>, <code>os_failed</code> is False, the season is recorded at 0%,
+and it is skip-listed for 30 days. That is the same defect this plan repairs,
+reachable through a different door.</p>
+<p>Closing it requires <code>run_jobs</code> to surface transport-failure or breaker-open state,
+which changes the scheduler's return contract and every consumer of it. That is a
+separate task, not a widening of this one. Recorded here while the analysis is fresh
+so it is not rediscovered later as a fresh mystery.</p>
+<h2 id="known-gap-a-persistently-degraded-corpus-is-re-measured-forever">Known gap: a persistently degraded corpus is re-measured forever</h2>
+<p>This is the deliberate tradeoff of Task 5 (no record beats a false zero), but the
+specific runaway is worth naming because <strong>the guard one would assume bounds it
+provably does not</strong>.</p>
+<p>A degraded season writes no coverage row, so <code>should_skip</code> never suppresses it. If
+OpenSubtitles is <em>misconfigured</em> rather than transiently down (wrong credentials, or
+the <code>opensubtitlescom</code> package missing), every season degrades on every run, the
+skip-list never forms, and each daily build re-attempts the entire corpus through the
+scrapers.</p>
+<p>Task 3's quota guard cannot help here. With bad credentials <code>_get_os_client</code> returns
+None, so <code>probe_os_quota</code> returns None, so <code>get_last_quota()</code> returns None, so
+<code>_stop_reason</code> short-circuits on its <code>remaining is None</code> rule and never fires. That
+short-circuit is correct on its own terms (scrapers have no daily cap, so an unknown
+quota must not halt a scraper-only run), but it means the budget is inert in exactly
+the scenario that produces the runaway. <code>--max-downloads</code> also counts OpenSubtitles
+downloads, not scraper fetches.</p>
+<p>The only bound is wall-clock and scraper rate limits. Mitigation options (a
+degraded-run circuit breaker, or recording a row after N consecutive degraded runs
+for the same season) are design decisions rather than bug fixes, so they are left out
+of this plan. The <code>seasons_degraded</code> counter added in Task 5 is the detection half:
+it makes the condition visible so an operator can act before it runs for weeks.</p>
+<hr />
+<h2 id="notes-for-the-implementer">Notes for the implementer</h2>
+<ul>
+<li><strong>Never delete <code>backend/engram.db</code>.</strong> It holds API keys that must be re-entered by hand.</li>
+<li><strong>The dev DB has schema drift.</strong> <code>init_db()</code> currently raises <code>table fingerprint_contributions already exists</code>, and an earlier probe hit <code>no such column: app_config.always_review</code>. The build script survives both, but do not "fix" them inside this plan: they are a separate defect and out of scope.</li>
+<li><strong>Quota is per-account and shared with any other machine.</strong> Each live harvest consumes the same 1,000/day bucket. Do not run two builds concurrently.</li>
+<li><strong><code>uv run</code> for every Python command.</strong> Never bare <code>python</code> or <code>pytest</code>.</li>
+<li><strong>No em dashes in code comments or commit messages</strong> per project convention; use colons, semicolons, or parentheses.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

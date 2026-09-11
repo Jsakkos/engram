@@ -1,0 +1,2259 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-09-05-disc-backup-before-rip-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Disc backup before rip, and importing existing backups - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#disc-backup-before-rip-and-importing-existing-backups" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Disc backup before rip, and importing existing backups
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Approach
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Approach">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-a-source-abstraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why a source abstraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-ordering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline ordering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-a-distinct-job-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why a distinct job state
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#new-config-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New config fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#new-discjob-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New DiscJob columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#new-job-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New job state
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Components
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Components">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#appcoredisc_sourcepy-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app/core/disc_source.py (new)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extractorbackup_disc-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extractor.backup_disc() (new)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extractor-source-threading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extractor source threading
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jobmanager-backup-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JobManager backup phase
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import_scanner-disc-image-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        import_scanner disc-image detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup-destination-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backup destination naming
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#title-reconciliation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Title reconciliation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drive-release-and-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drive release and notifications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watchdog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#websocket-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WebSocket contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#import-from-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Import from backup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions: resolved
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Open questions: resolved">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#blu-ray-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blu-ray verification
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="disc-backup-before-rip-and-importing-existing-backups">Disc backup before rip, and importing existing backups</h1>
+<p><strong>Date:</strong> 2026-09-05
+<strong>Status:</strong> Design approved, ready for implementation planning
+<strong>Origin:</strong> Discord feature request from Ironside7 (2026-09-02)</p>
+<h2 id="problem">Problem</h2>
+<p>Engram rips directly from the optical drive. Every title is a fresh read of the
+physical disc, so a scratched disc is stressed once per title and a read failure
+mid-library-build loses the whole disc. The requester's manual workflow avoids
+this: MakeMKV writes a full decrypted backup of the disc to local storage first,
+then extracts MKVs from that backup.</p>
+<p>That workflow solves three problems at once:</p>
+<ol>
+<li><strong>Preservation.</strong> Some discs have no in-print replacement (the requester cites
+   <em>The Sweetest Thing</em>). A backup is the archival copy, kept and moved to a
+   separate server.</li>
+<li><strong>Disc safety.</strong> The physical disc is read once, sequentially, instead of once
+   per title with seeks in between.</li>
+<li><strong>Speed and reliability.</strong> Extraction from local storage is faster than from
+   an optical drive and does not fail on a marginal read.</li>
+</ol>
+<p>The request has a second half: once backups exist, the user wants to point
+Engram at one and have it run the normal pipeline. The requester explicitly does
+not want a monitored folder for this; a manual import action is the desired
+surface.</p>
+<h2 id="goals">Goals</h2>
+<ul>
+<li>Optional backup phase between identification and extraction, writing a full
+  decrypted disc copy to a separate configurable root.</li>
+<li>Extraction reads from that backup rather than from the drive.</li>
+<li>The disc is released as soon as the backup completes, not after extraction.</li>
+<li>Existing backups (folder or ISO) can be imported through the manual import
+  modal and run the full identify, rip, match, organize pipeline.</li>
+<li>Enabling the feature can never make a disc less likely to finish than it is
+  today.</li>
+</ul>
+<h2 id="non-goals">Non-goals</h2>
+<ul>
+<li><strong>Backup-only mode</strong> (copy the disc and stop, producing no MKVs). A different
+  workflow from the request, and it would create a terminal path where COMPLETED
+  means no media was produced.</li>
+<li><strong>Per-disc override in the UI.</strong> A global setting only. Deferred until someone
+  asks for it.</li>
+<li><strong>A monitored backups folder.</strong> Explicitly out per the requester.</li>
+<li><strong>Deleting backups automatically.</strong> Backups are always kept. Engram never
+  removes 40 GB the user asked it to create.</li>
+<li><strong>Concurrent disc handling.</strong> Releasing the drive early makes it possible for
+  Engram to accept the next disc while the previous job extracts. This design
+  must not break that, but does not build it.</li>
+</ul>
+<h2 id="approach">Approach</h2>
+<h3 id="why-a-source-abstraction">Why a source abstraction</h3>
+<p><code>Extractor</code> is drive-shaped: <code>_to_drive_spec()</code> maps <code>"E:"</code> to <code>dev:E:</code>, and both
+<code>scan_disc</code> and <code>rip_titles</code> take a <code>drive: str</code>. MakeMKV itself accepts three
+source forms: <code>dev:&lt;letter or device&gt;</code>, <code>disc:&lt;index&gt;</code>, and <code>file:&lt;path&gt;</code> for a
+backup folder or an ISO. Both halves of this feature reduce to the same change:
+a job's source may be a path rather than a drive.</p>
+<p>Three options were considered.</p>
+<ul>
+<li><strong>A. A <code>source_spec</code> string column, parsed ad hoc.</strong> Smallest diff, but the
+  question "is this source a physical drive?" gets asked in roughly six places
+  (eject, sentinel re-arm, drive lock, watchdog, <code>_release_drive</code>, progress
+  labelling) and each would answer it with its own string test.</li>
+<li><strong>B. A <code>DiscSource</code> value object.</strong> One home for that question, pure and
+  unit-testable, at the cost of a new module.</li>
+<li><strong>C. A parallel backup-job pipeline.</strong> Rejected: it duplicates the chain that
+  <code>IdentificationCoordinator</code>, <code>MatchingCoordinator</code> and
+  <code>FinalizationCoordinator</code> already own.</li>
+</ul>
+<p><strong>Chosen: B stored as A.</strong> One nullable <code>source_spec</code> string column on <code>DiscJob</code>
+(the DB and wire form), parsed through <code>DiscSource.parse()</code> wherever behaviour
+depends on the source kind.</p>
+<h3 id="pipeline-ordering">Pipeline ordering</h3>
+<p>Backup runs <strong>after</strong> identification:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sentinel -&gt; IDENTIFYING (scan dev:E:, content hash, TMDB/DiscDB lookup)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>         -&gt; [REVIEW_NEEDED if identity is unresolved] --+
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>         -&gt; BACKING_UP  &lt;---------------------------- --+
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>              free-space preflight
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>              resolve dev:E: -&gt; disc:N
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>              makemkvcon backup --decrypt disc:N &lt;dest&gt;.partial
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>              rename .partial -&gt; dest;  source_spec = file:&lt;dest&gt;
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>              _release_drive(outcome="Backed up")     &lt;- disc comes out here
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>         -&gt; RIPPING (re-scan file:&lt;dest&gt;, reconcile titles, extract to staging)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>         -&gt; MATCHING -&gt; ORGANIZING -&gt; COMPLETED        (unchanged)
+</code></pre></div>
+<p>A scan costs about a minute, so the disc leaves the drive barely later than in a
+backup-first ordering, and in exchange Engram only spends 40 GB and 25 minutes of
+disc reads on a job it has already decided to run. Identity prompts still fire
+early, and content-hash and DiscDB lookup are untouched.</p>
+<p>Backing up and scanning concurrently was rejected: two <code>makemkvcon</code> processes on
+one drive is exactly what <code>Extractor</code>'s per-drive <code>asyncio.Lock</code> exists to
+prevent.</p>
+<h3 id="why-a-distinct-job-state">Why a distinct job state</h3>
+<p><code>BACKING_UP</code> becomes a real <code>JobState</code> rather than a sub-phase of <code>RIPPING</code>.
+Reusing <code>RIPPING</code> would be cheaper (215 <code>JobState.</code> references in the backend,
+about 41 frontend files carrying state literals) but every log line, history row
+and notification would say "ripping" during a copy that produces no MKV, and a
+single watchdog timeout would have to cover a 40 GB sequential copy and a
+per-title extraction. Folding it into <code>IDENTIFYING</code> is the wrong shape too:
+identification is minutes with no progress UI, a backup is tens of minutes with
+byte-level progress.</p>
+<h2 id="data-model">Data model</h2>
+<h3 id="new-config-fields">New config fields</h3>
+<p>Adding a config field requires the three-way sync: <code>AppConfig</code>, <code>ConfigUpdate</code>,
+<code>ConfigResponse</code>, and <code>ConfigWizard</code>. Missing any one of them makes Pydantic drop
+the value silently.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backup_before_rip</code></td>
+<td>bool</td>
+<td><code>False</code>, <code>server_default "0"</code></td>
+<td>Opt-in, so a NULL on an upgraded DB must read as disabled. Mirrors <code>discord_notify_ripped</code>.</td>
+</tr>
+<tr>
+<td><code>backup_path</code></td>
+<td>str</td>
+<td><code>""</code></td>
+<td>Empty means the feature cannot run. Validated like the library roots.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="new-discjob-columns">New <code>DiscJob</code> columns</h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_spec</code></td>
+<td><code>str \| None</code></td>
+<td>MakeMKV source string. <code>None</code> on every existing row, meaning "legacy: derive from <code>drive_id</code>".</td>
+</tr>
+<tr>
+<td><code>backup_path</code></td>
+<td><code>str \| None</code></td>
+<td>Where this job's backup landed. Shown in history, used for re-import.</td>
+</tr>
+<tr>
+<td><code>backup_status</code></td>
+<td><code>str \| None</code></td>
+<td><code>pending</code>, <code>completed</code>, <code>failed:&lt;reason&gt;</code>, <code>skipped:&lt;reason&gt;</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><code>drive_id</code> keeps its current meaning (a physical drive, or the literal
+<code>"import"</code>). It stays the key for eject, sentinel re-arm and disc-side job
+lookup. <code>source_spec</code> is what MakeMKV is pointed at, and the two diverge exactly
+once: after a successful backup, when <code>drive_id</code> is still <code>E:</code> and <code>source_spec</code>
+has become <code>file:&lt;backup&gt;</code>.</p>
+<h3 id="new-job-state">New job state</h3>
+<p><code>JobState.BACKING_UP</code>, with these <code>VALID_TRANSITIONS</code> edits:</p>
+<ul>
+<li><code>IDENTIFYING -&gt; BACKING_UP</code></li>
+<li><code>BACKING_UP -&gt; {RIPPING, REVIEW_NEEDED, FAILED}</code></li>
+<li><code>REVIEW_NEEDED -&gt; BACKING_UP</code> (a disc parked for a name prompt still needs its
+  backup once the user answers)</li>
+</ul>
+<p><code>BACKING_UP</code> is non-terminal, so the job-visibility invariant exempts it from the
+dashboard's terminal-job cap automatically.</p>
+<h2 id="components">Components</h2>
+<h3 id="appcoredisc_sourcepy-new"><code>app/core/disc_source.py</code> (new)</h3>
+<p>Pure module, no I/O except the drive-index resolver.</p>
+<ul>
+<li><code>DiscSource</code> value object: <code>kind</code> (<code>drive</code> | <code>backup</code> | <code>iso</code>), <code>value</code>, and
+  derived <code>spec</code> (the MakeMKV argument), <code>lock_key</code>, <code>is_physical</code>.</li>
+<li><code>DiscSource.parse(spec: str) -&gt; DiscSource</code>, and
+  <code>DiscSource.from_job(job)</code> which falls back to <code>drive_id</code> when <code>source_spec</code>
+  is <code>None</code>.</li>
+<li><code>resolve_disc_index(drive: str) -&gt; str | None</code>: runs <code>makemkvcon -r info
+  disc:9999</code> (the enumeration form) and maps a drive letter or device path to
+  <code>disc:N</code>. Required because <code>makemkvcon backup</code> accepts only <code>disc:N</code>, not
+  <code>dev:</code>. Engram has never needed this mapping before.</li>
+</ul>
+<p><code>lock_key</code> is the important one. <code>Extractor._get_drive_lock</code> currently keys on
+<code>drive.replace("dev:", "").replace("disc:", "")</code>. A <code>file:</code> source must not
+contend for the physical drive lock, or extracting from a backup would block the
+next disc from being scanned. Backup and ISO sources key on their own resolved
+path instead.</p>
+<h3 id="extractorbackup_disc-new"><code>Extractor.backup_disc()</code> (new)</h3>
+<p>Sibling of <code>rip_titles</code>, reusing the same robot-mode line parsing, stall
+watchdog, cancellation handling and <code>_save_makemkv_log</code> behaviour.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">backup_disc</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">source</span><span class="p">:</span> <span class="n">DiscSource</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">dest</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">progress_callback</span><span class="p">:</span> <span class="n">BackupProgressCallback</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">stall_timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">log_dir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">job_id</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BackupResult</span>
+</code></pre></div>
+<p>Writes to <code>&lt;dest&gt;.partial</code> and renames on success, so a killed or crashed backup
+never leaves something that looks complete. On failure the <code>.partial</code> is left in
+place rather than deleted: a partial backup of a dying disc has salvage value,
+and the user is the one who should decide to discard it.</p>
+<h3 id="extractor-source-threading"><code>Extractor</code> source threading</h3>
+<p><code>_to_drive_spec</code> becomes <code>_to_source_spec</code>, passing through any known scheme.
+<code>scan_disc</code> and <code>rip_titles</code> take a <code>DiscSource</code> (or a string coerced through
+<code>parse</code>, for call-site compatibility during the migration).</p>
+<h3 id="jobmanager-backup-phase"><code>JobManager</code> backup phase</h3>
+<p>A <code>_run_backup(job_id)</code> coroutine wrapped in <code>with_job_log_context</code> the same way
+<code>_run_ripping</code> is, so its lines carry the <code>job=&lt;id&gt;</code> tag the diagnostics bundle
+greps for. Structure mirrors <code>_run_ripping</code>: a short-lived setup session that is
+released before the long await, then post-backup transitions on fresh sessions.</p>
+<h3 id="import_scanner-disc-image-detection"><code>import_scanner</code> disc-image detection</h3>
+<p>A directory containing <code>BDMV/</code> or <code>VIDEO_TS/</code> is a disc image and is emitted as a
+<code>DiscImageUnit</code> instead of being walked for MKVs. An <code>.iso</code> file is likewise a
+unit. Detection short-circuits the walk at that directory, so a backup's
+thousands of <code>.m2ts</code> files never count toward <code>_MAX_FILES</code>.</p>
+<p>A scan can return both kinds of unit. <code>ImportScan</code> gains <code>disc_images:
+list[DiscImageUnit]</code> alongside <code>units</code>.</p>
+<h2 id="backup-destination-naming">Backup destination naming</h2>
+<p>Computed after identification, mirroring the library layout so the backup shelf
+browses the same way the library does:</p>
+<ul>
+<li>Movie: <code>&lt;backup_path&gt;/Movies/&lt;movie folder&gt;/</code></li>
+<li>TV: <code>&lt;backup_path&gt;/TV/&lt;show folder&gt;/&lt;season folder&gt;/&lt;disc slug&gt;/</code></li>
+<li>Unidentified: <code>&lt;backup_path&gt;/Unidentified/&lt;sanitized volume label&gt;/</code></li>
+</ul>
+<p>The folder names are not built here. Library naming is user-configurable
+(<code>naming_movie_format</code>, <code>naming_tv_show_format</code>, <code>naming_season_format</code>), so
+<code>backup_destination</code> delegates to the Organizer's own <code>format_movie_folder</code>,
+<code>format_tv_show_folder</code> and <code>format_season_folder</code>, passing <code>tmdb_id</code> through so
+a backup folder carries the same media-server disambiguation tag its library
+folder would. Reproducing the default shape locally would give any user with a
+customized format a backup tree that no longer mirrored their library, which is
+the one outcome this section exists to prevent. It follows that a TV backup
+folder carries no year under the shipped default <code>naming_tv_show_format</code>
+(<code>"{show}"</code>), exactly as the library folder does not.</p>
+<p>Only the disc level is built here, because the library has no per-disc level:
+<code>discdb_disc_slug</code> when known (for example <code>S01D01</code>), otherwise
+<code>Disc &lt;disc_number&gt;</code>, sanitized with the Organizer's <code>sanitize_filename</code>.</p>
+<p>A name that survives sanitization as an empty string falls back to <code>job-&lt;id&gt;</code>
+rather than a shared literal, so two unnameable discs cannot collide in one
+folder. If the
+destination already exists and is non-empty, the job treats the backup as
+already done (<code>backup_status = "completed"</code>, <code>source_spec</code> pointed at it) rather
+than overwriting: re-inserting a disc that was backed up before should not cost
+another 40 GB copy.</p>
+<p>Backup destinations are derived from config plus sanitized identification data,
+never from client input.</p>
+<h2 id="title-reconciliation">Title reconciliation</h2>
+<p><code>DiscTitle</code> rows are created from the <em>disc</em> scan and carry <code>title_index</code>, which
+is what <code>_build_rip_commands</code> passes to MakeMKV. Extraction now runs against
+<code>file:&lt;backup&gt;</code>, so those indices must be re-validated rather than assumed.</p>
+<p>After the backup completes, re-scan the backup and reconcile:</p>
+<ol>
+<li><strong>Identical enumeration</strong> (same title count, same durations in the same
+   order): reuse indices directly. Expected case, since a backup is a byte copy.</li>
+<li><strong>Reordered or shifted</strong>: re-map by <code>source_filename</code> plus <code>segment_map</code>,
+   both already captured at scan time for TheDiscDB contributions, with duration
+   as a tiebreaker. Update <code>title_index</code> on the affected rows.</li>
+<li><strong>Ambiguous</strong>: transition to <code>REVIEW_NEEDED</code> with an explicit reason. Do not
+   fall back to the disc, which may already be ejected. Nothing is lost: the
+   backup is on disk and the disc is safe, which is the point of the feature.</li>
+</ol>
+<h2 id="failure-handling">Failure handling</h2>
+<p>Per the approved fallback policy, a backup problem degrades to today's behaviour
+rather than failing the job. Each case records <code>backup_status</code> and surfaces a
+note on the job card and in history.</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th><code>backup_status</code></th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backup_path</code> empty or unwritable</td>
+<td><code>skipped:not_configured</code></td>
+<td>Direct rip from the drive</td>
+</tr>
+<tr>
+<td>Free space &lt; needed</td>
+<td><code>skipped:insufficient_space</code></td>
+<td>Direct rip</td>
+</tr>
+<tr>
+<td><code>disc:N</code> resolution fails</td>
+<td><code>skipped:no_disc_index</code></td>
+<td>Direct rip</td>
+</tr>
+<tr>
+<td>Disc type unsupported by <code>backup</code></td>
+<td><code>skipped:unsupported_disc</code></td>
+<td>Direct rip</td>
+</tr>
+<tr>
+<td><code>makemkvcon backup</code> non-zero or stalls out</td>
+<td><code>failed:&lt;reason&gt;</code></td>
+<td><code>.partial</code> retained, direct rip</td>
+</tr>
+<tr>
+<td>Backup re-scan cannot be reconciled</td>
+<td><code>completed</code></td>
+<td><code>REVIEW_NEEDED</code>, no drive fallback</td>
+</tr>
+</tbody>
+</table>
+<p>Free-space preflight: sum the scanned titles' <code>file_size_bytes</code> as the disc-size
+estimate, multiply by 1.15 for margin and container overhead, and compare against
+<code>shutil.disk_usage(backup_path).free</code>. A conservative estimate is correct here;
+the cost of a false negative (one direct rip) is far below the cost of a false
+positive (a half-written 40 GB folder and a failed job).</p>
+<p>Cancellation during <code>BACKING_UP</code> terminates <code>makemkvcon</code>, leaves the <code>.partial</code>,
+and follows the existing cancel path.</p>
+<h2 id="drive-release-and-notifications">Drive release and notifications</h2>
+<p><code>_release_drive</code> is the documented single chokepoint for "Engram is done with
+this disc", and it fires the Discord <code>RIPPED_EVENT</code> with a <code>rip_outcome</code>. Under
+backup-first, that moment moves from end-of-rip to end-of-backup. This is a
+faithful use of the event, not a stretch: CLAUDE.md defines <code>RIPPED_EVENT</code> as a
+hardware milestone meaning the disc is copied and out of the drive, deliberately
+outside the <code>JobState</code>-keyed <code>EVENTS</code> map. A backup satisfies that literally.</p>
+<p><code>rip_outcome</code> gains the value <code>"Backed up"</code> alongside Complete, Stopped early and
+Re-rip.</p>
+<p>No new Discord event and no new toggle. <code>BACKING_UP</code> is a progress phase, not a
+notification-worthy milestone.</p>
+<h2 id="watchdog">Watchdog</h2>
+<p><code>_phase_timeout</code> gains a <code>BACKING_UP</code> entry. The timeout is stall-based (no
+growth in the destination directory), not wall-clock: a scratched disc backs up
+slowly by design, and that is precisely the disc this feature exists for. The
+existing <code>_stall_watchdog</code> machinery in <code>Extractor</code> provides this; the config
+knob mirrors the ripping phase timeout.</p>
+<h2 id="websocket-contract">WebSocket contract</h2>
+<p>New server-to-client message:</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Data fields</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backup_progress</code></td>
+<td><code>{"job_id": int, "current_bytes": int, "total_bytes": int, "speed": str, "eta": int}</code></td>
+<td>Backup copy progress</td>
+</tr>
+</tbody>
+</table>
+<p>A distinct type rather than overloading <code>rip_progress</code>, because a client that
+renders "ripping" from a <code>rip_progress</code> message would be reporting a phase that
+produces no MKV. Parameter names must match exactly across <code>EventBroadcaster</code>,
+<code>ConnectionManager</code> and the message, per the documented WebSocket contract
+validation rule; integration tests assert the chain end to end.</p>
+<h2 id="import-from-backup">Import from backup</h2>
+<p>Surfaced through the existing manual-import modal with automatic detection, so
+there is one entry point and pointing at a backups root queues every disc under
+it.</p>
+<ul>
+<li><code>GET /api/import/browse</code> labels a directory containing <code>BDMV/</code> or <code>VIDEO_TS/</code>
+  as <code>type: "disc_image"</code>, and lists <code>.iso</code> files as <code>type: "iso"</code>, alongside
+  today's <code>dir</code> and <code>mkv</code> entries.</li>
+<li><code>POST /api/import/preview</code> returns disc-image units next to MKV units, with
+  total bytes.</li>
+<li><code>POST /api/import/start</code> creates one job per disc image, with
+  <code>drive_id="import"</code> and <code>source_spec</code> set to <code>file:&lt;path&gt;</code> or <code>iso:&lt;path&gt;</code>.</li>
+</ul>
+<p>Such a job enters <code>IDENTIFYING</code> (scan the image, compute the content hash, run
+TMDB and DiscDB lookup) and then goes straight to <code>RIPPING</code>. It never enters
+<code>BACKING_UP</code>: it already is a backup. Extraction writes to staging and the rest
+of the pipeline is unchanged.</p>
+<p>The content hash is the MD5 of the Int64 file sizes of <code>BDMV/STREAM/*.m2ts</code>
+sorted by filename, which is computable directly from a backup folder without
+MakeMKV, so DiscDB lookup works at least as well for an imported backup as for a
+physical disc.</p>
+<p>Import ownership rules are unchanged: <code>import_guard.classify_staging_path</code>
+treats the image path like any other staging path, so an in-flight job hard
+blocks and a completed one soft blocks with <code>force_keys</code> as the override.</p>
+<h2 id="frontend">Frontend</h2>
+<ul>
+<li><code>ConfigWizard</code>: a "Back up disc before ripping" toggle and a <code>backup_path</code>
+  picker in the paths section, with the same validation treatment as the library
+  roots.</li>
+<li><code>StateIndicator</code> and <code>DiscCard</code>: a <code>BACKING_UP</code> phase labelled "Backing up",
+  reusing <code>CyberpunkProgressBar</code> driven by <code>backup_progress</code>, showing GB copied,
+  speed and ETA.</li>
+<li><code>DiscCard</code> and <code>HistoryPage</code> detail panel: a note when <code>backup_status</code> starts
+  with <code>skipped:</code> or <code>failed:</code>, naming the reason, and the backup path when the
+  backup succeeded.</li>
+<li><code>ImportModal</code>: disc-image and ISO entries with a distinct icon, and a
+  preview line that says these will be scanned and extracted rather than filed.</li>
+</ul>
+<h2 id="diagnostics">Diagnostics</h2>
+<p>The backup <code>makemkvcon</code> log is written through <code>_save_makemkv_log</code> next to the
+scan and rip logs, and is picked up by the per-job diagnostics bundle
+(<code>GET /api/diagnostics/report/{job_id}/bundle</code>) with the same sanitization as
+the other MakeMKV logs. <code>backup_status</code>, <code>backup_path</code> and <code>source_spec</code> appear
+in the job-detail JSON via <code>build_job_detail</code>.</p>
+<h2 id="testing">Testing</h2>
+<p><strong>Unit</strong></p>
+<ul>
+<li><code>disc_source</code>: parse round-trips for all four spec forms, <code>lock_key</code>
+  separation between physical and file sources, <code>from_job</code> legacy fallback when
+  <code>source_spec</code> is <code>None</code>.</li>
+<li>Backup destination naming: movie, TV with and without a DiscDB disc slug,
+  unidentified fallback, name sanitization, existing-non-empty-destination
+  short-circuit.</li>
+<li>Free-space preflight: sufficient, insufficient, unreadable destination.</li>
+<li>Title reconciliation: identical enumeration, reordered enumeration resolved by
+  <code>source_filename</code> and <code>segment_map</code>, ambiguous enumeration routing to
+  <code>REVIEW_NEEDED</code>.</li>
+<li><code>_build_backup_command</code> argv construction.</li>
+<li><code>import_scanner</code>: BDMV folder, VIDEO_TS folder, bare <code>.iso</code>, disc image nested
+  under a show folder, a tree mixing disc images and loose MKVs, and the
+  short-circuit that keeps <code>.m2ts</code> files out of the <code>_MAX_FILES</code> budget.</li>
+</ul>
+<p><strong>State machine</strong></p>
+<ul>
+<li>The three new transitions are valid, and the ones deliberately absent (for
+  example <code>BACKING_UP -&gt; MATCHING</code>) are rejected.</li>
+</ul>
+<p><strong>Integration</strong></p>
+<ul>
+<li><code>POST /api/simulate/insert-disc</code> gains <code>simulate_backup: true</code>, and
+  <code>SimulationService</code> fakes a <code>BACKING_UP</code> phase with synthetic progress so the
+  full flow is exercisable without 40 GB. Follows the existing pattern of
+  simulation living entirely in <code>SimulationService</code> and gated on DEBUG.</li>
+<li>WebSocket contract test for <code>backup_progress</code> across <code>EventBroadcaster</code> and
+  <code>ConnectionManager</code>.</li>
+<li>Import-from-backup job creation, including the guard's in-flight and
+  already-imported tiers.</li>
+</ul>
+<p><strong>E2E</strong></p>
+<ul>
+<li>A simulated disc shows Backing up, then Ripping, on the card.</li>
+<li>The import modal lists a fixture backup folder (empty <code>BDMV/STREAM/</code>
+  directories, no media needed) as a disc image and starts a job from it.</li>
+</ul>
+<p><strong>Manual verification, one backend only, real discs</strong></p>
+<ul>
+<li>A Blu-ray with the setting on: backup lands in the right folder, disc ejects
+  after the backup, extraction reads from the backup.</li>
+<li>A DVD with the setting on: see the open question below.</li>
+<li>An existing backup folder and an ISO imported through the modal.</li>
+</ul>
+<h2 id="open-questions-resolved">Open questions: resolved</h2>
+<p>Both were answered on real hardware (MakeMKV 1.18.3, Pioneer BDR-S13U,
+<code>ARRESTED_Development_S1D2</code>, a DVD) before merge.</p>
+<ol>
+<li><strong>Does <code>makemkvcon backup</code> accept DVDs?</strong> <strong>Yes.</strong> The backup ran in
+   LibreDrive mode and copied 448 MB before being stopped deliberately. The
+   <code>skipped:unsupported_disc</code> path stays as defensive degradation rather than
+   the expected outcome for a DVD.</li>
+<li><strong>Does it emit <code>PRGV</code> progress lines in robot mode?</strong> <strong>Yes</strong>, 5,872 of them
+   during the copy. The run also settles the field semantics directly: during
+   device scanning it emitted <code>PRGV:65536,0,65536</code>, where the two values
+   diverge completely (current operation 100 percent, overall 0 percent). So
+   <code>current</code> is the per-operation bar and <code>total</code> is the overall one, and
+   reading <code>total / max</code> is correct. Reading <code>current</code> would run the user's
+   backup bar backwards once per sub-operation.</li>
+</ol>
+<h3 id="blu-ray-verification">Blu-ray verification</h3>
+<p>Re-run against a Blu-ray (<code>SOUTHPARK6_DISC2</code>), which exercises paths a DVD
+cannot: a DVD backup produces <code>VIDEO_TS</code>, a Blu-ray produces <code>BDMV/STREAM</code>,
+and two pieces of this feature key on the latter.</p>
+<ul>
+<li><code>is_disc_image_dir</code> detects a real MakeMKV <code>BDMV</code> tree, and <code>import_scanner</code>
+  emits it as one disc-image unit with zero MKV units. <code>total_files</code> came back
+  0, confirming the walk short-circuits at the image rather than pulling
+  thousands of stream files into the scanner's budget.</li>
+<li><strong>An imported backup gets the same ContentHash as the disc it came from</strong>,
+  which is what makes a TheDiscDB lookup work for an import. Verified rather
+  than assumed: of the stream files the interrupted backup had finished, 7 of 7
+  were byte-identical in size to the disc (the 8th was mid-write), and the hash
+  is an MD5 over those sizes in filename order, so a complete copy necessarily
+  hashes the same. <code>compute_content_hash("F:")</code> returned
+  <code>F1CBB868B97BA9965F3DF3FA0EB846A2</code>, matching an independent reimplementation
+  of the algorithm over the disc's own stream sizes.</li>
+</ul>
+<p><strong>A third thing surfaced that neither question anticipated, and it is the one
+with teeth.</strong> MakeMKV refuses a destination directory that already exists,
+<em>even an empty one</em>: <code>MSG:5068 "Folder ... already contains a backup, please
+choose another folder"</code>, then <code>Backup failed</code>.</p>
+<p>That turns a decision made on weak grounds into a load-bearing one. The design
+already moved a stale <code>.partial</code> aside before launching, justified only as
+"MakeMKV's behaviour on a non-empty target is unspecified". It is in fact
+specified and fatal: without that move, every retry of a failed backup would
+die instantly on 5068, which this code would have reported as a generic
+non-zero exit. It also means <code>backup_disc</code> must never pre-create its own
+<code>.partial</code> target, only <code>dest.parent</code>. Both hold in the implementation.</p>
+<h2 id="consequences">Consequences</h2>
+<ul>
+<li>The drive is free during extraction, which makes concurrent disc handling
+  possible for the first time. Not built here, but the design must not preclude
+  it: hence <code>lock_key</code> separation between physical and file sources.</li>
+<li>Disk pressure moves. A user with backups enabled needs room for the backup plus
+  staging plus the library. The free-space preflight covers the backup itself;
+  the existing staging cleanup is untouched and never looks at <code>backup_path</code>.</li>
+<li><code>backup_path</code> is deliberately absent from <code>is_within_configured_roots</code>. That
+  guard exists for the review-playback media endpoints, which serve MKVs from
+  the DB. Backups are never served over HTTP, so widening the guard would grant
+  reach without a consumer.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
