@@ -1,0 +1,53 @@
+[Unit]
+Description=Engram nightly subtitle-cache harvest and publish
+Documentation=https://github.com/Jsakkos/engram/blob/main/docs/development/subtitle-cache-server.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Written by the operator, mode 0600. Not in git: it carries the
+# OpenSubtitles password and the TMDB read token.
+EnvironmentFile=%h/.config/engram/subtitle-cache.env
+ExecStart=%h/engram/deploy/subtitle-cache/harvest.sh
+WorkingDirectory=%h/engram/backend
+# uv installs to ~/.local/bin, which a non-login systemd unit does not inherit.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# A full corpus sweep from cold takes many hours; the quota guard bounds the
+# download volume, not the wall clock. 10h is generous and still bounded.
+TimeoutStartSec=10h
+# Never let a nightly harvest starve interactive work on this box.
+Nice=10
+# best-effort/7 still yields to interactive and Docker I/O ahead of it in the
+# same class, but (unlike idle) guarantees this unit forward progress. Whether
+# idle priority is honoured at all depends on the active block-device I/O
+# scheduler: under mq-deadline or none (the common default for a virtio disk
+# in a Proxmox guest) idle is a silent no-op, and under bfq it IS honoured,
+# which can starve a job reading tens of thousands of small files and writing
+# a 300 MB tarball for hours to near-zero throughput whenever Docker I/O
+# competes, and TimeoutStartSec=10h eventually turns that into a kill that
+# looks like an ordinary failure rather than I/O starvation.
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# Exit 10 means the run published successfully but halted on the OpenSubtitles
+# quota guard, the normal nightly outcome with ENGRAM_MAX_DOWNLOADS well under
+# the account cap. Without this, a healthy quota-halted night shows as a
+# failed unit every morning and trains the operator to ignore real failures.
+SuccessExitStatus=10
+# Cheap hardening: the script only ever writes under $HOME (the checkout,
+# ~/.engram/cache, ~/.engram/harvest, ~/.config/gh), never to /usr, /etc, or
+# /boot.
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+# ProtectHome is deliberately NOT set here. It would break the job: harvest.sh
+# needs to read/write %h/engram (the checkout), %h/.engram/cache and
+# %h/.engram/harvest (both written by the harvest/pack scripts), and
+# %h/.config/gh (which `gh` may rewrite on token refresh). Do not add
+# ProtectHome as an obvious-looking hardening improvement.
+
+# Deliberately no [Install] section: this unit must never be enabled on its
+# own (systemctl --user enable engram-subtitle-cache.service would wire the
+# harvest to default.target, firing on every user-manager start rather than
+# once a day). The paired .timer unit carries the only [Install] section and
+# activates this service directly; enable only the timer.

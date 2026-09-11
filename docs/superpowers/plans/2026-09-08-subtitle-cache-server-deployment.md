@@ -1,0 +1,1411 @@
+# Subtitle Cache Server Deployment Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Move nightly subtitle-cache harvesting off the laptop and onto the Ubuntu server (`jsakkos@192.168.1.122`), running unattended on a systemd user timer that publishes a complete, never-shrinking cache to the rolling `subtitle-cache-latest` release.
+
+**Architecture:** Three repo-committed artifacts plus a server runbook. A Python `publish_guard.py` (unit-tested) refuses to publish a candidate cache that is materially smaller than the one already published. A `harvest.sh` wrapper sequences harvest → pack → guard → publish, branching on the build script's documented exit-code contract. A systemd user service + timer runs the wrapper daily with journald logging. The cutover moves the 1.7 GB SRT corpus and the coverage database to the server so it never re-harvests what the laptop already holds, then retires the laptop harvester because OpenSubtitles quota is per-account and only one machine may harvest.
+
+**Tech Stack:** Python 3.12 (server) / 3.11 (repo target), `uv`, bash, systemd user units, `gh` CLI, `rsync` over SSH, pytest.
+
+---
+
+## Background
+
+Full diagnosis and design: `docs/superpowers/specs/2026-08-31-subtitle-cache-expansion-design.md` (sections 3 and 4). Phase 1 (harvester repair) shipped in PRs #631, #635, #636 and the poisoned-coverage purge has been applied. This plan is Phase 3. Phase 2 (English-only curation) is independent and not required for this plan.
+
+### Server facts (probed 2026-09-08, do not re-derive)
+
+| Fact | Value |
+|---|---|
+| Host | `jsakkos@192.168.1.122`, hostname `pve-docker` |
+| SSH | Passwordless key auth works from the laptop (`BatchMode=yes` succeeds) |
+| Python | 3.12.3 at `/usr/bin/python3` |
+| `uv` | **Absent**; Task 5 installs it |
+| `gh` | `/usr/bin/gh`, authenticated as `Jsakkos`, scopes `gist, read:org, repo` (`repo` is sufficient for release uploads) |
+| `rsync`, `git` | Present |
+| Checkout | `~/engram` at `v0.8.1-1-g63a94a7`, remote `https://github.com/Jsakkos/engram.git` |
+| `~/.engram` | Exists; `~/.engram/cache` does **not** |
+| Disk | 348 GB free on `/` |
+| Timezone | `Etc/UTC` |
+| sudo | **Requires a password**, so every sudo step is a user step, not an agent step |
+| systemd | `systemctl --user` works; `Linger=no`, so timers will NOT fire while logged out until lingering is enabled (needs sudo) |
+
+### Current published cache (baseline for the shrink guard)
+
+`https://github.com/Jsakkos/engram/releases/tag/subtitle-cache-latest`, republished from the laptop corpus on 2026-09-08:
+
+- `cache_format_version` `3`, `content_version` `2026-09-08`
+- **479 shows / 37,799 episodes**, tarball 311,578,628 bytes
+- `vectorizer_config_hash` `889823bd399c70d9...`, unchanged from the previous publish
+
+It replaced a 2026-07-08 artifact of 467 shows / 36,742 episodes, as a strict superset: zero shows dropped, twelve added. The unit tests below use those older numbers as arithmetic fixtures; they are illustrative constants, not a live lookup, so leave them alone.
+
+Laptop corpus on disk: 642 show dirs, 37,867 SRT files (479 of those dirs hold enough parseable SRTs to reach the packed manifest).
+
+### The exit-code contract this plan depends on
+
+`backend/scripts/build_subtitle_cache.py` documents (module docstring, lines 17-33):
+
+- `0`: full corpus completed, tarball safe to publish
+- `1`: nothing usable produced
+- `2`: **halted on quota; the tarball is PARTIAL and must not be published**
+
+A wrapper that ignores exit 2 replaces the full published cache with a truncated one. This plan never publishes the build script's own tarball. It publishes a **separately packed** artifact from `pack_subtitle_cache.py`, which walks everything on disk and therefore is complete even on a night the harvest halted early. The exit code still gates whether the harvest is considered healthy and is reported in the summary.
+
+---
+
+## File Structure
+
+| File | Responsibility | Change |
+|---|---|---|
+| `backend/scripts/publish_guard.py` | Compare a candidate release manifest against the currently published one; exit non-zero on a material shrink | Create |
+| `backend/tests/unit/test_publish_guard.py` | Unit tests for the guard's pure comparison logic | Create |
+| `deploy/subtitle-cache/harvest.sh` | Nightly wrapper: harvest → pack → guard → publish, with journald-friendly logging | Create |
+| `deploy/subtitle-cache/engram-subtitle-cache.service` | systemd user service invoking the wrapper | Create |
+| `deploy/subtitle-cache/engram-subtitle-cache.timer` | systemd user timer, daily with `Persistent=true` | Create |
+| `deploy/subtitle-cache/engram-subtitle-cache.env.example` | Template for the `0600` secrets file the **user** fills in | Create |
+| `docs/development/subtitle-cache-server.md` | Operator runbook: install, cutover, monitoring, recovery | Create |
+| `docs/development/subtitle-cache.md` | Existing subtitle-cache doc | Modify: link the server runbook, mark the laptop cadence retired |
+| `CHANGELOG.md` | Release notes | Modify: `[Unreleased]` entry |
+
+---
+
+## Task 1: Publish guard, pure comparison logic
+
+**Files:**
+- Create: `backend/scripts/publish_guard.py`
+- Test: `backend/tests/unit/test_publish_guard.py`
+
+The guard exists because a single bad night must not be able to shrink the published cache for every Engram install. A regression that resolves zero shows still produces a *valid* tarball; only a size comparison catches it.
+
+- [ ] **Step 1: Add the module-loader fixture**
+
+`backend/scripts/` is not an importable package under pytest. Every standalone script in this repo is loaded in tests through a session-scoped fixture built on `_load_script_module` (see `contrib`, `nsc`, `msc`, `ppc`, `psc` in `backend/tests/unit/conftest.py`). Follow that convention rather than a bare `from scripts... import`.
+
+Add to `backend/tests/unit/conftest.py`, next to the other script fixtures:
+
+```python
+@pytest.fixture(scope="session")
+def pg():
+    """The publish_guard.py module, loaded once per pytest session."""
+    return _load_script_module("publish_guard")
+```
+
+- [ ] **Step 2: Write the failing tests**
+
+Create `backend/tests/unit/test_publish_guard.py`:
+
+```python
+"""Unit tests for the nightly publish shrink guard.
+
+The guard is pure arithmetic over two manifests, so these tests never touch the
+network, the real ~/.engram/cache, or the live release.
+"""
+
+import pytest
+
+
+def _manifest(shows: dict[str, dict]) -> dict:
+    return {
+        "cache_format_version": "3",
+        "content_version": "2026-09-08",
+        "shows": shows,
+    }
+
+
+def _show(name: str, counts: dict[str, int]) -> dict:
+    return {"tmdb_id": 1, "name": name, "seasons": [int(s) for s in counts], "episode_counts": counts}
+
+
+class TestManifestTotals:
+    def test_counts_shows_and_episodes(self, pg):
+        m = _manifest({"1": _show("A", {"1": 10, "2": 12}), "2": _show("B", {"1": 5})})
+        assert pg.manifest_totals(m) == (2, 27)
+
+    def test_empty_manifest_is_zero(self, pg):
+        assert pg.manifest_totals(_manifest({})) == (0, 0)
+
+    def test_missing_shows_key_is_zero(self, pg):
+        assert pg.manifest_totals({"cache_format_version": "3"}) == (0, 0)
+
+
+class TestVerdictForGrowth:
+    def test_growth_is_allowed(self, pg):
+        v = pg.verdict_for(candidate=(600, 37000), published=(467, 36742), tolerance=0.02)
+        assert v.allowed is True
+        assert v.verdict is pg.ShrinkVerdict.GROWTH
+
+    def test_identical_is_allowed(self, pg):
+        v = pg.verdict_for(candidate=(467, 36742), published=(467, 36742), tolerance=0.02)
+        assert v.allowed is True
+
+
+class TestVerdictForShrink:
+    def test_shrink_within_tolerance_is_allowed(self, pg):
+        # 36,742 * 0.98 = 36,007.16, so 36,100 is inside tolerance.
+        v = pg.verdict_for(candidate=(467, 36100), published=(467, 36742), tolerance=0.02)
+        assert v.allowed is True
+        assert v.verdict is pg.ShrinkVerdict.WITHIN_TOLERANCE
+
+    def test_shrink_beyond_tolerance_is_blocked(self, pg):
+        v = pg.verdict_for(candidate=(467, 30000), published=(467, 36742), tolerance=0.02)
+        assert v.allowed is False
+        assert v.verdict is pg.ShrinkVerdict.EPISODES_SHRANK
+        assert "30000" in v.reason and "36742" in v.reason
+
+    def test_show_count_drop_is_blocked_even_when_episodes_hold(self, pg):
+        # A resolution regression can collapse many shows into few while the
+        # episode total barely moves. Shows are guarded independently.
+        v = pg.verdict_for(candidate=(300, 36700), published=(467, 36742), tolerance=0.02)
+        assert v.allowed is False
+        assert v.verdict is pg.ShrinkVerdict.SHOWS_SHRANK
+
+
+class TestVerdictForNoBaseline:
+    def test_no_published_baseline_is_allowed(self, pg):
+        # First publish ever, or a release with no manifest asset yet.
+        v = pg.verdict_for(candidate=(467, 36742), published=None, tolerance=0.02)
+        assert v.allowed is True
+        assert v.verdict is pg.ShrinkVerdict.NO_BASELINE
+
+    def test_empty_candidate_is_always_blocked(self, pg):
+        v = pg.verdict_for(candidate=(0, 0), published=None, tolerance=0.02)
+        assert v.allowed is False
+        assert v.verdict is pg.ShrinkVerdict.EMPTY_CANDIDATE
+
+
+class TestTolerance:
+    @pytest.mark.parametrize("tolerance", [-0.01, 1.01])
+    def test_out_of_range_tolerance_rejected(self, pg, tolerance):
+        with pytest.raises(ValueError):
+            pg.verdict_for(candidate=(1, 1), published=(1, 1), tolerance=tolerance)
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run from `backend/`:
+
+```bash
+uv run pytest tests/unit/test_publish_guard.py -v
+```
+
+Expected: collection error, `ModuleNotFoundError: No module named 'scripts.publish_guard'`.
+
+- [ ] **Step 4: Implement the guard**
+
+Create `backend/scripts/publish_guard.py`:
+
+```python
+"""Refuse to publish a subtitle cache that is materially smaller than the live one.
+
+The nightly harvest publishes unattended. A regression that resolves zero shows,
+or a corpus directory that failed to mount, still produces a structurally VALID
+tarball -- verification passes, the manifest is well-formed, the upload succeeds,
+and every Engram install silently downgrades to a smaller cache. Only a size
+comparison against what is already published catches that class of failure.
+
+Shows and episodes are guarded independently because they fail independently: a
+TMDB-resolution regression collapses the show count while barely moving the
+episode total, and a truncated harvest does the reverse.
+
+Usage (from backend/):
+    uv run python scripts/publish_guard.py --candidate manifest.json
+    uv run python scripts/publish_guard.py --candidate manifest.json --allow-shrink
+
+Exit codes:
+    0  Publishing is allowed.
+    1  Publishing is blocked (shrink beyond tolerance, or an empty candidate).
+    2  The guard could not decide (unreadable candidate manifest).
+"""
+
+import argparse
+import enum
+import json
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
+DEFAULT_TAG = "subtitle-cache-latest"
+DEFAULT_TOLERANCE = 0.02
+
+
+class ShrinkVerdict(enum.Enum):
+    """Why the guard reached its decision. Values are log-facing strings."""
+
+    GROWTH = "growth"
+    WITHIN_TOLERANCE = "within-tolerance"
+    EPISODES_SHRANK = "episodes-shrank"
+    SHOWS_SHRANK = "shows-shrank"
+    NO_BASELINE = "no-baseline"
+    EMPTY_CANDIDATE = "empty-candidate"
+
+
+@dataclass(frozen=True)
+class GuardResult:
+    allowed: bool
+    verdict: ShrinkVerdict
+    reason: str
+
+
+def manifest_totals(manifest: dict) -> tuple[int, int]:
+    """Return ``(show_count, episode_count)`` for a release manifest."""
+    shows = manifest.get("shows") or {}
+    episodes = 0
+    for entry in shows.values():
+        episodes += sum((entry.get("episode_counts") or {}).values())
+    return len(shows), episodes
+
+
+def verdict_for(
+    candidate: tuple[int, int],
+    published: tuple[int, int] | None,
+    tolerance: float = DEFAULT_TOLERANCE,
+) -> GuardResult:
+    """Decide whether ``candidate`` may replace ``published``.
+
+    ``tolerance`` is the fraction a count may fall by and still be accepted; a
+    provider dropping a handful of episodes between runs is normal churn, a 20%
+    collapse is a defect.
+    """
+    if not 0.0 <= tolerance <= 1.0:
+        raise ValueError(f"tolerance must be in [0, 1], got {tolerance}")
+
+    cand_shows, cand_eps = candidate
+    if cand_shows == 0 or cand_eps == 0:
+        return GuardResult(
+            allowed=False,
+            verdict=ShrinkVerdict.EMPTY_CANDIDATE,
+            reason=f"candidate is empty ({cand_shows} shows, {cand_eps} episodes)",
+        )
+
+    if published is None:
+        return GuardResult(
+            allowed=True,
+            verdict=ShrinkVerdict.NO_BASELINE,
+            reason=(
+                f"no published baseline to compare against; allowing "
+                f"{cand_shows} shows / {cand_eps} episodes"
+            ),
+        )
+
+    pub_shows, pub_eps = published
+    floor_shows = pub_shows * (1.0 - tolerance)
+    floor_eps = pub_eps * (1.0 - tolerance)
+
+    if cand_shows < floor_shows:
+        return GuardResult(
+            allowed=False,
+            verdict=ShrinkVerdict.SHOWS_SHRANK,
+            reason=(
+                f"show count fell from {pub_shows} to {cand_shows}, below the "
+                f"{tolerance:.0%} tolerance floor of {floor_shows:.0f}"
+            ),
+        )
+    if cand_eps < floor_eps:
+        return GuardResult(
+            allowed=False,
+            verdict=ShrinkVerdict.EPISODES_SHRANK,
+            reason=(
+                f"episode count fell from {pub_eps} to {cand_eps}, below the "
+                f"{tolerance:.0%} tolerance floor of {floor_eps:.0f}"
+            ),
+        )
+
+    if cand_shows >= pub_shows and cand_eps >= pub_eps:
+        return GuardResult(
+            allowed=True,
+            verdict=ShrinkVerdict.GROWTH,
+            reason=(
+                f"{pub_shows} -> {cand_shows} shows, {pub_eps} -> {cand_eps} episodes"
+            ),
+        )
+    return GuardResult(
+        allowed=True,
+        verdict=ShrinkVerdict.WITHIN_TOLERANCE,
+        reason=(
+            f"{pub_shows} -> {cand_shows} shows, {pub_eps} -> {cand_eps} episodes "
+            f"(inside the {tolerance:.0%} tolerance)"
+        ),
+    )
+
+
+def fetch_published_totals(tag: str) -> tuple[int, int] | None:
+    """Download the live release manifest and total it. ``None`` if unavailable.
+
+    A missing or unreadable published manifest is NOT an error: the very first
+    publish has no baseline. Only the candidate side is required to be readable.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            subprocess.run(
+                ["gh", "release", "download", tag, "--pattern", "manifest.json", "--dir", tmp],
+                check=True,
+                capture_output=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return None
+        path = Path(tmp) / "manifest.json"
+        if not path.is_file():
+            return None
+        try:
+            return manifest_totals(json.loads(path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Guard against publishing a shrunken cache")
+    parser.add_argument("--candidate", required=True, help="Path to the candidate manifest.json")
+    parser.add_argument("--cache-tag", default=DEFAULT_TAG, help="Release tag to compare against")
+    parser.add_argument(
+        "--tolerance",
+        type=float,
+        default=DEFAULT_TOLERANCE,
+        help=f"Fraction a count may fall and still publish (default: {DEFAULT_TOLERANCE})",
+    )
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="Report the comparison but always exit 0 (deliberate corpus pruning)",
+    )
+    args = parser.parse_args()
+
+    try:
+        candidate = manifest_totals(json.loads(Path(args.candidate).read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"publish-guard: cannot read candidate manifest {args.candidate}: {exc}")
+        return 2
+
+    published = fetch_published_totals(args.cache_tag)
+    result = verdict_for(candidate, published, args.tolerance)
+    print(f"publish-guard: {result.verdict.value}: {result.reason}")
+
+    if result.allowed:
+        return 0
+    if args.allow_shrink:
+        print("publish-guard: --allow-shrink set; publishing anyway")
+        return 0
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run from `backend/`:
+
+```bash
+uv run pytest tests/unit/test_publish_guard.py -v
+```
+
+Expected: 12 passed.
+
+If every test errors with `fixture 'pg' not found`, the conftest fixture from Step 1 was not saved. If the fixture loads but `pg.verdict_for` raises `AttributeError`, the script has a syntax error that `_load_script_module` swallowed into a partially-initialised module; run `uv run python scripts/publish_guard.py --help` to see the real traceback.
+
+- [ ] **Step 6: Verify the CLI runs against the real published manifest**
+
+Run from `backend/` (network access to GitHub required, no quota cost):
+
+```bash
+gh release download subtitle-cache-latest --pattern manifest.json --dir /tmp/pg-check
+uv run python scripts/publish_guard.py --candidate /tmp/pg-check/manifest.json
+```
+
+Expected: `publish-guard: growth: 479 -> 479 shows, 37799 -> 37799 episodes` and exit 0 (the live manifest compared against itself is trivially allowed). Confirm with `echo $?`. If the counts differ from 479/37,799 the release has been republished since this plan was written; that is fine, both sides of the comparison come from the same file, so only the verdict word `growth` and the exit code matter.
+
+- [ ] **Step 7: Lint and format**
+
+Run from `backend/`:
+
+```bash
+uv run ruff format scripts/publish_guard.py tests/unit/test_publish_guard.py
+uv run ruff check scripts/publish_guard.py tests/unit/test_publish_guard.py
+```
+
+Expected: `All checks passed!`
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add backend/scripts/publish_guard.py backend/tests/unit/test_publish_guard.py backend/tests/unit/conftest.py
+git commit -m "feat(subtitle-cache): guard the rolling release against a shrinking cache"
+```
+
+### Amendments after code review
+
+The code blocks above are the original spec. Code review found several ways the
+guard could fail OPEN (allow a publish it should have blocked), which for an
+unattended 02:00 job is far more expensive than failing closed. The shipped
+guard therefore differs as follows:
+
+- **Fail-open baseline.** `manifest_totals` used to coerce a damaged published
+  manifest (`"shows": null`, or a list) into `(0, 0)`, which is not `None`, so
+  every tolerance floor became `0.0` and any shrink was waved through while the
+  log cheerfully printed `growth`. A published baseline totalling zero shows or
+  zero episodes is now its own verdict, `BASELINE_UNUSABLE`, and blocks.
+- **`gh` failure classification.** `fetch_published_totals` collapsed four
+  outcomes into `None`: genuinely no manifest (allow), `gh` missing, `gh`
+  unauthenticated, and network/GitHub failure (allowing is wrong). It now
+  returns a typed `BaselineOutcome` with a `BaselineStatus` of `RETRIEVED`,
+  `ABSENT` (allow, first publish) or `UNAVAILABLE` (undecidable). Classification
+  reads the captured `gh` stderr, which is now echoed on the failure path so the
+  02:00 log carries evidence.
+- **Exit 2 for undecidable.** An unreadable baseline, a structurally malformed
+  manifest (well-formed JSON, wrong shape, now a dedicated `ManifestError`
+  rather than a stray `AttributeError`), and any unexpected exception all exit 2
+  instead of tracebacking out as exit 1. `main` wraps `_run` so nothing escapes.
+- **Timeout.** The `gh` subprocess call takes `timeout=60`; a stalled TCP
+  connection used to hang the pipeline forever. `TimeoutExpired` folds into
+  `UNAVAILABLE`, never into allow.
+- **`--allow-shrink` gating.** The flag is for deliberate corpus pruning, which
+  never yields an empty cache. It can no longer override `EMPTY_CANDIDATE` or
+  `BASELINE_UNUSABLE`, and its help text says so.
+- **Tolerance validation.** `--tolerance` is validated by an argparse `type=`
+  callable, so an out-of-range value is a usage error rather than a `ValueError`
+  traceback. `verdict_for` keeps its own `ValueError` as the library contract.
+- **Log honesty.** Floors print as `.1f` (a floor of 457.66 no longer renders as
+  "458") and the tolerance as `2.0%` rather than rounding 2.5% down to 2%.
+
+**Task 2 impact: the guard can now exit 2.** The wrapper must treat ANY non-zero
+exit as "do not publish", not just exit 1. Exit 1 means "deliberately blocked",
+exit 2 means "the guard could not decide"; both must stop the upload, and the
+two are worth distinguishing in the alert text.
+
+**Second round.** A reviewer found two more fail-open paths, both proven by
+execution, plus three smaller gaps:
+
+- **Generic `"not found"` marker.** `_ABSENT_MARKERS` included a bare
+  `"not found"`, which also matches `gh`'s generic 404 text for expired or
+  under-scoped auth (`HTTP 404: Not Found (https://api.github.com/repos/...)`,
+  `gh: Not Found (HTTP 404)`) as well as a genuinely missing release. A broken
+  credential was therefore classified `ABSENT` and the guard exited 0 with no
+  size comparison at all. Dropped the generic marker; the two specific ones
+  (`"release not found"`, `"no assets match"`) already cover the real
+  first-publish cases.
+- **Baseline read from the wrong repo.** `gh release download` had no
+  `--repo`, so it resolved the repo from the cwd's git remote, while the
+  wrapper's `gh release upload` targets `--repo Jsakkos/engram` explicitly. On
+  a fork or a re-pointed remote the guard could compare against a different
+  release, or find none and allow. Added a `--repo` CLI option (module
+  constant `DEFAULT_REPO = "Jsakkos/engram"`), threaded through
+  `fetch_published_totals` into the `gh` invocation; its help text says it
+  must match the wrapper's upload target.
+- **Missing `shows` key miscategorized.** A manifest with no `shows` key at
+  all totalled `(0, 0)`, which reads downstream as a deliberate
+  `EMPTY_CANDIDATE` block (exit 1) rather than the structurally broken input
+  it actually is. `manifest_totals` now raises `ManifestError` for a missing
+  key while `{"shows": {}}` still validly totals `(0, 0)`.
+- **`--tolerance 1.0` disabled the guard.** A tolerance of 1.0 zeros every
+  floor and allows any shrink while still exiting 0. The CLI's `_tolerance_arg`
+  now caps at 0.5; `verdict_for`'s own `[0, 1]` contract is unchanged since
+  that is the library-level invariant, not the unattended-CLI one.
+- **Test gap on the `CalledProcessError` path.** Only `classify_gh_failure`
+  was exercised in isolation; nothing drove `fetch_published_totals` through a
+  stubbed `subprocess.run` raising `CalledProcessError`. Added an end-to-end
+  test for that branch with an `HTTP 404: Not Found` stderr, which alone would
+  have caught the `_ABSENT_MARKERS` regression above.
+
+---
+
+## Task 2: The nightly wrapper script
+
+**Files:**
+- Create: `deploy/subtitle-cache/harvest.sh`
+
+- [ ] **Step 1: Write the wrapper**
+
+Create `deploy/subtitle-cache/harvest.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Nightly subtitle-cache harvest for the Engram server deployment.
+#
+# Sequence: harvest -> pack from disk -> shrink guard -> publish.
+#
+# WHY PACK SEPARATELY INSTEAD OF PUBLISHING THE BUILD SCRIPT'S TARBALL:
+# build_subtitle_cache.py exits 2 when the OpenSubtitles budget guard halts it
+# partway, and its tarball then holds ONLY the shows completed before the halt.
+# Publishing that would truncate the live cache after a single quota-capped
+# night. pack_subtitle_cache.py instead walks everything already on disk and
+# downloads nothing, so its artifact is complete on every night -- including
+# nights the harvest halted early. The harvest exit code is still reported and
+# still decides whether the run is called healthy.
+#
+# Environment (supplied by the systemd EnvironmentFile, see the runbook):
+#   TMDB_API_KEY, OPENSUBTITLES_API_KEY, OPENSUBTITLES_USERNAME,
+#   OPENSUBTITLES_PASSWORD
+# Optional overrides:
+#   ENGRAM_REPO        default: $HOME/engram
+#   ENGRAM_SHOW_LIST   default: <repo>/backend/scripts/curated_shows.csv
+#   ENGRAM_MAX_DOWNLOADS default: 900
+#   ENGRAM_CACHE_TAG   default: subtitle-cache-latest
+#   ENGRAM_WORK_DIR    default: $HOME/.engram/harvest
+set -o errexit
+set -o nounset
+set -o pipefail
+
+REPO="${ENGRAM_REPO:-$HOME/engram}"
+BACKEND="$REPO/backend"
+SHOW_LIST="${ENGRAM_SHOW_LIST:-$BACKEND/scripts/curated_shows.csv}"
+MAX_DOWNLOADS="${ENGRAM_MAX_DOWNLOADS:-900}"
+CACHE_TAG="${ENGRAM_CACHE_TAG:-subtitle-cache-latest}"
+WORK_DIR="${ENGRAM_WORK_DIR:-$HOME/.engram/harvest}"
+TARBALL="$WORK_DIR/engram-subtitle-cache.tar.gz"
+MANIFEST="$WORK_DIR/manifest.json"
+
+log() { printf '%s harvest: %s\n' "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+for var in TMDB_API_KEY OPENSUBTITLES_API_KEY OPENSUBTITLES_USERNAME OPENSUBTITLES_PASSWORD; do
+  if [ -z "${!var:-}" ]; then
+    log "FATAL: $var is not set; check the EnvironmentFile"
+    exit 1
+  fi
+done
+
+if [ ! -d "$BACKEND" ]; then
+  log "FATAL: backend dir not found at $BACKEND"
+  exit 1
+fi
+
+mkdir -p "$WORK_DIR"
+cd "$BACKEND"
+
+# --- 1. Harvest -----------------------------------------------------------
+# errexit is disabled around this call ONLY: exit 2 is an expected, non-fatal
+# outcome (quota halt) and must not abort the run before packing.
+log "starting harvest (max-downloads=$MAX_DOWNLOADS, show-list=$SHOW_LIST)"
+set +o errexit
+uv run python scripts/build_subtitle_cache.py \
+  --show-list "$SHOW_LIST" \
+  --max-downloads "$MAX_DOWNLOADS"
+harvest_rc=$?
+set -o errexit
+
+case "$harvest_rc" in
+  0) log "harvest completed the full corpus" ;;
+  2) log "harvest halted on quota (exit 2); packing what is on disk anyway" ;;
+  *)
+    log "FATAL: harvest failed with exit $harvest_rc; not packing or publishing"
+    exit "$harvest_rc"
+    ;;
+esac
+
+# --- 2. Pack from disk ----------------------------------------------------
+log "packing cache from disk"
+uv run python scripts/pack_subtitle_cache.py --output "$TARBALL"
+
+if [ ! -f "$TARBALL" ] || [ ! -f "$MANIFEST" ]; then
+  log "FATAL: pack did not produce $TARBALL and $MANIFEST"
+  exit 1
+fi
+
+# --- 3. Shrink guard ------------------------------------------------------
+log "checking the candidate against the published cache"
+if ! uv run python scripts/publish_guard.py --candidate "$MANIFEST" --cache-tag "$CACHE_TAG"; then
+  log "FATAL: publish guard blocked the upload; the live release is unchanged"
+  exit 1
+fi
+
+# --- 4. Publish -----------------------------------------------------------
+log "publishing to release $CACHE_TAG"
+gh release upload "$CACHE_TAG" "$TARBALL" "$MANIFEST" --clobber --repo Jsakkos/engram
+log "published $(stat -c %s "$TARBALL") bytes; harvest exit was $harvest_rc"
+
+# A quota halt is reported as a non-zero run so `systemctl --user status` shows
+# it, even though the publish succeeded. The next night resumes from disk.
+exit "$harvest_rc"
+```
+
+- [ ] **Step 2: Mark it executable in git**
+
+Windows `chmod` does not set the git mode bit; set it explicitly or the server refuses to run it.
+
+```bash
+git add deploy/subtitle-cache/harvest.sh
+git update-index --chmod=+x deploy/subtitle-cache/harvest.sh
+git ls-files -s deploy/subtitle-cache/harvest.sh
+```
+
+Expected: the mode column reads `100755`, not `100644`.
+
+- [ ] **Step 3: Shellcheck it**
+
+There is no shellcheck binary or CI gate in this repo; run it through `uvx`:
+
+```bash
+uvx --from shellcheck-py shellcheck deploy/subtitle-cache/harvest.sh
+```
+
+Expected: no output (clean). `${!var}` indirect expansion is bash-specific and the shebang is `bash`, so SC2154-style warnings should not appear; fix anything that does.
+
+- [ ] **Step 4: Syntax-check without executing**
+
+```bash
+bash -n deploy/subtitle-cache/harvest.sh
+```
+
+Expected: no output.
+
+- [ ] **Step 5: Verify the missing-credential guard fires**
+
+```bash
+env -u TMDB_API_KEY OPENSUBTITLES_API_KEY=x OPENSUBTITLES_USERNAME=x OPENSUBTITLES_PASSWORD=x \
+  bash deploy/subtitle-cache/harvest.sh; echo "exit=$?"
+```
+
+Expected: `FATAL: TMDB_API_KEY is not set; check the EnvironmentFile` and `exit=1`. Nothing is harvested, packed, or published.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add deploy/subtitle-cache/harvest.sh
+git commit -m "feat(subtitle-cache): nightly harvest wrapper for the server deployment"
+```
+
+### Amendments after code review
+
+The code block above is the original spec. Code review found two ways the
+wrapper could corrupt the live release or fail silently, plus a set of
+smaller gaps. The shipped script differs as follows:
+
+- **The upload is retried and then verified.** `gh release upload --clobber`
+  DELETES the conflicting asset before uploading its replacement, so a network
+  blip, a token expiry, or an OOM kill between the two asset uploads leaves the
+  release either with no tarball at all (every install's download 404s) or with
+  a fresh tarball beside the previous night's `manifest.json`, whose
+  `tarball_sha256` no longer matches. The client compares those and silently
+  discards the download, so installs quietly stop updating with only a
+  debug-level client log. The call now runs up to `ENGRAM_UPLOAD_ATTEMPTS`
+  (default 3) times with a linear backoff, under the same
+  `set +o errexit` / capture / restore pattern as the harvest and guard calls,
+  and a final failure logs the inconsistency risk and the two paths to
+  re-upload by hand. A successful upload is followed by
+  `gh release view --json assets`, which must find BOTH asset names; their
+  sizes are logged. A failed verification is fatal with the same wording.
+- **A single-instance lock.** `Type=oneshot` only dedupes the unit against
+  itself; it does not stop a manual run (the documented debugging path) landing
+  on top of the timer's run, and both share `$WORK_DIR`. One run streaming
+  `$TARBALL` to `gh` while the other's packer rewrites that same path publishes
+  a torn tarball beside a manifest describing a different build, with both runs
+  reporting success, and both race the same metered quota. The script now takes
+  an exclusive non-blocking `flock` on `$WORK_DIR/.harvest.lock` (fd 9)
+  immediately after the work dir is created, and exits non-zero with
+  "another harvest is already running (lock held)" if it cannot.
+- **An `ERR` trap.** Every `errexit` abort used to die with bare shell noise
+  and no `harvest:` marker, so the operator's `journalctl | grep harvest:`
+  showed a start banner and then nothing. The trap logs
+  "FATAL: unexpected failure at line N". It is torn down and re-armed INLINE
+  around each deliberately-uncaptured call: bash saves and restores the ERR
+  trap around a function call (errtrace is off), so a `trap - ERR` issued from
+  inside a helper function is undone the instant the helper returns, which was
+  proven by driving the script under stubs.
+- **Distinct exit codes.** Exit 2 used to mean all of "quota halt WITH a
+  successful publish", "guard undecidable with NO publish", and "guard usage
+  error". With `ENGRAM_MAX_DOWNLOADS=900` against a 1000/day account the quota
+  halt is the NORMAL nightly result, so the unit would have sat in `failed`
+  almost every morning, training the operator to ignore failures and inviting a
+  manual re-run that burns the remaining quota and races the still-running job.
+  Now: `0` published and full corpus, `10` published but quota-halted (healthy),
+  `20` guard blocked, `21` guard undecidable, `1` everything else, `143`
+  SIGTERM. The table is documented in the script header, and exit 10 is
+  preceded by an unmissable "UPLOAD SUCCEEDED, do not re-run today" line.
+- **Task 3 impact: the service unit MUST carry `SuccessExitStatus=10`.** Task 3
+  has not been implemented yet, and without that line a healthy quota-halted
+  night is reported as a failed unit.
+- **The freshness check tests what it claims.** `$WORK_DIR` is never cleaned,
+  so the `-f "$TARBALL"` / `-f "$MANIFEST"` check was satisfied by the previous
+  night's leftovers and could not distinguish "the pack wrote nothing" from
+  "yesterday's files are still here". `rm -f "$TARBALL" "$MANIFEST"` now runs
+  immediately before the pack call.
+- **Toolchain preflight.** The credential loop checked the four API keys but
+  not the publishing tools, so a missing or unauthenticated `gh` cost a full
+  metered harvest before anything noticed. `uv`, `gh`, `flock`,
+  `gh auth status --hostname github.com`, and the existence of `$SHOW_LIST` are
+  each checked up front, every failure a specific FATAL with exit 1.
+- **Disk-space preflight.** Free space on `$WORK_DIR`'s filesystem must be at
+  least `ENGRAM_MIN_FREE_KB` (default 1 GiB, roughly twice the ~300 MB
+  artifact). A full disk used to surface as a Python `tarfile` traceback after
+  the quota was already spent.
+- **`$WORK_DIR` is resolved once with `realpath`** after `mkdir -p`, so the
+  shell's `$MANIFEST` (a literal sibling of `$TARBALL`) cannot diverge from the
+  packer's, which derives it from `Path(args.output).resolve()`. Behind a
+  symlinked work dir they differed, and the mismatch surfaced as a FATAL only
+  after a full night of harvesting.
+- **`${HOME:?HOME must be set}`** on the two paths that default from `$HOME`,
+  so running under `env -i` fails with a clear message rather than a bare
+  `HOME: unbound variable` before `log()` is even reachable.
+- **A `TERM` trap.** At `TimeoutStartSec=10h` systemd kills the run, and the
+  journal's last line used to be the step 1 banner with no way to tell a kill
+  from a crash. The trap logs "terminated by signal; nothing was packed or
+  published" and exits 143.
+- **`--repo` on the guard call.** The wrapper passes `$GH_REPO`
+  (`ENGRAM_REPO_SLUG`, default `Jsakkos/engram`) to `publish_guard.py` so the
+  baseline is read from the same repo the tarball is uploaded to, per Task 1's
+  second-round amendment.
+
+**Third round.** A further review approved the script but left five more
+findings, all now fixed:
+
+- **`err_report` no longer propagates the failing child's exit code.** It used
+  to end with `exit "$1"`, so a tool that happened to exit 10 or 20 made the
+  whole script exit 10 or 20, which `SuccessExitStatus=10` then rendered as a
+  green unit even though nothing was published (demonstrated with
+  `STUB_PACK_RC=10`, which produced script exit 10 before the fix). The trap
+  now always exits 1, the header's promised code for "anything else"; the real
+  child code stays in the log line.
+- **Both traps now report a tracked publish state instead of asserting one
+  they don't know.** A new `PUBLISH_STATE` variable (`not-started` /
+  `in-progress` / `done`) is set to `in-progress` right before the first
+  upload attempt and `done` once post-upload verification succeeds. The `TERM`
+  trap and `err_report` both call a shared `publish_state_note` helper instead
+  of hardcoding "nothing was packed or published": a signal landing between an
+  upload attempt and its retry, after `--clobber` has already deleted the live
+  asset, now says the release may be missing an asset and names the two local
+  paths to re-upload by hand, matching the final upload FATAL's wording.
+- **Post-upload verification now compares sizes, not just names.** Asset names
+  are identical every night, so a leftover from a previous run was
+  indistinguishable from what the current run just uploaded. The verification
+  step already read the remote size into a variable and logged the local size
+  on the next line without ever comparing them; it now diffs each asset's
+  remote size against `stat -c %s` of the corresponding local file and treats
+  a mismatch as the same "release may now be INCONSISTENT" FATAL as an upload
+  failure.
+- **`ENGRAM_UPLOAD_ATTEMPTS` is validated as a positive integer** alongside the
+  other configuration, at the top of the script. `0` used to skip the upload
+  loop entirely and still report the inconsistency FATAL for a run that never
+  attempted anything; it now fails fast with a clear message instead.
+- **The disk-space check now fails closed on a non-numeric `free_kb`.**
+  `[ "$free_kb" -lt "$MIN_FREE_KB" ]` returns 2 (not true) on a non-numeric
+  operand, which `if` reads as "enough space" -- the empty-string guard above
+  it covered the common case but not a garbage `df` line. `free_kb` is now
+  required to match a digits-only pattern, with anything else treated as a
+  pre-flight failure.
+- A comment at the `flock` fd was also added noting that fd 9 is inherited by
+  children, so a future backgrounded helper that outlives the script would
+  hold the lock and wedge the next night's run, which `flock -n` cannot
+  detect.
+
+---
+
+## Task 3: systemd user units and the secrets template
+
+**Files:**
+- Create: `deploy/subtitle-cache/engram-subtitle-cache.service`
+- Create: `deploy/subtitle-cache/engram-subtitle-cache.timer`
+- Create: `deploy/subtitle-cache/engram-subtitle-cache.env.example`
+
+- [ ] **Step 1: Write the service unit**
+
+Create `deploy/subtitle-cache/engram-subtitle-cache.service`:
+
+```ini
+[Unit]
+Description=Engram nightly subtitle-cache harvest and publish
+Documentation=https://github.com/Jsakkos/engram/blob/main/docs/development/subtitle-cache-server.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Written by the operator, mode 0600. Not in git: it carries the
+# OpenSubtitles password and the TMDB read token.
+EnvironmentFile=%h/.config/engram/subtitle-cache.env
+ExecStart=%h/engram/deploy/subtitle-cache/harvest.sh
+WorkingDirectory=%h/engram/backend
+# uv installs to ~/.local/bin, which a non-login systemd unit does not inherit.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# A full corpus sweep from cold takes many hours; the quota guard bounds the
+# download volume, not the wall clock. 10h is generous and still bounded.
+TimeoutStartSec=10h
+# Never let a nightly harvest starve interactive work on this box.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target
+```
+
+- [ ] **Step 2: Write the timer unit**
+
+Create `deploy/subtitle-cache/engram-subtitle-cache.timer`:
+
+```ini
+[Unit]
+Description=Run the Engram subtitle-cache harvest daily
+Documentation=https://github.com/Jsakkos/engram/blob/main/docs/development/subtitle-cache-server.md
+
+[Timer]
+# The server runs on Etc/UTC. OpenSubtitles daily quota resets at 00:00 UTC,
+# so starting at 02:00 UTC gives the reset room and keeps a full day's budget
+# available to one run.
+OnCalendar=*-*-* 02:00:00
+# Catch up a run missed while the box was down, rather than skipping a day.
+Persistent=true
+# Stagger against any other 02:00 job on the host.
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target
+```
+
+- [ ] **Step 3: Write the secrets template**
+
+Create `deploy/subtitle-cache/engram-subtitle-cache.env.example`:
+
+```bash
+# Copy to ~/.config/engram/subtitle-cache.env on the harvest server and fill in.
+#
+#   install -d -m 700 ~/.config/engram
+#   install -m 600 /dev/null ~/.config/engram/subtitle-cache.env
+#   ${EDITOR:-nano} ~/.config/engram/subtitle-cache.env
+#
+# systemd EnvironmentFile syntax: KEY=value, no `export`, no shell quoting or
+# expansion. A value containing '#' or spaces is taken literally to end of line.
+#
+# This file is never committed and its contents are never pasted into a
+# terminal transcript, an issue, or a chat session.
+
+# TMDB v4 Read Access Token (the long eyJ... JWT, not the short v3 API key).
+TMDB_API_KEY=
+
+# OpenSubtitles.com API consumer key (identifies the app).
+OPENSUBTITLES_API_KEY=
+
+# OpenSubtitles.com VIP account login (carries the 1000/day download quota).
+OPENSUBTITLES_USERNAME=
+OPENSUBTITLES_PASSWORD=
+
+# Optional overrides read by harvest.sh:
+# ENGRAM_MAX_DOWNLOADS=900
+# ENGRAM_CACHE_TAG=subtitle-cache-latest
+```
+
+- [ ] **Step 4: Validate the unit files parse**
+
+`systemd-analyze verify` resolves `%h` and unit references, so run it on the server where the paths exist. From the laptop:
+
+```bash
+scp deploy/subtitle-cache/engram-subtitle-cache.service deploy/subtitle-cache/engram-subtitle-cache.timer jsakkos@192.168.1.122:/tmp/
+ssh jsakkos@192.168.1.122 'systemd-analyze --user verify /tmp/engram-subtitle-cache.service /tmp/engram-subtitle-cache.timer'
+```
+
+Expected: warnings about the missing `EnvironmentFile` and `ExecStart` path are acceptable at this stage (Task 5 and Task 6 create them). Any *syntax* error ("Unknown lvalue", "Failed to parse") must be fixed now.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add deploy/subtitle-cache/engram-subtitle-cache.service deploy/subtitle-cache/engram-subtitle-cache.timer deploy/subtitle-cache/engram-subtitle-cache.env.example
+git commit -m "feat(subtitle-cache): systemd user timer units for the harvest server"
+```
+
+### Amendments after code review
+
+Code review of the committed Task 3 files found six issues, fixed in a follow-up commit. The blocks above are left as originally written; this records what changed on disk:
+
+- Removed the `[Install]` section from `engram-subtitle-cache.service` entirely. Only the `.timer` carries `[Install] WantedBy=timers.target`; the service is started by the timer and must never be independently enabled. Added a comment in the service file recording this, since the natural copy-paste `systemctl --user enable engram-subtitle-cache.service engram-subtitle-cache.timer` would otherwise wire the harvest to `default.target` and fire on every user-manager start (every SSH login, with lingering off), spending a second full day's quota on top of the timer's own run.
+- Replaced `IOSchedulingClass=idle` with `IOSchedulingClass=best-effort` / `IOSchedulingPriority=7` in the service, with a comment explaining that `idle` is a silent no-op under `mq-deadline`/`none` (the likely scheduler for a virtio disk on this Proxmox guest) and can starve the job to near-zero throughput under `bfq`, eventually tripping `TimeoutStartSec=10h` in a way that looks like an ordinary failure.
+- Added a warning to `engram-subtitle-cache.env.example` about CRLF line endings and trailing whitespace: systemd's `EnvironmentFile` parser takes everything after `=` verbatim to end of line, so either silently corrupts a credential and produces an opaque 02:00 auth failure. The comment points at `cat -A` for diagnosis.
+- Added a comment in `engram-subtitle-cache.timer` documenting `Persistent=true`'s catch-up behavior: a missed run fires immediately on the box's return rather than waiting for the next `OnCalendar` slot, which is safe for the quota (one catch-up, not one per missed day) but can land a low-priority harvest in the middle of a working day.
+- Documented every `ENGRAM_*` override `harvest.sh` actually reads in the env template (previously only `ENGRAM_MAX_DOWNLOADS` and `ENGRAM_CACHE_TAG` were listed): `ENGRAM_REPO`, `ENGRAM_REPO_SLUG`, `ENGRAM_SHOW_LIST`, `ENGRAM_MAX_DOWNLOADS`, `ENGRAM_CACHE_TAG`, `ENGRAM_WORK_DIR`, `ENGRAM_MIN_FREE_KB`, `ENGRAM_UPLOAD_ATTEMPTS`, `ENGRAM_UPLOAD_BACKOFF`, each commented out with its real default read from the script.
+- Added `PrivateTmp=true`, `NoNewPrivileges=true`, `ProtectSystem=full` to the service (safe: the script only writes under `$HOME`). Deliberately did NOT add `ProtectHome`, and added a comment saying so: the job needs `%h/engram`, `%h/.engram/cache`, `%h/.engram/harvest`, and `%h/.config/gh`, all under `$HOME`, which `ProtectHome` would hide from it.
+
+**Important for Task 4:** the runbook must instruct the operator to enable **only the timer** — `systemctl --user enable --now engram-subtitle-cache.timer` — and never the service. The service no longer has an `[Install]` section, so `systemctl --user enable engram-subtitle-cache.service` is now both an error and, were it to succeed another way, a quota hazard as described above.
+
+---
+
+## Task 4: Operator runbook
+
+**Files:**
+- Create: `docs/development/subtitle-cache-server.md`
+- Modify: `docs/development/subtitle-cache.md`
+
+- [ ] **Step 1: Write the runbook**
+
+Create `docs/development/subtitle-cache-server.md`:
+
+````markdown
+# Subtitle cache: server deployment
+
+The nightly subtitle-cache harvest runs on the Ubuntu host `pve-docker`
+(`jsakkos@192.168.1.122`) under a systemd **user** timer, and publishes to the
+rolling `subtitle-cache-latest` GitHub release.
+
+## Why exactly one harvester
+
+The OpenSubtitles daily download quota is **per account**, not per machine, and
+each machine keeps its own `subtitle_coverage` table. Two harvesters race for
+the same 1,000/day bucket, and the loser records zero-coverage rows for seasons
+the winner already holds, skip-listing content that exists. That is the same
+defect the 2026-08-31 harvester repair fixed, reintroduced across machines. The
+laptop keeps its corpus as a backup but must not run `build_subtitle_cache.py`
+again.
+
+## Install
+
+```bash
+# 1. uv (absent by default on this host)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. Bring the checkout to current main
+cd ~/engram && git fetch origin && git checkout main && git pull --ff-only
+cd backend && uv sync --no-install-project
+
+# 3. Secrets (YOU write this file; see the template in the repo)
+install -d -m 700 ~/.config/engram
+install -m 600 /dev/null ~/.config/engram/subtitle-cache.env
+${EDITOR:-nano} ~/.config/engram/subtitle-cache.env
+
+# 4. Units
+install -d -m 755 ~/.config/systemd/user
+install -m 644 ~/engram/deploy/subtitle-cache/engram-subtitle-cache.service ~/.config/systemd/user/
+install -m 644 ~/engram/deploy/subtitle-cache/engram-subtitle-cache.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now engram-subtitle-cache.timer
+```
+
+**Lingering is required** and needs root:
+
+```bash
+sudo loginctl enable-linger jsakkos
+```
+
+Without it the user manager is torn down at logout and the timer never fires
+while nobody is logged in. Verify with `loginctl show-user jsakkos -p Linger`,
+which must print `Linger=yes`.
+
+## Cutover from the laptop
+
+Order matters. The coverage database is what stops the server re-harvesting
+36,000 episodes it already has on disk, so it moves with the corpus.
+
+```bash
+# From the laptop (Git Bash), corpus first, then coverage:
+rsync -av --partial --progress ~/.engram/cache/data/ jsakkos@192.168.1.122:~/.engram/cache/data/
+rsync -av --partial --progress ~/.engram/cache/tmdb_cache.sqlite jsakkos@192.168.1.122:~/.engram/cache/
+```
+
+Then prove the server ships from disk at zero quota cost before enabling the
+timer. See "First run" below.
+
+## First run (supervised)
+
+```bash
+systemctl --user start engram-subtitle-cache.service
+journalctl --user -u engram-subtitle-cache.service -f
+```
+
+What a healthy first run looks like:
+
+- `OpenSubtitles API: ACTIVE` and a real remaining-quota number near 1000
+- a long run of seasons shipping from disk without downloads
+- `publish-guard: growth: ...` with a show/episode count at or above the
+  published baseline
+- the `gh release upload` step completing
+
+## Monitoring
+
+| Question | Command |
+|---|---|
+| Did last night run? | `systemctl --user status engram-subtitle-cache.service` |
+| When does it run next? | `systemctl --user list-timers engram-subtitle-cache.timer` |
+| What happened? | `journalctl --user -u engram-subtitle-cache.service --since yesterday` |
+| Is the release fresh? | `gh release view subtitle-cache-latest --repo Jsakkos/engram` |
+
+## Reading the exit codes
+
+The service's exit status is the **harvest** exit code, so a publish can
+succeed on a run systemd reports as failed. That is deliberate.
+
+| Exit | Meaning | Published? | Action |
+|---|---|---|---|
+| 0 | Full corpus harvested | Yes | None |
+| 2 | Quota guard halted the harvest partway | Yes, from disk | None; the next night resumes |
+| 1 | Missing credentials, missing backend, pack failure, or the shrink guard blocked the upload | No | Read the journal |
+
+## Recovery
+
+**The shrink guard blocked the upload.** The live release is untouched, which
+is the point. Compare by hand:
+
+```bash
+cd ~/engram/backend
+uv run python scripts/publish_guard.py --candidate ~/.engram/harvest/manifest.json
+```
+
+If the shrink is deliberate (a corpus pruning), re-run the publish with
+`--allow-shrink`, then upload manually with `gh release upload
+subtitle-cache-latest ... --clobber`. If it is not deliberate, do not override
+it. Find out why the corpus lost content first.
+
+**Quota exhausted every night.** Check the true remaining quota; the login
+response's `allowed_downloads` is the daily CAP, not the remainder. A run that
+logs `OS quota left: 0` has nothing to do but wait ~24h.
+
+**Rolling back a bad publish.** There is no history on a rolling release asset.
+Re-pack from a known-good corpus and `--clobber` over it.
+````
+
+- [ ] **Step 2: Link the runbook from the existing doc**
+
+In `docs/development/subtitle-cache.md`, find the section describing the local daily build cadence and add immediately after its heading:
+
+```markdown
+> **The daily build now runs on the server, not a laptop.** See
+> [Subtitle cache: server deployment](subtitle-cache-server.md). OpenSubtitles
+> quota is per-account, so exactly one machine may harvest; running the build
+> locally while the server timer is enabled corrupts both machines' coverage
+> records.
+```
+
+- [ ] **Step 3: Verify the docs build**
+
+Run from the repo ROOT (not `backend/`):
+
+```bash
+uv run --with mkdocs-material --with "mkdocstrings[python]" mkdocs build
+```
+
+Expected: build succeeds. Roughly 18 pre-existing warnings are normal; do not add `--strict`. Confirm no new warning names `subtitle-cache-server.md`.
+
+- [ ] **Step 4: Check for em dashes**
+
+House style forbids them. The byte-based check avoids false positives on arrows and ellipses:
+
+`grep -P` fails in this repo's Git Bash with "supports only unibyte and UTF-8 locales", so check with Python instead:
+
+```bash
+uv run python -c "import io,sys; bad=[(f,i) for f in sys.argv[1:] for i,l in enumerate(io.open(f,encoding='utf-8'),1) if chr(8212) in l or chr(8211) in l]; print(bad or 'clean')" docs/development/subtitle-cache-server.md docs/development/subtitle-cache.md
+```
+
+Expected: `clean`. House style forbids em and en dashes; use colons, commas, semicolons, or parentheses.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/development/subtitle-cache-server.md docs/development/subtitle-cache.md
+git commit -m "docs(subtitle-cache): server deployment runbook"
+```
+
+### Amendments after code review
+
+Code review of the committed runbook found seven issues, fixed in a follow-up commit. The draft above is left as originally written; this records what changed on disk in `docs/development/subtitle-cache-server.md`:
+
+- **Reordered Install vs. Cutover so the dangerous sequence cannot be followed top to bottom.** The draft above enabled and started the timer (`systemctl --user enable --now`) before the Cutover section that populates the cache, while Cutover's own text said to do the cutover first. Followed in written order, that starts the timer against an empty `~/.engram/cache`, exactly the "re-harvest everything it already has" failure the design exists to prevent. The fix: Install now runs `systemctl --user enable engram-subtitle-cache.timer` (no `--now`), Cutover comes next, then a supervised First run, and only after that succeeds does a new "Start the timer" section run `systemctl --user start engram-subtitle-cache.timer`. Each seam states why: the coverage database must be in place before anything harvests, and only one machine may harvest at a time.
+- **Added a directory-creation step before both rsyncs.** `~/.engram/cache` does not exist on the target host; plain `rsync -av ... ~/.engram/cache/data/` needs two missing parent levels that rsync does not create on its own. Cutover now runs `ssh jsakkos@192.168.1.122 'install -d -m 755 ~/.engram/cache/data'` first, and adds a post-transfer verification comparing the SRT file count and `subtitle_coverage` row count between laptop and server.
+- **Added `source ~/.local/bin/env` and a `uv --version` check right after the installer.** The astral installer updates shell rc files for future shells; it does not put `uv` on `PATH` in the session that just ran it, so the next line in the original draft (`cd ~/engram && ...`, followed later by `uv sync`) would have hit "uv: command not found" on a first read-through.
+- **Added a verification line to each of Install steps 1-4** (previously only lingering had one): `uv --version`, `git -C ~/engram log -1 --oneline` (confirms the checkout actually moved off the stale `v0.8.1`), the `awk -F=`/`length()` shape-check for the four env values (reusing the idiom from Task 6 Step 3, without printing the values), and `systemctl --user list-unit-files | grep engram-subtitle-cache`.
+- **Documented the `ProtectHome` trap in the runbook, not just the unit file's comment.** Added one sentence at the Install/hardening seam: `ProtectHome` would break the job because it hides the checkout, `~/.engram/cache`, `~/.engram/harvest`, and `~/.config/gh` (all confirmed against `harvest.sh` and the service file), all of which live under `$HOME`.
+- **Reworded the first-run "within-tolerance" bullet.** The draft said a healthy run shows a count "at or above the published baseline." `publish_guard.verdict_for`'s actual default tolerance is 2% (`DEFAULT_TOLERANCE = 0.02`), so a candidate up to 2% below baseline is a legitimate `within-tolerance` verdict, not a red flag. Reworded to say the count should be "close to" the baseline and that a small `within-tolerance` dip is expected, not a warning sign.
+- **Added a `gh auth login` heads-up at the top of Install.** Previously this was discovered only reactively, via the preflight FATAL described in Recovery. One sentence now tells the operator to confirm `gh auth login` has been run for `jsakkos` before starting, so the first night does not fail on it.
+
+**Important for Tasks 6 and 7: follow the corrected ordering below, matching the runbook above, not the Task 4 draft's original order.** Tasks 6-7 as drafted below already avoid the draft runbook's mistake in the one way that matters most: Task 6 Step 4 only installs and `daemon-reload`s the units without enabling anything, and the timer is only enabled and started in Task 7 Step 8 (`enable --now`), which already comes after Task 7's rsync cutover (Steps 2-3), dry pack and shrink-guard checks (Steps 4-5), and supervised first run (Steps 6-7). Do not shortcut this by enabling or starting the timer any earlier than Task 7 Step 8. Two things to fix while executing, so the drafted steps match the corrected runbook exactly:
+
+- **Task 7 Step 2 is missing the directory-creation step.** `~/.engram/cache` does not exist on the target host yet, so before the first rsync, run `ssh jsakkos@192.168.1.122 'install -d -m 755 ~/.engram/cache/data'` (plain rsync only creates the final path component, not its parents).
+- **Prefer splitting Task 7 Step 8's `enable --now` into `enable` then `start`,** for the same reason the runbook separates them: it keeps "wire it to run on a future schedule" and "run it right now" as two distinct, individually-verifiable actions. Functionally, doing it as one combined `enable --now` at Step 8 is still safe here because it already happens after cutover and a successful supervised run, so this is a consistency preference, not a blocking fix.
+
+The one thing that must never happen, in either the drafted steps or an operator's own improvisation: creating the cache directories and completing the rsync cutover happen BEFORE the timer is started, full stop. Reversing that re-harvests everything already on disk and burns weeks of OpenSubtitles quota re-downloading the corpus Task 7 is about to hand over.
+
+---
+
+## Task 5: Server bootstrap
+
+These steps run over SSH against `jsakkos@192.168.1.122`. Nothing here consumes OpenSubtitles quota.
+
+**Files:** none in the repo.
+
+- [ ] **Step 1: Install uv**
+
+```bash
+ssh jsakkos@192.168.1.122 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+ssh jsakkos@192.168.1.122 '~/.local/bin/uv --version'
+```
+
+Expected: a version string, e.g. `uv 0.9.x`.
+
+- [ ] **Step 2: Upgrade the checkout from v0.8.1 to main**
+
+The checkout is ~60 commits of schema migrations behind. Confirm it is clean before moving it.
+
+```bash
+ssh jsakkos@192.168.1.122 'cd ~/engram && git status --short && git stash list'
+```
+
+Expected: both empty. If not, stop and ask before discarding anything.
+
+```bash
+ssh jsakkos@192.168.1.122 'cd ~/engram && git fetch origin && git checkout main && git pull --ff-only && git describe --tags'
+```
+
+Expected: a current tag (`v0.35.0` or later).
+
+- [ ] **Step 3: Sync dependencies**
+
+```bash
+ssh jsakkos@192.168.1.122 'cd ~/engram/backend && ~/.local/bin/uv sync --no-install-project'
+```
+
+Expected: uv resolves and installs; no error. This is Python 3.12.3 against a 3.11 target, which the project supports.
+
+- [ ] **Step 4: Prove the scripts import and their CLIs are wired**
+
+```bash
+ssh jsakkos@192.168.1.122 'cd ~/engram/backend && ~/.local/bin/uv run python scripts/build_subtitle_cache.py --help | head -5'
+ssh jsakkos@192.168.1.122 'cd ~/engram/backend && ~/.local/bin/uv run python scripts/pack_subtitle_cache.py --help | head -5'
+ssh jsakkos@192.168.1.122 'cd ~/engram/backend && ~/.local/bin/uv run python scripts/publish_guard.py --help | head -5'
+```
+
+Expected: three usage blocks, no traceback. A `--max-downloads` line must appear in the first (it proves the repaired build script, not a stale one, is checked out).
+
+- [ ] **Step 5: Confirm gh can reach the release**
+
+```bash
+ssh jsakkos@192.168.1.122 'gh release view subtitle-cache-latest --repo Jsakkos/engram --json tagName,assets --jq "{tag:.tagName, assets:[.assets[].name]}"'
+```
+
+Expected: the tag and both asset names. This confirms the `repo` scope suffices for the read side; the write side is exercised in Task 7.
+
+---
+
+## Task 6: Secrets and units on the server
+
+**The operator writes the credentials file. Credentials are not to be copied, echoed, or handled on the operator's behalf.**
+
+- [ ] **Step 1: Copy the template to the server**
+
+```bash
+scp deploy/subtitle-cache/engram-subtitle-cache.env.example jsakkos@192.168.1.122:/tmp/
+ssh jsakkos@192.168.1.122 'install -d -m 700 ~/.config/engram && install -m 600 /tmp/engram-subtitle-cache.env.example ~/.config/engram/subtitle-cache.env && rm /tmp/engram-subtitle-cache.env.example'
+```
+
+- [ ] **Step 2: USER STEP, fill in the four credentials**
+
+The operator, at their own terminal:
+
+```bash
+ssh jsakkos@192.168.1.122
+${EDITOR:-nano} ~/.config/engram/subtitle-cache.env
+```
+
+The four values (`TMDB_API_KEY`, `OPENSUBTITLES_API_KEY`, `OPENSUBTITLES_USERNAME`, `OPENSUBTITLES_PASSWORD`) match what the laptop uses. `TMDB_API_KEY` is the long `eyJ...` v4 Read Access Token, not the short v3 key.
+
+- [ ] **Step 3: Verify shape without revealing values**
+
+```bash
+ssh jsakkos@192.168.1.122 'stat -c "%a %n" ~/.config/engram/subtitle-cache.env; awk -F= "/^[A-Z]/ {printf \"%s len=%d\n\", \$1, length(\$2)}" ~/.config/engram/subtitle-cache.env'
+```
+
+Expected: mode `600`, and four non-zero lengths. `TMDB_API_KEY len=` should be around 200+ (a v4 token); a length near 32 means the wrong TMDB key was pasted.
+
+- [ ] **Step 4: Install the units**
+
+```bash
+ssh jsakkos@192.168.1.122 'install -d -m 755 ~/.config/systemd/user && install -m 644 ~/engram/deploy/subtitle-cache/engram-subtitle-cache.service ~/.config/systemd/user/ && install -m 644 ~/engram/deploy/subtitle-cache/engram-subtitle-cache.timer ~/.config/systemd/user/ && systemctl --user daemon-reload'
+ssh jsakkos@192.168.1.122 'systemd-analyze --user verify ~/.config/systemd/user/engram-subtitle-cache.service'
+```
+
+Expected: no output from `verify` (all referenced paths now exist).
+
+- [ ] **Step 5: USER STEP, enable lingering (requires sudo password)**
+
+The operator, at their own terminal:
+
+```bash
+ssh -t jsakkos@192.168.1.122 'sudo loginctl enable-linger jsakkos'
+```
+
+Then confirm:
+
+```bash
+ssh jsakkos@192.168.1.122 'loginctl show-user jsakkos -p Linger'
+```
+
+Expected: `Linger=yes`. Without this the timer will not fire while nobody is logged in, and the deployment silently does nothing.
+
+- [ ] **Step 6: Confirm the harvest script is executable on the server**
+
+```bash
+ssh jsakkos@192.168.1.122 'test -x ~/engram/deploy/subtitle-cache/harvest.sh && echo EXECUTABLE || echo NOT_EXECUTABLE'
+```
+
+Expected: `EXECUTABLE`. If not, the git mode bit from Task 2 Step 2 did not land; fix it in the repo and `git pull` on the server rather than `chmod`-ing in place, or the next pull reverts it.
+
+---
+
+## Task 7: Cutover
+
+This is the step that must not be run twice or half-run: from here, the server owns the corpus and the laptop must stop harvesting.
+
+- [ ] **Step 1: Confirm no laptop harvest is running**
+
+On the laptop:
+
+```powershell
+Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, StartTime, Path
+```
+
+Expected: no `build_subtitle_cache.py` process. Wait for one to finish rather than killing it mid-write; the coverage DB is being written.
+
+- [ ] **Step 2: rsync the SRT corpus**
+
+From the laptop (Git Bash). 1.7 GB, 37,867 files, so expect this to take a while; `--partial` makes it resumable.
+
+```bash
+rsync -av --partial --info=progress2 ~/.engram/cache/data/ jsakkos@192.168.1.122:~/.engram/cache/data/
+```
+
+Expected: transfer completes. Verify the file count matches:
+
+```bash
+ssh jsakkos@192.168.1.122 'find ~/.engram/cache/data -name "*.srt" | wc -l'
+```
+
+Expected: `37867` (or higher if the laptop harvested more in the interim). A materially lower number means an interrupted transfer; re-run the rsync.
+
+- [ ] **Step 3: rsync the coverage database**
+
+This carries `subtitle_coverage`. Without it the server re-measures every season and burns weeks of quota re-downloading what it already has on disk.
+
+```bash
+rsync -av --partial ~/.engram/cache/tmdb_cache.sqlite jsakkos@192.168.1.122:~/.engram/cache/
+ssh jsakkos@192.168.1.122 'python3 -c "import sqlite3; c=sqlite3.connect(\"/home/jsakkos/.engram/cache/tmdb_cache.sqlite\"); print(\"coverage rows:\", c.execute(\"select count(*) from subtitle_coverage\").fetchone()[0])"'
+```
+
+Expected: `coverage rows: 2392` (or the laptop's current count; check it first with the same query locally, they must match).
+
+- [ ] **Step 4: Prove a dry pack ships from disk at zero quota cost**
+
+Pack only, no harvest, no publish. This exercises the corpus, the TMDB resolution path, and the artifact verifier without touching OpenSubtitles.
+
+```bash
+ssh jsakkos@192.168.1.122 'cd ~/engram/backend && set -a && . ~/.config/engram/subtitle-cache.env && set +a && ~/.local/bin/uv run python scripts/pack_subtitle_cache.py --output ~/.engram/harvest/engram-subtitle-cache.tar.gz'
+```
+
+Expected, in the tail of the output: `Verifying artifact...` followed by a `Packed NNN shows, NNNNN episodes` line. The show count should be at or above 479 and the episode count at or above 37,799 (the published baseline). A count far below that means the rsync did not land everything, so stop and re-check Step 2.
+
+- [ ] **Step 5: Run the shrink guard against that artifact**
+
+```bash
+ssh jsakkos@192.168.1.122 'cd ~/engram/backend && ~/.local/bin/uv run python scripts/publish_guard.py --candidate ~/.engram/harvest/manifest.json; echo "exit=$?"'
+```
+
+Expected: `publish-guard: growth: 467 -> NNN shows, 36742 -> NNNNN episodes` and `exit=0`. **If this prints a blocked verdict, do not continue to Step 6**: the server's corpus is smaller than what is already published, which means the cutover is incomplete.
+
+- [ ] **Step 6: First supervised service run**
+
+```bash
+ssh jsakkos@192.168.1.122 'systemctl --user start engram-subtitle-cache.service'
+ssh jsakkos@192.168.1.122 'journalctl --user -u engram-subtitle-cache.service -n 200 --no-pager'
+```
+
+Expected in the journal: the harvest start line, `OpenSubtitles API: ACTIVE` with a real remaining-quota number, the pack, a `publish-guard: growth:` line, and `publishing to release subtitle-cache-latest`. This is the step that proves the `gh` token can write to releases.
+
+- [ ] **Step 7: Confirm the published release actually moved**
+
+From the laptop:
+
+```bash
+gh api repos/Jsakkos/engram/releases/tags/subtitle-cache-latest --jq '.assets[]|"\(.name) \(.size) updated=\(.updated_at)"'
+```
+
+Expected: today's date in `updated_at` on both assets, and a tarball size at or above 311,578,628 bytes.
+
+- [ ] **Step 8: Enable the timer**
+
+```bash
+ssh jsakkos@192.168.1.122 'systemctl --user enable --now engram-subtitle-cache.timer && systemctl --user list-timers engram-subtitle-cache.timer --no-pager'
+```
+
+Expected: a `NEXT` column showing tomorrow at ~02:00 UTC.
+
+- [ ] **Step 9: Retire the laptop harvester**
+
+The laptop keeps its corpus as a backup. It must not harvest again while the server timer is live: two harvesters race for one quota bucket and poison each other's coverage records.
+
+On the laptop, confirm nothing schedules it:
+
+```powershell
+Get-ScheduledTask | Where-Object { $_.TaskName -like "*engram*" -or $_.TaskName -like "*subtitle*" }
+```
+
+Expected: no matching task (the cadence was manual). If one exists, disable it.
+
+---
+
+## Verification
+
+- [ ] **Full backend unit suite**
+
+Run from `backend/`:
+
+```bash
+uv run pytest tests/unit/ -q
+```
+
+Expected: all pass. This tier takes several minutes; do not run it inside a subagent with a short timeout.
+
+- [ ] **Lint and format the whole backend**
+
+```bash
+uv run ruff format --check .
+uv run ruff check .
+```
+
+Expected: `All checks passed!`
+
+- [ ] **Two nights of unattended operation**
+
+The real acceptance test is that the timer fires without a human present.
+
+```bash
+ssh jsakkos@192.168.1.122 'journalctl --user -u engram-subtitle-cache.service --since "2 days ago" | grep -E "harvest:|publish-guard:"'
+```
+
+Expected: two runs, each ending in either a publish or a clearly-explained guard block. An exit-2 night is a healthy outcome, not a failure.
+
+- [ ] **The published cache is fresh and has not shrunk**
+
+```bash
+gh api repos/Jsakkos/engram/releases/tags/subtitle-cache-latest --jq '.assets[]|"\(.name) \(.size) updated=\(.updated_at)"'
+```
+
+Expected: `updated_at` within the last 48 hours, tarball at or above the 311,578,628-byte baseline.
+
+- [ ] **CHANGELOG entry**
+
+Add to the `[Unreleased]` section of `CHANGELOG.md`:
+
+```markdown
+### Added
+
+- Subtitle cache harvesting now runs unattended on a server via a systemd user
+  timer, with a shrink guard that refuses to replace the published cache with a
+  materially smaller one. See `docs/development/subtitle-cache-server.md`.
+```
+
+Then commit:
+
+```bash
+git add CHANGELOG.md
+git commit -m "docs: changelog entry for the subtitle-cache server deployment"
+```
+
+---
+
+## Risks
+
+- **The server is now a single point of failure for the published cache.** It is a VM on a box that also runs Docker workloads. Mitigation: the laptop keeps the corpus, and the runbook's recovery section covers re-packing from it. Not mitigated: nobody is alerted when the timer silently stops. Monitoring is a `list-timers` check by hand.
+- **Lingering is the quiet failure mode.** If `enable-linger` is skipped, everything above appears to succeed and the timer simply never fires while logged out. Task 6 Step 5 is the only guard against it.
+- **The `gh` token is a user token with `repo` scope**, so a compromised server can write to every repo the account can. Acceptable for a home LAN box; worth revisiting if the host's exposure changes.
+- **The v0.8.1 → main upgrade crosses ~60 commits of schema migrations.** The cache builder does not depend on the deployment's application database, and that deployment is not in active use, but the upgrade should be observed rather than assumed. Schema reconciler faults were seen on the dev DB during the Phase 1 diagnostic (`no such column: app_config.always_review`, then `table fingerprint_contributions already exists`), and the server will traverse the same path.
+- **Re-measuring the purged coverage window costs quota.** Roughly 978 season rows returned to the unmeasured pool. At 900/day that is several days of harvesting before the corpus stops growing. Expected, one-time.
+
+## Out of scope
+
+- Phase 2 (English-only curation of `curated_shows.csv`): independent, gets its own plan.
+- Alerting on a stalled timer.
+- Sharding the tarball if it grows past a few hundred MB more. Noted in the design, not designed.

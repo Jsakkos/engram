@@ -79,6 +79,7 @@ nav:
     - Testing: development/testing.md
     - Contributing: development/contributing.md
     - Subtitle Cache Build: development/subtitle-cache.md
+    - Subtitle Cache Server Deployment: development/subtitle-cache-server.md
     - Brand System: development/brand.md
     - Fingerprint Network Privacy: development/fingerprint-privacy.md
   - Changelog: changelog.md

@@ -172,6 +172,12 @@ This makes every show start from a cold cache and re-scrape everything. Costs re
 
 ## Local equivalent
 
+> **The daily build now runs on the server, not a laptop.** See
+> [Subtitle cache: server deployment](subtitle-cache-server.md). OpenSubtitles
+> quota is per account, so exactly one machine may harvest; running the build
+> locally while the server timer is enabled corrupts both machines' coverage
+> records.
+
 You can run the script outside CI for smoke tests:
 
 ```bash
