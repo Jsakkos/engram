@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.matcher.srt_utils import SubtitleReader, clean_text
+from app.matcher.srt_utils import SubtitleReader, clean_text, has_srt_cues
 
 _HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
 
@@ -39,22 +39,27 @@ def is_valid_srt_file(file_path: Path) -> bool:
         if not file_path.exists() or file_path.stat().st_size < 50:
             return False
 
-        # Decode by BOM. TVsubtitles (and others) sometimes serve
-        # UTF-16-encoded SRTs; read as UTF-8 those keep a NUL between every
-        # character, so the ASCII ``-->`` check below never matches and a
-        # perfectly valid subtitle gets rejected. Read a generous chunk of
-        # raw bytes (UTF-16 is 2 bytes/char, so 1000 bytes ≈ 500 chars —
-        # still well past the first timestamp).
-        raw = file_path.read_bytes()[:1000]
+        # Decode by BOM. TVsubtitles (and others) sometimes serve UTF-16-encoded
+        # SRTs; read as UTF-8 those keep a NUL between every character, so the
+        # ASCII "-->" check below never matches and a perfectly valid subtitle
+        # gets rejected. The whole file is decoded because the cue check needs it.
+        raw = file_path.read_bytes()
         if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
-            header = raw.decode("utf-16", errors="ignore")
+            text = raw.decode("utf-16", errors="ignore")
         else:
-            header = raw.decode("utf-8", errors="ignore")
+            text = raw.decode("utf-8", errors="ignore")
 
-        if not _looks_like_srt(header):
+        if not _looks_like_srt(text[:1000]):
             logger.warning(
                 f"Rejecting {file_path.name}: not a valid SRT (HTML or no timestamp markers)"
             )
+            return False
+
+        # Timing arrows alone are not a subtitle. A file whose cues hold no text
+        # (or whose layout nothing can parse) gives the matcher nothing, and
+        # accepting it caches it for good: every later download pass reuses it.
+        if not has_srt_cues(text):
+            logger.warning(f"Rejecting {file_path.name}: no subtitle cue carries any text")
             return False
 
         return True
@@ -72,7 +77,7 @@ def is_valid_srt_content(content: str) -> bool:
     """
     if len(content.encode("utf-8")) < 50:
         return False
-    return _looks_like_srt(content[:1000])
+    return _looks_like_srt(content[:1000]) and has_srt_cues(content)
 
 
 # Ordered season/episode patterns, tried in sequence. The first match wins.

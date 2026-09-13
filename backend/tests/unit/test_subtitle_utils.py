@@ -6,6 +6,12 @@ from app.matcher.subtitle_utils import is_valid_srt_content, is_valid_srt_file
 
 _SRT_TEXT = "1\r\n00:00:07,130 --> 00:00:09,000\nHello there\n\n2\r\n00:00:10,000 --> 00:00:12,000\nGeneral Kenobi\n"
 
+_TIMING_WITHOUT_TEXT = (
+    "1\n00:00:01,000 --> 00:00:02,000\n\n"
+    "2\n00:00:03,000 --> 00:00:04,000\n\n"
+    "3\n00:00:05,000 --> 00:00:06,000\n"
+)
+
 
 @pytest.mark.unit
 class TestIsValidSrtFile:
@@ -40,6 +46,25 @@ class TestIsValidSrtFile:
         )
         assert is_valid_srt_file(p) is False
 
+    def test_rejects_timing_lines_with_no_dialogue(self, tmp_path):
+        p = tmp_path / "blank.srt"
+        p.write_bytes(_TIMING_WITHOUT_TEXT.encode("utf-8"))
+        assert is_valid_srt_file(p) is False
+
+    def test_accepts_doubled_line_endings(self, tmp_path):
+        p = tmp_path / "doubled.srt"
+        clean = _SRT_TEXT.replace("\r\n", "\n")
+        p.write_bytes(clean.replace("\n", "\r\r\n").encode("utf-8"))
+        assert is_valid_srt_file(p) is True
+
+    def test_accepts_cues_without_index_lines(self, tmp_path):
+        p = tmp_path / "noindex.srt"
+        p.write_bytes(
+            b"00:00:01,000 --> 00:00:02,000\nHello there\n\n"
+            b"00:00:03,000 --> 00:00:04,000\nGeneral Kenobi\n"
+        )
+        assert is_valid_srt_file(p) is True
+
 
 @pytest.mark.unit
 class TestIsValidSrtContent:
@@ -57,3 +82,13 @@ class TestIsValidSrtContent:
     def test_rejects_text_without_timestamps(self):
         content = "Just some plain text with no SRT timing markers at all here." * 2
         assert is_valid_srt_content(content) is False
+
+
+@pytest.mark.unit
+class TestIsValidSrtContentCues:
+    def test_rejects_timing_without_text(self):
+        assert is_valid_srt_content(_TIMING_WITHOUT_TEXT) is False
+
+    def test_accepts_doubled_line_endings(self):
+        content = "1\n\n00:00:01,000 --> 00:00:02,000\n\nHello there, General Kenobi\n\n"
+        assert is_valid_srt_content(content) is True
