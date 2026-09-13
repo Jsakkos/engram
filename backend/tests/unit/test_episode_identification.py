@@ -1026,3 +1026,36 @@ class TestUtf16ReferenceWithStrayByte:
         p.write_bytes(_utf16_with_stray_byte())
         assert is_valid_srt_file(p) is True
         assert SubtitleCache().get_full_text(str(p)) != ""
+
+
+@pytest.mark.unit
+class TestTfidfMatcherEmptyReferences:
+    def test_prepare_skips_references_with_no_text(self):
+        cache = SubtitleCache()
+        cache._full_text_cache = {
+            "ep1": "the quick brown fox jumps",
+            "ep2": "",
+            "ep3": "a slow green turtle swims",
+        }
+        matcher = TfidfMatcher()
+        matcher.prepare(["ep1", "ep2", "ep3"], cache)
+
+        assert matcher.ref_file_order == ["ep1", "ep3"]
+        assert matcher.total_references == 3
+        assert [ref for ref, _ in matcher.match("slow green turtle")] == ["ep3", "ep1"]
+
+    def test_prepare_with_no_usable_text_does_not_raise(self):
+        cache = SubtitleCache()
+        cache._full_text_cache = {"ep1": "", "ep2": ""}
+        matcher = TfidfMatcher()
+        matcher.prepare(["ep1", "ep2"], cache)
+
+        assert matcher.is_prepared is True
+        assert matcher.ref_file_order == []
+        assert matcher.total_references == 2
+        assert matcher.match("anything") == []
+
+    def test_load_precomputed_counts_every_reference(self):
+        matcher = TfidfMatcher()
+        matcher.load_precomputed(csr_matrix(np.eye(2)), ["S01E01", "S01E02"], np.ones(2))
+        assert matcher.total_references == 2

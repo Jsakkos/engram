@@ -755,6 +755,7 @@ class TfidfMatcher:
         self._prepared = False
         self._precomputed = False  # True when loaded from the shipped vector cache
         self._idf = None  # global IDF array, only set in precomputed mode
+        self.total_references = 0  # references offered, including any dropped as empty
 
     def load_precomputed(self, ref_matrix, ref_episode_codes, idf_array) -> None:
         """Load a precomputed hashed TF-IDF cache instead of fitting from SRT.
@@ -766,6 +767,7 @@ class TfidfMatcher:
         """
         self.ref_matrix = ref_matrix
         self.ref_file_order = list(ref_episode_codes)
+        self.total_references = len(self.ref_file_order)
         self._idf = idf_array
         self._precomputed = True
         self._prepared = True
@@ -778,16 +780,34 @@ class TfidfMatcher:
         """
         Fit TF-IDF vectorizer on all reference episode full texts.
 
+        References with no readable text are left out of the corpus: a TF-IDF row
+        of zeros can never win a vote, and a corpus that is mostly zeros quietly
+        hands every vote to the few references that do have text.
+        ``total_references`` still counts them, so callers can tell how much of the
+        season was unusable.
+
         Args:
             reference_files: List of paths to reference SRT files
             subtitle_cache: SubtitleCache instance for loading/caching SRT content
         """
-        self.ref_file_order = [str(rf) for rf in reference_files]
+        self.ref_file_order = []
         corpus = []
-        for rf in self.ref_file_order:
+        dropped = []
+        for rf in (str(r) for r in reference_files):
             full_text = subtitle_cache.get_full_text(rf)
-            corpus.append(full_text)
             logger.debug(f"  TF-IDF ref: {Path(rf).stem} ({len(full_text)} chars)")
+            if not full_text:
+                dropped.append(Path(rf).stem)
+                continue
+            self.ref_file_order.append(rf)
+            corpus.append(full_text)
+        self.total_references = len(self.ref_file_order) + len(dropped)
+        if dropped:
+            logger.warning(
+                f"TF-IDF: {len(self.ref_file_order)}/{self.total_references} reference "
+                f"subtitles have readable text; skipped {len(dropped)} empty: "
+                f"{', '.join(dropped)}"
+            )
 
         self.vectorizer = TfidfVectorizer(
             analyzer="word",
@@ -795,12 +815,14 @@ class TfidfMatcher:
             max_features=10000,
             sublinear_tf=True,
         )
-        self.ref_matrix = self.vectorizer.fit_transform(corpus)
+        if corpus:
+            self.ref_matrix = self.vectorizer.fit_transform(corpus)
+            features = self.ref_matrix.shape[1]
+        else:
+            self.ref_matrix = None
+            features = 0
         self._prepared = True
-        logger.info(
-            f"TF-IDF prepared: {len(self.ref_file_order)} references, "
-            f"{self.ref_matrix.shape[1]} features"
-        )
+        logger.info(f"TF-IDF prepared: {len(self.ref_file_order)} references, {features} features")
 
     def match(self, query_text: str) -> list[tuple[str, float]]:
         """
@@ -814,6 +836,8 @@ class TfidfMatcher:
         """
         if not self._prepared:
             raise RuntimeError("TfidfMatcher.prepare() must be called before match()")
+        if not self.ref_file_order:
+            return []
 
         if self._precomputed:
             from app.matcher.vectorizer_config import transform_query
