@@ -20,6 +20,7 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.multi_episode import decompose_vote_runs
+from app.matcher.srt_utils import iter_srt_cues
 from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
@@ -2294,46 +2295,23 @@ class SubtitleReader:
             list: List of subtitle texts within the time window
         """
         text_lines = []
-
-        for block in content.strip().split("\n\n"):
-            lines = block.split("\n")
-            if len(lines) < 3 or "-->" not in lines[1]:
+        for cue in iter_srt_cues(content):
+            if not cue.lines or cue.end < start_time or cue.start > end_time:
                 continue
-
-            try:
-                timestamp = lines[1]
-                time_parts = timestamp.split(" --> ")
-                start_stamp = time_parts[0].strip()
-                end_stamp = time_parts[1].strip()
-
-                subtitle_start = SubtitleReader.parse_timestamp(start_stamp)
-                subtitle_end = SubtitleReader.parse_timestamp(end_stamp)
-
-                # Check if this subtitle overlaps with our chunk
-                if subtitle_end >= start_time and subtitle_start <= end_time:
-                    text = " ".join(lines[2:])
-
-                    # Skip watermark/ad blocks (URLs, credit lines, etc.)
-                    if _is_watermark_block(text, lines, subtitle_start):
-                        logger.debug(
-                            f"Filtered watermark/ad block at {subtitle_start:.1f}s: {text[:80]}"
-                        )
-                        continue
-
-                    text_lines.append(text)
-
-            except (IndexError, ValueError) as e:
-                logger.warning(f"Error parsing subtitle block: {e}")
+            text = cue.text
+            # Skip watermark/ad blocks (URLs, credit lines, etc.)
+            if _is_watermark_block(text, list(cue.lines), cue.start):
+                logger.debug(f"Filtered watermark/ad block at {cue.start:.1f}s: {text[:80]}")
                 continue
-
+            text_lines.append(text)
         return text_lines
 
     @staticmethod
     def get_duration(content):
         """
-        Get the duration of the subtitle file (max end timestamp across all blocks).
+        Get the duration of the subtitle file (max end timestamp across all cues).
 
-        Uses max() instead of last-block because some subtitle files have
+        Uses max() instead of the last cue because some subtitle files have
         watermark/ad blocks appended at the end with timestamps near 0:00,
         which would incorrectly report the duration as ~2 seconds.
 
@@ -2344,24 +2322,7 @@ class SubtitleReader:
             float: Duration in seconds, or 0 if parsing fails
         """
         try:
-            blocks = content.strip().split("\n\n")
-            if not blocks:
-                return 0.0
-
-            max_end = 0.0
-            for block in blocks:
-                lines = block.split("\n")
-                if len(lines) >= 2 and "-->" in lines[1]:
-                    try:
-                        time_parts = lines[1].split(" --> ")
-                        end_stamp = time_parts[1].strip()
-                        end_time = SubtitleReader.parse_timestamp(end_stamp)
-                        if end_time > max_end:
-                            max_end = end_time
-                    except (IndexError, ValueError):
-                        continue
-
-            return max_end
+            return max((cue.end for cue in iter_srt_cues(content)), default=0.0)
         except Exception as e:
             logger.warning(f"Error getting duration from subtitle content: {e}")
             return 0.0

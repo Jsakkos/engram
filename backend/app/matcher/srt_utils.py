@@ -189,22 +189,11 @@ class SubtitleReader:
     @staticmethod
     def extract_subtitle_chunk(content: str, start_time: float, end_time: float) -> list[str]:
         """Extract subtitle text for a specific time window."""
-        text_lines = []
-        for block in content.strip().split("\n\n"):
-            lines = block.split("\n")
-            if len(lines) < 3 or "-->" not in lines[1]:
-                continue
-            try:
-                timestamp = lines[1]
-                time_parts = timestamp.split(" --> ")
-                s_stamp = SubtitleReader.parse_timestamp(time_parts[0].strip())
-                e_stamp = SubtitleReader.parse_timestamp(time_parts[1].strip())
-
-                if e_stamp >= start_time and s_stamp <= end_time:
-                    text_lines.append(" ".join(lines[2:]))
-            except (IndexError, ValueError):
-                continue
-        return text_lines
+        return [
+            cue.text
+            for cue in iter_srt_cues(content)
+            if cue.lines and cue.end >= start_time and cue.start <= end_time
+        ]
 
 
 def clean_text(text: str) -> str:

@@ -8,6 +8,7 @@ The ASR (faster-whisper) and ffmpeg subprocess paths are NOT exercised here.
 
 import contextlib
 import json
+import re
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -15,6 +16,7 @@ import pytest
 from scipy.sparse import csr_matrix
 
 from app.matcher import episode_identification as ei
+from app.matcher import srt_utils
 from app.matcher.episode_identification import (
     MatchCoverage,
     SubtitleCache,
@@ -914,3 +916,72 @@ class TestTranscriptionCache:
         a = matcher._transcription_key("/d/title_t00.mkv", 300, 30)
         b = matcher._transcription_key("/d/title_t01.mkv", 300, 30)
         assert a != b
+
+
+_DEXTER_SRT = (
+    "1\n00:00:01,000 --> 00:00:03,000\nDexter, get out of my lab!\n\n"
+    "2\n00:00:04,000 --> 00:00:06,500\nOmelette du fromage.\nOmelette du fromage.\n\n"
+    "3\n00:00:07,000 --> 00:00:09,000\nDee Dee!\n"
+)
+_DEXTER_LINES = [
+    "Dexter, get out of my lab!",
+    "Omelette du fromage. Omelette du fromage.",
+    "Dee Dee!",
+]
+_DAMAGED_VARIANTS = [
+    pytest.param(_DEXTER_SRT, id="clean"),
+    pytest.param(_DEXTER_SRT.replace("\n", "\n\n"), id="doubled"),
+    pytest.param(re.sub(r"(?m)^\d+\n(?=\d{2}:)", "", _DEXTER_SRT), id="no-index"),
+]
+
+
+@pytest.mark.unit
+class TestSubtitleReaderDamagedLayouts:
+    @pytest.mark.parametrize("content", _DAMAGED_VARIANTS)
+    def test_extract_reads_every_cue(self, content):
+        assert SubtitleReader.extract_subtitle_chunk(content, 0, 999) == _DEXTER_LINES
+
+    @pytest.mark.parametrize("content", _DAMAGED_VARIANTS)
+    def test_get_duration_reads_the_last_cue(self, content):
+        assert SubtitleReader.get_duration(content) == pytest.approx(9.0)
+
+    @pytest.mark.parametrize("content", _DAMAGED_VARIANTS)
+    def test_both_readers_agree(self, content):
+        assert SubtitleReader.extract_subtitle_chunk(
+            content, 0, 999
+        ) == srt_utils.SubtitleReader.extract_subtitle_chunk(content, 0, 999)
+
+    def test_full_text_of_doubled_file_is_not_empty(self):
+        cache = SubtitleCache()
+        cache.subtitles = {"ep.srt": _DEXTER_SRT.replace("\n", "\n\n")}
+        assert cache.get_full_text("ep.srt").startswith("dexter get out of my lab")
+
+
+@pytest.mark.unit
+class TestDamagedReferenceCorpus:
+    """Regression for the Dexter's Laboratory report: 36 of 37 references read as
+    empty, so every chunk of every track voted for the one readable episode."""
+
+    @staticmethod
+    def _srt(token: str) -> str:
+        body = (token + " ") * 20 + "the and a of to it"
+        return "".join(
+            f"{i}\n00:00:{i * 2:02d},000 --> 00:00:{i * 2 + 1:02d},000\n{body}\n\n"
+            for i in range(1, 4)
+        )
+
+    def test_damaged_references_still_win_their_own_dialogue(self, tmp_path):
+        clean = tmp_path / "Show - S01E01.srt"
+        doubled = tmp_path / "Show - S01E02.srt"
+        no_index = tmp_path / "Show - S01E03.srt"
+        clean.write_bytes(self._srt("alpha").encode("utf-8"))
+        doubled.write_bytes(self._srt("bravo").replace("\n", "\r\r\n").encode("utf-8"))
+        no_index.write_bytes(
+            re.sub(r"(?m)^\d+\n(?=\d{2}:)", "", self._srt("charlie")).encode("utf-8")
+        )
+
+        matcher = TfidfMatcher()
+        matcher.prepare([clean, doubled, no_index], SubtitleCache())
+
+        assert matcher.match("bravo " * 20)[0][0] == str(doubled)
+        assert matcher.match("charlie " * 20)[0][0] == str(no_index)
