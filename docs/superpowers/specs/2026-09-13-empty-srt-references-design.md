@@ -119,6 +119,13 @@ layout:
   join the cue before it.
 - In a file without index lines whose gap resolves to 1 or more, a cue whose last line is a bare
   number loses that line.
+- A cue with an absurd end time (for example `00:00:02,000 --> 446:12:46,016`, a tvsubtitles defect in
+  Malcolm in the Middle S02) keeps that end time. Only per-window text extraction and the reported
+  reference duration see it. Neither matters in production: the matcher compares against
+  full-episode text, no score reads the reference duration (`MatchCoverage.episode_coverage` is
+  unused), and the only per-window reader (`MultiSegmentMatcher`, reached from
+  `app/matcher/core/engine.py` and `testing_service.match_episodes`) has no production caller.
+  Capping cue spans was considered and rejected for that reason.
 
 ### B. Manual import writes bytes exactly
 
@@ -138,6 +145,14 @@ additionally require the parser from A to yield at least one cue with non-empty 
 Because the parser from A now reads `\r\r\n` and no-index files correctly, existing cached copies
 of those shapes become valid and usable without a re-download. Only files with genuinely no
 parseable cues are rejected.
+
+Files that start with a UTF-16 byte-order mark are decoded leniently (`decode_utf16_bom` in
+`srt_utils.py`) by the validator and by both `read_file_with_fallback` readers alike. tvsubtitles
+appends a single-byte ASCII trailer to some UTF-16 subtitles, leaving an odd byte count; a strict
+decode made the matcher fall back to latin-1 and read no dialogue while the validator, decoding
+leniently, accepted the file. Code review found 16 real cached references in that state (Malcolm in
+the Middle S02, I Dream of Jeannie, MacGyver, Criminal Minds, and others). One shared decoder keeps
+the validator's verdict and the matcher's view of a file from diverging again.
 
 ### D. Unusable-reference guard in matching
 
