@@ -43,9 +43,9 @@ def read_file_with_fallback(file_path: Path, encodings: list[str] | None = None)
     raise ValueError(f"Failed to read {file_path} with any encoding. Errors: {errors}")
 
 
-_STAMP = r"\d{1,2}:\d{2}:\d{2}(?:[,.]\d{1,3})?"
+_STAMP = r"\d{1,2}:\d{1,2}:\d{1,2}(?:[,.]\d{1,3})?"
 _TIMING_LINE_RE = re.compile(rf"^({_STAMP})\s*-->\s*({_STAMP})")
-_TIMING_LIKE_RE = re.compile(r"^\d{1,2}:\d{2}")
+_TIMING_LIKE_RE = re.compile(r"^\d{1,2}:\d{1,2}")
 
 
 def parse_srt_timestamp(timestamp: str) -> float:

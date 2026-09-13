@@ -153,6 +153,32 @@ class TestIterSrtCues:
         content = _CLEAN_SRT.replace("00:00:03,000\nDexter", "00:00:03,000\n\nDexter")
         assert _cue_tuples(content) == [(1.0, 3.0, ()), *_EXPECTED_CUES[1:]]
 
+    def test_single_digit_minute_and_second_fields(self):
+        # Real cached subtitles (e.g. Castle S01E07) write "00:00:0,616"; the
+        # previous parser read them, so rejecting them would silently drop dialogue.
+        content = (
+            "1\n00:00:0,616 --> 00:00:2,784\nFirst line\n\n"
+            "2\n00:00:59,173 --> 00:01:0,187\nSecond line\n\n"
+            "3\n00:01:2,226 --> 00:01:3,627\nThird line\n"
+        )
+        cues = _cue_tuples(content)
+        assert [cue[2] for cue in cues] == [("First line",), ("Second line",), ("Third line",)]
+        assert cues[0][:2] == pytest.approx((0.616, 2.784))
+        assert cues[1][:2] == pytest.approx((59.173, 60.187))
+        assert cues[2][:2] == pytest.approx((62.226, 63.627))
+
+    def test_single_digit_timing_line_after_a_textless_cue_is_not_measured_as_text(self):
+        content = (
+            "1\n00:00:01,000 --> 00:00:02,000\n\n"
+            "2\n00:00:3,000 --> 00:00:4,000\nHello there\n\n"
+            "3\n00:00:05,000 --> 00:00:06,000\nGeneral Kenobi\n"
+        ).replace("\n", "\r\r\n")
+        assert _cue_tuples(content) == [
+            (1.0, 2.0, ()),
+            (3.0, 4.0, ("Hello there",)),
+            (5.0, 6.0, ("General Kenobi",)),
+        ]
+
 
 @pytest.mark.unit
 class TestHasSrtCues:
