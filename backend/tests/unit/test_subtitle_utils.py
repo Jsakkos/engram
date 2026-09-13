@@ -65,6 +65,16 @@ class TestIsValidSrtFile:
         )
         assert is_valid_srt_file(p) is True
 
+    def test_accepts_dialogue_with_garbage_end_times(self, tmp_path):
+        # Malcolm in the Middle S02 references in real caches look like this; they
+        # must stay valid, or the download pass deletes a readable subtitle.
+        p = tmp_path / "malcolm.srt"
+        p.write_bytes(
+            b"1\r\n00:00:00,000 --> 107:40:37,608\r\nwww.tvsubtitles.net\r\n\r\n"
+            b"2\r\n00:00:02,000 --> 446:12:46,016\r\nExpired on Monday.\r\n"
+        )
+        assert is_valid_srt_file(p) is True
+
 
 @pytest.mark.unit
 class TestIsValidSrtContent:

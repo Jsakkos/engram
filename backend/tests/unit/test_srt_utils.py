@@ -179,6 +179,26 @@ class TestIterSrtCues:
             (5.0, 6.0, ("General Kenobi",)),
         ]
 
+    def test_three_digit_timing_fields_are_read(self):
+        # Real cached subtitles carry garbage end times such as "446:12:46,016"
+        # (Malcolm in the Middle S02) or "00:100:02,227" (One Piece). The old
+        # parser read their dialogue; dropping the cue loses every line of it.
+        content = (
+            "1\n00:00:02,000 --> 446:12:46,016\nExpired on Monday.\n\n"
+            "2\n00:09:55,970 --> 00:100:02,227\nSecond line\n"
+        )
+        cues = _cue_tuples(content)
+        assert [cue[2] for cue in cues] == [("Expired on Monday.",), ("Second line",)]
+        assert cues[0][:2] == pytest.approx((2.0, 446 * 3600 + 12 * 60 + 46.016))
+        assert cues[1][:2] == pytest.approx((595.97, 100 * 60 + 2.227))
+
+    def test_malformed_short_timing_like_line_is_not_kept_as_text(self):
+        content = (
+            "1\n00:00:01,000 --> 00:00:03,000\nHi\n00:0 --> junk\nstray\n\n"
+            "2\n00:00:04,000 --> 00:00:05,000\nThere\n"
+        )
+        assert _cue_tuples(content) == [(1.0, 3.0, ("Hi",)), (4.0, 5.0, ("There",))]
+
 
 @pytest.mark.unit
 class TestHasSrtCues:
