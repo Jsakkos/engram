@@ -2,6 +2,8 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -38,6 +40,103 @@ def read_file_with_fallback(file_path: Path, encodings: list[str] | None = None)
             continue
 
     raise ValueError(f"Failed to read {file_path} with any encoding. Errors: {errors}")
+
+
+_STAMP = r"\d{1,2}:\d{2}:\d{2}(?:[,.]\d{1,3})?"
+_TIMING_LINE_RE = re.compile(rf"^({_STAMP})\s*-->\s*({_STAMP})")
+
+
+def parse_srt_timestamp(timestamp: str) -> float:
+    """Parse ``HH:MM:SS,mmm`` (comma or dot before the milliseconds) into seconds."""
+    hours, minutes, seconds = timestamp.strip().replace(",", ".").split(":")
+    return float(hours) * 3600 + float(minutes) * 60 + float(seconds)
+
+
+@dataclass(frozen=True)
+class SrtCue:
+    """One subtitle cue: its timing and its non-blank text lines."""
+
+    start: float
+    end: float
+    lines: tuple[str, ...]
+
+    @property
+    def text(self) -> str:
+        return " ".join(self.lines)
+
+
+def _split_blocks(lines: list[str]) -> list[list[str]]:
+    """Group stripped lines into cue blocks separated by blank lines.
+
+    A real SRT always has at least two adjacent non-blank lines (a timing line sits
+    next to its index or its text). A file with none has had its line endings
+    doubled, for example CRLF text written through a Windows text-mode write, which
+    reads back with a blank line after every line. In that layout one blank line is
+    an ordinary line break and a run of two or more separates cues.
+    """
+    doubled = not any(a and b for a, b in zip(lines, lines[1:], strict=False))
+    min_gap = 2 if doubled else 1
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    gap = 0
+    for line in lines:
+        if not line:
+            gap += 1
+            continue
+        if current and gap >= min_gap:
+            blocks.append(current)
+            current = []
+        gap = 0
+        current.append(line)
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def iter_srt_cues(content: str | None) -> Iterator[SrtCue]:
+    """Yield every cue in SRT text, tolerating the layouts real downloads arrive in.
+
+    Handles LF, CRLF, lone CR, doubled line endings, a leading BOM, missing cue
+    index lines, and whitespace-only separator lines. Within a block, lines before
+    the first timing line are ignored (the index, or stray text) and lines after it
+    are the cue's text. A block with no timing line is ignored. A further timing line
+    inside the same block (a missing blank separator) starts another cue, and a
+    purely numeric line directly before it is dropped as that cue's index. A line
+    containing ``-->`` that is not a valid timing line drops that cue only.
+    """
+    if not content:
+        return
+    normalized = content.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.strip() for line in normalized.split("\n")]
+    for block in _split_blocks(lines):
+        timing: tuple[float, float] | None = None
+        body: list[str] = []
+        for line in block:
+            match = _TIMING_LINE_RE.match(line)
+            if match is None and "-->" not in line:
+                if timing is not None:
+                    body.append(line)
+                continue
+            if timing is not None:
+                if body and body[-1].isdigit():
+                    body.pop()  # the index line of the cue that starts here
+                yield SrtCue(timing[0], timing[1], tuple(body))
+            timing, body = None, []
+            if match is not None:
+                try:
+                    timing = (
+                        parse_srt_timestamp(match.group(1)),
+                        parse_srt_timestamp(match.group(2)),
+                    )
+                except ValueError:
+                    timing = None
+        if timing is not None:
+            yield SrtCue(timing[0], timing[1], tuple(body))
+
+
+def has_srt_cues(content: str | None) -> bool:
+    """True when at least one cue in ``content`` carries text."""
+    return any(cue.lines for cue in iter_srt_cues(content))
 
 
 class SubtitleReader:
