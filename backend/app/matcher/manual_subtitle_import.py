@@ -209,7 +209,10 @@ def commit_files(
         dest_path = dest_dir / f"{show_name_for_file} - {code}.srt"
         try:
             dest_dir.mkdir(parents=True, exist_ok=True)
-            dest_path.write_text(f.content, encoding="utf-8")
+            # newline="" writes the text exactly as uploaded. Without it Windows
+            # translates every "\n" to "\r\n", so an upload already using CRLF lands
+            # on disk as "\r\r\n": a blank line after every line.
+            dest_path.write_text(f.content, encoding="utf-8", newline="")
         except OSError as e:
             logger.error(f"Failed to write manual subtitle for {code}: {e}", exc_info=True)
             outcomes.append(
