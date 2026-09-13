@@ -71,22 +71,32 @@ to 2-in-1 content.
 
 ### A. Line-stream SRT parser (one implementation, both readers)
 
-Replace block splitting with a line-oriented parse:
+Replace the `"\n\n"` split and the `lines[1]` requirement with a block parser that tolerates the
+damaged layouts:
 
-- Iterate lines; blank lines are ignored.
-- A line matching the timestamp pattern (`HH:MM:SS[,.]mmm --> HH:MM:SS[,.]mmm`, spaces around the
-  arrow optional) opens a new cue.
-- A purely numeric line immediately preceding a timestamp line is a cue index and is dropped.
-- Any other line appends to the current cue's text. Lines before the first timestamp are ignored.
-- A malformed timestamp skips that cue only.
+- Normalize `\r\n` and lone `\r` to `\n`, strip a leading BOM, and strip each line.
+- Detect doubled line endings: a file in which no two non-blank lines are adjacent (a real SRT
+  always has its timing line next to its index or text). In that layout one blank line is an
+  ordinary line break and two or more separate cues; otherwise any blank line separates cues.
+  (A pure "ignore blank lines" parse was rejected: it would merge a trailing timing-less junk
+  block, such as an ad line, into the last real cue, and the watermark filter would then drop
+  that whole cue.)
+- Within a block, the first line matching the timing pattern
+  (`HH:MM:SS[,.]mmm --> HH:MM:SS[,.]mmm`, spaces around the arrow optional) opens a cue; lines
+  before it (the index, or stray text) are ignored and lines after it are the cue's text. A block
+  with no timing line is ignored, as today.
+- A further timing line inside the same block (a missing blank separator) opens another cue, and a
+  purely numeric line directly before it is dropped as that cue's index.
+- A line containing `-->` that does not match the timing pattern drops that cue only.
 
 Expose the parse as one function that yields `(start, end, text)` cues. Rebuild both
 `extract_subtitle_chunk` implementations and `SubtitleReader.get_duration` on it, so the two
 reader copies cannot drift again. The watermark filter (`_is_watermark_block`) keeps its current
 call site and semantics.
 
-Known trade-off: a numeric dialogue line directly before a timestamp (e.g. a cue whose last line is
-"42") is treated as the next cue's index. Acceptable: it loses one token of text, never a cue.
+Known trade-off: only in a block that is missing its blank separator, a dialogue line consisting
+of just a number, directly before the next timing line, is taken as that cue's index. It loses one
+line of text, never a cue.
 
 ### B. Manual import writes bytes exactly
 
@@ -127,10 +137,12 @@ The precomputed-vector path (`load_precomputed`) is unaffected: it has no empty-
   for that title at `snap_to_lattice_level(19)` instead of the default 10. 19 points admit a
   confident verdict for up to three runs (`19 > 3*3+1`) and nest with the 10-point lattice, so the
   first 10 transcripts are reused from the transcript cache.
-- **Hint accuracy.** `_conjoined_episode_count` picks, among admissible `n` in `2..MAX`, the `n`
-  whose best consecutive-runtime total is closest to the track duration (ties go to the smaller
-  `n`). For 7-min segments and a 22-min track this yields 3 (|21-22|=1) instead of 2 (|14-22|=8).
-  It remains an admission hint; the authoritative count still comes from `decompose_vote_runs`.
+- **Hint accuracy: dropped during planning.** Picking the closest-total `n` would break
+  `test_smallest_n_wins_when_windows_overlap`, which pins a deliberate choice (overlapping windows
+  return the smaller `n`; the vote runs correct it). Because the deeper scan above applies to any
+  hint `n >= 2`, the hint count no longer affects detection. It only appears in the
+  unconfirmed-review message, and a confirmed verdict reports its own run count. The
+  smallest-`n` rule stays.
 
 No change to `MIN_SCAN_POINTS_PER_RUN`, the territory rule, or `MAX_CONJOINED_EPISODES`.
 
@@ -144,11 +156,12 @@ No change to `MIN_SCAN_POINTS_PER_RUN`, the territory rule, or `MAX_CONJOINED_EP
 
 Unit (`tests/unit/`):
 
-- Parser: clean LF, CRLF, `\r\r\n`, no index lines, whitespace separators, BOM, malformed
-  timestamp in one cue, numeric dialogue line, trailing content after last cue. Assert identical
-  cue lists for the clean and damaged variants of the same subtitle.
+- Parser: clean LF, CRLF, `\r\r\n`, doubled after a text-mode read, no index lines, whitespace
+  separators, BOM, malformed timing line in one cue, missing blank separator, text before the first
+  cue, timing-less trailing block. Assert identical cue lists for the clean and damaged variants of
+  the same subtitle.
 - Parity: `episode_identification.SubtitleReader` and `srt_utils.SubtitleReader` return identical
-  results for every fixture.
+  results for every fixture without watermark blocks (only the matcher's reader filters them).
 - `get_duration` on the damaged variants.
 - `is_valid_srt_file` / `is_valid_srt_content`: zero-cue file rejected; `\r\r\n` and no-index files
   accepted.
@@ -156,8 +169,7 @@ Unit (`tests/unit/`):
 - `TfidfMatcher.prepare` drops empty references and logs the summary.
 - Guard: a season with one usable reference yields no match and the new review error code; the code
   is in `_NON_REMATCHABLE_REVIEW_ERRORS`.
-- `_conjoined_episode_count`: 7-min runtimes and 22-min track returns 3; existing 11-min two-segment
-  cases still return 2.
+- `_conjoined_episode_count`: unchanged; existing tests stay green.
 - Scan depth: a hinted title requests 19 points; an unhinted title still requests 10.
 - `decompose_vote_runs`: three contiguous balanced runs over 19 points confirm.
 
