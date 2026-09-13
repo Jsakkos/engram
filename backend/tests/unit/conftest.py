@@ -89,6 +89,12 @@ def ppc():
 
 
 @pytest.fixture(scope="session")
+def pg():
+    """The publish_guard.py module, loaded once per pytest session."""
+    return _load_script_module("publish_guard")
+
+
+@pytest.fixture(scope="session")
 def psc(bsc):
     """The pack_subtitle_cache.py module, loaded once per pytest session.
 
