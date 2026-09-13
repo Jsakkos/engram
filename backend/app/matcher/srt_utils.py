@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import lru_cache
@@ -67,14 +68,17 @@ class SrtCue:
 
 
 def _intra_cue_gap(lines: list[str]) -> int:
-    """How many blank lines separate a timing line from its own text in this file.
+    """The number of blank lines separating a timing line from its own text in this file.
 
     0 in a normal SRT, 1 when every line ending was doubled (CRLF text written
-    through a Windows text-mode write), 2 when tripled. Measured only from timing
-    lines to the text that follows them, so a header or trailer written with a
-    different layout cannot change it. Cues with no text are not measured.
+    through a Windows text-mode write), 2 when tripled. Taken as the most common
+    gap across cues, ties going to the wider gap: a gap that is too narrow empties
+    every cue in the file, while one that is too wide only lets a timing-less stray
+    line join the cue before it. Measured only from timing lines to the text that
+    follows them, so a header or trailer cannot change it. Cues with no text, and
+    cues whose first text line is only a number, are not measured.
     """
-    gaps: list[int] = []
+    counts: Counter[int] = Counter()
     for i, line in enumerate(lines):
         if not _TIMING_LINE_RE.match(line):
             continue
@@ -84,10 +88,12 @@ def _intra_cue_gap(lines: list[str]) -> int:
         if j == len(lines):
             continue
         following = lines[j]
-        if following.isdigit() or _TIMING_LINE_RE.match(following):
+        if following.isdigit() or ("-->" in following and _TIMING_LIKE_RE.match(following)):
             continue
-        gaps.append(j - i - 1)
-    return min(gaps, default=0)
+        counts[j - i - 1] += 1
+    if not counts:
+        return 0
+    return max(counts, key=lambda gap: (counts[gap], gap))
 
 
 def _split_blocks(lines: list[str]) -> list[list[str]]:
@@ -123,12 +129,14 @@ def iter_srt_cues(content: str | None) -> Iterator[SrtCue]:
     missing cue index lines, and whitespace-only separator lines. Within a block,
     lines before the first timing line are ignored (the index, or stray text) and
     lines after it are the cue's text. A block with no timing line is ignored, so in
-    a normally spaced file a blank line inside a cue's text ends that cue. A further
-    timing line inside the same block (a missing blank separator) starts another
-    cue, and a purely numeric line directly before it is dropped as that cue's
-    index. A line that starts like a timestamp and contains ``-->`` but is not a
-    valid timing line drops that cue only. Milliseconds shorter than three digits
-    are read as a decimal fraction (``01,5`` is 1.5 seconds).
+    a normally spaced file a blank line inside a cue's text ends that cue. A blank
+    line between a timing line and its text, in a file whose other cues have none,
+    empties that cue. A further timing line inside the same block (a missing blank
+    separator) starts another cue, and a purely numeric line directly before it is
+    dropped as that cue's index. A line that starts like a timestamp and contains
+    ``-->`` but is not a valid timing line drops that cue only. Milliseconds
+    shorter than three digits are read as a decimal fraction (``01,5`` is 1.5
+    seconds).
     """
     if not content:
         return

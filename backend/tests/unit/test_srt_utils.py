@@ -41,6 +41,8 @@ _EXPECTED_CUES = [
 ]
 _NO_INDEX_SRT = re.sub(r"(?m)^\d+\n(?=\d{2}:)", "", _CLEAN_SRT)
 _TIMING_WITHOUT_TEXT = "1\n00:00:01,000 --> 00:00:02,000\n\n2\n00:00:03,000 --> 00:00:04,000\n"
+_AD_CUE = "0\n00:00:00,000 --> 00:00:00,500\nSubtitles by SITE\n\n"
+_AD_EXPECTED = (0.0, 0.5, ("Subtitles by SITE",))
 
 
 def _cue_tuples(content):
@@ -112,6 +114,44 @@ class TestIterSrtCues:
     def test_hours_above_nine(self):
         content = "10:00:01,500 --> 10:00:02,000\nLate\n"
         assert _cue_tuples(content) == [(36001.5, 36002.0, ("Late",))]
+
+    def test_doubled_file_with_a_single_spaced_cue_first_keeps_every_cue(self):
+        content = _AD_CUE + _CLEAN_SRT.replace("\n", "\r\r\n")
+        assert _cue_tuples(content) == [_AD_EXPECTED, *_EXPECTED_CUES]
+
+    def test_doubled_file_with_a_single_spaced_cue_last_keeps_every_cue(self):
+        trailer = "4\n00:09:00,000 --> 00:09:01,000\nSupport us at SITE\n"
+        content = _CLEAN_SRT.replace("\n", "\r\r\n") + trailer
+        assert _cue_tuples(content) == [
+            *_EXPECTED_CUES,
+            (540.0, 541.0, ("Support us at SITE",)),
+        ]
+
+    def test_gap_tie_prefers_the_wider_layout(self):
+        single = "1\n00:00:01,000 --> 00:00:02,000\nHello\n\n"
+        doubled = "2\n00:00:03,000 --> 00:00:04,000\nWorld\n".replace("\n", "\r\r\n")
+        assert _cue_tuples(single + doubled) == [
+            (1.0, 2.0, ("Hello",)),
+            (3.0, 4.0, ("World",)),
+        ]
+
+    def test_textless_and_numeric_cues_do_not_set_the_gap(self):
+        content = (
+            "1\n00:00:01,000 --> 00:00:02,000\n42\n\n"
+            "2\n00:00:03,000 --> 00:00:04,000\nHello there\n\n"
+            "3\n00:00:05,000 --> 00:00:06,000\nGeneral Kenobi\n\n"
+            "4\n00:00:07,000 --> 00:00:08,000\n"
+        ).replace("\n", "\r\r\n")
+        assert _cue_tuples(content) == [
+            (1.0, 2.0, ("42",)),
+            (3.0, 4.0, ("Hello there",)),
+            (5.0, 6.0, ("General Kenobi",)),
+            (7.0, 8.0, ()),
+        ]
+
+    def test_blank_line_before_text_in_a_normal_file_empties_only_that_cue(self):
+        content = _CLEAN_SRT.replace("00:00:03,000\nDexter", "00:00:03,000\n\nDexter")
+        assert _cue_tuples(content) == [(1.0, 3.0, ()), *_EXPECTED_CUES[1:]]
 
 
 @pytest.mark.unit
