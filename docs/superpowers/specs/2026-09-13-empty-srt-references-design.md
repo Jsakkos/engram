@@ -126,6 +126,11 @@ layout:
   unused), and the only per-window reader (`MultiSegmentMatcher`, reached from
   `app/matcher/core/engine.py` and `testing_service.match_episodes`) has no production caller.
   Capping cue spans was considered and rejected for that reason.
+- A subtitle whose cues are only bracketed sound effects (Primal: `[fly buzzing]`, `[roars]`) stays
+  valid even though the matcher's cleaning strips brackets and it contributes no text. It is a
+  genuine subtitle of a dialogue-free show; rejecting it would delete and re-download the identical
+  file on every pass, spending provider quota for nothing. The matcher drops it as an empty
+  reference instead.
 
 ### B. Manual import writes bytes exactly
 
@@ -153,6 +158,14 @@ decode made the matcher fall back to latin-1 and read no dialogue while the vali
 leniently, accepted the file. Code review found 16 real cached references in that state (Malcolm in
 the Middle S02, I Dream of Jeannie, MacGyver, Criminal Minds, and others). One shared decoder keeps
 the validator's verdict and the matcher's view of a file from diverging again.
+
+A cue carrying only a watermark or ad does not count: validity requires a cue whose raw text is not
+a watermark (`has_dialogue_cues`, sharing `is_watermark_block` with the matcher's reader). A scan of
+the real cache found stubs the matcher could use none of, such as Malcolm in the Middle S02E08/23/25
+(two `Downloaded From www.AllSubs.org` cues) and How I Met Your Mother S08E05 (348 cues repeating a
+download URL). Rejecting them deletes the stub so the next download pass can fetch the real file.
+The rule deliberately checks raw text, not text after the matcher's cleaning: see the dialogue-free
+subtitle limitation below.
 
 ### D. Unusable-reference guard in matching
 
