@@ -87,8 +87,10 @@ damaged layouts:
   was also rejected: it would merge a trailing timing-less junk block into the last real cue, and
   the watermark filter would then drop that whole cue.)
 - Within a block, the first line matching the timing pattern
-  (`H:M:S[,.]mmm --> H:M:S[,.]mmm` with 1 or 2 digits per field, because real cached files
-  write timings such as `00:00:0,616`; spaces around the arrow optional) opens a cue; lines
+  (`H:M:S[,.]mmm --> H:M:S[,.]mmm` with 1 to 3 digits per field, because real cached files
+  write timings such as `00:00:0,616`, `446:12:46,016`, and `00:100:02,227`; the pre-branch
+  parser read their dialogue, and dropping the cue would make a readable file invalid; spaces
+  around the arrow optional) opens a cue; lines
   before it (the index, or stray text) are ignored and lines after it are the cue's text. A block
   with no timing line is ignored, as today.
 - A further timing line inside the same block (a missing blank separator) opens another cue, and a
