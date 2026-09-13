@@ -57,8 +57,10 @@ class TestIterSrtCues:
             pytest.param(_CLEAN_SRT.replace("\n", "\r\r\n"), id="cr-cr-lf"),
             pytest.param(_CLEAN_SRT.replace("\n", "\n\n"), id="doubled-after-text-read"),
             pytest.param(_CLEAN_SRT.replace("\n\n", "\n \n"), id="whitespace-separators"),
-            pytest.param("﻿" + _CLEAN_SRT, id="bom"),
+            pytest.param("\ufeff" + _CLEAN_SRT, id="bom"),
             pytest.param(_NO_INDEX_SRT, id="no-index-lines"),
+            pytest.param(_CLEAN_SRT.replace("\n", "\r"), id="cr-only"),
+            pytest.param(_CLEAN_SRT.replace("\n", "\r\r\r\n"), id="tripled"),
         ],
     )
     def test_damaged_layouts_yield_the_clean_cues(self, variant):
@@ -90,6 +92,26 @@ class TestIterSrtCues:
     def test_empty_and_none_content(self):
         assert _cue_tuples("") == []
         assert _cue_tuples(None) == []
+
+    def test_doubled_file_with_a_single_spaced_header_keeps_its_cues(self):
+        content = "Synced by X\nwww.x.com\n\n" + _CLEAN_SRT.replace("\n", "\r\r\n")
+        assert _cue_tuples(content) == _EXPECTED_CUES
+
+    def test_doubled_file_with_a_single_spaced_trailer_keeps_its_cues(self):
+        doubled = _CLEAN_SRT.replace("\n", "\r\r\n")
+        cues = _cue_tuples(doubled + "Downloaded from example\nwww.example.com\n")
+        assert len(cues) == 3
+        assert cues[:2] == _EXPECTED_CUES[:2]
+        assert cues[2][:2] == (7.0, 9.0)
+        assert cues[2][2][0] == "Dee Dee!"
+
+    def test_dialogue_containing_an_arrow_is_kept(self):
+        content = "1\n00:00:01,000 --> 00:00:02,000\nGo --> there\n"
+        assert _cue_tuples(content) == [(1.0, 2.0, ("Go --> there",))]
+
+    def test_hours_above_nine(self):
+        content = "10:00:01,500 --> 10:00:02,000\nLate\n"
+        assert _cue_tuples(content) == [(36001.5, 36002.0, ("Late",))]
 
 
 @pytest.mark.unit

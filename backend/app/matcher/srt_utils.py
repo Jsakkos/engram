@@ -44,6 +44,7 @@ def read_file_with_fallback(file_path: Path, encodings: list[str] | None = None)
 
 _STAMP = r"\d{1,2}:\d{2}:\d{2}(?:[,.]\d{1,3})?"
 _TIMING_LINE_RE = re.compile(rf"^({_STAMP})\s*-->\s*({_STAMP})")
+_TIMING_LIKE_RE = re.compile(r"^\d{1,2}:\d{2}")
 
 
 def parse_srt_timestamp(timestamp: str) -> float:
@@ -65,17 +66,39 @@ class SrtCue:
         return " ".join(self.lines)
 
 
-def _split_blocks(lines: list[str]) -> list[list[str]]:
-    """Group stripped lines into cue blocks separated by blank lines.
+def _intra_cue_gap(lines: list[str]) -> int:
+    """How many blank lines separate a timing line from its own text in this file.
 
-    A real SRT always has at least two adjacent non-blank lines (a timing line sits
-    next to its index or its text). A file with none has had its line endings
-    doubled, for example CRLF text written through a Windows text-mode write, which
-    reads back with a blank line after every line. In that layout one blank line is
-    an ordinary line break and a run of two or more separates cues.
+    0 in a normal SRT, 1 when every line ending was doubled (CRLF text written
+    through a Windows text-mode write), 2 when tripled. Measured only from timing
+    lines to the text that follows them, so a header or trailer written with a
+    different layout cannot change it. Cues with no text are not measured.
     """
-    doubled = not any(a and b for a, b in zip(lines, lines[1:], strict=False))
-    min_gap = 2 if doubled else 1
+    gaps: list[int] = []
+    for i, line in enumerate(lines):
+        if not _TIMING_LINE_RE.match(line):
+            continue
+        j = i + 1
+        while j < len(lines) and not lines[j]:
+            j += 1
+        if j == len(lines):
+            continue
+        following = lines[j]
+        if following.isdigit() or _TIMING_LINE_RE.match(following):
+            continue
+        gaps.append(j - i - 1)
+    return min(gaps, default=0)
+
+
+def _split_blocks(lines: list[str]) -> list[list[str]]:
+    """Group stripped lines into cue blocks.
+
+    A run of blank lines longer than the file's intra-cue gap (see
+    ``_intra_cue_gap``) separates cues, so doubled or tripled line endings read
+    like a normal file. In a doubled file, a trailer written with single line
+    endings directly after the last cue joins that cue's text.
+    """
+    max_gap = _intra_cue_gap(lines)
     blocks: list[list[str]] = []
     current: list[str] = []
     gap = 0
@@ -83,7 +106,7 @@ def _split_blocks(lines: list[str]) -> list[list[str]]:
         if not line:
             gap += 1
             continue
-        if current and gap >= min_gap:
+        if current and gap > max_gap:
             blocks.append(current)
             current = []
         gap = 0
@@ -96,24 +119,27 @@ def _split_blocks(lines: list[str]) -> list[list[str]]:
 def iter_srt_cues(content: str | None) -> Iterator[SrtCue]:
     """Yield every cue in SRT text, tolerating the layouts real downloads arrive in.
 
-    Handles LF, CRLF, lone CR, doubled line endings, a leading BOM, missing cue
-    index lines, and whitespace-only separator lines. Within a block, lines before
-    the first timing line are ignored (the index, or stray text) and lines after it
-    are the cue's text. A block with no timing line is ignored. A further timing line
-    inside the same block (a missing blank separator) starts another cue, and a
-    purely numeric line directly before it is dropped as that cue's index. A line
-    containing ``-->`` that is not a valid timing line drops that cue only.
+    Handles LF, CRLF, lone CR, doubled or tripled line endings, a leading BOM,
+    missing cue index lines, and whitespace-only separator lines. Within a block,
+    lines before the first timing line are ignored (the index, or stray text) and
+    lines after it are the cue's text. A block with no timing line is ignored, so in
+    a normally spaced file a blank line inside a cue's text ends that cue. A further
+    timing line inside the same block (a missing blank separator) starts another
+    cue, and a purely numeric line directly before it is dropped as that cue's
+    index. A line that starts like a timestamp and contains ``-->`` but is not a
+    valid timing line drops that cue only. Milliseconds shorter than three digits
+    are read as a decimal fraction (``01,5`` is 1.5 seconds).
     """
     if not content:
         return
-    normalized = content.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
+    normalized = content.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
     lines = [line.strip() for line in normalized.split("\n")]
     for block in _split_blocks(lines):
         timing: tuple[float, float] | None = None
         body: list[str] = []
         for line in block:
             match = _TIMING_LINE_RE.match(line)
-            if match is None and "-->" not in line:
+            if match is None and not ("-->" in line and _TIMING_LIKE_RE.match(line)):
                 if timing is not None:
                     body.append(line)
                 continue
