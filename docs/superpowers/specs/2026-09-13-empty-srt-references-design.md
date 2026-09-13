@@ -75,19 +75,25 @@ Replace the `"\n\n"` split and the `lines[1]` requirement with a block parser th
 damaged layouts:
 
 - Normalize `\r\n` and lone `\r` to `\n`, strip a leading BOM, and strip each line.
-- Detect doubled line endings: a file in which no two non-blank lines are adjacent (a real SRT
-  always has its timing line next to its index or text). In that layout one blank line is an
-  ordinary line break and two or more separate cues; otherwise any blank line separates cues.
-  (A pure "ignore blank lines" parse was rejected: it would merge a trailing timing-less junk
-  block, such as an ad line, into the last real cue, and the watermark filter would then drop
-  that whole cue.)
+- Measure the file's intra-cue gap: for each valid timing line followed by text (not a bare
+  number, not another timestamp-like `-->` line), count the blank lines between them. Take the
+  most common count, ties to the larger (0 normal, 1 doubled, 2 tripled). A run of blank lines
+  longer than that gap separates cues. The majority decides so one odd cue, header, or trailer
+  cannot flip the whole file; ties go wide because a too-narrow gap empties every cue, while a
+  too-wide gap still splits cues on their timing lines and only lets a timing-less stray line join
+  the cue before it. (Two earlier rules failed code review: a global "no two adjacent non-blank
+  lines" flag collapsed a doubled file that had one single-spaced header or tripled endings, and
+  the minimum gap let one single-spaced cue empty a doubled file. A pure "ignore blank lines" parse
+  was also rejected: it would merge a trailing timing-less junk block into the last real cue, and
+  the watermark filter would then drop that whole cue.)
 - Within a block, the first line matching the timing pattern
   (`HH:MM:SS[,.]mmm --> HH:MM:SS[,.]mmm`, spaces around the arrow optional) opens a cue; lines
   before it (the index, or stray text) are ignored and lines after it are the cue's text. A block
   with no timing line is ignored, as today.
 - A further timing line inside the same block (a missing blank separator) opens another cue, and a
   purely numeric line directly before it is dropped as that cue's index.
-- A line containing `-->` that does not match the timing pattern drops that cue only.
+- A line that starts like a timestamp and contains `-->` but does not match the timing pattern
+  drops that cue only. Dialogue that merely contains `-->` is kept as text.
 
 Expose the parse as one function that yields `(start, end, text)` cues. Rebuild both
 `extract_subtitle_chunk` implementations and `SubtitleReader.get_duration` on it, so the two
@@ -97,6 +103,19 @@ call site and semantics.
 Known trade-off: only in a block that is missing its blank separator, a dialogue line consisting
 of just a number, directly before the next timing line, is taken as that cue's index. It loses one
 line of text, never a cue.
+
+Further limitations accepted in code review, each confined to a minority of cues in an unusual
+layout:
+
+- In a normally spaced file, a blank line inside a cue's text truncates that cue, and a blank line
+  between a cue's timing line and its text empties that cue.
+- In a doubled file, a trailer written with single line endings directly after the last cue joins
+  that cue's text.
+- When most cues in a file are single-spaced, a doubled minority of cues lose their text.
+- A gap tie in a normally spaced file resolves wide, so a timing-less junk line between cues can
+  join the cue before it.
+- In a file without index lines whose gap resolves to 1 or more, a cue whose last line is a bare
+  number loses that line.
 
 ### B. Manual import writes bytes exactly
 
