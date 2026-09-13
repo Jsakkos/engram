@@ -1,7 +1,8 @@
 # Empty subtitle references and 3-in-1 conjoined tracks
 
 **Status:** approved design, not yet implemented
-**Scope:** bug-fix PR 1 of 2. PR 2 (combined `S01E01-E02-E03` filenames) is a separate spec.
+**Scope:** bug-fix PR 1 of 2. PR 2 (combined `S01E01-E03` filenames) is a separate spec that
+builds on the approach in #614; see "Follow-up: PR 2" below.
 
 ## Problem
 
@@ -165,11 +166,40 @@ asserting the pre-fix symptom (all votes to the one clean reference) is gone.
 
 ## Out of scope
 
-- Combined filenames and storage of multiple codes per title (PR 2).
+- Combined filenames and storage of multiple codes per title (PR 2, building on #614).
 - Segment-level fingerprint contributions for conjoined tracks.
 - TheTVDB as a metadata source.
 - Changing `select_chunk_vote`'s lone-candidate behaviour directly; guard D handles the degenerate
   case at the corpus level, where the cause lives.
+
+## Follow-up: PR 2 (combined filenames)
+
+Community PR #614 (@raiju, `split/multi-episode`) implements combined-track naming. It does not
+touch any file this PR changes (no matcher or subtitle code), so PR 1 ships independently. PR 2
+adopts #614's design rather than the sibling-column idea floated earlier:
+
+- **Representation.** A combined track stores the widened canonical code in `matched_episode`
+  (`S01E01-E03` for a contiguous run, `S01E01E03` for a gapped set). Every reader goes through
+  one anchored parser, `app/core/episode_codes.py`. This supersedes this spec's
+  "matched_episode stays a single canonical aired code" invariant for PR 2 only; the fingerprint
+  key stays single-episode because combined tracks never contribute.
+- **Taken from #614, credited `(thanks @raiju!)`:** `episode_codes.py` and its tests; the
+  organizer range splice after the rendered episode token; the per-part DVD projection with the
+  cross-season fallback to aired numbering; the reader sweep (`_same_episode_code` overlap,
+  `_normalize_episode_code`, DiscDB ingest and export `"17-18"` form, Discord summary,
+  contribution correction, disc contribution queue, history amend picker); the deliberate
+  non-parse in `bootstrap_library`.
+- **Added on top of #614:**
+  - A confirmed `MultiEpisodeVerdict` (from #624) pre-fills the title's assignment with
+    `format_episode_code(season, parts)` in playback order, still parked in REVIEW for
+    confirmation, and the "cannot name a combined file yet" message is replaced.
+  - Collision checks in `TitleList.tsx` and `ReviewQueue.tsx` test each part via
+    `episodeParts(selection)`, matching `Inspector.tsx` (open finding from the #614 bot review).
+  - One fingerprint-contribution guard for combined tracks instead of the two that a naive
+    merge with #624 produces.
+  - Rebased onto current main, without #611's already-merged commits.
+- **Deferred to separate changes:** #614's searchable episode picker, span control and its
+  setting/migration, disc name in the review header, and neighbouring-season assignment.
 
 ## User-facing notes
 
