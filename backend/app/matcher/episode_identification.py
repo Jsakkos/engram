@@ -21,6 +21,7 @@ from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.multi_episode import decompose_vote_runs
 from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
+from app.matcher.srt_utils import is_watermark_block as _is_watermark_block
 from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
@@ -387,42 +388,6 @@ def _clean_subtitle_text(text: str) -> str:
     text = re.sub(r"([A-Za-z])-\1+", r"\1", text)  # collapse stutters
     text = re.sub(r"[^\w\s']", " ", text)  # remove special chars except apostrophes
     return " ".join(text.split())
-
-
-def _is_watermark_block(block_text: str, block_lines: list[str], subtitle_start: float) -> bool:
-    """Detect subtitle blocks that are watermarks, ads, or non-dialogue annotations.
-
-    Generically identifies watermark content regardless of source by checking for:
-    - URLs or domain-like patterns (e.g., www.tvsubtitles.net, opensubtitles.org)
-    - Blocks near timestamp 0:00 with non-dialogue content (ad overlays)
-    - Font color/size tags wrapping the entire content (styled ads)
-    """
-    text_lower = block_text.lower().strip()
-
-    # Check for URLs or domain patterns
-    if re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", text_lower):
-        return True
-
-    # Check for blocks that are only font/styling tags wrapping a URL or brand name
-    stripped = re.sub(r"<[^>]+>", "", text_lower).strip()
-    if stripped and re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", stripped):
-        return True
-
-    # Very short non-dialogue at start (e.g., "sync by", "subtitles by", "corrected by")
-    if subtitle_start < 5.0 and len(stripped.split()) <= 8:
-        credit_patterns = [
-            "sync",
-            "subtitles by",
-            "corrected by",
-            "ripped by",
-            "encoded by",
-            "transcript by",
-            "timing by",
-        ]
-        if any(p in stripped for p in credit_patterns):
-            return True
-
-    return False
 
 
 # --- Confidence calibration --------------------------------------------------

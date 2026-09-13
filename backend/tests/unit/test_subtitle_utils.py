@@ -80,6 +80,23 @@ class TestIsValidSrtFile:
         p.write_bytes(_TIMING_WITHOUT_TEXT.encode("utf-16"))
         assert is_valid_srt_file(p) is False
 
+    def test_rejects_a_watermark_only_file(self, tmp_path):
+        p = tmp_path / "allsubs.srt"
+        p.write_bytes(
+            b"1\n00:00:01,000 --> 00:00:04,000\nDownloaded From www.AllSubs.org\n\n"
+            b"357\n00:00:03,000 --> 00:00:13,000\nDownloaded From www.AllSubs.org\n"
+        )
+        assert is_valid_srt_file(p) is False
+
+    def test_accepts_a_sound_effect_only_file(self, tmp_path):
+        p = tmp_path / "primal.srt"
+        p.write_bytes(
+            b"1\n00:00:02,700 --> 00:00:03,690\n[fly buzzing]\n\n"
+            b"2\n00:00:04,470 --> 00:00:05,460\n[birds chirping]\n\n"
+            b"3\n00:00:32,830 --> 00:00:33,820\n[gasping softly]\n"
+        )
+        assert is_valid_srt_file(p) is True
+
 
 @pytest.mark.unit
 class TestIsValidSrtContent:
@@ -107,3 +124,10 @@ class TestIsValidSrtContentCues:
     def test_accepts_doubled_line_endings(self):
         content = "1\n\n00:00:01,000 --> 00:00:02,000\n\nHello there, General Kenobi\n\n"
         assert is_valid_srt_content(content) is True
+
+    def test_rejects_a_watermark_only_upload(self):
+        content = (
+            "1\n00:00:01,000 --> 00:00:04,000\nDownloaded From www.AllSubs.org\n\n"
+            "2\n00:00:05,000 --> 00:00:08,000\nDownloaded From www.AllSubs.org\n"
+        )
+        assert is_valid_srt_content(content) is False

@@ -140,6 +140,42 @@ def _split_blocks(lines: list[str]) -> list[list[str]]:
     return blocks
 
 
+def is_watermark_block(block_text: str, block_lines: list[str], subtitle_start: float) -> bool:
+    """Detect subtitle blocks that are watermarks, ads, or non-dialogue annotations.
+
+    Generically identifies watermark content regardless of source by checking for:
+    - URLs or domain-like patterns (e.g., www.tvsubtitles.net, opensubtitles.org)
+    - Blocks near timestamp 0:00 with non-dialogue content (ad overlays)
+    - Font color/size tags wrapping the entire content (styled ads)
+    """
+    text_lower = block_text.lower().strip()
+
+    # Check for URLs or domain patterns
+    if re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", text_lower):
+        return True
+
+    # Check for blocks that are only font/styling tags wrapping a URL or brand name
+    stripped = re.sub(r"<[^>]+>", "", text_lower).strip()
+    if stripped and re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", stripped):
+        return True
+
+    # Very short non-dialogue at start (e.g., "sync by", "subtitles by", "corrected by")
+    if subtitle_start < 5.0 and len(stripped.split()) <= 8:
+        credit_patterns = [
+            "sync",
+            "subtitles by",
+            "corrected by",
+            "ripped by",
+            "encoded by",
+            "transcript by",
+            "timing by",
+        ]
+        if any(p in stripped for p in credit_patterns):
+            return True
+
+    return False
+
+
 def iter_srt_cues(content: str | None) -> Iterator[SrtCue]:
     """Yield every cue in SRT text, tolerating the layouts real downloads arrive in.
 
@@ -189,6 +225,21 @@ def iter_srt_cues(content: str | None) -> Iterator[SrtCue]:
 def has_srt_cues(content: str | None) -> bool:
     """True when at least one cue in ``content`` carries text."""
     return any(cue.lines for cue in iter_srt_cues(content))
+
+
+def has_dialogue_cues(content: str | None) -> bool:
+    """True when at least one cue carries text that is not a watermark or ad.
+
+    Stricter than ``has_srt_cues``: a file whose every cue is a watermark (a
+    "Downloaded From www.AllSubs.org" stub, or a placeholder repeating a download
+    URL) is not a subtitle, and accepting it caches it for good. Bracketed sound
+    cues such as "[roars]" still count: a dialogue-free show's subtitle is genuine,
+    and rejecting it would re-download the same file on every pass.
+    """
+    return any(
+        cue.lines and not is_watermark_block(cue.text, list(cue.lines), cue.start)
+        for cue in iter_srt_cues(content)
+    )
 
 
 class SubtitleReader:

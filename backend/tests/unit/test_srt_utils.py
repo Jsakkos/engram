@@ -4,7 +4,13 @@ import re
 
 import pytest
 
-from app.matcher.srt_utils import clean_text, has_srt_cues, iter_srt_cues, parse_srt_timestamp
+from app.matcher.srt_utils import (
+    clean_text,
+    has_dialogue_cues,
+    has_srt_cues,
+    iter_srt_cues,
+    parse_srt_timestamp,
+)
 
 
 @pytest.mark.unit
@@ -219,3 +225,40 @@ class TestHasSrtCues:
 def test_parse_srt_timestamp_accepts_comma_and_dot():
     assert parse_srt_timestamp("01:02:03,500") == pytest.approx(3723.5)
     assert parse_srt_timestamp(" 00:00:07.25 ") == pytest.approx(7.25)
+
+
+_ALLSUBS_STUB = (
+    "1\n00:00:01,000 --> 00:00:04,000\nDownloaded From www.AllSubs.org\n\n"
+    "357\n00:00:03,000 --> 00:00:13,000\nDownloaded From www.AllSubs.org\n"
+)
+
+
+@pytest.mark.unit
+class TestHasDialogueCues:
+    def test_true_for_dialogue(self):
+        assert has_dialogue_cues(_CLEAN_SRT) is True
+
+    def test_false_for_a_watermark_only_stub(self):
+        assert has_srt_cues(_ALLSUBS_STUB) is True
+        assert has_dialogue_cues(_ALLSUBS_STUB) is False
+
+    def test_false_for_a_placeholder_repeating_a_download_url(self):
+        line = "The subtitle for this episode is downloadable at: http://subs4tv.blogspot.com"
+        content = "".join(
+            f"{i}\n00:00:{i:02d},000 --> 00:00:{i:02d},500\n{line}\n\n" for i in range(1, 6)
+        )
+        assert has_dialogue_cues(content) is False
+
+    def test_true_for_sound_effect_only_cues(self):
+        content = (
+            "1\n00:00:02,700 --> 00:00:03,690\n[fly buzzing]\n\n"
+            "2\n00:00:04,470 --> 00:00:05,460\n[roars]\n"
+        )
+        assert has_dialogue_cues(content) is True
+
+    def test_true_when_dialogue_follows_a_watermark(self):
+        content = (
+            "1\n00:00:00,500 --> 00:00:02,000\nwww.tvsubtitles.net\n\n"
+            "2\n00:00:03,000 --> 00:00:04,000\nDexter, get out of my lab!\n"
+        )
+        assert has_dialogue_cues(content) is True

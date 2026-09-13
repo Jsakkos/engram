@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.matcher.srt_utils import SubtitleReader, clean_text, decode_utf16_bom, has_srt_cues
+from app.matcher.srt_utils import SubtitleReader, clean_text, decode_utf16_bom, has_dialogue_cues
 
 _HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
 
@@ -54,11 +54,14 @@ def is_valid_srt_file(file_path: Path) -> bool:
             )
             return False
 
-        # Timing arrows alone are not a subtitle. A file whose cues hold no text
-        # (or whose layout nothing can parse) gives the matcher nothing, and
-        # accepting it caches it for good: every later download pass reuses it.
-        if not has_srt_cues(text):
-            logger.warning(f"Rejecting {file_path.name}: no subtitle cue carries any text")
+        # Timing arrows alone are not a subtitle, and neither is a stub whose every
+        # cue is a watermark or ad. Either gives the matcher nothing, and accepting
+        # it caches it for good: every later download pass reuses it.
+        if not has_dialogue_cues(text):
+            logger.warning(
+                f"Rejecting {file_path.name}: no subtitle cue carries dialogue "
+                "(empty or watermark only)"
+            )
             return False
 
         return True
@@ -76,7 +79,7 @@ def is_valid_srt_content(content: str) -> bool:
     """
     if len(content.encode("utf-8")) < 50:
         return False
-    return _looks_like_srt(content[:1000]) and has_srt_cues(content)
+    return _looks_like_srt(content[:1000]) and has_dialogue_cues(content)
 
 
 # Ordered season/episode patterns, tried in sequence. The first match wins.
