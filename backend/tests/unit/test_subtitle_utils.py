@@ -75,6 +75,11 @@ class TestIsValidSrtFile:
         )
         assert is_valid_srt_file(p) is True
 
+    def test_rejects_utf16_file_with_no_dialogue(self, tmp_path):
+        p = tmp_path / "blank16.srt"
+        p.write_bytes(_TIMING_WITHOUT_TEXT.encode("utf-16"))
+        assert is_valid_srt_file(p) is False
+
 
 @pytest.mark.unit
 class TestIsValidSrtContent:

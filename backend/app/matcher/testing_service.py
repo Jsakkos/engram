@@ -864,7 +864,7 @@ def download_subtitles(
                 }
                 continue
             logger.warning(
-                f"Cached file {existing_subtitle.name} is invalid (HTML?), "
+                f"Cached file {existing_subtitle.name} is invalid (HTML or no readable cues), "
                 "deleting and re-downloading"
             )
             existing_subtitle.unlink(missing_ok=True)

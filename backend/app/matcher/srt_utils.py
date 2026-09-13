@@ -11,6 +11,21 @@ from pathlib import Path
 import chardet
 from loguru import logger
 
+_UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
+
+
+def decode_utf16_bom(raw: bytes) -> str | None:
+    """Decode bytes that start with a UTF-16 byte-order mark; None otherwise.
+
+    Lenient on purpose: tvsubtitles appends a single-byte ASCII trailer to some
+    UTF-16 subtitles, leaving an odd byte count that a strict decode rejects.
+    Every reader and validator decodes such files through here, so a file the
+    validator accepts can never read as empty to the matcher.
+    """
+    if raw[:2] not in _UTF16_BOMS:
+        return None
+    return raw.decode("utf-16", errors="ignore")
+
 
 def detect_file_encoding(file_path: Path) -> str:
     """Detect the encoding of a file using chardet."""
@@ -28,6 +43,9 @@ def detect_file_encoding(file_path: Path) -> str:
 def read_file_with_fallback(file_path: Path, encodings: list[str] | None = None) -> str:
     """Read a file trying multiple encodings."""
     if encodings is None:
+        bom_text = decode_utf16_bom(Path(file_path).read_bytes())
+        if bom_text is not None:
+            return bom_text
         detected = detect_file_encoding(file_path)
         encodings = [detected, "utf-8", "latin-1", "cp1252", "iso-8859-1"]
 

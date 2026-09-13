@@ -20,7 +20,7 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.multi_episode import decompose_vote_runs
-from app.matcher.srt_utils import iter_srt_cues
+from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
 from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
@@ -2236,12 +2236,19 @@ def read_file_with_fallback(file_path, encodings=None):
     Raises:
         ValueError: If file cannot be read with any encoding
     """
+    file_path = Path(file_path)
     if encodings is None:
+        # A UTF-16 byte-order mark settles the encoding. Decoding it leniently here,
+        # instead of through detection, keeps the matcher in agreement with
+        # is_valid_srt_file on UTF-16 files that carry a stray trailing byte.
+        bom_text = decode_utf16_bom(file_path.read_bytes())
+        if bom_text is not None:
+            logger.debug(f"Successfully read {file_path} as UTF-16 (byte-order mark)")
+            return bom_text
         # First try detected encoding, then fallback to common subtitle encodings
         detected = detect_file_encoding(file_path)
         encodings = [detected, "utf-8", "latin-1", "cp1252", "iso-8859-1"]
 
-    file_path = Path(file_path)
     errors = []
 
     for encoding in encodings:

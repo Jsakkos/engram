@@ -985,3 +985,44 @@ class TestDamagedReferenceCorpus:
 
         assert matcher.match("bravo " * 20)[0][0] == str(doubled)
         assert matcher.match("charlie " * 20)[0][0] == str(no_index)
+
+
+_UTF16_TRAILER = b'\n<font color="#ffff00" size=14>www.tvsubtitles.net</font>\r\n'
+
+
+def _utf16_with_stray_byte() -> bytes:
+    body = (
+        "1\r\n00:00:02,000 --> 00:00:03,000\r\nExpired on Monday.\r\n\r\n"
+        "2\r\n00:00:04,000 --> 00:00:05,000\r\nTen.\r\n"
+    )
+    raw = body.encode("utf-16") + _UTF16_TRAILER
+    assert len(raw) % 2 == 1  # the odd byte count a strict UTF-16 decode rejects
+    return raw
+
+
+@pytest.mark.unit
+class TestUtf16ReferenceWithStrayByte:
+    """Real tvsubtitles references (Malcolm in the Middle S02, I Dream of Jeannie)
+    are UTF-16 with a byte-order mark plus a single-byte ASCII trailer. The
+    validator accepted them while the matcher read them as latin-1 and saw no
+    dialogue, so they stayed cached and matched nothing."""
+
+    def test_matcher_reads_the_dialogue(self, tmp_path):
+        p = tmp_path / "Malcolm in the Middle - S02E02.srt"
+        p.write_bytes(_utf16_with_stray_byte())
+        text = SubtitleCache().get_full_text(str(p))
+        assert "expired on monday" in text
+        assert "ten" in text.split()
+
+    def test_both_readers_decode_it_the_same_way(self, tmp_path):
+        p = tmp_path / "Malcolm in the Middle - S02E03.srt"
+        p.write_bytes(_utf16_with_stray_byte())
+        assert ei.read_file_with_fallback(str(p)) == srt_utils.read_file_with_fallback(p)
+
+    def test_validator_and_matcher_agree(self, tmp_path):
+        from app.matcher.subtitle_utils import is_valid_srt_file
+
+        p = tmp_path / "Malcolm in the Middle - S02E05.srt"
+        p.write_bytes(_utf16_with_stray_byte())
+        assert is_valid_srt_file(p) is True
+        assert SubtitleCache().get_full_text(str(p)) != ""

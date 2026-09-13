@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.matcher.srt_utils import SubtitleReader, clean_text, has_srt_cues
+from app.matcher.srt_utils import SubtitleReader, clean_text, decode_utf16_bom, has_srt_cues
 
 _HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
 
@@ -44,9 +44,8 @@ def is_valid_srt_file(file_path: Path) -> bool:
         # ASCII "-->" check below never matches and a perfectly valid subtitle
         # gets rejected. The whole file is decoded because the cue check needs it.
         raw = file_path.read_bytes()
-        if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
-            text = raw.decode("utf-16", errors="ignore")
-        else:
+        text = decode_utf16_bom(raw)
+        if text is None:
             text = raw.decode("utf-8", errors="ignore")
 
         if not _looks_like_srt(text[:1000]):
