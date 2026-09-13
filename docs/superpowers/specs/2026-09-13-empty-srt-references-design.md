@@ -121,11 +121,12 @@ layout:
   number loses that line.
 - A cue with an absurd end time (for example `00:00:02,000 --> 446:12:46,016`, a tvsubtitles defect in
   Malcolm in the Middle S02) keeps that end time. Only per-window text extraction and the reported
-  reference duration see it. Neither matters in production: the matcher compares against
-  full-episode text, no score reads the reference duration (`MatchCoverage.episode_coverage` is
-  unused), and the only per-window reader (`MultiSegmentMatcher`, reached from
-  `app/matcher/core/engine.py` and `testing_service.match_episodes`) has no production caller.
-  Capping cue spans was considered and rejected for that reason.
+  reference duration see it. Neither affects disc matching: the matcher compares against
+  full-episode text, and no score reads the reference duration (`MatchCoverage.episode_coverage`
+  is unused). The only per-window reader is `MultiSegmentMatcher`, reached from
+  `app/matcher/core/engine.py` (imported by nothing) and from `testing_service.match_episodes`,
+  which only the manual `/api/test/match` endpoint calls; neither the disc pipeline nor the
+  frontend uses that endpoint. Capping cue spans was considered and rejected for that reason.
 - A subtitle whose cues are only bracketed sound effects (Primal: `[fly buzzing]`, `[roars]`) stays
   valid even though the matcher's cleaning strips brackets and it contributes no text. It is a
   genuine subtitle of a dialogue-free show; rejecting it would delete and re-download the identical
