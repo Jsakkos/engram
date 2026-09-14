@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from app.api.websocket import manager as ws_manager
+from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
@@ -25,6 +26,7 @@ from app.services.matching_coordinator import (
     _apply_multi_episode_review,
     _conjoined_episode_count,
     _duration_matches_episode_runtime,
+    _route_unconfirmable_title,
     episode_curator,
 )
 from tests.unit.conftest import _unit_session_factory
@@ -1547,3 +1549,67 @@ class TestConjoinedDiscDbBypass:
             assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
             # Not the DiscDB fallback's fingerprint (source/episode_title keys).
             assert "source" not in parsed
+
+
+@pytest.mark.unit
+class TestUnreadableReferencesReviewRouting:
+    """A title the matcher refused for lack of usable references goes to review with
+    a message naming the cause, even when the runtime also hinted that the track is
+    several conjoined episodes."""
+
+    def _title(self, details: dict | None):
+        return SimpleNamespace(
+            state=TitleState.MATCHED,
+            match_details=json.dumps(details) if details is not None else None,
+            match_source="engram",
+        )
+
+    def _refused(self, usable: int, total: int) -> dict:
+        return {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": usable,
+            "total_references": total,
+        }
+
+    def test_unreadable_references_go_to_review_with_counts(self):
+        title = self._title(self._refused(1, 37))
+        routed = _route_unconfirmable_title(title, conjoined_hint=None)
+        assert routed == REFERENCES_UNREADABLE_ERROR_CODE
+        assert title.state == TitleState.REVIEW
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == REFERENCES_UNREADABLE_ERROR_CODE
+        assert "could not be read (only 1 of 37 had any text)" in parsed["message"]
+
+    def test_single_readable_reference_says_too_few_not_unreadable(self):
+        title = self._title(self._refused(1, 1))
+        assert _route_unconfirmable_title(title, conjoined_hint=None) == (
+            REFERENCES_UNREADABLE_ERROR_CODE
+        )
+        message = json.loads(title.match_details)["message"]
+        assert "Only 1 reference subtitle is available" in message
+        assert "too few" in message
+        assert "could not be read" not in message
+
+    def test_unreadable_references_win_over_a_conjoined_hint(self):
+        title = self._title(self._refused(1, 37))
+        routed = _route_unconfirmable_title(title, conjoined_hint=3)
+        assert routed == REFERENCES_UNREADABLE_ERROR_CODE
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == REFERENCES_UNREADABLE_ERROR_CODE
+        assert "joined together" not in parsed["message"]
+
+    def test_hinted_track_without_the_error_still_routes_as_multi_episode(self):
+        title = self._title(
+            {"multi_episode": {"is_multi_episode": False, "reason": "single_episode"}}
+        )
+        assert _route_unconfirmable_title(title, conjoined_hint=3) == MULTI_EPISODE_ERROR_CODE
+
+    def test_ordinary_title_is_untouched(self):
+        title = self._title({"episode": "S1E1"})
+        assert _route_unconfirmable_title(title, conjoined_hint=None) is None
+        assert title.state == TitleState.MATCHED
+
+    def test_unreadable_references_are_never_auto_rematched(self):
+        from app.services.finalization_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
+
+        assert REFERENCES_UNREADABLE_ERROR_CODE in _NON_REMATCHABLE_REVIEW_ERRORS

@@ -16,6 +16,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.organizer import check_library_writable
 from app.database import async_session
+from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
@@ -226,6 +227,9 @@ _NON_REMATCHABLE_REVIEW_ERRORS = {
     # A conjoined multi-episode track: re-matching cannot change what the file
     # holds, and the rerun would overwrite the reviewer-facing message (#622).
     MULTI_EPISODE_ERROR_CODE,
+    # The matcher refused the title: too few reference subtitles held any text. A
+    # deeper scan against the same references cannot change that.
+    REFERENCES_UNREADABLE_ERROR_CODE,
 } | set(RIP_FAILURE_ERROR_CODES)
 
 

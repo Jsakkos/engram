@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.matcher.llm_episode_matcher import match_episode_via_llm
+from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
 
 logger = logging.getLogger(__name__)
@@ -232,12 +233,19 @@ class EpisodeCurator:
             f"Season unknown for {file_path.name}; searching seasons {seasons} of '{series_name}'"
         )
 
+        # A season the matcher refused (too few usable references) yields no episode.
+        # If every candidate season refuses, keep that reason on the fallback so the
+        # coordinator can tell the reviewer why, instead of a bare unmatched result.
+        refusal_details: dict | None = None
         best: MatchResult | None = None
         for s in seasons:
             result = await self.match_single_file(
                 file_path, series_name, s, progress_callback, num_points, min_vote_count, tmdb_id
             )
             if not result.episode_code:
+                details = result.match_details or {}
+                if details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE:
+                    refusal_details = details
                 continue
             if best is None or result.confidence > best.confidence:
                 best = result
@@ -246,7 +254,7 @@ class EpisodeCurator:
                 break
 
         if best is None:
-            return self._fallback_result(file_path)
+            return self._fallback_result(file_path, match_details=refusal_details)
         return best
 
     async def match_files(

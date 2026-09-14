@@ -243,6 +243,51 @@ class TestMatchAcrossSeasons:
         assert result.episode_code is None
         assert result.needs_review is True
 
+    async def test_refusal_in_every_season_keeps_the_reason(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        f = tmp_path / "title_01.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [1, 2])
+        refusal = {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": 1,
+            "total_references": 1,
+        }
+
+        async def fake_single(fp, series, season, *a, **k):
+            return MatchResult(fp, None, None, 0.0, True, match_details=dict(refusal))
+
+        monkeypatch.setattr(curator, "match_single_file", fake_single)
+        result = await curator._match_across_seasons(f, "Show")
+        assert result.episode_code is None
+        assert result.needs_review is True
+        assert result.match_details == refusal
+
+    async def test_a_real_match_in_another_season_still_wins(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        f = tmp_path / "title_01.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [1, 2])
+        canned = {
+            1: MatchResult(
+                f, None, None, 0.0, True, match_details={"error": REFERENCES_UNREADABLE_ERROR_CODE}
+            ),
+            2: MatchResult(f, "S02E03", None, 0.9, False),
+        }
+
+        async def fake_single(fp, series, season, *a, **k):
+            return canned[season]
+
+        monkeypatch.setattr(curator, "match_single_file", fake_single)
+        result = await curator._match_across_seasons(f, "Show")
+        assert result.episode_code == "S02E03"
+
     async def test_no_candidate_seasons_falls_back(self, tmp_path, monkeypatch):
         curator = EpisodeCurator()
         curator._matcher = Mock()
