@@ -234,18 +234,22 @@ class EpisodeCurator:
         )
 
         # A season the matcher refused (too few usable references) yields no episode.
-        # If every candidate season refuses, keep that reason on the fallback so the
-        # coordinator can tell the reviewer why, instead of a bare unmatched result.
+        # Only when EVERY candidate season refuses does that reason explain the
+        # result; if any season could be read, the reason would mislead the reviewer
+        # and wrongly stop the title from being re-matched.
         refusal_details: dict | None = None
+        every_season_refused = True
         best: MatchResult | None = None
         for s in seasons:
             result = await self.match_single_file(
                 file_path, series_name, s, progress_callback, num_points, min_vote_count, tmdb_id
             )
+            details = result.match_details or {}
+            if details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE:
+                refusal_details = details
+            else:
+                every_season_refused = False
             if not result.episode_code:
-                details = result.match_details or {}
-                if details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE:
-                    refusal_details = details
                 continue
             if best is None or result.confidence > best.confidence:
                 best = result
@@ -254,7 +258,9 @@ class EpisodeCurator:
                 break
 
         if best is None:
-            return self._fallback_result(file_path, match_details=refusal_details)
+            return self._fallback_result(
+                file_path, match_details=refusal_details if every_season_refused else None
+            )
         return best
 
     async def match_files(

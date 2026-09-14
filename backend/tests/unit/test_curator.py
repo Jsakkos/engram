@@ -288,6 +288,31 @@ class TestMatchAcrossSeasons:
         result = await curator._match_across_seasons(f, "Show")
         assert result.episode_code == "S02E03"
 
+    async def test_refusal_is_dropped_when_another_season_could_be_read(
+        self, tmp_path, monkeypatch
+    ):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        f = tmp_path / "title_01.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [1, 2])
+        canned = {
+            1: MatchResult(
+                f, None, None, 0.0, True, match_details={"error": REFERENCES_UNREADABLE_ERROR_CODE}
+            ),
+            2: MatchResult(f, None, None, 0.0, True, match_details={"score": 0.0}),
+        }
+
+        async def fake_single(fp, series, season, *a, **k):
+            return canned[season]
+
+        monkeypatch.setattr(curator, "match_single_file", fake_single)
+        result = await curator._match_across_seasons(f, "Show")
+        assert result.episode_code is None
+        assert result.match_details is None
+
     async def test_no_candidate_seasons_falls_back(self, tmp_path, monkeypatch):
         curator = EpisodeCurator()
         curator._matcher = Mock()

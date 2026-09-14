@@ -1552,6 +1552,76 @@ class TestConjoinedDiscDbBypass:
 
 
 @pytest.mark.unit
+class TestUnreadableReferencesEndToEnd:
+    """A refused result flows through _match_single_file_inner into the database: it
+    lands in REVIEW with the reviewer message, unless a DiscDB mapping assigns it."""
+
+    def _refused_result(self):
+        return SimpleNamespace(
+            episode_code=None,
+            confidence=0.0,
+            needs_review=True,
+            match_details={
+                "error": REFERENCES_UNREADABLE_ERROR_CODE,
+                "usable_references": 1,
+                "total_references": 1,
+            },
+        )
+
+    async def test_refused_title_lands_in_review_with_the_message(self, monkeypatch, tmp_path):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+        coord._discdb_mappings = {}
+
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=self._refused_result())
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(job.id, title.id, tmp_path / "title_t00.mkv")
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.REVIEW
+            parsed = json.loads(title.match_details)
+            assert parsed["error"] == REFERENCES_UNREADABLE_ERROR_CODE
+            assert "too few to tell its episodes apart" in parsed["message"]
+
+    async def test_discdb_mapping_still_assigns_a_refused_title(self, monkeypatch, tmp_path):
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+
+        mapping = DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Pilot",
+            season=1,
+            episode=1,
+            duration_seconds=600,
+            size_bytes=1024**3,
+        )
+        coord._discdb_mappings = {job.id: [mapping]}
+
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=self._refused_result())
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(job.id, title.id, tmp_path / "title_t00.mkv")
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.MATCHED
+            assert title.matched_episode == "S01E01"
+            assert title.match_source == "discdb"
+            assert json.loads(title.match_details or "{}").get("error") != (
+                REFERENCES_UNREADABLE_ERROR_CODE
+            )
+
+
+@pytest.mark.unit
 class TestUnreadableReferencesReviewRouting:
     """A title the matcher refused for lack of usable references goes to review with
     a message naming the cause, even when the runtime also hinted that the track is
