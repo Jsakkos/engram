@@ -330,4 +330,35 @@ describe('Inspector: review reason notice', () => {
         });
         expect(screen.getAllByText((content) => content.includes(message))).toHaveLength(1);
     });
+
+    it('leaves damaged-rip messages to the damaged track notice', () => {
+        const plain = renderInspector({ title: makeTitle() });
+        const baseline = plain.container.querySelectorAll('[data-testid="sv-notice"]').length;
+        plain.unmount();
+        const damaged = renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({
+                    error: 'incomplete_rip',
+                    message: 'The rip of this track stopped early.',
+                }),
+            }),
+        });
+        expect(damaged.container.querySelectorAll('[data-testid="sv-notice"]').length).toBe(
+            baseline,
+        );
+    });
+
+    it('does not show raw matching failure text', () => {
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({
+                    error: 'matching_task_failed',
+                    message: 'list index out of range',
+                }),
+            }),
+        });
+        expect(
+            screen.queryByText((content) => content.includes('list index out of range')),
+        ).not.toBeInTheDocument();
+    });
 });
