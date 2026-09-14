@@ -266,6 +266,38 @@ class TestMatchAcrossSeasons:
         assert result.needs_review is True
         assert result.match_details == refusal
 
+    async def test_refusal_reports_the_season_with_unreadable_references(
+        self, tmp_path, monkeypatch
+    ):
+        """When every season refuses for different reasons, the reviewer message must
+        name the damaged season ("could not be read"), not whichever season happened
+        to be checked last (a small season reads as "too few subtitles")."""
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        f = tmp_path / "title_01.mkv"
+        f.write_text("")
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [1, 2])
+        damaged = {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": 1,
+            "total_references": 37,
+        }
+        small = {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": 1,
+            "total_references": 1,
+        }
+        canned = {1: damaged, 2: small}
+
+        async def fake_single(fp, series, season, *a, **k):
+            return MatchResult(fp, None, None, 0.0, True, match_details=dict(canned[season]))
+
+        monkeypatch.setattr(curator, "match_single_file", fake_single)
+        result = await curator._match_across_seasons(f, "Show")
+        assert result.match_details == damaged
+
     async def test_a_real_match_in_another_season_still_wins(self, tmp_path, monkeypatch):
         from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 

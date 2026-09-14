@@ -16,6 +16,15 @@ from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
 logger = logging.getLogger(__name__)
 
 
+def _unreadable_count(details: dict) -> int:
+    """How many of a refused season's references had no readable text (0 if unknown)."""
+    usable = details.get("usable_references")
+    total = details.get("total_references")
+    if isinstance(usable, int) and isinstance(total, int):
+        return max(total - usable, 0)
+    return 0
+
+
 @dataclass
 class MatchResult:
     """Result of matching a file to an episode."""
@@ -246,7 +255,12 @@ class EpisodeCurator:
             )
             details = result.match_details or {}
             if details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE:
-                refusal_details = details
+                # Report the most damaged season: its "could not be read" message
+                # explains more than a merely small season's "too few subtitles".
+                if refusal_details is None or _unreadable_count(details) > _unreadable_count(
+                    refusal_details
+                ):
+                    refusal_details = details
             else:
                 every_season_refused = False
             if not result.episode_code:
