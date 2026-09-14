@@ -1699,10 +1699,16 @@ class EpisodeMatcher:
                 reference_files=reference_files,
             )
 
-            if not using_precomputed and len(tfidf_matcher.ref_file_order) < MIN_USABLE_REFERENCES:
-                usable = len(tfidf_matcher.ref_file_order)
+            # The precomputed cache gets the same floor: its builders drop references
+            # that read as empty, so a season built from damaged subtitles can ship
+            # with a single row that wins every vote.
+            if using_precomputed:
+                usable = total = len(ref_episode_codes)
+            else:
+                usable, total = len(tfidf_matcher.ref_file_order), len(reference_files)
+            if usable < MIN_USABLE_REFERENCES:
                 logger.error(
-                    f"Only {usable} of {len(reference_files)} reference subtitles for "
+                    f"Only {usable} of {total} reference subtitles for "
                     f"'{self.show_name}' season {season_number} contain readable text; "
                     f"not matching {Path(video_file).name} against them."
                 )
@@ -1714,7 +1720,7 @@ class EpisodeMatcher:
                     "match_details": {
                         "error": REFERENCES_UNREADABLE_ERROR_CODE,
                         "usable_references": usable,
-                        "total_references": len(reference_files),
+                        "total_references": total,
                     },
                     "runner_ups": [],
                 }

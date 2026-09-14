@@ -179,8 +179,12 @@ title in REVIEW with a message stating the reference subtitles for the season co
 The new error code must be added to `_NON_REMATCHABLE_REVIEW_ERRORS` so review escalation does not
 overwrite `match_details` (see the review-escalation wipe bug).
 
-The precomputed-vector path (`load_precomputed`) is unaffected: it has no empty-text concept. The
-`_augment_with_downloaded_srts` path must skip empty SRTs the same way.
+The precomputed-vector path (`load_precomputed`) has no empty-text concept of its own, but it gets
+the same floor: both cache builders (`build_subtitle_cache.py`, `pack_subtitle_cache.py`) drop
+references that read as empty, so a season built from damaged subtitles with the old parser can ship
+as a single row that wins every vote. The floor counts the season's rows after augmentation, and the
+reported total is the row count. The `_augment_with_downloaded_srts` path must skip empty SRTs the
+same way. The published cache should be rebuilt with the new parser once this ships.
 
 Real-cache check (2,346 show/season groups in the scraped cache): the floor fires for 14 seasons,
 and in every one the season has exactly one cached reference, which is readable (usable 1/1). No

@@ -860,10 +860,11 @@ class TestTranscriptionCache:
         # rebuild + hashed-query path; only the transcript-cache behaviour is exercised.
         tfidf = MagicMock()
         tfidf.is_prepared = True
-        tfidf.reference_signature.return_value = ("precomputed", ("S01E01",))
+        tfidf.reference_signature.return_value = ("precomputed", ("S01E01", "S01E02"))
         tfidf.match.return_value = [("S01E01", 0.9)]
 
-        precomputed = (csr_matrix(np.eye(1)), ["S01E01"], np.ones(1))
+        # Two episodes: a one-row season is refused by the usable-reference floor.
+        precomputed = (csr_matrix(np.eye(2)), ["S01E01", "S01E02"], np.ones(2))
 
         with (
             # Inject the fake TF-IDF matcher via the per-call seam.
@@ -1144,21 +1145,46 @@ class TestUnreadableReferenceGuard:
         get_model.assert_called()
         assert model.calls > 0
 
-    def test_precomputed_mode_is_never_refused(self, tmp_path, monkeypatch):
-        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
-
-        matcher, model, get_model, _, _ = self._matcher(tmp_path, monkeypatch, {})
-        precomputed = (csr_matrix(np.eye(1)), ["S01E01"], np.ones(1))
+    def _precomputed_matcher(self, tmp_path, monkeypatch, codes):
+        matcher, model, get_model, duration, _ = self._matcher(tmp_path, monkeypatch, {})
+        size = len(codes)
+        precomputed = (csr_matrix(np.eye(size)), list(codes), np.ones(size))
         monkeypatch.setattr(matcher, "_load_precomputed_season", lambda season: precomputed)
         tfidf = MagicMock()
         tfidf.is_prepared = True
-        tfidf.ref_file_order = ["S01E01"]
-        tfidf.reference_signature.return_value = ("precomputed", ("S01E01",))
-        tfidf.match.return_value = [("S01E01", 0.5)]
+        tfidf.ref_file_order = list(codes)
+        tfidf.reference_signature.return_value = ("precomputed", tuple(codes))
+        tfidf.match.return_value = [(codes[0], 0.5)]
         monkeypatch.setattr(matcher, "_get_tfidf_matcher", MagicMock(return_value=tfidf))
+        return matcher, get_model, duration
+
+    def test_precomputed_season_with_two_episodes_is_matched_against(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        matcher, get_model, _ = self._precomputed_matcher(
+            tmp_path, monkeypatch, ["S01E01", "S01E02"]
+        )
 
         result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
 
         details = (result or {}).get("match_details") or {}
         assert details.get("error") != REFERENCES_UNREADABLE_ERROR_CODE
         get_model.assert_called()
+
+    def test_precomputed_season_with_one_episode_is_refused(self, tmp_path, monkeypatch):
+        """The cache builders drop references that read as empty, so a season built
+        from damaged subtitles ships with a single row and would win every vote."""
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        matcher, get_model, duration = self._precomputed_matcher(tmp_path, monkeypatch, ["S01E01"])
+
+        result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
+
+        assert result["episode"] is None
+        assert result["match_details"] == {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": 1,
+            "total_references": 1,
+        }
+        duration.assert_not_called()
+        get_model.assert_not_called()
