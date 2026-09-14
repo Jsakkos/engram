@@ -110,6 +110,23 @@ def _conjoined_episode_count(title_minutes: float, runtimes: list[int]) -> int |
     return None
 
 
+# Scan depth for a track the runtime pre-filter admitted as conjoined. A confident
+# multi-episode verdict needs more than MIN_SCAN_POINTS_PER_RUN * runs + 1 scan points
+# (see app.matcher.multi_episode), so the default 10 confirms at most two runs and a
+# three-segment cartoon track never confirms. 19 is the next scan-lattice level, so
+# the first 10 transcripts are reused.
+CONJOINED_SCAN_POINTS = 19
+
+
+def _scan_points_for_hint(num_points: int | None, conjoined_hint: int | None) -> int | None:
+    """Deepen the scan for a hinted conjoined track; never make a requested scan shallower."""
+    if not conjoined_hint:
+        return num_points
+    if num_points is None or num_points < CONJOINED_SCAN_POINTS:
+        return CONJOINED_SCAN_POINTS
+    return num_points
+
+
 # ASR-preferred episode precedence: ASR always runs and is authoritative at or
 # above this confidence. Only below it do we defer to a DiscDB episode mapping —
 # DiscDB numbers episodes by physical disc order, not aired order, so it is a
@@ -1038,6 +1055,10 @@ class MatchingCoordinator:
             # Belt-and-suspenders: make sure the job itself reflects MATCHING the
             # moment a real per-title match begins (see _converge_job_to_matching).
             await self._converge_job_to_matching(session, job_id)
+
+        # A hinted conjoined track needs a deeper scan before its vote runs can
+        # confirm more than two episodes.
+        num_points = _scan_points_for_hint(num_points, conjoined_hint)
 
         # 7. Run matching
         try:

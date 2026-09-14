@@ -20,6 +20,8 @@ from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
+    CONJOINED_SCAN_POINTS,
+    MAX_CONJOINED_EPISODES,
     MULTI_EPISODE_ERROR_CODE,
     FileWaitResult,
     MatchingCoordinator,
@@ -27,6 +29,7 @@ from app.services.matching_coordinator import (
     _conjoined_episode_count,
     _duration_matches_episode_runtime,
     _route_unconfirmable_title,
+    _scan_points_for_hint,
     episode_curator,
 )
 from tests.unit.conftest import _unit_session_factory
@@ -1683,3 +1686,47 @@ class TestUnreadableReferencesReviewRouting:
         from app.services.finalization_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
 
         assert REFERENCES_UNREADABLE_ERROR_CODE in _NON_REMATCHABLE_REVIEW_ERRORS
+
+
+@pytest.mark.unit
+class TestConjoinedScanDepth:
+    """Three-segment cartoon tracks (Dexter's Laboratory, Looney Tunes) could never
+    be confirmed at the default 10 scan points: decompose_vote_runs needs more than
+    3 points per run plus one."""
+
+    def test_unhinted_track_keeps_the_requested_depth(self):
+        assert _scan_points_for_hint(None, None) is None
+        assert _scan_points_for_hint(37, None) == 37
+
+    def test_hinted_track_scans_at_least_the_conjoined_depth(self):
+        assert _scan_points_for_hint(None, 2) == CONJOINED_SCAN_POINTS
+        assert _scan_points_for_hint(10, 3) == CONJOINED_SCAN_POINTS
+
+    def test_deeper_requested_scan_is_not_reduced(self):
+        assert _scan_points_for_hint(73, 3) == 73
+
+    def test_conjoined_depth_is_a_lattice_level_that_confirms_the_cap(self):
+        from app.matcher.episode_identification import snap_to_lattice_level
+        from app.matcher.multi_episode import MIN_SCAN_POINTS_PER_RUN
+
+        assert snap_to_lattice_level(CONJOINED_SCAN_POINTS) == CONJOINED_SCAN_POINTS
+        assert CONJOINED_SCAN_POINTS > MIN_SCAN_POINTS_PER_RUN * MAX_CONJOINED_EPISODES + 1
+
+    def test_three_segment_track_confirms_at_conjoined_depth_but_not_at_ten(self):
+        from app.matcher.multi_episode import decompose_vote_runs
+
+        deep = (
+            [(s, "S01E01") for s in (0, 60, 120, 180, 240, 300)]
+            + [(s, "S01E02") for s in (420, 480, 540, 600, 660)]
+            + [(s, "S01E03") for s in (780, 840, 900, 960, 1020, 1080)]
+        )
+        verdict = decompose_vote_runs(deep, CONJOINED_SCAN_POINTS)
+        assert verdict.is_multi_episode is True
+        assert verdict.codes == ("S01E01", "S01E02", "S01E03")
+
+        shallow = (
+            [(s, "S01E01") for s in (0, 120, 240)]
+            + [(s, "S01E02") for s in (480, 600)]
+            + [(s, "S01E03") for s in (840, 960, 1080)]
+        )
+        assert decompose_vote_runs(shallow, 10).reason == "insufficient_scan_depth"
