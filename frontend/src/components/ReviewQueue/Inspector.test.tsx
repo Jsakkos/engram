@@ -284,3 +284,50 @@ describe('Inspector — external player controls', () => {
         expect(screen.getByText(/open network stream/i)).toBeInTheDocument();
     });
 });
+
+describe('Inspector: review reason notice', () => {
+    it('shows why the matcher could not match the track', () => {
+        const message =
+            'Only 1 reference subtitle is available for this season, too few to tell its episodes apart, so this track could not be matched by its dialogue. Assign the episode by hand.';
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({ error: 'references_unreadable', message }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('too few to tell its episodes apart')),
+        ).toBeInTheDocument();
+    });
+
+    it('shows the multi-episode explanation', () => {
+        const message = 'This track appears to contain 3 episodes (S01E01, S01E02, S01E03).';
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({ error: 'multi_episode_detected', message }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('appears to contain 3 episodes')),
+        ).toBeInTheDocument();
+    });
+
+    it('adds no notice when there is no message to show', () => {
+        const plain = renderInspector({ title: makeTitle() });
+        const baseline = plain.container.querySelectorAll('[data-testid="sv-notice"]').length;
+        plain.unmount();
+        const withCodeOnly = renderInspector({
+            title: makeTitle({ match_details: JSON.stringify({ error: 'references_unreadable' }) }),
+        });
+        expect(withCodeOnly.container.querySelectorAll('[data-testid="sv-notice"]').length).toBe(
+            baseline,
+        );
+    });
+
+    it('does not repeat the file-exists message', () => {
+        const message = 'S01E02 is already organized by another track on this disc.';
+        renderInspector({
+            title: makeTitle({ match_details: JSON.stringify({ error: 'file_exists', message }) }),
+        });
+        expect(screen.getAllByText((content) => content.includes(message))).toHaveLength(1);
+    });
+});

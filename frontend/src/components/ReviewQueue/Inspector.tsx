@@ -95,6 +95,11 @@ export function Inspector({
     // episode-assignment problem. Surface the real cause instead of leaving
     // the track looking like an ordinary unmatched one (#563).
     const organizeFailed = details.error === 'organize_failed';
+    // Any other review reason the backend can state (too few usable reference
+    // subtitles, a track holding several episodes) carries its own message.
+    // Without it the reviewer sees an unexplained "Needs review".
+    const reviewNotice =
+        !fileExists && !organizeFailed && details.error && details.message ? details.message : null;
     const llmSuggestion: LLMSuggestion | null = details.llm_suggestion ?? null;
     // In-flight = the live WebSocket title state (durable, lasts the whole match)
     // OR the parent's optimistic isRematching (covers the gap before the first WS
@@ -209,6 +214,11 @@ export function Inspector({
                         <SvNotice tone="warn">
                             {organizeFailed ? `Could not move this file: ${details.message}` : details.message}
                         </SvNotice>
+                    </div>
+                )}
+                {reviewNotice && (
+                    <div style={{ marginBottom: 14 }}>
+                        <SvNotice tone="warn">{reviewNotice}</SvNotice>
                     </div>
                 )}
 
