@@ -464,9 +464,10 @@ CHUNK_VOTE_MARGIN_RATIO = 1.8  # top-1 must lead the runner-up by this ratio to 
 
 # A scraped reference corpus needs at least this many subtitles with readable text
 # before a match against it means anything. With one usable reference every chunk
-# votes for it (a lone candidate always clears the margin rule in
-# select_chunk_vote), so every track on a disc matches that one episode at full
-# confidence. Two is the smallest corpus in which a vote can be lost.
+# that clears the noise floor votes for it (a lone candidate always clears the
+# margin rule in select_chunk_vote), so every track on a disc matches that one
+# episode at full confidence. Two is the smallest corpus in which a vote can be
+# lost.
 MIN_USABLE_REFERENCES = 2
 
 # Calibrated-confidence acceptance floor for the ranked-voting gate. The raw
@@ -1676,6 +1677,48 @@ class EpisodeMatcher:
                     )
                     return None
 
+            # Resolve the TF-IDF matcher for THIS season's reference set as a
+            # per-call local — never a shared instance slot. The matcher singleton
+            # is shared across concurrent identify_episode threads (parallel ASR),
+            # so a single mutable slot let a sibling thread's season rebuild
+            # clobber this scan's references mid-loop (codes the path-keyed
+            # `coverages` dict doesn't hold → KeyError → zero votes → bogus review).
+            # _get_tfidf_matcher caches per reference signature, so reuse is kept
+            # without the cross-thread races. See test_matcher_concurrency.
+            expected_signature: tuple = (
+                ("precomputed", tuple(ref_episode_codes))
+                if using_precomputed
+                else ("scraping", tuple(str(rf) for rf in reference_files))
+            )
+            tfidf_matcher = self._get_tfidf_matcher(
+                expected_signature,
+                using_precomputed=using_precomputed,
+                precomputed=(ref_matrix, ref_episode_codes, idf_array)
+                if using_precomputed
+                else None,
+                reference_files=reference_files,
+            )
+
+            if not using_precomputed and len(tfidf_matcher.ref_file_order) < MIN_USABLE_REFERENCES:
+                usable = len(tfidf_matcher.ref_file_order)
+                logger.error(
+                    f"Only {usable} of {len(reference_files)} reference subtitles for "
+                    f"'{self.show_name}' season {season_number} contain readable text; "
+                    f"not matching {Path(video_file).name} against them."
+                )
+                return {
+                    "season": season_number,
+                    "episode": None,
+                    "confidence": 0.0,
+                    "score": 0.0,
+                    "match_details": {
+                        "error": REFERENCES_UNREADABLE_ERROR_CODE,
+                        "usable_references": usable,
+                        "total_references": len(reference_files),
+                    },
+                    "runner_ups": [],
+                }
+
             if progress_callback:
                 progress_callback("analyzing", 5.0)
 
@@ -1737,49 +1780,8 @@ class EpisodeMatcher:
             l2_file_key = transcript_store.file_key_for(video_file)
             l2_model_key = self._model_key_for(model)
 
-            # Resolve the TF-IDF matcher for THIS season's reference set as a
-            # per-call local — never a shared instance slot. The matcher singleton
-            # is shared across concurrent identify_episode threads (parallel ASR),
-            # so a single mutable slot let a sibling thread's season rebuild
-            # clobber this scan's references mid-loop (codes the path-keyed
-            # `coverages` dict doesn't hold → KeyError → zero votes → bogus review).
-            # _get_tfidf_matcher caches per reference signature, so reuse is kept
-            # without the cross-thread races. See test_matcher_concurrency.
-            expected_signature: tuple = (
-                ("precomputed", tuple(ref_episode_codes))
-                if using_precomputed
-                else ("scraping", tuple(str(rf) for rf in reference_files))
-            )
             if progress_callback:
                 progress_callback("preparing_model", 10.0)
-            tfidf_matcher = self._get_tfidf_matcher(
-                expected_signature,
-                using_precomputed=using_precomputed,
-                precomputed=(ref_matrix, ref_episode_codes, idf_array)
-                if using_precomputed
-                else None,
-                reference_files=reference_files,
-            )
-
-            if not using_precomputed and len(tfidf_matcher.ref_file_order) < MIN_USABLE_REFERENCES:
-                usable = len(tfidf_matcher.ref_file_order)
-                logger.error(
-                    f"Only {usable} of {len(reference_files)} reference subtitles for "
-                    f"'{self.show_name}' season {season_number} contain readable text; "
-                    f"not matching {Path(video_file).name} against them."
-                )
-                return {
-                    "season": season_number,
-                    "episode": None,
-                    "confidence": 0.0,
-                    "score": 0.0,
-                    "match_details": {
-                        "error": REFERENCES_UNREADABLE_ERROR_CODE,
-                        "usable_references": usable,
-                        "total_references": len(reference_files),
-                    },
-                    "runner_ups": [],
-                }
 
             span = f"{scan_points[0]}s-{scan_points[-1]}s" if scan_points else "empty"
             logger.info(

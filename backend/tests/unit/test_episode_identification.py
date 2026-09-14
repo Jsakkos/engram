@@ -1066,31 +1066,47 @@ class TestUnreadableReferenceGuard:
     _READABLE = "1\n00:00:01,000 --> 00:00:02,000\nDexter, get out of my lab!\n"
     _TEXTLESS = "1\n00:00:01,000 --> 00:00:02,000\n\n2\n00:00:03,000 --> 00:00:04,000\n"
 
-    def test_one_usable_reference_is_not_matched_against(self, tmp_path, monkeypatch):
+    class _FakeModel:
+        def __init__(self):
+            self.calls = 0
+
+        def transcribe(self, audio_path):
+            self.calls += 1
+            return {"text": "dexter get out of my lab " * 5}
+
+    def _matcher(self, tmp_path, monkeypatch, files):
         from app.matcher.episode_identification import EpisodeMatcher
-        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 
         data = tmp_path / "data" / "4229"
         data.mkdir(parents=True)
-        (data / "Show - S01E01.srt").write_text(self._READABLE, encoding="utf-8")
-        (data / "Show - S01E02.srt").write_text(self._TEXTLESS, encoding="utf-8")
-        (data / "Show - S01E03.srt").write_text(self._TEXTLESS, encoding="utf-8")
-
+        for name, content in files.items():
+            (data / name).write_text(content, encoding="utf-8")
         matcher = EpisodeMatcher(tmp_path, "Show", expected_tmdb_id=4229, model_name="small")
+        model = self._FakeModel()
+        get_model = MagicMock(return_value=model)
+        duration = MagicMock(return_value=1320.0)
+        full_file = MagicMock(return_value=None)
         monkeypatch.setattr(matcher, "_load_precomputed_season", lambda season: None)
-        monkeypatch.setattr(
-            "app.matcher.episode_identification.get_video_duration", lambda *a, **k: 1320.0
-        )
+        monkeypatch.setattr("app.matcher.episode_identification.get_video_duration", duration)
         monkeypatch.setattr(
             matcher, "extract_audio_chunk", lambda video_file, start_time, duration=None: "chunk"
         )
-        transcribe = MagicMock(return_value={"text": "dexter get out of my lab " * 5})
-        monkeypatch.setattr(
-            "app.matcher.episode_identification.get_cached_model",
-            lambda cfg: MagicMock(transcribe=transcribe),
-        )
-        full_file = MagicMock(return_value=None)
+        monkeypatch.setattr("app.matcher.episode_identification.get_cached_model", get_model)
         monkeypatch.setattr(matcher, "_match_full_file", full_file)
+        return matcher, model, get_model, duration, full_file
+
+    def test_one_usable_reference_is_not_matched_against(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        matcher, model, get_model, duration, full_file = self._matcher(
+            tmp_path,
+            monkeypatch,
+            {
+                "Show - S01E01.srt": self._READABLE,
+                "Show - S01E02.srt": self._TEXTLESS,
+                "Show - S01E03.srt": self._TEXTLESS,
+            },
+        )
 
         result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
 
@@ -1101,5 +1117,48 @@ class TestUnreadableReferenceGuard:
             "usable_references": 1,
             "total_references": 3,
         }
-        transcribe.assert_not_called()
+        # Refused before any expensive work: no ffprobe, no model load, no ASR.
+        duration.assert_not_called()
+        get_model.assert_not_called()
+        assert model.calls == 0
         full_file.assert_not_called()
+
+    def test_two_usable_references_are_matched_against(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        second = "1\n00:00:01,000 --> 00:00:02,000\nOmelette du fromage!\n"
+        matcher, model, get_model, _, _ = self._matcher(
+            tmp_path,
+            monkeypatch,
+            {
+                "Show - S01E01.srt": self._READABLE,
+                "Show - S01E02.srt": second,
+                "Show - S01E03.srt": self._TEXTLESS,
+            },
+        )
+
+        result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
+
+        details = (result or {}).get("match_details") or {}
+        assert details.get("error") != REFERENCES_UNREADABLE_ERROR_CODE
+        get_model.assert_called()
+        assert model.calls > 0
+
+    def test_precomputed_mode_is_never_refused(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        matcher, model, get_model, _, _ = self._matcher(tmp_path, monkeypatch, {})
+        precomputed = (csr_matrix(np.eye(1)), ["S01E01"], np.ones(1))
+        monkeypatch.setattr(matcher, "_load_precomputed_season", lambda season: precomputed)
+        tfidf = MagicMock()
+        tfidf.is_prepared = True
+        tfidf.ref_file_order = ["S01E01"]
+        tfidf.reference_signature.return_value = ("precomputed", ("S01E01",))
+        tfidf.match.return_value = [("S01E01", 0.5)]
+        monkeypatch.setattr(matcher, "_get_tfidf_matcher", MagicMock(return_value=tfidf))
+
+        result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
+
+        details = (result or {}).get("match_details") or {}
+        assert details.get("error") != REFERENCES_UNREADABLE_ERROR_CODE
+        get_model.assert_called()
