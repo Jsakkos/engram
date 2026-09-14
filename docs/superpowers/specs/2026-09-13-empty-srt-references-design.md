@@ -182,6 +182,18 @@ overwrite `match_details` (see the review-escalation wipe bug).
 The precomputed-vector path (`load_precomputed`) is unaffected: it has no empty-text concept. The
 `_augment_with_downloaded_srts` path must skip empty SRTs the same way.
 
+Real-cache check (2,346 show/season groups in the scraped cache): the floor fires for 14 seasons,
+and in every one the season has exactly one cached reference, which is readable (usable 1/1). No
+season with many references is left below the floor once the parser fixes land; the 8 seasons that
+still carry unusable files (watermark stubs, blank-cue files, Primal's sound-effect subtitles) keep
+at least 2 usable references. The review message therefore distinguishes the two causes: when every
+offered reference was readable it says the season has too few reference subtitles to tell episodes
+apart; only when some were dropped does it say the subtitles could not be read.
+
+Dropping empty references changes the TF-IDF inverse document frequencies for the references that
+remain, so their cosine scores shift slightly (ranks unchanged). That is the intended correction:
+empty documents were distorting the weighting.
+
 ### E. Confirmable 3-in-1 tracks
 
 - **Scan depth.** When `_conjoined_episode_count` returns a hint (any `n >= 2`), run the ASR scan
