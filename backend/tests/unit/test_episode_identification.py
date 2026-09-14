@@ -1059,3 +1059,47 @@ class TestTfidfMatcherEmptyReferences:
         matcher = TfidfMatcher()
         matcher.load_precomputed(csr_matrix(np.eye(2)), ["S01E01", "S01E02"], np.ones(2))
         assert matcher.total_references == 2
+
+
+@pytest.mark.unit
+class TestUnreadableReferenceGuard:
+    _READABLE = "1\n00:00:01,000 --> 00:00:02,000\nDexter, get out of my lab!\n"
+    _TEXTLESS = "1\n00:00:01,000 --> 00:00:02,000\n\n2\n00:00:03,000 --> 00:00:04,000\n"
+
+    def test_one_usable_reference_is_not_matched_against(self, tmp_path, monkeypatch):
+        from app.matcher.episode_identification import EpisodeMatcher
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        data = tmp_path / "data" / "4229"
+        data.mkdir(parents=True)
+        (data / "Show - S01E01.srt").write_text(self._READABLE, encoding="utf-8")
+        (data / "Show - S01E02.srt").write_text(self._TEXTLESS, encoding="utf-8")
+        (data / "Show - S01E03.srt").write_text(self._TEXTLESS, encoding="utf-8")
+
+        matcher = EpisodeMatcher(tmp_path, "Show", expected_tmdb_id=4229, model_name="small")
+        monkeypatch.setattr(matcher, "_load_precomputed_season", lambda season: None)
+        monkeypatch.setattr(
+            "app.matcher.episode_identification.get_video_duration", lambda *a, **k: 1320.0
+        )
+        monkeypatch.setattr(
+            matcher, "extract_audio_chunk", lambda video_file, start_time, duration=None: "chunk"
+        )
+        transcribe = MagicMock(return_value={"text": "dexter get out of my lab " * 5})
+        monkeypatch.setattr(
+            "app.matcher.episode_identification.get_cached_model",
+            lambda cfg: MagicMock(transcribe=transcribe),
+        )
+        full_file = MagicMock(return_value=None)
+        monkeypatch.setattr(matcher, "_match_full_file", full_file)
+
+        result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
+
+        assert result is not None
+        assert result["episode"] is None
+        assert result["match_details"] == {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": 1,
+            "total_references": 3,
+        }
+        transcribe.assert_not_called()
+        full_file.assert_not_called()

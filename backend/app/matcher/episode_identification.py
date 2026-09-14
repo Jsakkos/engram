@@ -22,7 +22,11 @@ from app.matcher.asr_models import detect_asr_device, get_cached_model, model_ou
 from app.matcher.multi_episode import decompose_vote_runs
 from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
 from app.matcher.srt_utils import is_watermark_block as _is_watermark_block
-from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
+from app.matcher.subtitle_utils import (
+    REFERENCES_UNREADABLE_ERROR_CODE,
+    corpus_dir_name,
+    sanitize_filename,
+)
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
 
@@ -457,6 +461,13 @@ MIN_CONSENSUS_FOR_RATIO = 0.50
 # measurement in docs/superpowers/reviews/2026-05-29-asr-chunk-vote-scale-mismatch.md.
 CHUNK_VOTE_FLOOR = 0.06  # below this top-1 cosine, treat the chunk as noise
 CHUNK_VOTE_MARGIN_RATIO = 1.8  # top-1 must lead the runner-up by this ratio to vote
+
+# A scraped reference corpus needs at least this many subtitles with readable text
+# before a match against it means anything. With one usable reference every chunk
+# votes for it (a lone candidate always clears the margin rule in
+# select_chunk_vote), so every track on a disc matches that one episode at full
+# confidence. Two is the smallest corpus in which a vote can be lost.
+MIN_USABLE_REFERENCES = 2
 
 # Calibrated-confidence acceptance floor for the ranked-voting gate. The raw
 # ranked_voting_score is a mean chunk cosine that sits structurally ~0.1 (see the
@@ -1749,6 +1760,26 @@ class EpisodeMatcher:
                 else None,
                 reference_files=reference_files,
             )
+
+            if not using_precomputed and len(tfidf_matcher.ref_file_order) < MIN_USABLE_REFERENCES:
+                usable = len(tfidf_matcher.ref_file_order)
+                logger.error(
+                    f"Only {usable} of {len(reference_files)} reference subtitles for "
+                    f"'{self.show_name}' season {season_number} contain readable text; "
+                    f"not matching {Path(video_file).name} against them."
+                )
+                return {
+                    "season": season_number,
+                    "episode": None,
+                    "confidence": 0.0,
+                    "score": 0.0,
+                    "match_details": {
+                        "error": REFERENCES_UNREADABLE_ERROR_CODE,
+                        "usable_references": usable,
+                        "total_references": len(reference_files),
+                    },
+                    "runner_ups": [],
+                }
 
             span = f"{scan_points[0]}s-{scan_points[-1]}s" if scan_points else "empty"
             logger.info(

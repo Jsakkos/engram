@@ -8,6 +8,12 @@ from app.matcher.srt_utils import SubtitleReader, clean_text, decode_utf16_bom, 
 
 _HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
 
+# match_details["error"] when a season's scraped reference subtitles hold too little
+# readable text to match against. Produced by EpisodeMatcher.identify_episode,
+# routed to review by the matching coordinator, and never auto re-matched: a deeper
+# scan against the same unreadable corpus cannot help.
+REFERENCES_UNREADABLE_ERROR_CODE = "references_unreadable"
+
 
 def _looks_like_srt(header: str) -> bool:
     """True if a decoded text header passes SRT sniffing: no HTML markers, and
