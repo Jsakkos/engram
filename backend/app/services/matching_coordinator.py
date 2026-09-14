@@ -1631,6 +1631,10 @@ class MatchingCoordinator:
                         title.match_details = json.dumps(result.match_details)
                     except Exception as e:
                         logger.error(f"Failed to dump match_details: {e}")
+                elif _title_details(title).get("error") == REFERENCES_UNREADABLE_ERROR_CODE:
+                    # A re-match that returned no details must not resurface an
+                    # earlier refusal and its "could not be read" message.
+                    title.match_details = None
 
                 if advisory:
                     # Stamp the user-initiated re-match as a deliberate

@@ -1496,6 +1496,10 @@ class TestConjoinedDiscDbBypass:
             assert title.state == TitleState.REVIEW
             parsed = json.loads(title.match_details)
             assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        # The hinted track is scanned deeply enough to confirm three segments.
+        assert mock_curator.match_single_file.await_args.kwargs["num_points"] == (
+            CONJOINED_SCAN_POINTS
+        )
 
     async def test_conjoined_track_with_unset_hint_still_blocks_discdb_fallback(
         self, monkeypatch, tmp_path
@@ -1622,6 +1626,42 @@ class TestUnreadableReferencesEndToEnd:
             assert json.loads(title.match_details or "{}").get("error") != (
                 REFERENCES_UNREADABLE_ERROR_CODE
             )
+
+    async def test_rematch_without_details_does_not_repeat_an_old_refusal(
+        self, monkeypatch, tmp_path
+    ):
+        """A re-match after the references were fixed can come back with no
+        match_details (a curator exception, a failed duration probe). The earlier
+        refusal must not survive it and resurface its "could not be read" message."""
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+            stored = await session.get(DiscTitle, title.id)
+            stored.match_details = json.dumps(
+                {
+                    "error": REFERENCES_UNREADABLE_ERROR_CODE,
+                    "usable_references": 0,
+                    "total_references": 37,
+                    "message": "The reference subtitles for this season could not be read",
+                }
+            )
+            await session.commit()
+        coord._discdb_mappings = {}
+
+        no_details = SimpleNamespace(
+            episode_code=None, confidence=0.0, needs_review=True, match_details=None
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=no_details)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(job.id, title.id, tmp_path / "title_t00.mkv")
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            parsed = json.loads(title.match_details or "{}")
+            assert parsed.get("error") != REFERENCES_UNREADABLE_ERROR_CODE
+            assert "could not be read" not in (parsed.get("message") or "")
 
 
 @pytest.mark.unit

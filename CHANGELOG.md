@@ -64,7 +64,8 @@ _Highlights: back up a disc before ripping it, and import backups you already ha
 - **A season with too few usable reference subtitles now goes to review with an
   explanation instead of a confident wrong guess.** When fewer than two reference
   subtitles for a season contain dialogue, Engram no longer tries to pick an
-  episode from what is left. The tracks are held for review, the review screen
+  episode from what is left. Unless a disc mapping already identifies them, the
+  tracks are held for review, the review screen
   says whether the season simply had too few subtitles or had subtitles that
   could not be read, and Engram stops re-running the match automatically. Review
   now also shows the explanation for a track that appears to hold several
