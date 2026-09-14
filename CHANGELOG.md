@@ -48,6 +48,35 @@ _Highlights: back up a disc before ripping it, and import backups you already ha
 
 ### Fixed
 
+- **Every track on a disc no longer matches the same episode when a season's
+  subtitles are damaged.** Engram compares each track's dialogue against a
+  reference subtitle for every episode, and several common kinds of subtitle file
+  were being read as containing no dialogue at all while still counting as valid,
+  so they were cached and reused on every retry. On a Dexter's Laboratory set, 36
+  of the season's 37 references read as empty and every track matched the one
+  episode that had text, at full confidence. Subtitles with doubled line breaks,
+  missing cue numbers, timings written with one or three digits, or UTF-16 files
+  with a stray trailing byte now read correctly. Files that genuinely hold no
+  dialogue, such as blank cues or a placeholder that only repeats a download link,
+  are now downloaded again instead of reused, and subtitles imported by hand on
+  Windows keep their line breaks intact.
+
+- **A season with too few usable reference subtitles now goes to review with an
+  explanation instead of a confident wrong guess.** When fewer than two reference
+  subtitles for a season contain dialogue, Engram no longer tries to pick an
+  episode from what is left. The tracks are held for review, the review screen
+  says whether the season simply had too few subtitles or had subtitles that
+  could not be read, and Engram stops re-running the match automatically. Review
+  now also shows the explanation for a track that appears to hold several
+  episodes, which was previously recorded but never displayed.
+
+- **Cartoon discs with three segments per track are recognised as combined.**
+  Shows like Dexter's Laboratory and Looney Tunes put three short segments in one
+  track. Engram could confirm a combined track of two segments but never three,
+  because it sampled too few points in the file; it now samples more densely when
+  a track's length suggests several segments. Combined tracks still go to review
+  for you to assign.
+
 - **The subtitle-cache builder no longer records a provider outage as missing
   content.** When the daily OpenSubtitles quota ran out partway through a build,
   every remaining season came back empty and was written down as "0% coverage",
