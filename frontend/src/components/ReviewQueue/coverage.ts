@@ -176,6 +176,16 @@ export function collidingCodes(selections: Record<number, string>): Set<string> 
     return set;
 }
 
+/**
+ * Whether a title's pick is in conflict. `collisions` holds single-episode codes,
+ * so a combined pick ("S03E01-E03") is checked episode by episode: it conflicts
+ * when ANY episode it claims is contested. Pseudo picks never conflict.
+ */
+export function selectionCollides(selection: string | undefined, collisions: Set<string>): boolean {
+    if (!selection) return false;
+    return episodeParts(selection).some((code) => collisions.has(code));
+}
+
 /** Ranked candidates for a title: best match first, then runner-ups, named. */
 export function buildCandidates(
     title: DiscTitle,

@@ -10,7 +10,7 @@ import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, suggestGapCode } from './ReviewQueue/coverage';
+import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, selectionCollides, suggestGapCode } from './ReviewQueue/coverage';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
 import { TitleList } from './ReviewQueue/TitleList';
@@ -709,7 +709,7 @@ function ReviewQueue() {
     }>(() => {
         if (!selectedTitle) return { inspectorSuggestion: null, suggestedForSelected: null };
         const currentSel = selectedEpisodes[selectedTitle.id];
-        const needsHelp = !currentSel || collisions.has(currentSel);
+        const needsHelp = !currentSel || selectionCollides(currentSel, collisions);
         if (!needsHelp) return { inspectorSuggestion: null, suggestedForSelected: null };
         const others = { ...selectedEpisodes };
         delete others[selectedTitle.id];

@@ -10,6 +10,7 @@ import {
     isMultiEpisode,
     normalizeEpisodeCode,
     parseEpisodeCode,
+    selectionCollides,
     type RosterEpisode,
 } from './coverage';
 
@@ -174,5 +175,24 @@ describe('displayEpisodeCode', () => {
     it('leaves single episodes and pseudo-codes alone', () => {
         expect(displayEpisodeCode('S01E01')).toBe('S01E01');
         expect(displayEpisodeCode('extra')).toBe('extra');
+    });
+});
+
+describe('selectionCollides', () => {
+    it('flags a combined pick when any of its episodes is contested', () => {
+        const collisions = collidingCodes({ 10: 'S03E01-E03', 11: 'S03E02' });
+        expect(selectionCollides('S03E01-E03', collisions)).toBe(true);
+        expect(selectionCollides('S03E02', collisions)).toBe(true);
+    });
+
+    it('does not flag a combined pick with no contested episode', () => {
+        const collisions = collidingCodes({ 10: 'S03E01-E02', 11: 'S03E03' });
+        expect(selectionCollides('S03E01-E02', collisions)).toBe(false);
+        expect(selectionCollides('S03E03', collisions)).toBe(false);
+    });
+
+    it('never flags an empty or pseudo selection', () => {
+        expect(selectionCollides(undefined, new Set(['S03E01']))).toBe(false);
+        expect(selectionCollides('extra', new Set(['extra']))).toBe(false);
     });
 });
