@@ -1811,3 +1811,109 @@ class TestSameEpisodeCode:
         assert _same_episode_code("extra", "extra") is True
         assert _same_episode_code("extra", "skip") is False
         assert _same_episode_code(None, "S01E01") is False
+
+
+@pytest.mark.unit
+class TestCombinedDiscDbMappingGoesToReview:
+    """A DiscDB title covering several episodes must not be auto-matched.
+
+    Conflict detection groups whole codes, so an auto-matched S02E17-E18 would never
+    collide with another track's S02E18 and the library would get E18 twice. The
+    combined code is pre-filled and parked for a person to confirm."""
+
+    def _mapping(self, episodes):
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        return DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Serpent of Evil River / The Transplant",
+            season=2,
+            episode=episodes[0],
+            episodes=list(episodes),
+            duration_seconds=1363,
+            size_bytes=1024**3,
+        )
+
+    async def test_combined_mapping_lands_in_review_prefilled(self, monkeypatch, tmp_path):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+        coord._discdb_mappings = {job.id: [self._mapping([17, 18])]}
+
+        low = SimpleNamespace(
+            episode_code="S02E05", confidence=0.3, needs_review=True, match_details={"score": 0.3}
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=low)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=None
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.REVIEW
+            assert title.matched_episode == "S02E17-E18"
+            parsed = json.loads(title.match_details)
+            assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+            assert "S02E17-E18" in parsed["message"]
+
+    async def test_single_episode_mapping_is_still_matched(self, monkeypatch, tmp_path):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+        coord._discdb_mappings = {job.id: [self._mapping([17])]}
+
+        low = SimpleNamespace(
+            episode_code="S02E05", confidence=0.3, needs_review=True, match_details={"score": 0.3}
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=low)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=None
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.MATCHED
+            assert title.matched_episode == "S02E17"
+
+    async def test_restored_combined_code_lands_in_review(self):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(
+                session,
+                discdb_match_details=json.dumps(
+                    {"source": "discdb", "matched_episode": "S02E17-E18"}
+                ),
+            )
+            job_id, title_id = job.id, title.id
+
+        await coord.rematch_single_title(job_id, title_id, source_preference="discdb")
+
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert t.matched_episode == "S02E17-E18"
+            parsed = json.loads(t.match_details)
+            assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+            assert "S02E17-E18" in parsed["message"]
+
+    async def test_restored_combined_code_from_in_memory_mapping_lands_in_review(self):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, discdb_match_details=json.dumps({"some": "data"}))
+            job_id, title_id = job.id, title.id
+        coord.set_discdb_mappings(job_id, [self._mapping([17, 18])])
+
+        await coord.rematch_single_title(job_id, title_id, source_preference="discdb")
+
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert t.matched_episode == "S02E17-E18"
+            assert json.loads(t.match_details)["error"] == MULTI_EPISODE_ERROR_CODE

@@ -278,6 +278,25 @@ RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_eject
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
 
 
+def _combined_mapping_review_details(details: dict, origin: str, episode_code: str) -> dict:
+    """Review note for a DiscDB or network mapping that claims several episodes.
+
+    Carries the mapping's own keys and adds the multi-episode error, which is in
+    the finalizer's non-rematchable set, so escalation and conflict detection leave
+    the pre-filled combined code for a person to confirm.
+    """
+    parsed = parse_episode_code(episode_code)
+    count = len(parsed[1]) if parsed else 0
+    return {
+        **details,
+        "error": MULTI_EPISODE_ERROR_CODE,
+        "message": (
+            f"{origin} lists this track as {count} episodes ({episode_code}). "
+            "Confirm the combined assignment, or assign it differently."
+        ),
+    }
+
+
 def _is_multi_episode_result(match_details: dict | None) -> bool:
     """True when the ASR verdict says this file holds several conjoined episodes.
 
@@ -577,25 +596,35 @@ class MatchingCoordinator:
             f"{title.title_index}: {episode_code} ({mapping.episode_title!r})"
         )
 
+        details = {
+            "source": source,
+            "episode_title": mapping.episode_title,
+            "matched_episode": episode_code,
+        }
         title.matched_episode = episode_code
         title.match_confidence = 0.99
-        title.match_details = json.dumps(
-            {
-                "source": source,
-                "episode_title": mapping.episode_title,
-                "matched_episode": episode_code,
-            }
-        )
         title.match_source = source
-        title.discdb_match_details = title.match_details
-        title.state = TitleState.MATCHED
+        # discdb_match_details keeps the plain mapping so a later restore rebuilds
+        # the review from the source data rather than from a prior review note.
+        title.discdb_match_details = json.dumps(details)
+        if is_multi_episode(episode_code):
+            # A combined claim is parked for a person instead of auto-matched:
+            # conflict detection groups whole codes, so S02E17-E18 would never
+            # collide with a sibling's S02E18 and the library would hold E18 twice.
+            title.match_details = json.dumps(
+                _combined_mapping_review_details(details, origin, episode_code)
+            )
+            title.state = TitleState.REVIEW
+        else:
+            title.match_details = title.discdb_match_details
+            title.state = TitleState.MATCHED
         session.add(title)
         await session.commit()
 
         await ws_manager.broadcast_title_update(
             job_id,
             title.id,
-            TitleState.MATCHED.value,
+            title.state.value,
             matched_episode=episode_code,
             match_confidence=0.99,
         )
@@ -704,14 +733,31 @@ class MatchingCoordinator:
                             _eps = getattr(m, "episodes", None) or [m.episode]
                             title.matched_episode = format_episode_code(m.season, _eps)
                             break
-                title.state = TitleState.MATCHED
+                if is_multi_episode(title.matched_episode):
+                    # Same rule as try_discdb_assignment: a combined code escapes
+                    # whole-code conflict detection, so it is parked for review.
+                    _origin = (
+                        "disc network"
+                        if isinstance(details, dict) and details.get("source") == "network_disc"
+                        else "TheDiscDB"
+                    )
+                    title.match_details = json.dumps(
+                        _combined_mapping_review_details(
+                            details if isinstance(details, dict) else {},
+                            _origin,
+                            title.matched_episode,
+                        )
+                    )
+                    title.state = TitleState.REVIEW
+                else:
+                    title.state = TitleState.MATCHED
                 session.add(title)
                 await session.commit()
 
                 await ws_manager.broadcast_title_update(
                     job_id,
                     title.id,
-                    TitleState.MATCHED.value,
+                    title.state.value,
                     matched_episode=title.matched_episode,
                     match_confidence=title.match_confidence,
                     match_source="discdb",
@@ -1481,10 +1527,11 @@ class MatchingCoordinator:
                     # auto-organize via a DiscDB mapping, never by confidence alone.
                     #
                     # A conjoined track must never take the DiscDB disc-order
-                    # fallback. That mapping assigns ONE episode per physical title,
-                    # so it cannot describe a title holding two, and
-                    # try_discdb_assignment commits MATCHED at 0.99 and overwrites
-                    # match_details, destroying the verdict on the way out. Worse,
+                    # fallback. That mapping reflects the DiscDB title layout, not
+                    # this track's audio: a single-episode mapping would be committed
+                    # MATCHED at 0.99 (a combined one is parked in review) and either
+                    # way match_details is overwritten, destroying the verdict on the
+                    # way out. Worse,
                     # the bypass is CORRELATED with what it would bypass: a conjoined
                     # track splits its votes between two episodes, and that split is
                     # exactly what drags confidence below this floor. Skipping the
