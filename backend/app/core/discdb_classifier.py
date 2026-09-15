@@ -106,7 +106,17 @@ class DiscDbTitleMapping:
     title_type: str  # "Episode", "MainMovie", "Extra", or ""
     episode_title: str = ""
     season: int | None = None
+    # First episode the title claims, kept as a plain int so persisted mappings
+    # from before combined titles were understood still deserialize and read the
+    # same. ``episodes`` below is the whole claim.
     episode: int | None = None
+    # Every episode the title claims. TheDiscDB records a combined title with a
+    # RANGE in its episode field — "17-18" on Courage the Cowardly Dog's
+    # "Serpent of Evil River / The Transplant", "9-10" on The Expanse — and a
+    # plain int() of that raises, so those mappings used to arrive with no
+    # episode at all: TheDiscDB knew the answer for exactly the tracks this is
+    # hardest for, and we discarded it. Empty for a non-episode title.
+    episodes: list[int] = field(default_factory=list)
     duration_seconds: int = 0
     size_bytes: int = 0
     # Provenance of this mapping: "discdb" (TheDiscDB) or "network_disc" (the
@@ -157,6 +167,45 @@ def _safe_int(value) -> int | None:
         return int(value)
     except (ValueError, TypeError):
         return None
+
+
+def _parse_discdb_episodes(value) -> list[int]:
+    """Every episode number a TheDiscDB title claims, in order.
+
+    The field is a string on TheDiscDB's side and a combined title carries the
+    whole claim in it: ``"17-18"`` for a two-segment cartoon block, ``"9-10"``
+    for a two-part episode, and a comma list where the parts are not adjacent.
+    A bare ``int()`` raised on all of those, so the mapping arrived with no
+    episode and TheDiscDB's answer was dropped for precisely the titles where
+    guessing is hardest.
+
+    Returns ``[]`` for a missing value or one that parses to nothing.
+    """
+    if value is None or value == "":
+        return []
+    if isinstance(value, int):
+        return [value]
+    episodes: list[int] = []
+    for part in str(value).replace("&", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            lo, _, hi = part.partition("-")
+            lo_i, hi_i = _safe_int(lo), _safe_int(hi)
+            # A hyphen means "through", so expand it: the title really does
+            # contain every episode between the ends.
+            if lo_i is None or hi_i is None or hi_i < lo_i:
+                continue
+            episodes.extend(range(lo_i, hi_i + 1))
+        else:
+            one = _safe_int(part)
+            if one is not None:
+                episodes.append(one)
+    # Dedupe while preserving order — TheDiscDB's data contains at least one
+    # out-of-order list ("22,24,23,25-28").
+    seen: set[int] = set()
+    return [e for e in episodes if not (e in seen or seen.add(e))]
 
 
 def _iter_discs(nodes: list[dict]) -> Iterator[tuple[dict, dict]]:
@@ -212,13 +261,15 @@ def _build_signal_from_match(
     mappings = []
     for title in matched_disc.get("titles", []):
         item = title.get("item") or {}
+        episodes = _parse_discdb_episodes(item.get("episode"))
         mappings.append(
             DiscDbTitleMapping(
                 index=title.get("index", 0),
                 title_type=item.get("type", ""),
                 episode_title=item.get("title", ""),
                 season=_safe_int(item.get("season")),
-                episode=_safe_int(item.get("episode")),
+                episode=episodes[0] if episodes else None,
+                episodes=episodes,
                 duration_seconds=_parse_duration(title.get("duration", "0:00:00")),
                 size_bytes=title.get("size", 0),
             )
