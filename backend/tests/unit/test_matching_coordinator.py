@@ -28,6 +28,7 @@ from app.services.matching_coordinator import (
     _apply_multi_episode_review,
     _conjoined_episode_count,
     _duration_matches_episode_runtime,
+    _may_contribute_fingerprint,
     _route_unconfirmable_title,
     _same_episode_code,
     _scan_points_for_hint,
@@ -1917,3 +1918,27 @@ class TestCombinedDiscDbMappingGoesToReview:
             assert t.state == TitleState.REVIEW
             assert t.matched_episode == "S02E17-E18"
             assert json.loads(t.match_details)["error"] == MULTI_EPISODE_ERROR_CODE
+
+
+@pytest.mark.unit
+class TestFingerprintContributionGuard:
+    """A fingerprint row names one episode, so a track holding several must never be
+    contributed, whichever signal says so: the runtime hint, the vote verdict, or a
+    combined code in matched_episode. All three live in one rule so a future writer
+    of a combined code before the enqueue cannot slip past it."""
+
+    def test_single_episode_track_may_contribute(self):
+        assert _may_contribute_fingerprint("S01E05", None, {"score": 0.9}) is True
+
+    def test_no_code_never_contributes(self):
+        assert _may_contribute_fingerprint(None, None, None) is False
+
+    def test_runtime_hint_blocks(self):
+        assert _may_contribute_fingerprint("S01E05", 2, None) is False
+
+    def test_confirmed_verdict_blocks(self):
+        details = {"multi_episode": {"is_multi_episode": True, "codes": ["S01E01", "S01E02"]}}
+        assert _may_contribute_fingerprint("S01E01", None, details) is False
+
+    def test_combined_code_blocks(self):
+        assert _may_contribute_fingerprint("S01E01-E02", None, {"source": "discdb"}) is False

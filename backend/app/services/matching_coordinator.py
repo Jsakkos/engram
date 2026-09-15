@@ -310,6 +310,26 @@ def _is_multi_episode_result(match_details: dict | None) -> bool:
     return bool(isinstance(verdict, dict) and verdict.get("is_multi_episode"))
 
 
+def _may_contribute_fingerprint(
+    matched_episode: str | None, conjoined_hint: int | None, match_details: dict | None
+) -> bool:
+    """Whether a matched track may be published to the fingerprint network.
+
+    A fingerprint row names exactly one episode. A track that holds several has no
+    honest single-episode label, and publishing it under one code would teach every
+    other user that this audio IS that episode. Three signals can say so: the
+    runtime pre-filter hint, the chunk-vote verdict, and a combined code already in
+    matched_episode. Keeping them in one rule means a future writer of a combined
+    code before the enqueue cannot slip past it.
+    """
+    return bool(
+        matched_episode
+        and not conjoined_hint
+        and not _is_multi_episode_result(match_details)
+        and not is_multi_episode(matched_episode)
+    )
+
+
 def _title_details(title: "DiscTitle") -> dict:
     """The title's persisted match_details as a dict ({} when absent or unparseable)."""
     if not title.match_details:
@@ -1623,11 +1643,8 @@ class MatchingCoordinator:
                     # the single winning code, poisoning the shared corpus for every
                     # other user. Mirrors the advisory path, which skips the enqueue
                     # for the weaker reason that the match is merely unconfirmed.
-                    if (
-                        title.chromaprint_blob
-                        and title.matched_episode
-                        and not conjoined_hint
-                        and not _is_multi_episode_result(result.match_details)
+                    if title.chromaprint_blob and _may_contribute_fingerprint(
+                        title.matched_episode, conjoined_hint, result.match_details
                     ):
                         try:
                             from app.services.config_service import get_config as _get_config
@@ -1657,20 +1674,6 @@ class MatchingCoordinator:
                                     logger.debug(
                                         f"Skipping contribution for title {title.id}: "
                                         "no usable tmdb_id on parent job"
-                                    )
-                                elif is_multi_episode(title.matched_episode):
-                                    # A combined track's audio spans several episodes
-                                    # and a fingerprint row names exactly one. Under
-                                    # the first episode's number, the network would
-                                    # learn that this audio IS that episode, and every
-                                    # later ripper of the disc would inherit the wrong
-                                    # identity from us. There is no honest one-episode
-                                    # label for it, so contribute nothing.
-                                    logger.debug(
-                                        f"Skipping contribution for title {title.id}: "
-                                        f"{title.matched_episode} covers several "
-                                        f"episodes, and a fingerprint "
-                                        f"contribution names one."
                                     )
                                 else:
                                     # Map DiscTitle.match_source onto FingerprintContribution's
