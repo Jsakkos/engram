@@ -18,7 +18,7 @@ from loguru import logger
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.episode_codes import discdb_episode_fields
+from app.core.episode_codes import parse_episode_code
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, TitleState
 from app.models.fingerprint import DiscContribution
 
@@ -63,19 +63,24 @@ def _derive_assignment(job: DiscJob, title: DiscTitle) -> tuple[str, int | None,
     is intentional and conservative: without a code, organize state is the only
     signal that the title is the feature rather than a discarded/extra track.
 
-    Note on multi-episode codes: a combined code like ``S01E01-E02`` is a genuine
-    episode assignment and is published as one, with the range form in the episode
-    field (``"1-2"``) that TheDiscDB itself uses for a combined title. It used to
-    fall through to "discarded" on the grounds that under-counting was the safe
-    error, but dropping the row publishes a real episode track as not-an-episode,
-    which is a claim of its own — and a wrong one.
+    Note on multi-episode codes: a combined code like ``S01E01-E02`` is sent as
+    "discarded" for now. The fingerprint server types a row's episode as an integer
+    or null, so a range such as ``"1-2"`` would make it reject the whole disc
+    payload with a 400, and the uploader treats a 4xx as permanent, so every row on
+    the disc would be lost rather than just this one. The client reader in
+    fingerprint_disc_classifier also drops a non-integer episode, so the range could
+    not round-trip anyway. Under-counting one row keeps the rest of the layout. The
+    TheDiscDB export, whose ingest accepts strings, keeps the range form.
     """
     if title.is_extra:
         return "extra", None, None
 
-    season, episode = discdb_episode_fields(title.matched_episode)
-    if season is not None:
-        return "episode", season, episode
+    parsed = parse_episode_code(title.matched_episode)
+    if parsed is not None:
+        season, episodes = parsed
+        if len(episodes) == 1:
+            return "episode", season, episodes[0]
+        return "discarded", None, None
 
     # Movie main feature: the kept, organized (COMPLETED) non-extra title on a
     # MOVIE job. Movies have no episode code (matched_episode is None), so they
