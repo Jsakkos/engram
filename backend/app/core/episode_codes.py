@@ -108,3 +108,34 @@ def first_episode(code: str | None) -> tuple[int, int] | None:
     if not parsed:
         return None
     return parsed[0], parsed[1][0]
+
+
+def discdb_episode_fields(code: str | None) -> tuple[int | None, int | str | None]:
+    """The ``(season, episode)`` pair TheDiscDB publishes for a track.
+
+    A single-episode track yields plain integers. A track holding several
+    episodes yields the season plus a *string* episode field, because that is how
+    TheDiscDB records a combined title: the contiguous case as a hyphenated range
+    (``"17-18"`` for Courage the Cowardly Dog's "Serpent of Evil River / The
+    Transplant"), the gapped case as a comma list, which also appears in its data.
+    Both fields are typed as strings end to end on the ingest side, so either
+    serializes as it stands.
+
+    Publishing only the first episode of a combined track would put a truncated
+    claim into a shared public database; publishing nothing at all would record a
+    real episode track as not-an-episode. Both are claims, and both are wrong.
+
+    Returns ``(None, None)`` for a missing or unparseable code.
+    """
+    parsed = parse_episode_code(code)
+    if parsed is None:
+        return None, None
+    season, episodes = parsed
+    if len(episodes) == 1:
+        return season, episodes[0]
+    if episodes == list(range(episodes[0], episodes[0] + len(episodes))):
+        return season, f"{episodes[0]}-{episodes[-1]}"
+    # A gapped set (E01 + E03, no E02) must not use the hyphen: it would claim an
+    # episode the track does not contain, and the two forms are indistinguishable
+    # once published.
+    return season, ",".join(str(e) for e in episodes)

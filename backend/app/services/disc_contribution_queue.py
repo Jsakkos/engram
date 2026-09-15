@@ -13,12 +13,12 @@ a failure here must never break job completion.
 from __future__ import annotations
 
 import json
-import re
 
 from loguru import logger
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.episode_codes import discdb_episode_fields
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, TitleState
 from app.models.fingerprint import DiscContribution
 
@@ -39,8 +39,6 @@ _DISC_MATCH_SOURCE_TO_CONTRIB: dict[str, str] = {
 # Assignments that carry disc identity (vs. extras/discarded which are layout only).
 _REAL_ASSIGNMENTS = ("episode", "main_movie")
 
-_EPISODE_RE = re.compile(r"^S(\d+)E(\d+)$", re.IGNORECASE)
-
 
 def _map_source(match_source: str | None) -> str:
     """Map a DiscTitle.match_source onto the server's documented value set.
@@ -50,11 +48,11 @@ def _map_source(match_source: str | None) -> str:
     return _DISC_MATCH_SOURCE_TO_CONTRIB.get(match_source or "", "engram_asr")
 
 
-def _derive_assignment(job: DiscJob, title: DiscTitle) -> tuple[str, int | None, int | None]:
+def _derive_assignment(job: DiscJob, title: DiscTitle) -> tuple[str, int | None, int | str | None]:
     """Classify a title into (assignment, season, episode).
 
     - is_extra → "extra"
-    - TV episode (matched_episode matches S<d>E<d>) → "episode"
+    - TV episode (matched_episode parses as a season/episode code) → "episode"
     - MOVIE kept main feature (content_type MOVIE, not extra, organized) → "main_movie"
     - anything else (unmatched / skipped / discarded) → "discarded"
 
@@ -65,18 +63,19 @@ def _derive_assignment(job: DiscJob, title: DiscTitle) -> tuple[str, int | None,
     is intentional and conservative: without a code, organize state is the only
     signal that the title is the feature rather than a discarded/extra track.
 
-    Note on multi-episode codes: a combined code like "S01E01E02" does NOT match
-    the single-episode _EPISODE_RE and falls through to "discarded". That is a
-    deliberate, safe under-count — better to drop the row than to emit a wrong
-    single-episode assignment (e.g. claiming the title is only S01E01).
+    Note on multi-episode codes: a combined code like ``S01E01-E02`` is a genuine
+    episode assignment and is published as one, with the range form in the episode
+    field (``"1-2"``) that TheDiscDB itself uses for a combined title. It used to
+    fall through to "discarded" on the grounds that under-counting was the safe
+    error, but dropping the row publishes a real episode track as not-an-episode,
+    which is a claim of its own — and a wrong one.
     """
     if title.is_extra:
         return "extra", None, None
 
-    code = (title.matched_episode or "").strip()
-    m = _EPISODE_RE.match(code)
-    if m:
-        return "episode", int(m.group(1)), int(m.group(2))
+    season, episode = discdb_episode_fields(title.matched_episode)
+    if season is not None:
+        return "episode", season, episode
 
     # Movie main feature: the kept, organized (COMPLETED) non-extra title on a
     # MOVIE job. Movies have no episode code (matched_episode is None), so they
