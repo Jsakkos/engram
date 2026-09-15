@@ -17,6 +17,8 @@ import {
     titleDisplayName,
 } from './utils';
 
+const REVIEW_NOTICE_CODES = new Set(['references_unreadable', 'multi_episode_detected']);
+
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
 const monoFaint: CSSProperties = { fontFamily: sv.mono, fontSize: 11, color: sv.inkDim };
@@ -95,6 +97,13 @@ export function Inspector({
     // episode-assignment problem. Surface the real cause instead of leaving
     // the track looking like an ordinary unmatched one (#563).
     const organizeFailed = details.error === 'organize_failed';
+    // Review reasons whose backend messages are written for the reviewer: a season
+    // with too few usable reference subtitles, and a track holding several
+    // episodes. Deliberately an allowlist: rip failures already have their own
+    // DamagedTrackNotice above the inspector, and matching_task_failed carries raw
+    // exception text that is not meant for display.
+    const reviewNotice =
+        details.message && REVIEW_NOTICE_CODES.has(details.error ?? '') ? details.message : null;
     const llmSuggestion: LLMSuggestion | null = details.llm_suggestion ?? null;
     // In-flight = the live WebSocket title state (durable, lasts the whole match)
     // OR the parent's optimistic isRematching (covers the gap before the first WS
@@ -209,6 +218,11 @@ export function Inspector({
                         <SvNotice tone="warn">
                             {organizeFailed ? `Could not move this file: ${details.message}` : details.message}
                         </SvNotice>
+                    </div>
+                )}
+                {reviewNotice && (
+                    <div style={{ marginBottom: 14 }}>
+                        <SvNotice tone="warn">{reviewNotice}</SvNotice>
                     </div>
                 )}
 

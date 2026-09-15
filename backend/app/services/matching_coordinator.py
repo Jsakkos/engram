@@ -21,6 +21,7 @@ from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
 from app.database import async_session
+from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
@@ -107,6 +108,23 @@ def _conjoined_episode_count(title_minutes: float, runtimes: list[int]) -> int |
             ):
                 return n
     return None
+
+
+# Scan depth for a track the runtime pre-filter admitted as conjoined. A confident
+# multi-episode verdict needs more than MIN_SCAN_POINTS_PER_RUN * runs + 1 scan points
+# (see app.matcher.multi_episode), so the default 10 confirms at most two runs and a
+# three-segment cartoon track never confirms. 19 is the next scan-lattice level, so
+# the first 10 transcripts are reused.
+CONJOINED_SCAN_POINTS = 19
+
+
+def _scan_points_for_hint(num_points: int | None, conjoined_hint: int | None) -> int | None:
+    """Deepen the scan for a hinted conjoined track; never make a requested scan shallower."""
+    if not conjoined_hint:
+        return num_points
+    if num_points is None or num_points < CONJOINED_SCAN_POINTS:
+        return CONJOINED_SCAN_POINTS
+    return num_points
 
 
 # ASR-preferred episode precedence: ASR always runs and is authoritative at or
@@ -260,6 +278,64 @@ def _is_multi_episode_result(match_details: dict | None) -> bool:
     return bool(isinstance(verdict, dict) and verdict.get("is_multi_episode"))
 
 
+def _title_details(title: "DiscTitle") -> dict:
+    """The title's persisted match_details as a dict ({} when absent or unparseable)."""
+    if not title.match_details:
+        return {}
+    try:
+        parsed = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _apply_unreadable_references_review(title: "DiscTitle") -> bool:
+    """Park a title the matcher refused for lack of usable references. True if it did.
+
+    The matcher refuses a season with fewer than two reference subtitles that hold
+    any text. There were no votes, so neither an episode suggestion nor a
+    runtime-based multi-episode message describes the track; the reviewer needs to
+    know the references are the problem, and which way: a season with too few
+    subtitles to tell episodes apart, or subtitles that could not be read.
+    """
+    details = _title_details(title)
+    if details.get("error") != REFERENCES_UNREADABLE_ERROR_CODE:
+        return False
+    title.state = TitleState.REVIEW
+    usable = details.get("usable_references")
+    total = details.get("total_references")
+    counts_known = isinstance(usable, int) and isinstance(total, int)
+    if counts_known and usable == total:
+        noun = "subtitle is" if usable == 1 else "subtitles are"
+        details["message"] = (
+            f"Only {usable} reference {noun} available for this season, too few to "
+            "tell its episodes apart, so this track could not be matched by its "
+            "dialogue. Assign the episode by hand."
+        )
+    else:
+        counts = f" (only {usable} of {total} had any text)" if counts_known else ""
+        details["message"] = (
+            f"The reference subtitles for this season could not be read{counts}, so "
+            "this track could not be matched by its dialogue. Assign the episode by hand."
+        )
+    title.match_details = json.dumps(details)
+    return True
+
+
+def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -> str | None:
+    """Apply the review routing that overrides a matcher result, most specific first.
+
+    Unusable references come first: with no usable corpus there is no vote
+    evidence at all, so a runtime-based multi-episode message would bury the cause.
+    Returns the error code the title was routed under, or None if it was not.
+    """
+    if _apply_unreadable_references_review(title):
+        return REFERENCES_UNREADABLE_ERROR_CODE
+    if _apply_multi_episode_review(title, conjoined_hint):
+        return MULTI_EPISODE_ERROR_CODE
+    return None
+
+
 def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) -> bool:
     """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
 
@@ -270,14 +346,7 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
     coverage) -- ASR still returns one confident episode, so the silent-drop risk is
     identical. Only the reviewer-facing message differs.
     """
-    details: dict = {}
-    if title.match_details:
-        try:
-            parsed = json.loads(title.match_details)
-        except (json.JSONDecodeError, TypeError):
-            parsed = None
-        if isinstance(parsed, dict):
-            details = parsed
+    details = _title_details(title)
     multi_detail = details.get("multi_episode")
     if not isinstance(multi_detail, dict):
         multi_detail = {}
@@ -987,6 +1056,10 @@ class MatchingCoordinator:
             # moment a real per-title match begins (see _converge_job_to_matching).
             await self._converge_job_to_matching(session, job_id)
 
+        # A hinted conjoined track needs a deeper scan before its vote runs can
+        # confirm more than two episodes.
+        num_points = _scan_points_for_hint(num_points, conjoined_hint)
+
         # 7. Run matching
         try:
             await self._match_single_file_inner(
@@ -1558,6 +1631,10 @@ class MatchingCoordinator:
                         title.match_details = json.dumps(result.match_details)
                     except Exception as e:
                         logger.error(f"Failed to dump match_details: {e}")
+                elif _title_details(title).get("error") == REFERENCES_UNREADABLE_ERROR_CODE:
+                    # A re-match that returned no details must not resurface an
+                    # earlier refusal and its "could not be read" message.
+                    title.match_details = None
 
                 if advisory:
                     # Stamp the user-initiated re-match as a deliberate
@@ -1604,13 +1681,15 @@ class MatchingCoordinator:
 
                     title.match_details = json.dumps(_md)
 
-                # A conjoined track must not be auto-organized under a single code.
-                if _apply_multi_episode_review(title, conjoined_hint):
+                # Neither a title the matcher refused (unusable references) nor a
+                # conjoined track may be auto-organized under a single code.
+                routed = _route_unconfirmable_title(title, conjoined_hint)
+                if routed:
                     # ids sanitized for the same reason as the pre-filter log above.
                     logger.info(
                         f"[MATCH] Title {sanitize_log_value(title_id)} "
                         f"(Job {sanitize_log_value(job_id)}): routed to review "
-                        f"as multi-episode (hint={conjoined_hint})"
+                        f"as {routed} (hint={conjoined_hint})"
                     )
 
                 # Only attribute the match to Engram when an episode match was

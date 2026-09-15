@@ -8,6 +8,7 @@ The ASR (faster-whisper) and ffmpeg subprocess paths are NOT exercised here.
 
 import contextlib
 import json
+import re
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -15,6 +16,7 @@ import pytest
 from scipy.sparse import csr_matrix
 
 from app.matcher import episode_identification as ei
+from app.matcher import srt_utils
 from app.matcher.episode_identification import (
     MatchCoverage,
     SubtitleCache,
@@ -858,10 +860,11 @@ class TestTranscriptionCache:
         # rebuild + hashed-query path; only the transcript-cache behaviour is exercised.
         tfidf = MagicMock()
         tfidf.is_prepared = True
-        tfidf.reference_signature.return_value = ("precomputed", ("S01E01",))
+        tfidf.reference_signature.return_value = ("precomputed", ("S01E01", "S01E02"))
         tfidf.match.return_value = [("S01E01", 0.9)]
 
-        precomputed = (csr_matrix(np.eye(1)), ["S01E01"], np.ones(1))
+        # Two episodes: a one-row season is refused by the usable-reference floor.
+        precomputed = (csr_matrix(np.eye(2)), ["S01E01", "S01E02"], np.ones(2))
 
         with (
             # Inject the fake TF-IDF matcher via the per-call seam.
@@ -914,3 +917,274 @@ class TestTranscriptionCache:
         a = matcher._transcription_key("/d/title_t00.mkv", 300, 30)
         b = matcher._transcription_key("/d/title_t01.mkv", 300, 30)
         assert a != b
+
+
+_DEXTER_SRT = (
+    "1\n00:00:01,000 --> 00:00:03,000\nDexter, get out of my lab!\n\n"
+    "2\n00:00:04,000 --> 00:00:06,500\nOmelette du fromage.\nOmelette du fromage.\n\n"
+    "3\n00:00:07,000 --> 00:00:09,000\nDee Dee!\n"
+)
+_DEXTER_LINES = [
+    "Dexter, get out of my lab!",
+    "Omelette du fromage. Omelette du fromage.",
+    "Dee Dee!",
+]
+_DAMAGED_VARIANTS = [
+    pytest.param(_DEXTER_SRT, id="clean"),
+    pytest.param(_DEXTER_SRT.replace("\n", "\n\n"), id="doubled"),
+    pytest.param(re.sub(r"(?m)^\d+\n(?=\d{2}:)", "", _DEXTER_SRT), id="no-index"),
+]
+
+
+@pytest.mark.unit
+class TestSubtitleReaderDamagedLayouts:
+    @pytest.mark.parametrize("content", _DAMAGED_VARIANTS)
+    def test_extract_reads_every_cue(self, content):
+        assert SubtitleReader.extract_subtitle_chunk(content, 0, 999) == _DEXTER_LINES
+
+    @pytest.mark.parametrize("content", _DAMAGED_VARIANTS)
+    def test_get_duration_reads_the_last_cue(self, content):
+        assert SubtitleReader.get_duration(content) == pytest.approx(9.0)
+
+    @pytest.mark.parametrize("content", _DAMAGED_VARIANTS)
+    def test_both_readers_agree(self, content):
+        assert SubtitleReader.extract_subtitle_chunk(
+            content, 0, 999
+        ) == srt_utils.SubtitleReader.extract_subtitle_chunk(content, 0, 999)
+
+    def test_full_text_of_doubled_file_is_not_empty(self):
+        cache = SubtitleCache()
+        cache.subtitles = {"ep.srt": _DEXTER_SRT.replace("\n", "\n\n")}
+        assert cache.get_full_text("ep.srt").startswith("dexter get out of my lab")
+
+
+@pytest.mark.unit
+class TestDamagedReferenceCorpus:
+    """Regression for the Dexter's Laboratory report: 36 of 37 references read as
+    empty, so every chunk of every track voted for the one readable episode."""
+
+    @staticmethod
+    def _srt(token: str) -> str:
+        body = (token + " ") * 20 + "the and a of to it"
+        return "".join(
+            f"{i}\n00:00:{i * 2:02d},000 --> 00:00:{i * 2 + 1:02d},000\n{body}\n\n"
+            for i in range(1, 4)
+        )
+
+    def test_damaged_references_still_win_their_own_dialogue(self, tmp_path):
+        clean = tmp_path / "Show - S01E01.srt"
+        doubled = tmp_path / "Show - S01E02.srt"
+        no_index = tmp_path / "Show - S01E03.srt"
+        clean.write_bytes(self._srt("alpha").encode("utf-8"))
+        doubled.write_bytes(self._srt("bravo").replace("\n", "\r\r\n").encode("utf-8"))
+        no_index.write_bytes(
+            re.sub(r"(?m)^\d+\n(?=\d{2}:)", "", self._srt("charlie")).encode("utf-8")
+        )
+
+        matcher = TfidfMatcher()
+        matcher.prepare([clean, doubled, no_index], SubtitleCache())
+
+        assert matcher.match("bravo " * 20)[0][0] == str(doubled)
+        assert matcher.match("charlie " * 20)[0][0] == str(no_index)
+
+
+_UTF16_TRAILER = b'\n<font color="#ffff00" size=14>www.tvsubtitles.net</font>\r\n'
+
+
+def _utf16_with_stray_byte() -> bytes:
+    body = (
+        "1\r\n00:00:02,000 --> 00:00:03,000\r\nExpired on Monday.\r\n\r\n"
+        "2\r\n00:00:04,000 --> 00:00:05,000\r\nTen.\r\n"
+    )
+    raw = body.encode("utf-16") + _UTF16_TRAILER
+    assert len(raw) % 2 == 1  # the odd byte count a strict UTF-16 decode rejects
+    return raw
+
+
+@pytest.mark.unit
+class TestUtf16ReferenceWithStrayByte:
+    """Real tvsubtitles references (Malcolm in the Middle S02, I Dream of Jeannie)
+    are UTF-16 with a byte-order mark plus a single-byte ASCII trailer. The
+    validator accepted them while the matcher read them as latin-1 and saw no
+    dialogue, so they stayed cached and matched nothing."""
+
+    def test_matcher_reads_the_dialogue(self, tmp_path):
+        p = tmp_path / "Malcolm in the Middle - S02E02.srt"
+        p.write_bytes(_utf16_with_stray_byte())
+        text = SubtitleCache().get_full_text(str(p))
+        assert "expired on monday" in text
+        assert "ten" in text.split()
+
+    def test_both_readers_decode_it_the_same_way(self, tmp_path):
+        p = tmp_path / "Malcolm in the Middle - S02E03.srt"
+        p.write_bytes(_utf16_with_stray_byte())
+        assert ei.read_file_with_fallback(str(p)) == srt_utils.read_file_with_fallback(p)
+
+    def test_validator_and_matcher_agree(self, tmp_path):
+        from app.matcher.subtitle_utils import is_valid_srt_file
+
+        p = tmp_path / "Malcolm in the Middle - S02E05.srt"
+        p.write_bytes(_utf16_with_stray_byte())
+        assert is_valid_srt_file(p) is True
+        assert SubtitleCache().get_full_text(str(p)) != ""
+
+
+@pytest.mark.unit
+class TestTfidfMatcherEmptyReferences:
+    def test_prepare_skips_references_with_no_text(self):
+        cache = SubtitleCache()
+        cache._full_text_cache = {
+            "ep1": "the quick brown fox jumps",
+            "ep2": "",
+            "ep3": "a slow green turtle swims",
+        }
+        matcher = TfidfMatcher()
+        matcher.prepare(["ep1", "ep2", "ep3"], cache)
+
+        assert matcher.ref_file_order == ["ep1", "ep3"]
+        assert matcher.total_references == 3
+        assert [ref for ref, _ in matcher.match("slow green turtle")] == ["ep3", "ep1"]
+
+    def test_prepare_with_no_usable_text_does_not_raise(self):
+        cache = SubtitleCache()
+        cache._full_text_cache = {"ep1": "", "ep2": ""}
+        matcher = TfidfMatcher()
+        matcher.prepare(["ep1", "ep2"], cache)
+
+        assert matcher.is_prepared is True
+        assert matcher.ref_file_order == []
+        assert matcher.total_references == 2
+        assert matcher.match("anything") == []
+
+    def test_load_precomputed_counts_every_reference(self):
+        matcher = TfidfMatcher()
+        matcher.load_precomputed(csr_matrix(np.eye(2)), ["S01E01", "S01E02"], np.ones(2))
+        assert matcher.total_references == 2
+
+
+@pytest.mark.unit
+class TestUnreadableReferenceGuard:
+    _READABLE = "1\n00:00:01,000 --> 00:00:02,000\nDexter, get out of my lab!\n"
+    _TEXTLESS = "1\n00:00:01,000 --> 00:00:02,000\n\n2\n00:00:03,000 --> 00:00:04,000\n"
+
+    class _FakeModel:
+        def __init__(self):
+            self.calls = 0
+
+        def transcribe(self, audio_path):
+            self.calls += 1
+            return {"text": "dexter get out of my lab " * 5}
+
+    def _matcher(self, tmp_path, monkeypatch, files):
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        data = tmp_path / "data" / "4229"
+        data.mkdir(parents=True)
+        for name, content in files.items():
+            (data / name).write_text(content, encoding="utf-8")
+        matcher = EpisodeMatcher(tmp_path, "Show", expected_tmdb_id=4229, model_name="small")
+        model = self._FakeModel()
+        get_model = MagicMock(return_value=model)
+        duration = MagicMock(return_value=1320.0)
+        full_file = MagicMock(return_value=None)
+        monkeypatch.setattr(matcher, "_load_precomputed_season", lambda season: None)
+        monkeypatch.setattr("app.matcher.episode_identification.get_video_duration", duration)
+        monkeypatch.setattr(
+            matcher, "extract_audio_chunk", lambda video_file, start_time, duration=None: "chunk"
+        )
+        monkeypatch.setattr("app.matcher.episode_identification.get_cached_model", get_model)
+        monkeypatch.setattr(matcher, "_match_full_file", full_file)
+        return matcher, model, get_model, duration, full_file
+
+    def test_one_usable_reference_is_not_matched_against(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        matcher, model, get_model, duration, full_file = self._matcher(
+            tmp_path,
+            monkeypatch,
+            {
+                "Show - S01E01.srt": self._READABLE,
+                "Show - S01E02.srt": self._TEXTLESS,
+                "Show - S01E03.srt": self._TEXTLESS,
+            },
+        )
+
+        result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
+
+        assert result is not None
+        assert result["episode"] is None
+        assert result["match_details"] == {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": 1,
+            "total_references": 3,
+        }
+        # Refused before any expensive work: no ffprobe, no model load, no ASR.
+        duration.assert_not_called()
+        get_model.assert_not_called()
+        assert model.calls == 0
+        full_file.assert_not_called()
+
+    def test_two_usable_references_are_matched_against(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        second = "1\n00:00:01,000 --> 00:00:02,000\nOmelette du fromage!\n"
+        matcher, model, get_model, _, _ = self._matcher(
+            tmp_path,
+            monkeypatch,
+            {
+                "Show - S01E01.srt": self._READABLE,
+                "Show - S01E02.srt": second,
+                "Show - S01E03.srt": self._TEXTLESS,
+            },
+        )
+
+        result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
+
+        details = (result or {}).get("match_details") or {}
+        assert details.get("error") != REFERENCES_UNREADABLE_ERROR_CODE
+        get_model.assert_called()
+        assert model.calls > 0
+
+    def _precomputed_matcher(self, tmp_path, monkeypatch, codes):
+        matcher, model, get_model, duration, _ = self._matcher(tmp_path, monkeypatch, {})
+        size = len(codes)
+        precomputed = (csr_matrix(np.eye(size)), list(codes), np.ones(size))
+        monkeypatch.setattr(matcher, "_load_precomputed_season", lambda season: precomputed)
+        tfidf = MagicMock()
+        tfidf.is_prepared = True
+        tfidf.ref_file_order = list(codes)
+        tfidf.reference_signature.return_value = ("precomputed", tuple(codes))
+        tfidf.match.return_value = [(codes[0], 0.5)]
+        monkeypatch.setattr(matcher, "_get_tfidf_matcher", MagicMock(return_value=tfidf))
+        return matcher, get_model, duration
+
+    def test_precomputed_season_with_two_episodes_is_matched_against(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        matcher, get_model, _ = self._precomputed_matcher(
+            tmp_path, monkeypatch, ["S01E01", "S01E02"]
+        )
+
+        result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
+
+        details = (result or {}).get("match_details") or {}
+        assert details.get("error") != REFERENCES_UNREADABLE_ERROR_CODE
+        get_model.assert_called()
+
+    def test_precomputed_season_with_one_episode_is_refused(self, tmp_path, monkeypatch):
+        """The cache builders drop references that read as empty, so a season built
+        from damaged subtitles ships with a single row and would win every vote."""
+        from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+
+        matcher, get_model, duration = self._precomputed_matcher(tmp_path, monkeypatch, ["S01E01"])
+
+        result = matcher.identify_episode(tmp_path / "title_01.mkv", tmp_path, 1)
+
+        assert result["episode"] is None
+        assert result["match_details"] == {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": 1,
+            "total_references": 1,
+        }
+        duration.assert_not_called()
+        get_model.assert_not_called()

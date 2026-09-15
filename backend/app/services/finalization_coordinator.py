@@ -16,6 +16,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.organizer import check_library_writable
 from app.database import async_session
+from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
@@ -24,6 +25,15 @@ from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE, RIP_FAILURE_ERROR_CODES
 
 logger = logging.getLogger(__name__)
+
+
+def _refused_for_references(title) -> bool:
+    """True when the matcher refused this title for lack of usable references."""
+    try:
+        details = json.loads(title.match_details) if title.match_details else {}
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(details, dict) and details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE
 
 
 def _detect_wrong_show(job, titles) -> dict | None:
@@ -66,6 +76,12 @@ def _detect_wrong_show(job, titles) -> dict | None:
     if len(episode_candidates) < 2:
         return None
     if not all(t.matched_episode is None for t in episode_candidates):
+        return None
+
+    # A title the matcher refused (too few usable references) was never matched at
+    # all, so a disc of refused titles says nothing about which show it is. Naming
+    # the twin would send the user to re-identify instead of fixing the subtitles.
+    if all(_refused_for_references(t) for t in episode_candidates):
         return None
 
     twin = next((c for c in candidates if str(c.get("tmdb_id")) != str(job.tmdb_id)), None)
@@ -226,6 +242,9 @@ _NON_REMATCHABLE_REVIEW_ERRORS = {
     # A conjoined multi-episode track: re-matching cannot change what the file
     # holds, and the rerun would overwrite the reviewer-facing message (#622).
     MULTI_EPISODE_ERROR_CODE,
+    # The matcher refused the title: too few reference subtitles held any text. A
+    # deeper scan against the same references cannot change that.
+    REFERENCES_UNREADABLE_ERROR_CODE,
 } | set(RIP_FAILURE_ERROR_CODES)
 
 

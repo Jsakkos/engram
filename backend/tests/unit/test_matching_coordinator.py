@@ -15,16 +15,21 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from app.api.websocket import manager as ws_manager
+from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
+    CONJOINED_SCAN_POINTS,
+    MAX_CONJOINED_EPISODES,
     MULTI_EPISODE_ERROR_CODE,
     FileWaitResult,
     MatchingCoordinator,
     _apply_multi_episode_review,
     _conjoined_episode_count,
     _duration_matches_episode_runtime,
+    _route_unconfirmable_title,
+    _scan_points_for_hint,
     episode_curator,
 )
 from tests.unit.conftest import _unit_session_factory
@@ -1491,6 +1496,10 @@ class TestConjoinedDiscDbBypass:
             assert title.state == TitleState.REVIEW
             parsed = json.loads(title.match_details)
             assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+        # The hinted track is scanned deeply enough to confirm three segments.
+        assert mock_curator.match_single_file.await_args.kwargs["num_points"] == (
+            CONJOINED_SCAN_POINTS
+        )
 
     async def test_conjoined_track_with_unset_hint_still_blocks_discdb_fallback(
         self, monkeypatch, tmp_path
@@ -1547,3 +1556,217 @@ class TestConjoinedDiscDbBypass:
             assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
             # Not the DiscDB fallback's fingerprint (source/episode_title keys).
             assert "source" not in parsed
+
+
+@pytest.mark.unit
+class TestUnreadableReferencesEndToEnd:
+    """A refused result flows through _match_single_file_inner into the database: it
+    lands in REVIEW with the reviewer message, unless a DiscDB mapping assigns it."""
+
+    def _refused_result(self):
+        return SimpleNamespace(
+            episode_code=None,
+            confidence=0.0,
+            needs_review=True,
+            match_details={
+                "error": REFERENCES_UNREADABLE_ERROR_CODE,
+                "usable_references": 1,
+                "total_references": 1,
+            },
+        )
+
+    async def test_refused_title_lands_in_review_with_the_message(self, monkeypatch, tmp_path):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+        coord._discdb_mappings = {}
+
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=self._refused_result())
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(job.id, title.id, tmp_path / "title_t00.mkv")
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.REVIEW
+            parsed = json.loads(title.match_details)
+            assert parsed["error"] == REFERENCES_UNREADABLE_ERROR_CODE
+            assert "too few to tell its episodes apart" in parsed["message"]
+
+    async def test_discdb_mapping_still_assigns_a_refused_title(self, monkeypatch, tmp_path):
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+
+        mapping = DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Pilot",
+            season=1,
+            episode=1,
+            duration_seconds=600,
+            size_bytes=1024**3,
+        )
+        coord._discdb_mappings = {job.id: [mapping]}
+
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=self._refused_result())
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(job.id, title.id, tmp_path / "title_t00.mkv")
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.MATCHED
+            assert title.matched_episode == "S01E01"
+            assert title.match_source == "discdb"
+            assert json.loads(title.match_details or "{}").get("error") != (
+                REFERENCES_UNREADABLE_ERROR_CODE
+            )
+
+    async def test_rematch_without_details_does_not_repeat_an_old_refusal(
+        self, monkeypatch, tmp_path
+    ):
+        """A re-match after the references were fixed can come back with no
+        match_details (a curator exception, a failed duration probe). The earlier
+        refusal must not survive it and resurface its "could not be read" message."""
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+            stored = await session.get(DiscTitle, title.id)
+            stored.match_details = json.dumps(
+                {
+                    "error": REFERENCES_UNREADABLE_ERROR_CODE,
+                    "usable_references": 0,
+                    "total_references": 37,
+                    "message": "The reference subtitles for this season could not be read",
+                }
+            )
+            await session.commit()
+        coord._discdb_mappings = {}
+
+        no_details = SimpleNamespace(
+            episode_code=None, confidence=0.0, needs_review=True, match_details=None
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=no_details)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(job.id, title.id, tmp_path / "title_t00.mkv")
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            parsed = json.loads(title.match_details or "{}")
+            assert parsed.get("error") != REFERENCES_UNREADABLE_ERROR_CODE
+            assert "could not be read" not in (parsed.get("message") or "")
+
+
+@pytest.mark.unit
+class TestUnreadableReferencesReviewRouting:
+    """A title the matcher refused for lack of usable references goes to review with
+    a message naming the cause, even when the runtime also hinted that the track is
+    several conjoined episodes."""
+
+    def _title(self, details: dict | None):
+        return SimpleNamespace(
+            state=TitleState.MATCHED,
+            match_details=json.dumps(details) if details is not None else None,
+            match_source="engram",
+        )
+
+    def _refused(self, usable: int, total: int) -> dict:
+        return {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": usable,
+            "total_references": total,
+        }
+
+    def test_unreadable_references_go_to_review_with_counts(self):
+        title = self._title(self._refused(1, 37))
+        routed = _route_unconfirmable_title(title, conjoined_hint=None)
+        assert routed == REFERENCES_UNREADABLE_ERROR_CODE
+        assert title.state == TitleState.REVIEW
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == REFERENCES_UNREADABLE_ERROR_CODE
+        assert "could not be read (only 1 of 37 had any text)" in parsed["message"]
+
+    def test_single_readable_reference_says_too_few_not_unreadable(self):
+        title = self._title(self._refused(1, 1))
+        assert _route_unconfirmable_title(title, conjoined_hint=None) == (
+            REFERENCES_UNREADABLE_ERROR_CODE
+        )
+        message = json.loads(title.match_details)["message"]
+        assert "Only 1 reference subtitle is available" in message
+        assert "too few" in message
+        assert "could not be read" not in message
+
+    def test_unreadable_references_win_over_a_conjoined_hint(self):
+        title = self._title(self._refused(1, 37))
+        routed = _route_unconfirmable_title(title, conjoined_hint=3)
+        assert routed == REFERENCES_UNREADABLE_ERROR_CODE
+        parsed = json.loads(title.match_details)
+        assert parsed["error"] == REFERENCES_UNREADABLE_ERROR_CODE
+        assert "joined together" not in parsed["message"]
+
+    def test_hinted_track_without_the_error_still_routes_as_multi_episode(self):
+        title = self._title(
+            {"multi_episode": {"is_multi_episode": False, "reason": "single_episode"}}
+        )
+        assert _route_unconfirmable_title(title, conjoined_hint=3) == MULTI_EPISODE_ERROR_CODE
+
+    def test_ordinary_title_is_untouched(self):
+        title = self._title({"episode": "S1E1"})
+        assert _route_unconfirmable_title(title, conjoined_hint=None) is None
+        assert title.state == TitleState.MATCHED
+
+    def test_unreadable_references_are_never_auto_rematched(self):
+        from app.services.finalization_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
+
+        assert REFERENCES_UNREADABLE_ERROR_CODE in _NON_REMATCHABLE_REVIEW_ERRORS
+
+
+@pytest.mark.unit
+class TestConjoinedScanDepth:
+    """Three-segment cartoon tracks (Dexter's Laboratory, Looney Tunes) could never
+    be confirmed at the default 10 scan points: decompose_vote_runs needs more than
+    3 points per run plus one."""
+
+    def test_unhinted_track_keeps_the_requested_depth(self):
+        assert _scan_points_for_hint(None, None) is None
+        assert _scan_points_for_hint(37, None) == 37
+
+    def test_hinted_track_scans_at_least_the_conjoined_depth(self):
+        assert _scan_points_for_hint(None, 2) == CONJOINED_SCAN_POINTS
+        assert _scan_points_for_hint(10, 3) == CONJOINED_SCAN_POINTS
+
+    def test_deeper_requested_scan_is_not_reduced(self):
+        assert _scan_points_for_hint(73, 3) == 73
+
+    def test_conjoined_depth_is_a_lattice_level_that_confirms_the_cap(self):
+        from app.matcher.episode_identification import snap_to_lattice_level
+        from app.matcher.multi_episode import MIN_SCAN_POINTS_PER_RUN
+
+        assert snap_to_lattice_level(CONJOINED_SCAN_POINTS) == CONJOINED_SCAN_POINTS
+        assert CONJOINED_SCAN_POINTS > MIN_SCAN_POINTS_PER_RUN * MAX_CONJOINED_EPISODES + 1
+
+    def test_three_segment_track_confirms_at_conjoined_depth_but_not_at_ten(self):
+        from app.matcher.multi_episode import decompose_vote_runs
+
+        deep = (
+            [(s, "S01E01") for s in (0, 60, 120, 180, 240, 300)]
+            + [(s, "S01E02") for s in (420, 480, 540, 600, 660)]
+            + [(s, "S01E03") for s in (780, 840, 900, 960, 1020, 1080)]
+        )
+        verdict = decompose_vote_runs(deep, CONJOINED_SCAN_POINTS)
+        assert verdict.is_multi_episode is True
+        assert verdict.codes == ("S01E01", "S01E02", "S01E03")
+
+        shallow = (
+            [(s, "S01E01") for s in (0, 120, 240)]
+            + [(s, "S01E02") for s in (480, 600)]
+            + [(s, "S01E03") for s in (840, 960, 1080)]
+        )
+        assert decompose_vote_runs(shallow, 10).reason == "insufficient_scan_depth"

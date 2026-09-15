@@ -10,9 +10,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.matcher.llm_episode_matcher import match_episode_via_llm
+from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
 
 logger = logging.getLogger(__name__)
+
+
+def _unreadable_count(details: dict) -> int:
+    """How many of a refused season's references had no readable text (0 if unknown)."""
+    usable = details.get("usable_references")
+    total = details.get("total_references")
+    if isinstance(usable, int) and isinstance(total, int):
+        return max(total - usable, 0)
+    return 0
 
 
 @dataclass
@@ -232,11 +242,27 @@ class EpisodeCurator:
             f"Season unknown for {file_path.name}; searching seasons {seasons} of '{series_name}'"
         )
 
+        # A season the matcher refused (too few usable references) yields no episode.
+        # Only when EVERY candidate season refuses does that reason explain the
+        # result; if any season could be read, the reason would mislead the reviewer
+        # and wrongly stop the title from being re-matched.
+        refusal_details: dict | None = None
+        every_season_refused = True
         best: MatchResult | None = None
         for s in seasons:
             result = await self.match_single_file(
                 file_path, series_name, s, progress_callback, num_points, min_vote_count, tmdb_id
             )
+            details = result.match_details or {}
+            if details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE:
+                # Report the most damaged season: its "could not be read" message
+                # explains more than a merely small season's "too few subtitles".
+                if refusal_details is None or _unreadable_count(details) > _unreadable_count(
+                    refusal_details
+                ):
+                    refusal_details = details
+            else:
+                every_season_refused = False
             if not result.episode_code:
                 continue
             if best is None or result.confidence > best.confidence:
@@ -246,7 +272,9 @@ class EpisodeCurator:
                 break
 
         if best is None:
-            return self._fallback_result(file_path)
+            return self._fallback_result(
+                file_path, match_details=refusal_details if every_season_refused else None
+            )
         return best
 
     async def match_files(

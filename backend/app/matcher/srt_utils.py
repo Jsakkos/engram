@@ -2,11 +2,29 @@ import os
 import re
 import shutil
 import subprocess
+from collections import Counter
+from collections.abc import Iterator
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 import chardet
 from loguru import logger
+
+_UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
+
+
+def decode_utf16_bom(raw: bytes) -> str | None:
+    """Decode bytes that start with a UTF-16 byte-order mark; None otherwise.
+
+    Lenient on purpose: tvsubtitles appends a single-byte ASCII trailer to some
+    UTF-16 subtitles, leaving an odd byte count that a strict decode rejects.
+    Every reader and validator decodes such files through here, so a file the
+    validator accepts can never read as empty to the matcher.
+    """
+    if raw[:2] not in _UTF16_BOMS:
+        return None
+    return raw.decode("utf-16", errors="ignore")
 
 
 def detect_file_encoding(file_path: Path) -> str:
@@ -25,6 +43,9 @@ def detect_file_encoding(file_path: Path) -> str:
 def read_file_with_fallback(file_path: Path, encodings: list[str] | None = None) -> str:
     """Read a file trying multiple encodings."""
     if encodings is None:
+        bom_text = decode_utf16_bom(Path(file_path).read_bytes())
+        if bom_text is not None:
+            return bom_text
         detected = detect_file_encoding(file_path)
         encodings = [detected, "utf-8", "latin-1", "cp1252", "iso-8859-1"]
 
@@ -38,6 +59,187 @@ def read_file_with_fallback(file_path: Path, encodings: list[str] | None = None)
             continue
 
     raise ValueError(f"Failed to read {file_path} with any encoding. Errors: {errors}")
+
+
+_STAMP = r"\d{1,3}:\d{1,3}:\d{1,3}(?:[,.]\d{1,3})?"
+_TIMING_LINE_RE = re.compile(rf"^({_STAMP})\s*-->\s*({_STAMP})")
+_TIMING_LIKE_RE = re.compile(r"^\d{1,3}:\d{1,3}")
+
+
+def parse_srt_timestamp(timestamp: str) -> float:
+    """Parse ``HH:MM:SS,mmm`` (comma or dot before the milliseconds) into seconds."""
+    hours, minutes, seconds = timestamp.strip().replace(",", ".").split(":")
+    return float(hours) * 3600 + float(minutes) * 60 + float(seconds)
+
+
+@dataclass(frozen=True)
+class SrtCue:
+    """One subtitle cue: its timing and its non-blank text lines."""
+
+    start: float
+    end: float
+    lines: tuple[str, ...]
+
+    @property
+    def text(self) -> str:
+        return " ".join(self.lines)
+
+
+def _intra_cue_gap(lines: list[str]) -> int:
+    """The number of blank lines separating a timing line from its own text in this file.
+
+    0 in a normal SRT, 1 when every line ending was doubled (CRLF text written
+    through a Windows text-mode write), 2 when tripled. Taken as the most common
+    gap across cues, ties going to the wider gap: a gap that is too narrow empties
+    every cue in the file, while one that is too wide only lets a timing-less stray
+    line join the cue before it. Measured only from timing lines to the text that
+    follows them, so a header or trailer cannot change it. Cues with no text, and
+    cues whose first text line is only a number, are not measured.
+    """
+    counts: Counter[int] = Counter()
+    for i, line in enumerate(lines):
+        if not _TIMING_LINE_RE.match(line):
+            continue
+        j = i + 1
+        while j < len(lines) and not lines[j]:
+            j += 1
+        if j == len(lines):
+            continue
+        following = lines[j]
+        if following.isdigit() or ("-->" in following and _TIMING_LIKE_RE.match(following)):
+            continue
+        counts[j - i - 1] += 1
+    if not counts:
+        return 0
+    return max(counts, key=lambda gap: (counts[gap], gap))
+
+
+def _split_blocks(lines: list[str]) -> list[list[str]]:
+    """Group stripped lines into cue blocks.
+
+    A run of blank lines longer than the file's intra-cue gap (see
+    ``_intra_cue_gap``) separates cues, so doubled or tripled line endings read
+    like a normal file. In a doubled file, a trailer written with single line
+    endings directly after the last cue joins that cue's text.
+    """
+    max_gap = _intra_cue_gap(lines)
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    gap = 0
+    for line in lines:
+        if not line:
+            gap += 1
+            continue
+        if current and gap > max_gap:
+            blocks.append(current)
+            current = []
+        gap = 0
+        current.append(line)
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def is_watermark_block(block_text: str, block_lines: list[str], subtitle_start: float) -> bool:
+    """Detect subtitle blocks that are watermarks, ads, or non-dialogue annotations.
+
+    Generically identifies watermark content regardless of source by checking for:
+    - URLs or domain-like patterns (e.g., www.tvsubtitles.net, opensubtitles.org)
+    - Blocks near timestamp 0:00 with non-dialogue content (ad overlays)
+    - Font color/size tags wrapping the entire content (styled ads)
+    """
+    text_lower = block_text.lower().strip()
+
+    # Check for URLs or domain patterns
+    if re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", text_lower):
+        return True
+
+    # Check for blocks that are only font/styling tags wrapping a URL or brand name
+    stripped = re.sub(r"<[^>]+>", "", text_lower).strip()
+    if stripped and re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", stripped):
+        return True
+
+    # Very short non-dialogue at start (e.g., "sync by", "subtitles by", "corrected by")
+    if subtitle_start < 5.0 and len(stripped.split()) <= 8:
+        credit_patterns = [
+            "sync",
+            "subtitles by",
+            "corrected by",
+            "ripped by",
+            "encoded by",
+            "transcript by",
+            "timing by",
+        ]
+        if any(p in stripped for p in credit_patterns):
+            return True
+
+    return False
+
+
+def iter_srt_cues(content: str | None) -> Iterator[SrtCue]:
+    """Yield every cue in SRT text, tolerating the layouts real downloads arrive in.
+
+    Handles LF, CRLF, lone CR, doubled or tripled line endings, a leading BOM,
+    missing cue index lines, and whitespace-only separator lines. Within a block,
+    lines before the first timing line are ignored (the index, or stray text) and
+    lines after it are the cue's text. A block with no timing line is ignored, so in
+    a normally spaced file a blank line inside a cue's text ends that cue. A blank
+    line between a timing line and its text, in a file whose other cues have none,
+    empties that cue. A further timing line inside the same block (a missing blank
+    separator) starts another cue, and a purely numeric line directly before it is
+    dropped as that cue's index. A line that starts like a timestamp and contains
+    ``-->`` but is not a valid timing line drops that cue only. Milliseconds
+    shorter than three digits are read as a decimal fraction (``01,5`` is 1.5
+    seconds).
+    """
+    if not content:
+        return
+    normalized = content.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.strip() for line in normalized.split("\n")]
+    for block in _split_blocks(lines):
+        timing: tuple[float, float] | None = None
+        body: list[str] = []
+        for line in block:
+            match = _TIMING_LINE_RE.match(line)
+            if match is None and not ("-->" in line and _TIMING_LIKE_RE.match(line)):
+                if timing is not None:
+                    body.append(line)
+                continue
+            if timing is not None:
+                if body and body[-1].isdigit():
+                    body.pop()  # the index line of the cue that starts here
+                yield SrtCue(timing[0], timing[1], tuple(body))
+            timing, body = None, []
+            if match is not None:
+                try:
+                    timing = (
+                        parse_srt_timestamp(match.group(1)),
+                        parse_srt_timestamp(match.group(2)),
+                    )
+                except ValueError:
+                    timing = None
+        if timing is not None:
+            yield SrtCue(timing[0], timing[1], tuple(body))
+
+
+def has_srt_cues(content: str | None) -> bool:
+    """True when at least one cue in ``content`` carries text."""
+    return any(cue.lines for cue in iter_srt_cues(content))
+
+
+def has_dialogue_cues(content: str | None) -> bool:
+    """True when at least one cue carries text that is not a watermark or ad.
+
+    Stricter than ``has_srt_cues``: a file whose every cue is a watermark (a
+    "Downloaded From www.AllSubs.org" stub, or a placeholder repeating a download
+    URL) is not a subtitle, and accepting it caches it for good. Bracketed sound
+    cues such as "[roars]" still count: a dialogue-free show's subtitle is genuine,
+    and rejecting it would re-download the same file on every pass.
+    """
+    return any(
+        cue.lines and not is_watermark_block(cue.text, list(cue.lines), cue.start)
+        for cue in iter_srt_cues(content)
+    )
 
 
 class SubtitleReader:
@@ -56,22 +258,11 @@ class SubtitleReader:
     @staticmethod
     def extract_subtitle_chunk(content: str, start_time: float, end_time: float) -> list[str]:
         """Extract subtitle text for a specific time window."""
-        text_lines = []
-        for block in content.strip().split("\n\n"):
-            lines = block.split("\n")
-            if len(lines) < 3 or "-->" not in lines[1]:
-                continue
-            try:
-                timestamp = lines[1]
-                time_parts = timestamp.split(" --> ")
-                s_stamp = SubtitleReader.parse_timestamp(time_parts[0].strip())
-                e_stamp = SubtitleReader.parse_timestamp(time_parts[1].strip())
-
-                if e_stamp >= start_time and s_stamp <= end_time:
-                    text_lines.append(" ".join(lines[2:]))
-            except (IndexError, ValueError):
-                continue
-        return text_lines
+        return [
+            cue.text
+            for cue in iter_srt_cues(content)
+            if cue.lines and cue.end >= start_time and cue.start <= end_time
+        ]
 
 
 def clean_text(text: str) -> str:

@@ -14,6 +14,7 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.matcher.episode_identification import snap_to_lattice_level
+from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.finalization_coordinator import (
@@ -910,6 +911,22 @@ class TestDetectWrongShow:
         # A partial corpus is still a corpus — the aggregate signal stands.
         titles = [self._ttl(0), self._ttl(1)]
         assert _detect_wrong_show(self._job(subtitle_status="partial"), titles) is not None
+
+    def test_none_when_every_title_was_refused_for_references(self):
+        titles = [self._ttl(0), self._ttl(1), self._ttl(2)]
+        refusal = {
+            "error": REFERENCES_UNREADABLE_ERROR_CODE,
+            "usable_references": 1,
+            "total_references": 1,
+        }
+        for t in titles:
+            t.match_details = json.dumps(refusal)
+        assert _detect_wrong_show(self._job(), titles) is None
+
+    def test_still_detects_when_only_some_titles_were_refused(self):
+        titles = [self._ttl(0), self._ttl(1), self._ttl(2)]
+        titles[0].match_details = json.dumps({"error": REFERENCES_UNREADABLE_ERROR_CODE})
+        assert _detect_wrong_show(self._job(), titles) is not None
 
 
 @pytest.mark.unit

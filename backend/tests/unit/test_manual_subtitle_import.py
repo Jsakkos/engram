@@ -178,3 +178,15 @@ class TestCommitFiles:
         assert outcomes[0].reason == "failed to write file"
         assert outcomes[1].status == "error"
         assert outcomes[1].reason == "failed to write file"
+
+    def test_crlf_upload_is_written_byte_for_byte(self, tmp_path):
+        crlf = VALID_SRT.replace("\n", "\r\n")
+        files = [CommitInputFile(filename="x.srt", season=1, episode=5, content=crlf)]
+        with patch(
+            "app.matcher.manual_subtitle_import.reference_coverage",
+            return_value={"S01E05": "missing"},
+        ):
+            outcomes = commit_files(tmp_path, 123, "Show Name", files)
+        assert outcomes[0].status == "imported"
+        dest = tmp_path / "data" / "123" / "Show Name - S01E05.srt"
+        assert dest.read_bytes() == crlf.encode("utf-8")

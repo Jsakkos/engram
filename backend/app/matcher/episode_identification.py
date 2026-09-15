@@ -20,7 +20,13 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.multi_episode import decompose_vote_runs
-from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
+from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
+from app.matcher.srt_utils import is_watermark_block as _is_watermark_block
+from app.matcher.subtitle_utils import (
+    REFERENCES_UNREADABLE_ERROR_CODE,
+    corpus_dir_name,
+    sanitize_filename,
+)
 from app.matcher.utils import extract_season_episode
 from app.matcher.vectorizer_config import apply_tfidf
 
@@ -388,42 +394,6 @@ def _clean_subtitle_text(text: str) -> str:
     return " ".join(text.split())
 
 
-def _is_watermark_block(block_text: str, block_lines: list[str], subtitle_start: float) -> bool:
-    """Detect subtitle blocks that are watermarks, ads, or non-dialogue annotations.
-
-    Generically identifies watermark content regardless of source by checking for:
-    - URLs or domain-like patterns (e.g., www.tvsubtitles.net, opensubtitles.org)
-    - Blocks near timestamp 0:00 with non-dialogue content (ad overlays)
-    - Font color/size tags wrapping the entire content (styled ads)
-    """
-    text_lower = block_text.lower().strip()
-
-    # Check for URLs or domain patterns
-    if re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", text_lower):
-        return True
-
-    # Check for blocks that are only font/styling tags wrapping a URL or brand name
-    stripped = re.sub(r"<[^>]+>", "", text_lower).strip()
-    if stripped and re.search(r"(?:www\.|https?://|\w+\.(?:com|net|org|io|tv|cc|me))", stripped):
-        return True
-
-    # Very short non-dialogue at start (e.g., "sync by", "subtitles by", "corrected by")
-    if subtitle_start < 5.0 and len(stripped.split()) <= 8:
-        credit_patterns = [
-            "sync",
-            "subtitles by",
-            "corrected by",
-            "ripped by",
-            "encoded by",
-            "transcript by",
-            "timing by",
-        ]
-        if any(p in stripped for p in credit_patterns):
-            return True
-
-    return False
-
-
 # --- Confidence calibration --------------------------------------------------
 #
 # The matcher's raw ``ranked_voting_score`` is the mean TF-IDF cosine of the
@@ -491,6 +461,14 @@ MIN_CONSENSUS_FOR_RATIO = 0.50
 # measurement in docs/superpowers/reviews/2026-05-29-asr-chunk-vote-scale-mismatch.md.
 CHUNK_VOTE_FLOOR = 0.06  # below this top-1 cosine, treat the chunk as noise
 CHUNK_VOTE_MARGIN_RATIO = 1.8  # top-1 must lead the runner-up by this ratio to vote
+
+# A scraped reference corpus needs at least this many subtitles with readable text
+# before a match against it means anything. With one usable reference every chunk
+# that clears the noise floor votes for it (a lone candidate always clears the
+# margin rule in select_chunk_vote), so every track on a disc matches that one
+# episode at full confidence. Two is the smallest corpus in which a vote can be
+# lost.
+MIN_USABLE_REFERENCES = 2
 
 # Calibrated-confidence acceptance floor for the ranked-voting gate. The raw
 # ranked_voting_score is a mean chunk cosine that sits structurally ~0.1 (see the
@@ -789,6 +767,7 @@ class TfidfMatcher:
         self._prepared = False
         self._precomputed = False  # True when loaded from the shipped vector cache
         self._idf = None  # global IDF array, only set in precomputed mode
+        self.total_references = 0  # references offered, including any dropped as empty
 
     def load_precomputed(self, ref_matrix, ref_episode_codes, idf_array) -> None:
         """Load a precomputed hashed TF-IDF cache instead of fitting from SRT.
@@ -800,6 +779,7 @@ class TfidfMatcher:
         """
         self.ref_matrix = ref_matrix
         self.ref_file_order = list(ref_episode_codes)
+        self.total_references = len(self.ref_file_order)
         self._idf = idf_array
         self._precomputed = True
         self._prepared = True
@@ -812,16 +792,34 @@ class TfidfMatcher:
         """
         Fit TF-IDF vectorizer on all reference episode full texts.
 
+        References with no readable text are left out of the corpus: a TF-IDF row
+        of zeros can never win a vote, and a corpus that is mostly zeros quietly
+        hands every vote to the few references that do have text.
+        ``total_references`` still counts them, so callers can tell how much of the
+        season was unusable.
+
         Args:
             reference_files: List of paths to reference SRT files
             subtitle_cache: SubtitleCache instance for loading/caching SRT content
         """
-        self.ref_file_order = [str(rf) for rf in reference_files]
+        self.ref_file_order = []
         corpus = []
-        for rf in self.ref_file_order:
+        dropped = []
+        for rf in (str(r) for r in reference_files):
             full_text = subtitle_cache.get_full_text(rf)
-            corpus.append(full_text)
             logger.debug(f"  TF-IDF ref: {Path(rf).stem} ({len(full_text)} chars)")
+            if not full_text:
+                dropped.append(Path(rf).stem)
+                continue
+            self.ref_file_order.append(rf)
+            corpus.append(full_text)
+        self.total_references = len(self.ref_file_order) + len(dropped)
+        if dropped:
+            logger.warning(
+                f"TF-IDF: {len(self.ref_file_order)}/{self.total_references} reference "
+                f"subtitles have readable text; skipped {len(dropped)} empty: "
+                f"{', '.join(dropped)}"
+            )
 
         self.vectorizer = TfidfVectorizer(
             analyzer="word",
@@ -829,12 +827,14 @@ class TfidfMatcher:
             max_features=10000,
             sublinear_tf=True,
         )
-        self.ref_matrix = self.vectorizer.fit_transform(corpus)
+        if corpus:
+            self.ref_matrix = self.vectorizer.fit_transform(corpus)
+            features = self.ref_matrix.shape[1]
+        else:
+            self.ref_matrix = None
+            features = 0
         self._prepared = True
-        logger.info(
-            f"TF-IDF prepared: {len(self.ref_file_order)} references, "
-            f"{self.ref_matrix.shape[1]} features"
-        )
+        logger.info(f"TF-IDF prepared: {len(self.ref_file_order)} references, {features} features")
 
     def match(self, query_text: str) -> list[tuple[str, float]]:
         """
@@ -848,6 +848,8 @@ class TfidfMatcher:
         """
         if not self._prepared:
             raise RuntimeError("TfidfMatcher.prepare() must be called before match()")
+        if not self.ref_file_order:
+            return []
 
         if self._precomputed:
             from app.matcher.vectorizer_config import transform_query
@@ -1675,6 +1677,54 @@ class EpisodeMatcher:
                     )
                     return None
 
+            # Resolve the TF-IDF matcher for THIS season's reference set as a
+            # per-call local — never a shared instance slot. The matcher singleton
+            # is shared across concurrent identify_episode threads (parallel ASR),
+            # so a single mutable slot let a sibling thread's season rebuild
+            # clobber this scan's references mid-loop (codes the path-keyed
+            # `coverages` dict doesn't hold → KeyError → zero votes → bogus review).
+            # _get_tfidf_matcher caches per reference signature, so reuse is kept
+            # without the cross-thread races. See test_matcher_concurrency.
+            expected_signature: tuple = (
+                ("precomputed", tuple(ref_episode_codes))
+                if using_precomputed
+                else ("scraping", tuple(str(rf) for rf in reference_files))
+            )
+            tfidf_matcher = self._get_tfidf_matcher(
+                expected_signature,
+                using_precomputed=using_precomputed,
+                precomputed=(ref_matrix, ref_episode_codes, idf_array)
+                if using_precomputed
+                else None,
+                reference_files=reference_files,
+            )
+
+            # The precomputed cache gets the same floor: its builders drop references
+            # that read as empty, so a season built from damaged subtitles can ship
+            # with a single row that wins every vote.
+            if using_precomputed:
+                usable = total = len(ref_episode_codes)
+            else:
+                usable, total = len(tfidf_matcher.ref_file_order), len(reference_files)
+            if usable < MIN_USABLE_REFERENCES:
+                logger.error(
+                    f"Only {usable} of {total} reference subtitles for "
+                    f"'{self.show_name}' season {season_number} contain readable text; "
+                    f"not matching {Path(video_file).name} against them."
+                )
+                return {
+                    "season": season_number,
+                    "episode": None,
+                    "confidence": 0.0,
+                    "score": 0.0,
+                    "match_details": {
+                        "error": REFERENCES_UNREADABLE_ERROR_CODE,
+                        "usable_references": usable,
+                        "total_references": total,
+                    },
+                    "runner_ups": [],
+                }
+
             if progress_callback:
                 progress_callback("analyzing", 5.0)
 
@@ -1736,29 +1786,8 @@ class EpisodeMatcher:
             l2_file_key = transcript_store.file_key_for(video_file)
             l2_model_key = self._model_key_for(model)
 
-            # Resolve the TF-IDF matcher for THIS season's reference set as a
-            # per-call local — never a shared instance slot. The matcher singleton
-            # is shared across concurrent identify_episode threads (parallel ASR),
-            # so a single mutable slot let a sibling thread's season rebuild
-            # clobber this scan's references mid-loop (codes the path-keyed
-            # `coverages` dict doesn't hold → KeyError → zero votes → bogus review).
-            # _get_tfidf_matcher caches per reference signature, so reuse is kept
-            # without the cross-thread races. See test_matcher_concurrency.
-            expected_signature: tuple = (
-                ("precomputed", tuple(ref_episode_codes))
-                if using_precomputed
-                else ("scraping", tuple(str(rf) for rf in reference_files))
-            )
             if progress_callback:
                 progress_callback("preparing_model", 10.0)
-            tfidf_matcher = self._get_tfidf_matcher(
-                expected_signature,
-                using_precomputed=using_precomputed,
-                precomputed=(ref_matrix, ref_episode_codes, idf_array)
-                if using_precomputed
-                else None,
-                reference_files=reference_files,
-            )
 
             span = f"{scan_points[0]}s-{scan_points[-1]}s" if scan_points else "empty"
             logger.info(
@@ -2235,12 +2264,19 @@ def read_file_with_fallback(file_path, encodings=None):
     Raises:
         ValueError: If file cannot be read with any encoding
     """
+    file_path = Path(file_path)
     if encodings is None:
+        # A UTF-16 byte-order mark settles the encoding. Decoding it leniently here,
+        # instead of through detection, keeps the matcher in agreement with
+        # is_valid_srt_file on UTF-16 files that carry a stray trailing byte.
+        bom_text = decode_utf16_bom(file_path.read_bytes())
+        if bom_text is not None:
+            logger.debug(f"Successfully read {file_path} as UTF-16 (byte-order mark)")
+            return bom_text
         # First try detected encoding, then fallback to common subtitle encodings
         detected = detect_file_encoding(file_path)
         encodings = [detected, "utf-8", "latin-1", "cp1252", "iso-8859-1"]
 
-    file_path = Path(file_path)
     errors = []
 
     for encoding in encodings:
@@ -2294,46 +2330,23 @@ class SubtitleReader:
             list: List of subtitle texts within the time window
         """
         text_lines = []
-
-        for block in content.strip().split("\n\n"):
-            lines = block.split("\n")
-            if len(lines) < 3 or "-->" not in lines[1]:
+        for cue in iter_srt_cues(content):
+            if not cue.lines or cue.end < start_time or cue.start > end_time:
                 continue
-
-            try:
-                timestamp = lines[1]
-                time_parts = timestamp.split(" --> ")
-                start_stamp = time_parts[0].strip()
-                end_stamp = time_parts[1].strip()
-
-                subtitle_start = SubtitleReader.parse_timestamp(start_stamp)
-                subtitle_end = SubtitleReader.parse_timestamp(end_stamp)
-
-                # Check if this subtitle overlaps with our chunk
-                if subtitle_end >= start_time and subtitle_start <= end_time:
-                    text = " ".join(lines[2:])
-
-                    # Skip watermark/ad blocks (URLs, credit lines, etc.)
-                    if _is_watermark_block(text, lines, subtitle_start):
-                        logger.debug(
-                            f"Filtered watermark/ad block at {subtitle_start:.1f}s: {text[:80]}"
-                        )
-                        continue
-
-                    text_lines.append(text)
-
-            except (IndexError, ValueError) as e:
-                logger.warning(f"Error parsing subtitle block: {e}")
+            text = cue.text
+            # Skip watermark/ad blocks (URLs, credit lines, etc.)
+            if _is_watermark_block(text, list(cue.lines), cue.start):
+                logger.debug(f"Filtered watermark/ad block at {cue.start:.1f}s: {text[:80]}")
                 continue
-
+            text_lines.append(text)
         return text_lines
 
     @staticmethod
     def get_duration(content):
         """
-        Get the duration of the subtitle file (max end timestamp across all blocks).
+        Get the duration of the subtitle file (max end timestamp across all cues).
 
-        Uses max() instead of last-block because some subtitle files have
+        Uses max() instead of the last cue because some subtitle files have
         watermark/ad blocks appended at the end with timestamps near 0:00,
         which would incorrectly report the duration as ~2 seconds.
 
@@ -2344,24 +2357,7 @@ class SubtitleReader:
             float: Duration in seconds, or 0 if parsing fails
         """
         try:
-            blocks = content.strip().split("\n\n")
-            if not blocks:
-                return 0.0
-
-            max_end = 0.0
-            for block in blocks:
-                lines = block.split("\n")
-                if len(lines) >= 2 and "-->" in lines[1]:
-                    try:
-                        time_parts = lines[1].split(" --> ")
-                        end_stamp = time_parts[1].strip()
-                        end_time = SubtitleReader.parse_timestamp(end_stamp)
-                        if end_time > max_end:
-                            max_end = end_time
-                    except (IndexError, ValueError):
-                        continue
-
-            return max_end
+            return max((cue.end for cue in iter_srt_cues(content)), default=0.0)
         except Exception as e:
             logger.warning(f"Error getting duration from subtitle content: {e}")
             return 0.0

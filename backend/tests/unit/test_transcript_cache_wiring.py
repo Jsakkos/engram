@@ -273,7 +273,8 @@ class TestIdentifyEpisodeWiredPath:
         tfidf = Mock()
         tfidf.is_prepared = True
         tfidf.match.return_value = [("S01E01", 0.9)]
-        precomputed = (object(), ["S01E01"], object())
+        # Two episodes: a one-row season is refused by the usable-reference floor.
+        precomputed = (object(), ["S01E01", "S01E02"], object())
         fallback_guard = Mock(side_effect=AssertionError("full-file fallback must not run"))
 
         with (
