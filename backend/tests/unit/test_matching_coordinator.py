@@ -1942,3 +1942,66 @@ class TestFingerprintContributionGuard:
 
     def test_combined_code_blocks(self):
         assert _may_contribute_fingerprint("S01E01-E02", None, {"source": "discdb"}) is False
+
+
+@pytest.mark.unit
+class TestCombinedAssignmentPrefill:
+    """A confirmed multi-episode verdict pre-fills the combined code the organizer can
+    now name. The title still lands in REVIEW so a person confirms it."""
+
+    def _title(self, codes, matched="S01E01"):
+        details = {
+            "multi_episode": {
+                "is_multi_episode": True,
+                "reason": "contiguous_runs",
+                "codes": codes,
+            }
+        }
+        return SimpleNamespace(
+            state=TitleState.MATCHED,
+            matched_episode=matched,
+            match_details=json.dumps(details),
+            match_source="engram",
+        )
+
+    def test_contiguous_segments_prefill_a_range(self):
+        title = self._title(["S01E01", "S01E02", "S01E03"])
+        _apply_multi_episode_review(title, conjoined_hint=3)
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode == "S01E01-E03"
+        message = json.loads(title.match_details)["message"]
+        assert "appears to contain 3 episodes" in message
+        assert "S01E01-E03" in message
+        assert "cannot name a combined file" not in message
+
+    def test_playback_order_is_kept(self):
+        # A disc can pair segments TMDB does not number consecutively; the file's
+        # own order is the one to name.
+        title = self._title(["S01E03", "S01E01"])
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.matched_episode == "S01E03E01"
+
+    def test_codes_from_different_seasons_are_not_prefilled(self):
+        title = self._title(["S01E13", "S02E01"])
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode == "S01E01"
+        assert "not all from one season" in json.loads(title.match_details)["message"]
+
+    def test_unconfirmed_hint_is_not_prefilled(self):
+        details = {
+            "multi_episode": {
+                "is_multi_episode": False,
+                "reason": "insufficient_scan_depth",
+                "codes": [],
+            }
+        }
+        title = SimpleNamespace(
+            state=TitleState.MATCHED,
+            matched_episode="S01E01",
+            match_details=json.dumps(details),
+            match_source="engram",
+        )
+        _apply_multi_episode_review(title, conjoined_hint=3)
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode == "S01E01"

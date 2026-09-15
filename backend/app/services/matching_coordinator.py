@@ -271,10 +271,9 @@ RERIP_MAX_ATTEMPTS = 2
 # are eligible for single-track re-rip after a clean & reinsert.
 RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_ejected"})
 
-# A track that is, or might be, several conjoined episodes. Parked for a human
-# because Engram cannot yet NAME a multi-episode file (S01E01-E02 organizing is a
-# separate change): auto-organizing it under one of its codes would silently lose
-# the others.
+# A track that is, or might be, several conjoined episodes. Parked for a human:
+# auto-organizing it under one of its codes would silently lose the others. A
+# confirmed verdict pre-fills the combined code (S01E01-E03) for them to confirm.
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
 
 
@@ -388,6 +387,26 @@ def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -
     return None
 
 
+def _combined_code(codes: list) -> str | None:
+    """The combined code for a verdict's playback-ordered codes, or None.
+
+    None when a code does not parse, a code is itself combined, fewer than two
+    episodes remain, or the codes span seasons: a filename carries one season, so
+    there is no honest combined name for a track that crosses one.
+    """
+    seasons: set[int] = set()
+    episodes: list[int] = []
+    for code in codes:
+        parsed = parse_episode_code(code if isinstance(code, str) else None)
+        if parsed is None or len(parsed[1]) != 1:
+            return None
+        seasons.add(parsed[0])
+        episodes.append(parsed[1][0])
+    if len(seasons) != 1 or len(episodes) < 2:
+        return None
+    return format_episode_code(seasons.pop(), episodes)
+
+
 def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) -> bool:
     """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
 
@@ -420,11 +439,22 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
 
     details["error"] = MULTI_EPISODE_ERROR_CODE
     if confirmed_multi:
-        message = (
-            f"This track appears to contain {len(codes)} episodes "
-            f"({', '.join(codes)}). Engram cannot name a combined file yet. "
-            "Assign one episode, or mark it as an Extra."
-        )
+        combined = _combined_code(codes)
+        if combined:
+            # Pre-fill the assignment the review page opens with. The title stays
+            # in REVIEW (set above), so nothing is filed until a person confirms.
+            title.matched_episode = combined
+            message = (
+                f"This track appears to contain {len(codes)} episodes "
+                f"({', '.join(codes)}). It is pre-filled as {combined}, which files it "
+                "as one combined episode. Confirm it, or assign it differently."
+            )
+        else:
+            message = (
+                f"This track appears to contain {len(codes)} episodes "
+                f"({', '.join(codes)}), but they are not all from one season, so it "
+                "cannot be filed as one combined episode. Assign it by hand."
+            )
     else:
         message = (
             f"This track's runtime suggests about {conjoined_hint} episodes joined "
