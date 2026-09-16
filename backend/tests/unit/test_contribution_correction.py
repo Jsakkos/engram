@@ -119,6 +119,30 @@ async def test_episode_target_recontributes_as_user_review():
         assert contribs[0].match_confidence == 1.0
 
 
+async def test_combined_track_is_not_recontributed():
+    """A track holding several episodes has no single fingerprint identity.
+
+    Publishing it under its first episode would put a 22min three-segment block
+    into the shared network as the fingerprint of a 7min episode. The stale
+    contribution is still retracted; nothing new is published.
+    """
+    async with async_session() as session:
+        job, title = await _make_title(session, uploaded=True)
+        await ContributionCorrectionService().correct_title_contribution(
+            session,
+            title,
+            NewTarget(kind="episode", episode_code="S03E11-E13"),
+            job=job,
+            enable_contributions=True,
+            pseudonym="00000000-0000-4000-8000-000000000000",
+        )
+        await session.commit()
+        contribs = (await session.execute(select(FingerprintContribution))).scalars().all()
+        retractions = (await session.execute(select(FingerprintRetraction))).scalars().all()
+        assert contribs == []
+        assert len(retractions) == 1
+
+
 async def test_discard_target_retracts_without_recontribution():
     async with async_session() as session:
         job, title = await _make_title(session, uploaded=True)

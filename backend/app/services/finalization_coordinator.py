@@ -7,13 +7,13 @@ import asyncio
 import json
 import logging
 import math
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
+from app.core.episode_codes import normalize_episode_code
 from app.core.organizer import check_library_writable
 from app.database import async_session
 from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
@@ -22,7 +22,9 @@ from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.identity_prompts import prompt_kind
 from app.services.job_state_machine import JobStateMachine
-from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE, RIP_FAILURE_ERROR_CODES
+from app.services.matching_coordinator import (
+    _is_rematchable_review,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +192,6 @@ _MAX_SCAN_POINTS = 200  # bound the RAW count even for very long tracks (realize
 # realize onto a different grid — requested != realized — causing ladder dedup and
 # exhaustion bookkeeping to operate on the wrong depth and pass counters to lie.
 _CONFLICT_FIXED_DEPTHS = (37, 73)
-_EP_CODE_RE = re.compile(r"[Ss](\d+)[Ee](\d+)")
 
 
 def _normalize_episode_code(code: str | None) -> str:
@@ -199,11 +200,15 @@ def _normalize_episode_code(code: str | None) -> str:
     The matcher's fallback path can emit unpadded codes ("S1E14") while its
     main path emits "S01E14"; without normalizing, a real collision would be
     grouped under two different keys and missed.
+
+    Multi-episode codes ("S01E01-E03", a user-assigned combined track)
+    canonicalize whole: they group as one distinct claim rather than collapsing
+    onto their first episode, so the auto-resolver never treats a combined track
+    as a rival for a single episode and re-matches it behind the user's back.
+    Per-episode overlap is surfaced where the decision is made — the review
+    roster's coverage strip.
     """
-    match = _EP_CODE_RE.search(code or "")
-    if not match:
-        return (code or "").upper()
-    return f"S{int(match.group(1)):02d}E{int(match.group(2)):02d}"
+    return normalize_episode_code(code)
 
 
 def _detect_conflicts(titles) -> dict[str, list]:
@@ -233,45 +238,6 @@ def _detect_conflicts(titles) -> dict[str, list]:
         elif t.state == TitleState.REVIEW and _is_rematchable_review(t):
             by_ep.setdefault(_normalize_episode_code(t.matched_episode), []).append(t)
     return {ep: tl for ep, tl in by_ep.items() if len(tl) > 1}
-
-
-# REVIEW reasons a deeper matcher pass cannot fix — never auto re-match these.
-_NON_REMATCHABLE_REVIEW_ERRORS = {
-    "file_exists",
-    "subtitle_download_failed",
-    # A conjoined multi-episode track: re-matching cannot change what the file
-    # holds, and the rerun would overwrite the reviewer-facing message (#622).
-    MULTI_EPISODE_ERROR_CODE,
-    # The matcher refused the title: too few reference subtitles held any text. A
-    # deeper scan against the same references cannot change that.
-    REFERENCES_UNREADABLE_ERROR_CODE,
-} | set(RIP_FAILURE_ERROR_CODES)
-
-
-def _is_rematchable_review(t) -> bool:
-    """A REVIEW title whose low confidence a denser matcher pass could plausibly fix.
-
-    Excludes extras (not episodes) and titles parked in REVIEW for non-matching
-    reasons (organization conflicts, missing reference subtitles) — re-running the
-    audio matcher on those just wastes a pass.
-    """
-    if t.state != TitleState.REVIEW or t.is_extra:
-        return False
-    if t.match_details:
-        try:
-            details = json.loads(t.match_details)
-        except (json.JSONDecodeError, TypeError):
-            details = None
-        if isinstance(details, dict):
-            if details.get("error") in _NON_REMATCHABLE_REVIEW_ERRORS:
-                return False
-            if details.get("auto_sorted") == "extras":
-                return False
-            # Force-advanced (watchdog) or user-skipped → deliberate hand-to-human;
-            # re-matching would undo that and risk re-entering a stuck state.
-            if details.get("forced_review"):
-                return False
-    return True
 
 
 def _full_coverage_points(titles) -> int:
@@ -1625,7 +1591,13 @@ class FinalizationCoordinator:
         record decisions identically. Does not organize or change job state.
         """
         if episode_code:
-            title.matched_episode = episode_code
+            # Canonicalize so padded/unpadded and hyphen/run-on spellings of one
+            # assignment ("S1E3", "S01E03"; "S01E01E02", "S01E01-E02") can't land
+            # in the DB as distinct claims. Pseudo-codes pass through untouched.
+            if episode_code not in ("extra", "skip"):
+                title.matched_episode = normalize_episode_code(episode_code)
+            else:
+                title.matched_episode = episode_code
             if episode_code == "extra":
                 title.is_extra = True
             elif episode_code != "skip":

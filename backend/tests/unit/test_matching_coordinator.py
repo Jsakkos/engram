@@ -28,7 +28,9 @@ from app.services.matching_coordinator import (
     _apply_multi_episode_review,
     _conjoined_episode_count,
     _duration_matches_episode_runtime,
+    _may_contribute_fingerprint,
     _route_unconfirmable_title,
+    _same_episode_code,
     _scan_points_for_hint,
     episode_curator,
 )
@@ -1723,7 +1725,7 @@ class TestUnreadableReferencesReviewRouting:
         assert title.state == TitleState.MATCHED
 
     def test_unreadable_references_are_never_auto_rematched(self):
-        from app.services.finalization_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
+        from app.services.matching_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
 
         assert REFERENCES_UNREADABLE_ERROR_CODE in _NON_REMATCHABLE_REVIEW_ERRORS
 
@@ -1770,3 +1772,236 @@ class TestConjoinedScanDepth:
             + [(s, "S01E03") for s in (840, 960, 1080)]
         )
         assert decompose_vote_runs(shallow, 10).reason == "insufficient_scan_depth"
+
+
+@pytest.mark.unit
+class TestSameEpisodeCode:
+    """Overlap, not equality: the caller asks "has another track taken this?".
+
+    A prefix-anchored regex compared only the FIRST episode of each code, so a
+    combined track hid every episode after its first from that question and a
+    second track could claim one of them unchallenged.
+    """
+
+    def test_identical_codes_overlap(self):
+        assert _same_episode_code("S01E01", "S01E01") is True
+
+    def test_zero_padding_is_ignored(self):
+        assert _same_episode_code("S1E9", "S01E09") is True
+
+    def test_different_episodes_do_not_overlap(self):
+        assert _same_episode_code("S01E01", "S01E02") is False
+
+    def test_different_seasons_do_not_overlap(self):
+        assert _same_episode_code("S01E01", "S02E01") is False
+
+    def test_a_combined_track_overlaps_each_episode_it_claims(self):
+        assert _same_episode_code("S01E01-E03", "S01E01") is True
+        # The bug: E02 sits inside the range but is not its first episode.
+        assert _same_episode_code("S01E01-E03", "S01E02") is True
+        assert _same_episode_code("S01E01-E03", "S01E03") is True
+
+    def test_a_combined_track_does_not_overlap_outside_its_range(self):
+        assert _same_episode_code("S01E01-E03", "S01E04") is False
+
+    def test_two_combined_tracks_overlap_on_a_shared_episode(self):
+        assert _same_episode_code("S01E01-E03", "S01E03-E05") is True
+        assert _same_episode_code("S01E01-E02", "S01E03-E04") is False
+
+    def test_non_codes_fall_back_to_string_equality(self):
+        assert _same_episode_code("extra", "extra") is True
+        assert _same_episode_code("extra", "skip") is False
+        assert _same_episode_code(None, "S01E01") is False
+
+
+@pytest.mark.unit
+class TestCombinedDiscDbMappingGoesToReview:
+    """A DiscDB title covering several episodes must not be auto-matched.
+
+    Conflict detection groups whole codes, so an auto-matched S02E17-E18 would never
+    collide with another track's S02E18 and the library would get E18 twice. The
+    combined code is pre-filled and parked for a person to confirm."""
+
+    def _mapping(self, episodes):
+        from app.core.discdb_classifier import DiscDbTitleMapping
+
+        return DiscDbTitleMapping(
+            index=0,
+            title_type="Episode",
+            episode_title="Serpent of Evil River / The Transplant",
+            season=2,
+            episode=episodes[0],
+            episodes=list(episodes),
+            duration_seconds=1363,
+            size_bytes=1024**3,
+        )
+
+    async def test_combined_mapping_lands_in_review_prefilled(self, monkeypatch, tmp_path):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+        coord._discdb_mappings = {job.id: [self._mapping([17, 18])]}
+
+        low = SimpleNamespace(
+            episode_code="S02E05", confidence=0.3, needs_review=True, match_details={"score": 0.3}
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=low)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=None
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.REVIEW
+            assert title.matched_episode == "S02E17-E18"
+            parsed = json.loads(title.match_details)
+            assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+            assert "S02E17-E18" in parsed["message"]
+
+    async def test_single_episode_mapping_is_still_matched(self, monkeypatch, tmp_path):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, title_index=0)
+        coord._discdb_mappings = {job.id: [self._mapping([17])]}
+
+        low = SimpleNamespace(
+            episode_code="S02E05", confidence=0.3, needs_review=True, match_details={"score": 0.3}
+        )
+        mock_curator = MagicMock()
+        mock_curator.match_single_file = AsyncMock(return_value=low)
+        monkeypatch.setattr("app.services.matching_coordinator.episode_curator", mock_curator)
+
+        await coord._match_single_file_inner(
+            job.id, title.id, tmp_path / "title_t00.mkv", conjoined_hint=None
+        )
+
+        async with _unit_session_factory() as session:
+            title = await session.get(DiscTitle, title.id)
+            assert title.state == TitleState.MATCHED
+            assert title.matched_episode == "S02E17"
+
+    async def test_restored_combined_code_lands_in_review(self):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(
+                session,
+                discdb_match_details=json.dumps(
+                    {"source": "discdb", "matched_episode": "S02E17-E18"}
+                ),
+            )
+            job_id, title_id = job.id, title.id
+
+        await coord.rematch_single_title(job_id, title_id, source_preference="discdb")
+
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert t.matched_episode == "S02E17-E18"
+            parsed = json.loads(t.match_details)
+            assert parsed["error"] == MULTI_EPISODE_ERROR_CODE
+            assert "S02E17-E18" in parsed["message"]
+
+    async def test_restored_combined_code_from_in_memory_mapping_lands_in_review(self):
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session, discdb_match_details=json.dumps({"some": "data"}))
+            job_id, title_id = job.id, title.id
+        coord.set_discdb_mappings(job_id, [self._mapping([17, 18])])
+
+        await coord.rematch_single_title(job_id, title_id, source_preference="discdb")
+
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert t.matched_episode == "S02E17-E18"
+            assert json.loads(t.match_details)["error"] == MULTI_EPISODE_ERROR_CODE
+
+
+@pytest.mark.unit
+class TestFingerprintContributionGuard:
+    """A fingerprint row names one episode, so a track holding several must never be
+    contributed, whichever signal says so: the runtime hint, the vote verdict, or a
+    combined code in matched_episode. All three live in one rule so a future writer
+    of a combined code before the enqueue cannot slip past it."""
+
+    def test_single_episode_track_may_contribute(self):
+        assert _may_contribute_fingerprint("S01E05", None, {"score": 0.9}) is True
+
+    def test_no_code_never_contributes(self):
+        assert _may_contribute_fingerprint(None, None, None) is False
+
+    def test_runtime_hint_blocks(self):
+        assert _may_contribute_fingerprint("S01E05", 2, None) is False
+
+    def test_confirmed_verdict_blocks(self):
+        details = {"multi_episode": {"is_multi_episode": True, "codes": ["S01E01", "S01E02"]}}
+        assert _may_contribute_fingerprint("S01E01", None, details) is False
+
+    def test_combined_code_blocks(self):
+        assert _may_contribute_fingerprint("S01E01-E02", None, {"source": "discdb"}) is False
+
+
+@pytest.mark.unit
+class TestCombinedAssignmentPrefill:
+    """A confirmed multi-episode verdict pre-fills the combined code the organizer can
+    now name. The title still lands in REVIEW so a person confirms it."""
+
+    def _title(self, codes, matched="S01E01"):
+        details = {
+            "multi_episode": {
+                "is_multi_episode": True,
+                "reason": "contiguous_runs",
+                "codes": codes,
+            }
+        }
+        return SimpleNamespace(
+            state=TitleState.MATCHED,
+            matched_episode=matched,
+            match_details=json.dumps(details),
+            match_source="engram",
+        )
+
+    def test_contiguous_segments_prefill_a_range(self):
+        title = self._title(["S01E01", "S01E02", "S01E03"])
+        _apply_multi_episode_review(title, conjoined_hint=3)
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode == "S01E01-E03"
+        message = json.loads(title.match_details)["message"]
+        assert "appears to contain 3 episodes" in message
+        assert "S01E01-E03" in message
+        assert "cannot name a combined file" not in message
+
+    def test_playback_order_is_kept(self):
+        # A disc can pair segments TMDB does not number consecutively; the file's
+        # own order is the one to name.
+        title = self._title(["S01E03", "S01E01"])
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.matched_episode == "S01E03E01"
+
+    def test_codes_from_different_seasons_are_not_prefilled(self):
+        title = self._title(["S01E13", "S02E01"])
+        _apply_multi_episode_review(title, conjoined_hint=None)
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode == "S01E01"
+        assert "not all from one season" in json.loads(title.match_details)["message"]
+
+    def test_unconfirmed_hint_is_not_prefilled(self):
+        details = {
+            "multi_episode": {
+                "is_multi_episode": False,
+                "reason": "insufficient_scan_depth",
+                "codes": [],
+            }
+        }
+        title = SimpleNamespace(
+            state=TitleState.MATCHED,
+            matched_episode="S01E01",
+            match_details=json.dumps(details),
+            match_source="engram",
+        )
+        _apply_multi_episode_review(title, conjoined_hint=3)
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode == "S01E01"

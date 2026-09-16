@@ -200,6 +200,16 @@ describe('transformJobToDiscData — subtitle enrichment for terminal states', (
     expect(disc.subtitle).toBe('TV · S02 E01–E03');
   });
 
+  it('counts every episode of a combined track in the range', () => {
+    const disc = transformJobToDiscData(
+      makeJob({ state: 'completed', content_type: 'tv' }),
+      [makeMatchedTitle('S02E01-E03', 1), makeMatchedTitle('S02E04', 2)],
+    );
+    // Read as its first episode only, the combined track left a false gap and the
+    // summary added a "(2)" count. Every episode it claims fills the range.
+    expect(disc.subtitle).toMatch(/^TV · S02 E01.E04$/);
+  });
+
   it('includes multi-season range when a disc spans two seasons', () => {
     const disc = transformJobToDiscData(
       makeJob({ state: 'completed', content_type: 'tv' }),
