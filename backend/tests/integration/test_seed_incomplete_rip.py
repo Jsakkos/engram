@@ -89,7 +89,8 @@ async def test_seed_incomplete_rip_blocked_in_production(client):
     """Seed endpoint returns 403 when debug mode is off."""
     from unittest.mock import patch
 
-    with patch("app.api.routes.settings") as mock_settings:
-        mock_settings.debug = False
+    # Patch the attribute on the settings singleton, not a module's binding of
+    # it. See the note in test_simulation.py::test_simulation_disabled_in_production.
+    with patch("app.config.settings.debug", False):
         response = await client.post("/api/simulate/seed-incomplete-rip")
         assert response.status_code == 403

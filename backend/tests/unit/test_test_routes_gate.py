@@ -40,12 +40,12 @@ def _lan_access(enabled: bool):
 
 @pytest.fixture
 def debug_off(monkeypatch):
-    monkeypatch.setattr("app.api.guards.settings.debug", False)
+    monkeypatch.setattr("app.config.settings.debug", False)
 
 
 @pytest.fixture
 def debug_on(monkeypatch):
-    monkeypatch.setattr("app.api.guards.settings.debug", True)
+    monkeypatch.setattr("app.config.settings.debug", True)
 
 
 @pytest.fixture
