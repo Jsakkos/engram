@@ -696,14 +696,25 @@ class MatchingCoordinator:
         callers can tell the user which titles could not be re-matched (e.g. their
         ripped file is no longer in staging).
         """
+        # Imported function-locally: finalization_coordinator imports from this
+        # module, so a module-level import would be circular.
+        from app.services.finalization_coordinator import _is_rematchable_review
+
         async with async_session() as session:
             result = await session.execute(
                 select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
             )
+            # Overlap, not string equality: the caller sends the ONE contested
+            # episode, and a combined claimant ("S01E01-E03") holds it without
+            # spelling it. Comparing whole codes missed the combined side of the
+            # collision, and two overlapping combined codes matched nothing at all.
+            # A title parked in REVIEW for a reason no denser pass can fix is left
+            # alone, as the conflict grouping already leaves it alone.
             title_ids = [
                 t.id
                 for t in result.scalars().all()
-                if t.matched_episode and t.matched_episode.upper() == episode_code.upper()
+                if _same_episode_code(t.matched_episode, episode_code)
+                and not (t.state == TitleState.REVIEW and not _is_rematchable_review(t))
             ]
 
         dispatched: list[int] = []

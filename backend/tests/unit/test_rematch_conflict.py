@@ -35,7 +35,13 @@ async def _seed_job() -> DiscJob:
         return job
 
 
-async def _seed_title(job_id: int, index: int, matched_episode: str) -> DiscTitle:
+async def _seed_title(
+    job_id: int,
+    index: int,
+    matched_episode: str,
+    state: TitleState = TitleState.MATCHED,
+    match_details: str | None = None,
+) -> DiscTitle:
     async with _unit_session_factory() as session:
         title = DiscTitle(
             job_id=job_id,
@@ -44,7 +50,8 @@ async def _seed_title(job_id: int, index: int, matched_episode: str) -> DiscTitl
             file_size_bytes=1_100_000_000,
             matched_episode=matched_episode,
             match_confidence=0.6,
-            state=TitleState.MATCHED,
+            state=state,
+            match_details=match_details,
         )
         session.add(title)
         await session.commit()
@@ -172,3 +179,81 @@ class TestRematchConflict:
             f"/api/jobs/{job.id}/rematch-conflict", json={"episode_code": "S09E09"}
         )
         assert resp.status_code == 404
+
+
+@pytest.mark.unit
+class TestRematchConflictCombinedCodes:
+    """The contested episode can sit inside a combined code ("S01E01-E03").
+
+    The inspector sends the single contested episode, so selecting claimants by
+    exact string equality missed the combined side of the very collision it had
+    just surfaced, and two overlapping combined codes dispatched nothing at all.
+    """
+
+    async def _stub_rematch(self, monkeypatch) -> list[int]:
+        from app.services.job_manager import job_manager
+
+        dispatched: list[int] = []
+
+        async def fake_rematch_single(job_id, title_id, source_preference=None, **kw):
+            dispatched.append(title_id)
+
+        monkeypatch.setattr(job_manager._matching, "rematch_single_title", fake_rematch_single)
+        return dispatched
+
+    async def test_a_combined_claimant_is_rematched(self, client, monkeypatch):
+        job = await _seed_job()
+        combined = await _seed_title(job.id, 0, "S01E01-E03")
+        sibling = await _seed_title(job.id, 1, "S01E02")
+        await _seed_title(job.id, 2, "S01E05")  # not in the conflict
+        dispatched = await self._stub_rematch(monkeypatch)
+
+        resp = await client.post(
+            f"/api/jobs/{job.id}/rematch-conflict", json={"episode_code": "S01E02"}
+        )
+
+        assert resp.status_code == 200
+        assert set(resp.json()["title_ids"]) == {combined.id, sibling.id}
+        assert set(dispatched) == {combined.id, sibling.id}
+
+    async def test_two_overlapping_combined_codes_both_rematch(self, client, monkeypatch):
+        # Neither code equals the contested episode, so exact matching dispatched
+        # nothing and returned a 200 that looked like success.
+        job = await _seed_job()
+        first = await _seed_title(job.id, 0, "S01E01-E02")
+        second = await _seed_title(job.id, 1, "S01E02-E03")
+        dispatched = await self._stub_rematch(monkeypatch)
+
+        resp = await client.post(
+            f"/api/jobs/{job.id}/rematch-conflict", json={"episode_code": "S01E02"}
+        )
+
+        assert resp.status_code == 200
+        assert set(resp.json()["title_ids"]) == {first.id, second.id}
+        assert set(dispatched) == {first.id, second.id}
+
+    async def test_a_track_parked_as_non_rematchable_is_left_alone(self, client, monkeypatch):
+        """A combined track parked in REVIEW carries the multi-episode code, which a
+        denser matcher pass cannot resolve. Re-matching it would also throw away the
+        pre-filled assignment a person is being asked to confirm.
+        """
+        import json as _json
+
+        job = await _seed_job()
+        await _seed_title(
+            job.id,
+            0,
+            "S01E01-E03",
+            state=TitleState.REVIEW,
+            match_details=_json.dumps({"error": "multi_episode_detected", "message": "x"}),
+        )
+        sibling = await _seed_title(job.id, 1, "S01E02")
+        dispatched = await self._stub_rematch(monkeypatch)
+
+        resp = await client.post(
+            f"/api/jobs/{job.id}/rematch-conflict", json={"episode_code": "S01E02"}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["title_ids"] == [sibling.id]
+        assert dispatched == [sibling.id]
