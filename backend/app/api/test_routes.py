@@ -2,10 +2,29 @@
 
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-test_router = APIRouter(prefix="/api/test", tags=["testing"])
+from app.api.guards import require_debug, require_localhost_or_lan
+
+# These are developer tools, not product surface: nothing in the frontend or the
+# E2E suite calls them, and every one of them hands a client-supplied path to
+# ffmpeg and Whisper, or spends real time scraping subtitle providers. Ungated
+# they let anyone who can reach the port transcribe an arbitrary file on the
+# host and read the text back, so they carry the same DEBUG gate as
+# /api/simulate/*, plus the origin gate the other filesystem-touching endpoints
+# use. Both are needed: DEBUG=true is the documented way to run the dev and E2E
+# backend, so on its own it would leave the surface open on a LAN-exposed dev
+# box, and the origin gate alone would leave it in release builds.
+#
+# There is deliberately no is_within_configured_roots check on video_path: the
+# whole point of the harness is pointing the matcher at sample media that lives
+# outside the library roots. Reachability is the control here, not the path.
+test_router = APIRouter(
+    prefix="/api/test",
+    tags=["testing"],
+    dependencies=[Depends(require_debug), Depends(require_localhost_or_lan)],
+)
 
 
 class SubtitleRequest(BaseModel):

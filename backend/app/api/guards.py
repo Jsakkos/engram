@@ -17,9 +17,11 @@ import logging
 
 from fastapi import HTTPException, Request
 
-# Safe at module scope: app.core.security imports only the stdlib, so it cannot
-# reintroduce the import cycle this leaf module exists to avoid. (get_config
-# below stays function-local for exactly that reason.)
+# Safe at module scope: app.config and app.core.security import only the stdlib
+# and pydantic, so neither can reintroduce the import cycle this leaf module
+# exists to avoid. (get_config below stays function-local for exactly that
+# reason.)
+from app.config import settings
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -63,6 +65,18 @@ def require_localhost(request: Request) -> None:
         raise HTTPException(
             status_code=403, detail="This endpoint is only reachable from the host machine"
         )
+
+
+def require_debug() -> None:
+    """FastAPI dependency: 403 unless the server is running in debug mode.
+
+    Gates the developer-only surfaces: the ``/api/simulate/*`` fixtures and the
+    ``/api/test/*`` matcher harness. It lives here rather than in ``routes.py``
+    so ``test_routes.py`` can take the gate without importing the whole route
+    module, the same reason the origin gates above moved here.
+    """
+    if not settings.debug:
+        raise HTTPException(status_code=403, detail="Only available in debug mode")
 
 
 async def require_localhost_or_lan(request: Request) -> None:

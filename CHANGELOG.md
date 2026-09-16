@@ -13,6 +13,18 @@ All notable changes to Engram will be documented in this file.
   cannot quietly shrink what everyone downloads. Operator runbook:
   `docs/development/subtitle-cache-server.md`.
 
+### Security
+
+- **The developer-only matcher endpoints are no longer reachable in a normal
+  build.** Engram shipped a set of `/api/test/*` endpoints used while developing
+  the episode matcher. They accepted a file path from the caller and ran ffmpeg
+  and speech recognition on it, and nothing restricted who could call them, so
+  anyone who could reach the Engram port could have had the server read and
+  transcribe a file outside the media library. They now answer only when debug
+  mode is on, and only from the host machine unless LAN access is enabled, the
+  same rules the simulation endpoints already followed. Nothing in the dashboard
+  used them, so there is no change to normal use.
+
 ### Fixed
 
 - **Every track on a disc no longer matches the same episode when a season's
