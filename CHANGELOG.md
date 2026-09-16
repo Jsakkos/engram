@@ -13,6 +13,17 @@ All notable changes to Engram will be documented in this file.
   cannot quietly shrink what everyone downloads. Operator runbook:
   `docs/development/subtitle-cache-server.md`.
 
+- **A track that holds several episodes can be filed as one combined episode.**
+  Cartoon DVDs often put two or three short segments in a single track. When
+  Engram confirms a track holds several episodes, review now opens with a
+  combined assignment such as `S01E01-E03`, and confirming it names the file
+  `Show - S01E01-E03.mkv`, the form Plex and Jellyfin read as every episode in
+  the file. You can also type a combined code yourself. The season roster,
+  conflict warnings, Discord summaries, the dashboard and TheDiscDB exports all
+  count a combined track as each episode it holds, and it is never published to
+  the fingerprint network, where a row names a single episode. (builds on #614,
+  thanks @raiju!)
+
 ### Security
 
 - **The developer-only matcher endpoints are no longer reachable in a normal
@@ -24,16 +35,6 @@ All notable changes to Engram will be documented in this file.
   mode is on, and only from the host machine unless LAN access is enabled, the
   same rules the simulation endpoints already followed. Nothing in the dashboard
   used them, so there is no change to normal use.
-- **A track that holds several episodes can be filed as one combined episode.**
-  Cartoon DVDs often put two or three short segments in a single track. When
-  Engram confirms a track holds several episodes, review now opens with a
-  combined assignment such as `S01E01-E03`, and confirming it names the file
-  `Show - S01E01-E03.mkv`, the form Plex and Jellyfin read as every episode in
-  the file. You can also type a combined code yourself. The season roster,
-  conflict warnings, Discord summaries, the dashboard and TheDiscDB exports all
-  count a combined track as each episode it holds, and it is never published to
-  the fingerprint network, where a row names a single episode. (builds on #614,
-  thanks @raiju!)
 
 ### Fixed
 
