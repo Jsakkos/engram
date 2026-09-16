@@ -17,6 +17,11 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
+from app.core.episode_codes import (
+    format_episode_code,
+    is_multi_episode,
+    parse_episode_code,
+)
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
@@ -138,23 +143,31 @@ DISCDB_FALLBACK_ASR_FLOOR = 0.5
 # parse and are ignored by the season-pin convergence rule, but a string that
 # merely STARTS with an episode code would (matched_episode is matcher-emitted,
 # so that's fine in practice). Tolerant of zero-padding, same as
-# _same_episode_code below and finalization_coordinator's _EP_CODE_RE.
+# _same_episode_code below and the shared parser in app/core/episode_codes.py.
 _SEASON_FROM_EP_CODE_RE = re.compile(r"[Ss](\d{1,3})[Ee]\d{1,3}")
 
 
 def _same_episode_code(a: str | None, b: str | None) -> bool:
-    """True if two codes denote the same SxxEyy, tolerant of zero-padding.
+    """True if two codes claim any episode in common, tolerant of zero-padding.
 
     The matcher emits canonical "S01E09" but user/discdb codes may be unpadded
-    ("S1E9"), so compare the parsed (season, episode) integers rather than strings.
+    ("S1E9"), so compare parsed ``(season, episode)`` pairs rather than strings.
+
+    Overlap, not equality, because a code can name several episodes. "S01E02" and
+    "S01E01-E03" are not the same code, but they do claim E02 between them, and
+    the caller is asking "has another track on this disc already taken this?".
+    A prefix-anchored regex compared only the FIRST episode of each, so a
+    combined track hid every episode after its first from that question.
     """
     if not a or not b:
         return False
-    pa = re.match(r"[Ss](\d{1,3})[Ee](\d{1,3})", a.strip())
-    pb = re.match(r"[Ss](\d{1,3})[Ee](\d{1,3})", b.strip())
-    if not pa or not pb:
+    pa = parse_episode_code(a)
+    pb = parse_episode_code(b)
+    if pa is None or pb is None:
         return a.strip().upper() == b.strip().upper()
-    return (int(pa.group(1)), int(pa.group(2))) == (int(pb.group(1)), int(pb.group(2)))
+    if pa[0] != pb[0]:
+        return False
+    return bool(set(pa[1]) & set(pb[1]))
 
 
 # Module-level cache for fpcalc detection results.
@@ -258,11 +271,70 @@ RERIP_MAX_ATTEMPTS = 2
 # are eligible for single-track re-rip after a clean & reinsert.
 RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_ejected"})
 
-# A track that is, or might be, several conjoined episodes. Parked for a human
-# because Engram cannot yet NAME a multi-episode file (S01E01-E02 organizing is a
-# separate change): auto-organizing it under one of its codes would silently lose
-# the others.
+# A track that is, or might be, several conjoined episodes. Parked for a human:
+# auto-organizing it under one of its codes would silently lose the others. A
+# confirmed verdict pre-fills the combined code (S01E01-E03) for them to confirm.
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
+
+# REVIEW reasons a deeper matcher pass cannot fix: never auto re-match these.
+# Defined here rather than in finalization_coordinator because that module imports
+# this one, and both the conflict re-match below and the review escalation there
+# need the rule. One definition, no import cycle.
+_NON_REMATCHABLE_REVIEW_ERRORS = {
+    "file_exists",
+    "subtitle_download_failed",
+    # A conjoined multi-episode track: re-matching cannot change what the file
+    # holds, and the rerun would overwrite the reviewer-facing message (#622).
+    MULTI_EPISODE_ERROR_CODE,
+    # The matcher refused the title: too few reference subtitles held any text. A
+    # deeper scan against the same references cannot change that.
+    REFERENCES_UNREADABLE_ERROR_CODE,
+} | set(RIP_FAILURE_ERROR_CODES)
+
+
+def _is_rematchable_review(t) -> bool:
+    """A REVIEW title whose low confidence a denser matcher pass could plausibly fix.
+
+    Excludes extras (not episodes) and titles parked in REVIEW for non-matching
+    reasons (organization conflicts, missing reference subtitles): re-running the
+    audio matcher on those just wastes a pass.
+    """
+    if t.state != TitleState.REVIEW or t.is_extra:
+        return False
+    if t.match_details:
+        try:
+            details = json.loads(t.match_details)
+        except (json.JSONDecodeError, TypeError):
+            details = None
+        if isinstance(details, dict):
+            if details.get("error") in _NON_REMATCHABLE_REVIEW_ERRORS:
+                return False
+            if details.get("auto_sorted") == "extras":
+                return False
+            # Force-advanced (watchdog) or user-skipped: a deliberate hand-to-human,
+            # and re-matching would undo it and risk re-entering a stuck state.
+            if details.get("forced_review"):
+                return False
+    return True
+
+
+def _combined_mapping_review_details(details: dict, origin: str, episode_code: str) -> dict:
+    """Review note for a DiscDB or network mapping that claims several episodes.
+
+    Carries the mapping's own keys and adds the multi-episode error, which is in
+    the finalizer's non-rematchable set, so escalation and conflict detection leave
+    the pre-filled combined code for a person to confirm.
+    """
+    parsed = parse_episode_code(episode_code)
+    count = len(parsed[1]) if parsed else 0
+    return {
+        **details,
+        "error": MULTI_EPISODE_ERROR_CODE,
+        "message": (
+            f"{origin} lists this track as {count} episodes ({episode_code}). "
+            "Confirm the combined assignment, or assign it differently."
+        ),
+    }
 
 
 def _is_multi_episode_result(match_details: dict | None) -> bool:
@@ -276,6 +348,26 @@ def _is_multi_episode_result(match_details: dict | None) -> bool:
         return False
     verdict = match_details.get("multi_episode")
     return bool(isinstance(verdict, dict) and verdict.get("is_multi_episode"))
+
+
+def _may_contribute_fingerprint(
+    matched_episode: str | None, conjoined_hint: int | None, match_details: dict | None
+) -> bool:
+    """Whether a matched track may be published to the fingerprint network.
+
+    A fingerprint row names exactly one episode. A track that holds several has no
+    honest single-episode label, and publishing it under one code would teach every
+    other user that this audio IS that episode. Three signals can say so: the
+    runtime pre-filter hint, the chunk-vote verdict, and a combined code already in
+    matched_episode. Keeping them in one rule means a future writer of a combined
+    code before the enqueue cannot slip past it.
+    """
+    return bool(
+        matched_episode
+        and not conjoined_hint
+        and not _is_multi_episode_result(match_details)
+        and not is_multi_episode(matched_episode)
+    )
 
 
 def _title_details(title: "DiscTitle") -> dict:
@@ -336,6 +428,26 @@ def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -
     return None
 
 
+def _combined_code(codes: list) -> str | None:
+    """The combined code for a verdict's playback-ordered codes, or None.
+
+    None when a code does not parse, a code is itself combined, fewer than two
+    episodes remain, or the codes span seasons: a filename carries one season, so
+    there is no honest combined name for a track that crosses one.
+    """
+    seasons: set[int] = set()
+    episodes: list[int] = []
+    for code in codes:
+        parsed = parse_episode_code(code if isinstance(code, str) else None)
+        if parsed is None or len(parsed[1]) != 1:
+            return None
+        seasons.add(parsed[0])
+        episodes.append(parsed[1][0])
+    if len(seasons) != 1 or len(episodes) < 2:
+        return None
+    return format_episode_code(seasons.pop(), episodes)
+
+
 def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) -> bool:
     """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
 
@@ -368,11 +480,22 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
 
     details["error"] = MULTI_EPISODE_ERROR_CODE
     if confirmed_multi:
-        message = (
-            f"This track appears to contain {len(codes)} episodes "
-            f"({', '.join(codes)}). Engram cannot name a combined file yet. "
-            "Assign one episode, or mark it as an Extra."
-        )
+        combined = _combined_code(codes)
+        if combined:
+            # Pre-fill the assignment the review page opens with. The title stays
+            # in REVIEW (set above), so nothing is filed until a person confirms.
+            title.matched_episode = combined
+            message = (
+                f"This track appears to contain {len(codes)} episodes "
+                f"({', '.join(codes)}). It is pre-filled as {combined}, which files it "
+                "as one combined episode. Confirm it, or assign it differently."
+            )
+        else:
+            message = (
+                f"This track appears to contain {len(codes)} episodes "
+                f"({', '.join(codes)}), but they are not all from one season, so it "
+                "cannot be filed as one combined episode. Assign it by hand."
+            )
     else:
         message = (
             f"This track's runtime suggests about {conjoined_hint} episodes joined "
@@ -554,31 +677,45 @@ class MatchingCoordinator:
         # Old persisted mappings predate the field; getattr keeps them on "discdb".
         source = getattr(mapping, "source", "discdb") or "discdb"
         origin = "disc network" if source == "network_disc" else "TheDiscDB"
-        episode_code = f"S{mapping.season:02d}E{mapping.episode:02d}"
+        # A DiscDB title can claim several episodes (a combined block); build the
+        # code from the whole claim rather than its first number. getattr keeps
+        # mappings persisted before `episodes` existed working off `episode`.
+        _eps = getattr(mapping, "episodes", None) or [mapping.episode]
+        episode_code = format_episode_code(mapping.season, _eps)
         logger.info(
             f"Job {job_id}: {origin} applying disc-order fallback mapping for title "
             f"{title.title_index}: {episode_code} ({mapping.episode_title!r})"
         )
 
+        details = {
+            "source": source,
+            "episode_title": mapping.episode_title,
+            "matched_episode": episode_code,
+        }
         title.matched_episode = episode_code
         title.match_confidence = 0.99
-        title.match_details = json.dumps(
-            {
-                "source": source,
-                "episode_title": mapping.episode_title,
-                "matched_episode": episode_code,
-            }
-        )
         title.match_source = source
-        title.discdb_match_details = title.match_details
-        title.state = TitleState.MATCHED
+        # discdb_match_details keeps the plain mapping so a later restore rebuilds
+        # the review from the source data rather than from a prior review note.
+        title.discdb_match_details = json.dumps(details)
+        if is_multi_episode(episode_code):
+            # A combined claim is parked for a person instead of auto-matched:
+            # conflict detection groups whole codes, so S02E17-E18 would never
+            # collide with a sibling's S02E18 and the library would hold E18 twice.
+            title.match_details = json.dumps(
+                _combined_mapping_review_details(details, origin, episode_code)
+            )
+            title.state = TitleState.REVIEW
+        else:
+            title.match_details = title.discdb_match_details
+            title.state = TitleState.MATCHED
         session.add(title)
         await session.commit()
 
         await ws_manager.broadcast_title_update(
             job_id,
             title.id,
-            TitleState.MATCHED.value,
+            title.state.value,
             matched_episode=episode_code,
             match_confidence=0.99,
         )
@@ -604,10 +741,17 @@ class MatchingCoordinator:
             result = await session.execute(
                 select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
             )
+            # Overlap, not string equality: the caller sends the ONE contested
+            # episode, and a combined claimant ("S01E01-E03") holds it without
+            # spelling it. Comparing whole codes missed the combined side of the
+            # collision, and two overlapping combined codes matched nothing at all.
+            # A title parked in REVIEW for a reason no denser pass can fix is left
+            # alone, as the conflict grouping already leaves it alone.
             title_ids = [
                 t.id
                 for t in result.scalars().all()
-                if t.matched_episode and t.matched_episode.upper() == episode_code.upper()
+                if _same_episode_code(t.matched_episode, episode_code)
+                and not (t.state == TitleState.REVIEW and not _is_rematchable_review(t))
             ]
 
         dispatched: list[int] = []
@@ -684,16 +828,34 @@ class MatchingCoordinator:
                     mappings = self._discdb_mappings.get(job_id, [])
                     for m in mappings:
                         if m.index == title.title_index and m.season and m.episode:
-                            title.matched_episode = f"S{m.season:02d}E{m.episode:02d}"
+                            _eps = getattr(m, "episodes", None) or [m.episode]
+                            title.matched_episode = format_episode_code(m.season, _eps)
                             break
-                title.state = TitleState.MATCHED
+                if is_multi_episode(title.matched_episode):
+                    # Same rule as try_discdb_assignment: a combined code escapes
+                    # whole-code conflict detection, so it is parked for review.
+                    _origin = (
+                        "disc network"
+                        if isinstance(details, dict) and details.get("source") == "network_disc"
+                        else "TheDiscDB"
+                    )
+                    title.match_details = json.dumps(
+                        _combined_mapping_review_details(
+                            details if isinstance(details, dict) else {},
+                            _origin,
+                            title.matched_episode,
+                        )
+                    )
+                    title.state = TitleState.REVIEW
+                else:
+                    title.state = TitleState.MATCHED
                 session.add(title)
                 await session.commit()
 
                 await ws_manager.broadcast_title_update(
                     job_id,
                     title.id,
-                    TitleState.MATCHED.value,
+                    title.state.value,
                     matched_episode=title.matched_episode,
                     match_confidence=title.match_confidence,
                     match_source="discdb",
@@ -1463,10 +1625,11 @@ class MatchingCoordinator:
                     # auto-organize via a DiscDB mapping, never by confidence alone.
                     #
                     # A conjoined track must never take the DiscDB disc-order
-                    # fallback. That mapping assigns ONE episode per physical title,
-                    # so it cannot describe a title holding two, and
-                    # try_discdb_assignment commits MATCHED at 0.99 and overwrites
-                    # match_details, destroying the verdict on the way out. Worse,
+                    # fallback. That mapping reflects the DiscDB title layout, not
+                    # this track's audio: a single-episode mapping would be committed
+                    # MATCHED at 0.99 (a combined one is parked in review) and either
+                    # way match_details is overwritten, destroying the verdict on the
+                    # way out. Worse,
                     # the bypass is CORRELATED with what it would bypass: a conjoined
                     # track splits its votes between two episodes, and that split is
                     # exactly what drags confidence below this floor. Skipping the
@@ -1558,24 +1721,18 @@ class MatchingCoordinator:
                     # the single winning code, poisoning the shared corpus for every
                     # other user. Mirrors the advisory path, which skips the enqueue
                     # for the weaker reason that the match is merely unconfirmed.
-                    if (
-                        title.chromaprint_blob
-                        and title.matched_episode
-                        and not conjoined_hint
-                        and not _is_multi_episode_result(result.match_details)
+                    if title.chromaprint_blob and _may_contribute_fingerprint(
+                        title.matched_episode, conjoined_hint, result.match_details
                     ):
                         try:
-                            import re as _re
-
                             from app.services.config_service import get_config as _get_config
                             from app.services.contribution_queue import ContributionQueue
 
                             _cfg = await _get_config()
                             if _cfg.contribution_pseudonym:
-                                # Parse "S01E07" → (season, episode)
-                                _m = _re.match(r"S(\d{1,2})E(\d{1,3})", title.matched_episode or "")
-                                season_num = int(_m.group(1)) if _m else None
-                                episode_num = int(_m.group(2)) if _m else None
+                                _parsed = parse_episode_code(title.matched_episode)
+                                season_num = _parsed[0] if _parsed else None
+                                episode_num = _parsed[1][0] if _parsed else None
                                 disc_hash = None
                                 if getattr(job, "content_hash", None):
                                     try:

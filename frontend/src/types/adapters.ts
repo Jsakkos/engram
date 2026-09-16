@@ -2,6 +2,7 @@ import { Job, DiscTitle, TitleState as BackendTitleState } from './index';
 import { DiscData, Track, TrackState, DiscState, MediaType, MatchCandidate } from '../app/components/DiscCard';
 import { formatDurationLongFloored } from '../utils/formatting';
 import { getRerippableStateFromTitle } from '../components/ReviewQueue/rerip';
+import { parseEpisodeCode } from '../components/ReviewQueue/coverage';
 import { classifyPromptJob } from '../app/promptSelection';
 
 /**
@@ -65,9 +66,11 @@ function computeEpisodeRangeSummary(titles: DiscTitle[]): string | null {
 
   if (episodeCodes.length === 0) return null;
 
-  const parsed = episodeCodes
-    .map(ep => { const m = ep.match(/S(\d+)E(\d+)/i); return m ? { s: +m[1], e: +m[2] } : null; })
-    .filter(Boolean) as Array<{ s: number; e: number }>;
+  // A combined track ("S02E01-E03") contributes every episode it claims.
+  const parsed = episodeCodes.flatMap((ep) => {
+    const code = parseEpisodeCode(ep);
+    return code ? code.episodes.map((e) => ({ s: code.season, e })) : [];
+  });
 
   if (parsed.length === 0) return null;
 

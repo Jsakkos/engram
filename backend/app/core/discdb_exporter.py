@@ -7,7 +7,6 @@ organized by content hash.
 
 import json
 import logging
-import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,28 +14,13 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.episode_codes import discdb_episode_fields
 from app.models.app_config import AppConfig
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState
 
 logger = logging.getLogger(__name__)
 
 EXPORT_SCHEMA_VERSION = "1.1"
-
-_EPISODE_RE = re.compile(r"S(\d+)E(\d+)", re.IGNORECASE)
-
-
-def _parse_episode_code(code: str | None) -> tuple[int | None, int | None]:
-    """Parse an episode code like 'S01E01' into (season, episode) integers.
-
-    Returns (None, None) for None or malformed input.
-    For multi-episode codes like 'S01E01E02', returns the first episode.
-    """
-    if not code:
-        return None, None
-    m = _EPISODE_RE.search(code)
-    if not m:
-        return None, None
-    return int(m.group(1)), int(m.group(2))
 
 
 def get_export_directory(config: AppConfig) -> Path:
@@ -122,7 +106,7 @@ def generate_export(
         if match_source:
             match_sources.append(match_source)
 
-        season, episode = _parse_episode_code(title.matched_episode)
+        season, episode = discdb_episode_fields(title.matched_episode)
 
         title_entries.append(
             {

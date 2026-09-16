@@ -47,21 +47,13 @@ class TestChunkVoteRealCache:
         """Real S01E01 subtitle text sliced into the matcher's evenly-spaced 30s
         windows, projected through the real runtime query path."""
         from app.matcher.episode_identification import SubtitleReader, _clean_subtitle_text
+        from app.matcher.srt_utils import iter_srt_cues
         from app.matcher.vectorizer_config import transform_query
 
         content = SubtitleReader.read_srt_file(str(SRT))
-        last_end = 0.0
-        for block in content.strip().split("\n\n"):
-            lines = block.split("\n")
-            if len(lines) >= 3 and "-->" in lines[1]:
-                try:
-                    last_end = max(
-                        last_end, SubtitleReader.parse_timestamp(lines[1].split(" --> ")[1].strip())
-                    )
-                except (ValueError, IndexError):
-                    # Malformed timestamp/block: skip it when scanning for the
-                    # last subtitle end time (matches extract_subtitle_chunk).
-                    continue
+        # Only cues that carry text count towards the last subtitle end time,
+        # matching extract_subtitle_chunk below.
+        last_end = max((cue.end for cue in iter_srt_cues(content) if cue.lines), default=0.0)
         skip_initial, skip_final, chunk_len, n = 300, 120, 30, 10
         interval = (last_end - skip_initial - skip_final) / (n - 1)
         queries = []

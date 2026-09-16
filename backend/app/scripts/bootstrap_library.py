@@ -36,7 +36,20 @@ SearchFn = Callable[[str, str], Awaitable[int | None]]
 
 
 def parse_episode_filename(name: str) -> tuple[str, int, int] | None:
-    """Return (show, season, episode) for canonical 'Show - SnnEnn.ext' names, else None."""
+    """Return (show, season, episode) for canonical 'Show - SnnEnn.ext' names, else None.
+
+    Deliberately single-episode. ``EP_REGEX`` requires the code to run straight
+    into the extension, so a combined file — ``Show - S01E01-E03.mkv``, which
+    ``organize_tv_episode`` writes for a track holding several episodes — does
+    not match and is reported as unparseable rather than bootstrapped.
+
+    That exclusion is the right outcome and must not be "fixed" by loosening the
+    pattern: this feeds acoustic fingerprint contributions, and a fingerprint row
+    names exactly one episode. A combined file's audio is several, so there is no
+    honest number to file it under, and guessing the first would teach the shared
+    network that this audio IS that episode. The same reasoning governs the
+    per-track enqueue in ``MatchingCoordinator``.
+    """
     m = EP_REGEX.match(name)
     if not m:
         return None
