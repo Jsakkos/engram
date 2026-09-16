@@ -8,6 +8,7 @@ The ASR (faster-whisper) and ffmpeg subprocess paths are NOT exercised here.
 
 import contextlib
 import json
+import os
 import re
 from unittest.mock import MagicMock, patch
 
@@ -45,6 +46,12 @@ W-w-what was that?
 00:00:10,000 --> 00:00:14,000
 www.tvsubtitles.net
 """
+
+
+def _cache_key(path):
+    """SubtitleCache entries are keyed by (path, mtime); these fixtures use
+    paths that do not exist on disk, so the version component is None."""
+    return (str(path), ei._file_version(path))
 
 
 @pytest.mark.unit
@@ -247,8 +254,8 @@ class TestTfidfMatcher:
         cache = SubtitleCache()
         # Inject pre-cleaned full texts directly so we avoid file I/O.
         cache._full_text_cache = {
-            "ep1": "the quick brown fox jumps",
-            "ep2": "a slow green turtle swims",
+            _cache_key("ep1"): "the quick brown fox jumps",
+            _cache_key("ep2"): "a slow green turtle swims",
         }
         matcher = TfidfMatcher()
         matcher.prepare(["ep1", "ep2"], cache)
@@ -349,7 +356,7 @@ class TestSubtitleReader:
 class TestSubtitleCacheFullText:
     def test_get_full_text_caches_and_cleans(self):
         cache = SubtitleCache()
-        cache.subtitles = {"ep.srt": SAMPLE_SRT}
+        cache.subtitles = {_cache_key("ep.srt"): SAMPLE_SRT}
         text = cache.get_full_text("ep.srt")
 
         assert "hello there" in text
@@ -359,7 +366,7 @@ class TestSubtitleCacheFullText:
 
     def test_get_full_text_empty_content(self):
         cache = SubtitleCache()
-        cache.subtitles = {"empty.srt": ""}
+        cache.subtitles = {_cache_key("empty.srt"): ""}
         assert cache.get_full_text("empty.srt") == ""
 
 
@@ -954,7 +961,7 @@ class TestSubtitleReaderDamagedLayouts:
 
     def test_full_text_of_doubled_file_is_not_empty(self):
         cache = SubtitleCache()
-        cache.subtitles = {"ep.srt": _DEXTER_SRT.replace("\n", "\n\n")}
+        cache.subtitles = {_cache_key("ep.srt"): _DEXTER_SRT.replace("\n", "\n\n")}
         assert cache.get_full_text("ep.srt").startswith("dexter get out of my lab")
 
 
@@ -1034,9 +1041,9 @@ class TestTfidfMatcherEmptyReferences:
     def test_prepare_skips_references_with_no_text(self):
         cache = SubtitleCache()
         cache._full_text_cache = {
-            "ep1": "the quick brown fox jumps",
-            "ep2": "",
-            "ep3": "a slow green turtle swims",
+            _cache_key("ep1"): "the quick brown fox jumps",
+            _cache_key("ep2"): "",
+            _cache_key("ep3"): "a slow green turtle swims",
         }
         matcher = TfidfMatcher()
         matcher.prepare(["ep1", "ep2", "ep3"], cache)
@@ -1047,7 +1054,7 @@ class TestTfidfMatcherEmptyReferences:
 
     def test_prepare_with_no_usable_text_does_not_raise(self):
         cache = SubtitleCache()
-        cache._full_text_cache = {"ep1": "", "ep2": ""}
+        cache._full_text_cache = {_cache_key("ep1"): "", _cache_key("ep2"): ""}
         matcher = TfidfMatcher()
         matcher.prepare(["ep1", "ep2"], cache)
 
@@ -1188,3 +1195,113 @@ class TestUnreadableReferenceGuard:
         }
         duration.assert_not_called()
         get_model.assert_not_called()
+
+
+def _write_srt(path, text, *, mtime_ns=None):
+    """Write a one-cue SRT, optionally forcing an explicit mtime."""
+    path.write_text(
+        f"1\n00:00:01,000 --> 00:00:05,000\n{text}\n\n",
+        encoding="utf-8",
+    )
+    if mtime_ns is not None:
+        os.utime(path, ns=(mtime_ns, mtime_ns))
+
+
+@pytest.mark.unit
+class TestCacheInvalidationOnRewrite:
+    """Reference SRTs are replaced under the same filename mid-session.
+
+    The subtitle validator rejects a damaged SRT so it re-downloads to the SAME
+    path. A path-only cache key kept serving the damaged (empty) text for the
+    life of the backend process, so the season stayed refused with
+    `references_unreadable` until a restart. Keys carry the file's mtime so a
+    rewrite is a cache miss.
+    """
+
+    def test_rewritten_file_yields_new_full_text(self, tmp_path):
+        srt = tmp_path / "show.S01E01.srt"
+        _write_srt(srt, "original dialogue", mtime_ns=1_000_000_000_000_000_000)
+        cache = SubtitleCache()
+        assert "original dialogue" in cache.get_full_text(srt)
+
+        _write_srt(srt, "replacement dialogue", mtime_ns=2_000_000_000_000_000_000)
+        refreshed = cache.get_full_text(srt)
+        assert "replacement dialogue" in refreshed
+        assert "original dialogue" not in refreshed
+
+    def test_unchanged_file_is_served_from_cache(self, tmp_path):
+        srt = tmp_path / "show.S01E01.srt"
+        _write_srt(srt, "original dialogue", mtime_ns=1_000_000_000_000_000_000)
+        cache = SubtitleCache()
+        first = cache.get_full_text(srt)
+
+        # An untouched file must not re-read: the reader would blow up if it did.
+        with patch.object(
+            ei.SubtitleReader, "read_srt_file", side_effect=AssertionError("cache miss")
+        ):
+            assert cache.get_full_text(srt) == first
+
+    def test_empty_file_repaired_by_rewrite(self, tmp_path):
+        """The real symptom: a reference that read as empty must recover."""
+        srt = tmp_path / "show.S01E02.srt"
+        srt.write_text("", encoding="utf-8")
+        os.utime(srt, ns=(1_000_000_000_000_000_000, 1_000_000_000_000_000_000))
+        cache = SubtitleCache()
+        assert cache.get_full_text(srt) == ""
+
+        _write_srt(srt, "repaired dialogue", mtime_ns=2_000_000_000_000_000_000)
+        assert "repaired dialogue" in cache.get_full_text(srt)
+
+    def test_version_of_missing_file_is_none(self, tmp_path):
+        """A file that cannot be stat'ed still yields a usable (distinct) key."""
+        assert ei._file_version(tmp_path / "absent.srt") is None
+
+
+@pytest.mark.unit
+class TestScrapingSignatureTracksMtime:
+    """The TF-IDF matcher cache is keyed by the scraping reference signature.
+
+    Same filenames + new bytes must be a different signature, or the matcher
+    built from the damaged references is reused for the whole session.
+    """
+
+    def test_signature_changes_when_reference_rewritten(self, tmp_path):
+        srt = tmp_path / "show.S01E01.srt"
+        _write_srt(srt, "original", mtime_ns=1_000_000_000_000_000_000)
+        before = ei.scraping_reference_signature([srt])
+
+        _write_srt(srt, "replacement", mtime_ns=2_000_000_000_000_000_000)
+        after = ei.scraping_reference_signature([srt])
+
+        assert before != after
+        assert before[0] == after[0] == "scraping"
+
+    def test_signature_stable_when_unchanged(self, tmp_path):
+        srt = tmp_path / "show.S01E01.srt"
+        _write_srt(srt, "original", mtime_ns=1_000_000_000_000_000_000)
+        assert ei.scraping_reference_signature([srt]) == ei.scraping_reference_signature([srt])
+
+    def test_signature_tolerates_missing_file(self, tmp_path):
+        sig = ei.scraping_reference_signature([tmp_path / "absent.srt"])
+        assert sig[0] == "scraping"
+
+    def test_rewritten_reference_rebuilds_tfidf_matcher(self, tmp_path):
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        srt = tmp_path / "show.S01E01.srt"
+        _write_srt(srt, "the original reference dialogue", mtime_ns=1_000_000_000_000_000_000)
+        matcher = EpisodeMatcher(str(tmp_path), "Show", expected_tmdb_id=1, model_name="small")
+
+        first = matcher._get_tfidf_matcher(
+            ei.scraping_reference_signature([srt]), using_precomputed=False, reference_files=[srt]
+        )
+        again = matcher._get_tfidf_matcher(
+            ei.scraping_reference_signature([srt]), using_precomputed=False, reference_files=[srt]
+        )
+        assert first is again, "unchanged references must reuse the cached matcher"
+
+        _write_srt(srt, "a wholly different reference script", mtime_ns=2_000_000_000_000_000_000)
+        rebuilt = matcher._get_tfidf_matcher(
+            ei.scraping_reference_signature([srt]), using_precomputed=False, reference_files=[srt]
+        )
+        assert rebuilt is not first, "rewritten references must rebuild the matcher"

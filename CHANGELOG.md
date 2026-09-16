@@ -28,6 +28,15 @@ All notable changes to Engram will be documented in this file.
   are now downloaded again instead of reused, and subtitles imported by hand on
   Windows keep their line breaks intact.
 
+- **Replacing a damaged subtitle no longer needs a restart to take effect.**
+  When Engram re-downloads a reference subtitle that could not be read, the new
+  file lands under the same name as the old one. The matcher was remembering
+  subtitles by filename alone, so it kept using the unreadable version for the
+  rest of the session and the season stayed stuck in review reporting that its
+  references could not be read. Remembered subtitles and the search index built
+  from them now also track when each file was last written, so a replaced file
+  is picked up straight away.
+
 - **A season with too few usable reference subtitles now goes to review with an
   explanation instead of a confident wrong guess.** When fewer than two reference
   subtitles for a season contain dialogue, Engram no longer tries to pick an
