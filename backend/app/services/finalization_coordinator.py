@@ -22,7 +22,9 @@ from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.identity_prompts import prompt_kind
 from app.services.job_state_machine import JobStateMachine
-from app.services.matching_coordinator import MULTI_EPISODE_ERROR_CODE, RIP_FAILURE_ERROR_CODES
+from app.services.matching_coordinator import (
+    _is_rematchable_review,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -236,45 +238,6 @@ def _detect_conflicts(titles) -> dict[str, list]:
         elif t.state == TitleState.REVIEW and _is_rematchable_review(t):
             by_ep.setdefault(_normalize_episode_code(t.matched_episode), []).append(t)
     return {ep: tl for ep, tl in by_ep.items() if len(tl) > 1}
-
-
-# REVIEW reasons a deeper matcher pass cannot fix — never auto re-match these.
-_NON_REMATCHABLE_REVIEW_ERRORS = {
-    "file_exists",
-    "subtitle_download_failed",
-    # A conjoined multi-episode track: re-matching cannot change what the file
-    # holds, and the rerun would overwrite the reviewer-facing message (#622).
-    MULTI_EPISODE_ERROR_CODE,
-    # The matcher refused the title: too few reference subtitles held any text. A
-    # deeper scan against the same references cannot change that.
-    REFERENCES_UNREADABLE_ERROR_CODE,
-} | set(RIP_FAILURE_ERROR_CODES)
-
-
-def _is_rematchable_review(t) -> bool:
-    """A REVIEW title whose low confidence a denser matcher pass could plausibly fix.
-
-    Excludes extras (not episodes) and titles parked in REVIEW for non-matching
-    reasons (organization conflicts, missing reference subtitles) — re-running the
-    audio matcher on those just wastes a pass.
-    """
-    if t.state != TitleState.REVIEW or t.is_extra:
-        return False
-    if t.match_details:
-        try:
-            details = json.loads(t.match_details)
-        except (json.JSONDecodeError, TypeError):
-            details = None
-        if isinstance(details, dict):
-            if details.get("error") in _NON_REMATCHABLE_REVIEW_ERRORS:
-                return False
-            if details.get("auto_sorted") == "extras":
-                return False
-            # Force-advanced (watchdog) or user-skipped → deliberate hand-to-human;
-            # re-matching would undo that and risk re-entering a stuck state.
-            if details.get("forced_review"):
-                return False
-    return True
 
 
 def _full_coverage_points(titles) -> int:

@@ -143,7 +143,7 @@ DISCDB_FALLBACK_ASR_FLOOR = 0.5
 # parse and are ignored by the season-pin convergence rule, but a string that
 # merely STARTS with an episode code would (matched_episode is matcher-emitted,
 # so that's fine in practice). Tolerant of zero-padding, same as
-# _same_episode_code below and finalization_coordinator's _EP_CODE_RE.
+# _same_episode_code below and the shared parser in app/core/episode_codes.py.
 _SEASON_FROM_EP_CODE_RE = re.compile(r"[Ss](\d{1,3})[Ee]\d{1,3}")
 
 
@@ -275,6 +275,47 @@ RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_eject
 # auto-organizing it under one of its codes would silently lose the others. A
 # confirmed verdict pre-fills the combined code (S01E01-E03) for them to confirm.
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
+
+# REVIEW reasons a deeper matcher pass cannot fix: never auto re-match these.
+# Defined here rather than in finalization_coordinator because that module imports
+# this one, and both the conflict re-match below and the review escalation there
+# need the rule. One definition, no import cycle.
+_NON_REMATCHABLE_REVIEW_ERRORS = {
+    "file_exists",
+    "subtitle_download_failed",
+    # A conjoined multi-episode track: re-matching cannot change what the file
+    # holds, and the rerun would overwrite the reviewer-facing message (#622).
+    MULTI_EPISODE_ERROR_CODE,
+    # The matcher refused the title: too few reference subtitles held any text. A
+    # deeper scan against the same references cannot change that.
+    REFERENCES_UNREADABLE_ERROR_CODE,
+} | set(RIP_FAILURE_ERROR_CODES)
+
+
+def _is_rematchable_review(t) -> bool:
+    """A REVIEW title whose low confidence a denser matcher pass could plausibly fix.
+
+    Excludes extras (not episodes) and titles parked in REVIEW for non-matching
+    reasons (organization conflicts, missing reference subtitles): re-running the
+    audio matcher on those just wastes a pass.
+    """
+    if t.state != TitleState.REVIEW or t.is_extra:
+        return False
+    if t.match_details:
+        try:
+            details = json.loads(t.match_details)
+        except (json.JSONDecodeError, TypeError):
+            details = None
+        if isinstance(details, dict):
+            if details.get("error") in _NON_REMATCHABLE_REVIEW_ERRORS:
+                return False
+            if details.get("auto_sorted") == "extras":
+                return False
+            # Force-advanced (watchdog) or user-skipped: a deliberate hand-to-human,
+            # and re-matching would undo it and risk re-entering a stuck state.
+            if details.get("forced_review"):
+                return False
+    return True
 
 
 def _combined_mapping_review_details(details: dict, origin: str, episode_code: str) -> dict:
@@ -696,10 +737,6 @@ class MatchingCoordinator:
         callers can tell the user which titles could not be re-matched (e.g. their
         ripped file is no longer in staging).
         """
-        # Imported function-locally: finalization_coordinator imports from this
-        # module, so a module-level import would be circular.
-        from app.services.finalization_coordinator import _is_rematchable_review
-
         async with async_session() as session:
             result = await session.execute(
                 select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)

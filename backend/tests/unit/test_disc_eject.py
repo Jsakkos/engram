@@ -288,7 +288,7 @@ def test_rip_ejected_is_a_registered_rip_failure_code():
 
 def test_rip_ejected_is_excluded_from_auto_rematch():
     """_NON_REMATCHABLE_REVIEW_ERRORS is derived from RIP_FAILURE_ERROR_CODES."""
-    from app.services.finalization_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
+    from app.services.matching_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
 
     assert "rip_ejected" in _NON_REMATCHABLE_REVIEW_ERRORS
 

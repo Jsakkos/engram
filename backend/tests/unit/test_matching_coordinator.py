@@ -1725,7 +1725,7 @@ class TestUnreadableReferencesReviewRouting:
         assert title.state == TitleState.MATCHED
 
     def test_unreadable_references_are_never_auto_rematched(self):
-        from app.services.finalization_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
+        from app.services.matching_coordinator import _NON_REMATCHABLE_REVIEW_ERRORS
 
         assert REFERENCES_UNREADABLE_ERROR_CODE in _NON_REMATCHABLE_REVIEW_ERRORS
 
