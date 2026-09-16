@@ -31,7 +31,12 @@ from tqdm import tqdm
 
 from app.matcher.asr_models import get_cached_model
 from app.matcher.episode_identification import SubtitleReader
-from app.matcher.srt_utils import clean_text, extract_audio_chunk, get_video_duration
+from app.matcher.srt_utils import (
+    clean_text,
+    extract_audio_chunk,
+    get_video_duration,
+    iter_srt_cues,
+)
 
 
 @dataclass
@@ -401,27 +406,17 @@ def load_reference_subtitles(show_name: str, season: int) -> ReferenceData:
             if not srt_content:
                 continue
 
-            # Extract full text by parsing SRT blocks
+            # Extract full text via the shared damage-tolerant SRT parser, which
+            # also reads doubled line endings, BOMs and missing index lines.
             full_text_lines = []
             last_timestamp = 0.0
 
-            for block in srt_content.strip().split("\n\n"):
-                lines = block.split("\n")
-                if len(lines) < 3 or "-->" not in lines[1]:
+            for cue in iter_srt_cues(srt_content):
+                if not cue.lines:
                     continue
-                try:
-                    # Parse timestamp to get duration
-                    timestamp = lines[1]
-                    time_parts = timestamp.split(" --> ")
-                    end_time = reader.parse_timestamp(time_parts[1].strip())
-                    if end_time > last_timestamp:
-                        last_timestamp = end_time
-
-                    # Add subtitle text
-                    text = " ".join(lines[2:])
-                    full_text_lines.append(text)
-                except (IndexError, ValueError):
-                    continue
+                if cue.end > last_timestamp:
+                    last_timestamp = cue.end
+                full_text_lines.append(cue.text)
 
             full_text = " ".join(full_text_lines)
             duration = last_timestamp
