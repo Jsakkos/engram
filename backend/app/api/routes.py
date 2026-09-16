@@ -25,12 +25,12 @@ from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-# Network-origin gates live in app/api/guards.py so validation.py can depend on them
+# The endpoint gates live in app/api/guards.py so another router can depend on one
 # without importing this module (which imports validation.py back inside function
 # bodies, forming an import cycle). Imported here rather than re-exported by alias:
-# both names are used directly below, and tests key dependency_overrides on these
-# exact objects via app.api.routes.
-from app.api.guards import require_localhost, require_localhost_or_lan
+# all three names are used directly below, and tests key dependency_overrides on
+# these exact objects via app.api.routes.
+from app.api.guards import require_debug, require_localhost, require_localhost_or_lan
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.episode_codes import parse_episode_code
@@ -78,12 +78,6 @@ async def get_job_or_404(job_id: int, session: AsyncSession = Depends(get_sessio
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
-
-
-def require_debug() -> None:
-    """FastAPI dependency that blocks an endpoint unless debug mode is enabled."""
-    if not settings.debug:
-        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
 
 
 # Request/Response Models
