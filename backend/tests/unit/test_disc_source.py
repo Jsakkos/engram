@@ -164,7 +164,7 @@ class _FakeJob:
         self.source_spec = source_spec
 
 
-# Real makemkvcon -r info disc:9999 output shape. DRV lines are:
+# Real makemkvcon -r --noscan info disc:9999 output shape. DRV lines are:
 # DRV:index,visible,enabled,flags,"drive name","disc name","device"
 _LISTING = (
     'DRV:0,2,999,1,"BD-RE HL-DT-ST BH16NS40 1.05","THE_SWEETEST_THING","E:"\n'

@@ -200,7 +200,7 @@ class DiscSource:
         return self.spec
 
 
-# makemkvcon -r info disc:9999 lists drives without touching a disc. 9999 is
+# makemkvcon -r --noscan info disc:9999 lists drives without touching a disc. 9999 is
 # MakeMKV's documented "no such drive" index: the scan fails, but the DRV lines
 # describing every drive are printed first, which is all we want.
 _DRIVE_LISTING_INDEX = "disc:9999"

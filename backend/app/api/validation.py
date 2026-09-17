@@ -184,7 +184,7 @@ def _iter_winget_ffmpeg_paths() -> list[str]:
 _VERSION_NOT_DETECTABLE = "MakeMKV (version not detectable)"
 _VERSION_PROBE_TIMEOUT = "MakeMKV (version probe timed out)"
 
-# The MakeMKV version probe runs `makemkvcon -r info disc:99999`, which enumerates
+# The MakeMKV version probe runs `makemkvcon -r --noscan info disc:99999`, which enumerates
 # optical drives and can block for many seconds on a slow or busy drive.
 #   * The interactive /validate/makemkv endpoint can afford the full wait.
 #   * detect-tools fires on dashboard/Config-Wizard load, so it uses a short
