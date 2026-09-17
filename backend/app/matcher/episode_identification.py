@@ -320,26 +320,85 @@ def reference_coverage(
     return coverage
 
 
+def _file_version(path) -> int | None:
+    """Modification time of ``path`` in ns, or None when it cannot be stat'ed.
+
+    Reference subtitles are replaced in place: the validator rejects a damaged
+    SRT, it is deleted, and the re-download lands under the SAME filename. A
+    path-only cache key therefore serves the damaged (empty) text for the life
+    of the process, and the season stays refused with ``references_unreadable``
+    until the backend restarts. Pairing the path with its mtime makes a rewrite
+    a cache miss. A missing file collapses to None, which is itself a distinct
+    version, so the entry is re-read once the file reappears.
+    """
+    try:
+        return Path(path).stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def scraping_reference_signature(reference_files) -> tuple:
+    """Fingerprint a scraping-mode reference set: paths PLUS their mtimes.
+
+    Keyed on paths alone, a season whose damaged SRTs were re-downloaded under
+    the same filenames kept reusing the TF-IDF matcher fitted from the damaged
+    text. Precomputed mode is content-addressed by episode code and needs no
+    mtime.
+    """
+    return (
+        "scraping",
+        tuple((str(rf), _file_version(rf)) for rf in reference_files),
+    )
+
+
 class SubtitleCache:
-    """Cache for storing parsed subtitle data to avoid repeated loading and parsing."""
+    """Cache for storing parsed subtitle data to avoid repeated loading and parsing.
+
+    Every entry is keyed by (path, mtime) rather than by path, so a subtitle
+    replaced in place during a long-running session is re-read. See
+    ``_file_version``.
+    """
 
     def __init__(self):
-        self.subtitles = {}  # {file_path: parsed_content}
-        self.chunk_cache = {}  # {(file_path, chunk_idx): text}
-        self._full_text_cache = {}  # {file_path: cleaned_full_text}
+        self.subtitles = {}  # {(file_path, mtime_ns): parsed_content}
+        self.chunk_cache = {}  # {(file_path, mtime_ns, chunk_idx): text}
+        self._full_text_cache = {}  # {(file_path, mtime_ns): cleaned_full_text}
+        self._versions = {}  # {file_path: mtime_ns last seen}
+
+    def _current_key(self, srt_file):
+        """Key for the CURRENT bytes of ``srt_file``, dropping superseded ones.
+
+        These dicts are unbounded (unlike the TF-IDF and transcription caches),
+        so without this a file rewritten repeatedly across a long session would
+        leave one entry per rewrite behind forever. A superseded version can
+        never be read again, so it is evicted rather than bounded. The chunk
+        scan only runs on an actual version change, which is rare.
+        """
+        version = _file_version(srt_file)
+        previous = self._versions.get(srt_file)
+        if srt_file in self._versions and previous != version:
+            self.subtitles.pop((srt_file, previous), None)
+            self._full_text_cache.pop((srt_file, previous), None)
+            for stale in [
+                key for key in self.chunk_cache if key[0] == srt_file and key[1] == previous
+            ]:
+                del self.chunk_cache[stale]
+        self._versions[srt_file] = version
+        return (srt_file, version)
 
     def get_subtitle_content(self, srt_file):
         """Get the full raw content of a subtitle file, loading it only once."""
         srt_file = str(srt_file)
-        if srt_file not in self.subtitles:
+        cache_key = self._current_key(srt_file)
+        if cache_key not in self.subtitles:
             reader = SubtitleReader()
-            self.subtitles[srt_file] = reader.read_srt_file(srt_file)
-        return self.subtitles[srt_file]
+            self.subtitles[cache_key] = reader.read_srt_file(srt_file)
+        return self.subtitles[cache_key]
 
     def get_chunk(self, srt_file, chunk_idx, chunk_start, chunk_end):
         """Get a specific time chunk from a subtitle file, with caching."""
         srt_file = str(srt_file)
-        cache_key = (srt_file, chunk_idx)
+        cache_key = (*self._current_key(srt_file), chunk_idx)
 
         if cache_key not in self.chunk_cache:
             content = self.get_subtitle_content(srt_file)
@@ -360,17 +419,18 @@ class SubtitleCache:
         Result is cached for reuse.
         """
         srt_file = str(srt_file)
-        if srt_file not in self._full_text_cache:
+        cache_key = self._current_key(srt_file)
+        if cache_key not in self._full_text_cache:
             content = self.get_subtitle_content(srt_file)
             if not content:
-                self._full_text_cache[srt_file] = ""
+                self._full_text_cache[cache_key] = ""
             else:
                 reader = SubtitleReader()
                 # Extract all text from 0 to a very large end time
                 text_lines = reader.extract_subtitle_chunk(content, 0, 999999)
                 full_text = " ".join(text_lines)
-                self._full_text_cache[srt_file] = _clean_subtitle_text(full_text)
-        return self._full_text_cache[srt_file]
+                self._full_text_cache[cache_key] = _clean_subtitle_text(full_text)
+        return self._full_text_cache[cache_key]
 
     def get_subtitle_duration(self, srt_file, content=None):
         """Get the total duration of a subtitle file in seconds."""
@@ -874,8 +934,9 @@ class TfidfMatcher:
         # Mode distinguishes precomputed-codes from scraping-paths so a stale
         # matcher from a prior precomputed call can't keep returning codes
         # while the new call's `coverages` is path-keyed → KeyError.
-        mode = "precomputed" if self._precomputed else "scraping"
-        return (mode, tuple(self.ref_file_order))
+        if self._precomputed:
+            return ("precomputed", tuple(self.ref_file_order))
+        return scraping_reference_signature(self.ref_file_order)
 
 
 class MatchCoverage:
@@ -1688,7 +1749,7 @@ class EpisodeMatcher:
             expected_signature: tuple = (
                 ("precomputed", tuple(ref_episode_codes))
                 if using_precomputed
-                else ("scraping", tuple(str(rf) for rf in reference_files))
+                else scraping_reference_signature(reference_files)
             )
             tfidf_matcher = self._get_tfidf_matcher(
                 expected_signature,
@@ -2249,10 +2310,14 @@ def detect_file_encoding(file_path):
         return "utf-8"
 
 
-@lru_cache(maxsize=100)
 def read_file_with_fallback(file_path, encodings=None):
     """
     Read a file trying multiple encodings in order of preference.
+
+    Results are memoized per (path, mtime): a subtitle replaced in place during
+    a long-running session is re-read rather than served from the cache built
+    off the previous bytes. An explicit ``encodings`` list bypasses the memo
+    (lists are unhashable, and it is not the hot path).
 
     Args:
         file_path (str or Path): Path to the file
@@ -2264,6 +2329,18 @@ def read_file_with_fallback(file_path, encodings=None):
     Raises:
         ValueError: If file cannot be read with any encoding
     """
+    if encodings is not None:
+        return _read_file_uncached(file_path, encodings)
+    return _read_file_cached(str(file_path), _file_version(file_path))
+
+
+@lru_cache(maxsize=100)
+def _read_file_cached(file_path, version):
+    """Memoized read keyed by path AND ``version`` (the file's mtime)."""
+    return _read_file_uncached(file_path, None)
+
+
+def _read_file_uncached(file_path, encodings):
     file_path = Path(file_path)
     if encodings is None:
         # A UTF-16 byte-order mark settles the encoding. Decoding it leniently here,

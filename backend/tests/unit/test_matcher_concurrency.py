@@ -16,7 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from app.matcher.episode_identification import EpisodeMatcher
+from app.matcher.episode_identification import (
+    EpisodeMatcher,
+    scraping_reference_signature,
+)
 
 
 def _write_srt(path: Path, token: str) -> None:
@@ -125,8 +128,8 @@ def test_tfidf_cache_reuses_per_season_and_isolates_across_seasons(two_season_ca
     matcher = EpisodeMatcher(two_season_cache, "Show", expected_tmdb_id=1400, model_name="small")
     s8_files = matcher.get_reference_files(8)
     s9_files = matcher.get_reference_files(9)
-    sig8 = ("scraping", tuple(str(rf) for rf in s8_files))
-    sig9 = ("scraping", tuple(str(rf) for rf in s9_files))
+    sig8 = scraping_reference_signature(s8_files)
+    sig9 = scraping_reference_signature(s9_files)
 
     m8a = matcher._get_tfidf_matcher(sig8, using_precomputed=False, reference_files=s8_files)
     m8b = matcher._get_tfidf_matcher(sig8, using_precomputed=False, reference_files=s8_files)
