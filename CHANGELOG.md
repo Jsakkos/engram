@@ -12,6 +12,13 @@ All notable changes to Engram will be documented in this file.
   got no reference subtitle at all). Downloads are now saved to the system
   temp folder before moving into the subtitle cache. (#653)
 
+- **A season with no subtitles now says why when OpenSubtitles failed.** When
+  the daily OpenSubtitles download quota ran out, the job told you to add an
+  API key even though yours was fine. The message now quotes the OpenSubtitles
+  error and suggests Re-match all in Review once the quota resets. A quota that
+  was already spent when Engram logged in also no longer switches OpenSubtitles
+  off until the server restarts; Engram checks it again after an hour. (#654)
+
 - **Later discs in a box set no longer collide with disc 1 when the disc has
   no volume label.** Some drives (for example LibreDrive-flashed ones) report
   an empty label, so every disc was treated as disc 1: its extras took disc 1's

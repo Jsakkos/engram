@@ -325,6 +325,51 @@ class TestDownloadSubtitlesMessaging:
             # The catch-all field must stay clean so it can't leak into other banners.
             assert refreshed.error_message is None
 
+    async def test_opensubtitles_failure_names_the_cause_not_the_api_key(self, monkeypatch):
+        """#654: a spent quota must not be reported as a missing API key."""
+        coord = _make_coord()
+
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
+        monkeypatch.setattr(
+            "app.matcher.testing_service.download_subtitles",
+            lambda show, season, tmdb_id=None: {
+                "episodes": [{"status": "not_found"}],
+                "show_name": show,
+                "os_error": "Download limit reached",
+            },
+        )
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job_id = job.id
+
+        await coord.download_subtitles(job_id, "The Osbournes", 1)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert refreshed.subtitle_status == "failed"
+            msg = refreshed.subtitle_error_message or ""
+            assert "Download limit reached" in msg
+            assert "Re-match all" in msg
+            assert "add an OpenSubtitles API key" not in msg
+
+    async def test_no_opensubtitles_error_keeps_api_key_advice(self, monkeypatch):
+        coord = _make_coord()
+        self._mock(monkeypatch, [{"status": "not_found"}])
+
+        async with _unit_session_factory() as session:
+            job, _title = await _seed(session)
+            job_id = job.id
+
+        await coord.download_subtitles(job_id, "The Osbournes", 1)
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            assert "add an OpenSubtitles API key" in (refreshed.subtitle_error_message or "")
+
     async def test_value_error_lands_on_subtitle_field_not_catchall(self, monkeypatch):
         """A ValueError from the subtitle pipeline (e.g. show/season not on TMDB)
         must land on the clearable subtitle_error_message, NOT the catch-all
@@ -621,6 +666,38 @@ class TestDownloadSubtitlesAllSeasons:
             assert refreshed.error_message is None
         # The ready event must be set so the matching gate unblocks.
         assert coord._subtitle_ready[job_id].is_set()
+
+    async def test_failure_names_opensubtitles_error_from_any_season(self, monkeypatch):
+        """#654: the multi-season path must carry the cause too, not just the
+        single-season one."""
+        coord = _make_coord()
+
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
+        errors = {1: None, 2: "daily download quota exhausted"}
+        monkeypatch.setattr(
+            "app.matcher.testing_service.download_subtitles",
+            lambda show, season, tmdb_id=None: {
+                "episodes": [{"status": "not_found"}],
+                "show_name": show,
+                "os_error": errors[season],
+            },
+        )
+        async with _unit_session_factory() as session:
+            job, _t = await _seed(session)
+            job_id = job.id
+        coord._subtitle_ready[job_id] = asyncio.Event()
+
+        await coord.download_subtitles_all_seasons(job_id, "Obscure Show", [1, 2])
+
+        async with _unit_session_factory() as session:
+            refreshed = await session.get(DiscJob, job_id)
+            msg = refreshed.subtitle_error_message or ""
+            assert "in any season" in msg
+            assert "daily download quota exhausted" in msg
+            assert "add an OpenSubtitles API key" not in msg
 
     async def test_sets_subtitle_ready_event(self, monkeypatch):
         coord = _make_coord()
