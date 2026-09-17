@@ -150,6 +150,31 @@ def _candidates_json_from_signal(signal) -> str | None:
     return json.dumps(cands) if cands else None
 
 
+# A volume label's own conventions ("S2_D2", "DISC_3") are matched loosely; a
+# free-text disc name needs the word "disc", or "Die Hard 2" would be disc 2.
+_LABEL_DISC_RE = re.compile(r"d(?:isc)?[_\s]*(\d+)", re.IGNORECASE)
+_DISC_NAME_DISC_RE = re.compile(r"\bdisc\s*(\d+)\b", re.IGNORECASE)
+
+
+def _disc_number(volume_label: str | None, disc_name: str = "") -> tuple[int | None, str]:
+    """Disc number from the volume label, else from MakeMKV's disc name (CINFO:2).
+
+    Some drives (e.g. LibreDrive-flashed) hand the OS no volume label while
+    MakeMKV still reads the disc's name ("Babylon Berlin - Season 3 - Disc 2").
+    Defaulting such a disc to 1 names its extras like disc 1's, and organize
+    then stops on FILE_EXISTS (#655). Returns (number, source), source being
+    "volume label" or "disc name"; (None, "") if neither carries one.
+    """
+    for text, pattern, source in (
+        (volume_label or "", _LABEL_DISC_RE, "volume label"),
+        (disc_name or "", _DISC_NAME_DISC_RE, "disc name"),
+    ):
+        match = pattern.search(text)
+        if match:
+            return int(match.group(1)), source
+    return None, ""
+
+
 def _apply_manual_identity(analysis, manual: ManualIdentity) -> None:
     """Overwrite a classification result with the user's asserted identity.
 
@@ -474,16 +499,17 @@ class IdentificationCoordinator:
                 if analysis.play_all_title_indices:
                     job.play_all_indices_json = json.dumps(analysis.play_all_title_indices)
 
-                # Extract disc number from volume label
-                disc_match = re.search(r"d(?:isc)?[_\s]*(\d+)", job.volume_label, re.IGNORECASE)
-                if disc_match:
-                    job.disc_number = int(disc_match.group(1))
-                    logger.info(
-                        f"Detected disc number: {job.disc_number} from volume label: {job.volume_label}"
-                    )
+                # Disc number from the volume label, else from the disc name
+                disc_number, source = _disc_number(job.volume_label, disc_name)
+                if disc_number is not None:
+                    job.disc_number = disc_number
+                    shown = job.volume_label if source == "volume label" else disc_name
+                    logger.info(f"Detected disc number: {disc_number} from {source}: {shown}")
                 else:
                     job.disc_number = 1
-                    logger.info("No disc number detected in volume label, defaulting to 1")
+                    logger.info(
+                        "No disc number detected in volume label or disc name, defaulting to 1"
+                    )
 
                 # A manually supplied disc number overrides the label regex,
                 # which is exactly what fails on the unreadable labels this
@@ -1076,9 +1102,9 @@ class IdentificationCoordinator:
                 if analysis.play_all_title_indices:
                     job.play_all_indices_json = json.dumps(analysis.play_all_title_indices)
 
-                # Extract disc number from volume label
-                disc_match = re.search(r"d(?:isc)?[_\s]*(\d+)", job.volume_label, re.IGNORECASE)
-                job.disc_number = int(disc_match.group(1)) if disc_match else 1
+                # Extract disc number from volume label (a staging import has no disc name)
+                disc_number, _ = _disc_number(job.volume_label)
+                job.disc_number = disc_number if disc_number is not None else 1
 
                 # Create DiscTitle records with output_filename already set
                 await session.execute(delete(DiscTitle).where(DiscTitle.job_id == job_id))
