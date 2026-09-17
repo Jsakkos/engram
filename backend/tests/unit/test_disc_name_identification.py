@@ -954,3 +954,39 @@ async def test_run_classification_fetches_runtimes_and_keeps_pilot(monkeypatch):
     assert ("580", 1) in runtime_calls
     assert 0 not in analysis.play_all_title_indices
     assert analysis.detected_name == "Star Trek: Deep Space Nine"
+
+
+# ---------------------------------------------------------------------------
+# Disc number: volume label, else MakeMKV disc name (#655)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("volume_label", "disc_name", "expected"),
+    [
+        # The volume label's own conventions still win, matched loosely.
+        ("BABYLON_BERLIN_S3_D2", "", (2, "volume label")),
+        ("SHOW_DISC_3", "Show - Disc 9", (3, "volume label")),
+        # #655: a LibreDrive drive hands the OS an empty label; CINFO:2 has it.
+        ("", "Babylon Berlin - Season 3 - Disc 2", (2, "disc name")),
+        (None, "Babylon Berlin - Season 3 - Disc 2", (2, "disc name")),
+        ("", "Star Trek: Strange New Worlds - Season 3 (Disc 1)", (1, "disc name")),
+        ("", "Show Season 2 Disc3", (3, "disc name")),
+        # Free text needs the word "disc": a sequel number is not a disc number.
+        ("", "Die Hard 2", (None, "")),
+        ("", "Blade Runner 2049", (None, "")),
+        ("", "", (None, "")),
+    ],
+)
+def test_disc_number_label_then_disc_name(volume_label, disc_name, expected):
+    from app.services.identification_coordinator import _disc_number
+
+    assert _disc_number(volume_label, disc_name) == expected
+
+
+def test_disc_number_without_disc_name_is_label_only():
+    """A staging import has no disc name and keeps the label-only behaviour."""
+    from app.services.identification_coordinator import _disc_number
+
+    assert _disc_number("SHOW_D4") == (4, "volume label")
+    assert _disc_number("") == (None, "")
