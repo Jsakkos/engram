@@ -26,6 +26,14 @@ All notable changes to Engram will be documented in this file.
   reads the disc number from the disc name MakeMKV reports (such as "Season 3 -
   Disc 2") when the label has none. (#655, thanks @wintheriscomming!)
 
+- **Two drives can rip at the same time.** With two drives connected, the rip
+  that started second stayed at 0.0x until the stall timeout ejected its disc,
+  because every MakeMKV call also checked the disc in the other drive and
+  waited behind the running rip. Engram now tells MakeMKV to leave other drives
+  alone, so both discs rip at once. The MakeMKV version check in Settings no
+  longer times out while a rip is running, for the same reason. (#652, thanks
+  @wintheriscomming!)
+
 ## [0.36.0] - 2026-09-16
 
 _Highlights: a track holding several episodes can now be filed as one combined episode, and the shared subtitle cache is rebuilt and republished nightly by a server instead of by hand._

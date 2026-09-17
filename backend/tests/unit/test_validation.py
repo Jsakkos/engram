@@ -1039,7 +1039,7 @@ class TestDetectToolsVersionProbeBudget:
     """detect-tools probes MakeMKV's version on a short budget; the interactive
     validate path keeps the full budget.
 
-    The version probe runs ``makemkvcon -r info disc:99999``, which enumerates
+    The version probe runs ``makemkvcon -r --noscan info disc:99999``, which enumerates
     optical drives and can block for many seconds on a slow/busy drive. The
     found+path answer never depends on it, so detect-tools must not pay the full
     20s for a cosmetic version string.

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.analyst import TitleInfo
-from app.core.disc_source import DiscSource, SourceKind
+from app.core.disc_source import NOSCAN, DiscSource, SourceKind
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -205,10 +205,15 @@ def _build_rip_commands(
     otherwise each command carries the specific title index so the rip loop can
     consult the live skip-set before starting it.
     """
-    base = [makemkv_path, "-r", "--progress=-same", "mkv", drive_spec]
+    base = [makemkv_path, "-r", NOSCAN, "--progress=-same", "mkv", drive_spec]
     if not title_indices:
         return [(None, [*base, "all", output_dir])]
     return [(idx, [*base, str(idx), output_dir]) for idx in title_indices]
+
+
+def _build_scan_command(makemkv_path: str, source_spec: str) -> list[str]:
+    """Build the argv for a robot-mode disc scan."""
+    return [makemkv_path, "-r", NOSCAN, "info", source_spec]
 
 
 # PRGV:current,total,max is MakeMKV's global progress line. `current` is the
@@ -238,6 +243,7 @@ def _build_backup_command(makemkv_path: str, source_spec: str, dest: str) -> lis
     return [
         makemkv_path,
         "-r",
+        NOSCAN,
         "--progress=-same",
         "--decrypt",
         "backup",
@@ -850,12 +856,7 @@ class MakeMKVExtractor:
         """Internal scan implementation (caller must hold the source lock)."""
         source_spec = _to_source_spec(source)
 
-        cmd = [
-            str(self.makemkv_path),
-            "-r",  # Robot mode (machine-readable output)
-            "info",
-            source_spec,
-        ]
+        cmd = _build_scan_command(str(self.makemkv_path), source_spec)
 
         start = time.monotonic()
         logger.info(f"Scanning disc: {' '.join(cmd)}")
