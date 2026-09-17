@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-09-16
+
+_Highlights: a track holding several episodes can now be filed as one combined episode, and the shared subtitle cache is rebuilt and republished nightly by a server instead of by hand._
+
 ### Added
 
 - **The shared subtitle cache can now be rebuilt and republished nightly by a
