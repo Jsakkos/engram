@@ -10,8 +10,12 @@ from loguru import logger
 from app import __version__
 from app.matcher.config_manager import get_config_manager
 from app.matcher.models import EpisodeInfo, SubtitleFile
-from app.matcher.os_api_retry import os_api_call
-from app.matcher.subtitle_utils import corpus_dir_name, parse_season_episode_numbers
+from app.matcher.os_api_retry import os_api_call, os_download_temp_name
+from app.matcher.subtitle_utils import (
+    corpus_dir_name,
+    is_valid_srt_file,
+    parse_season_episode_numbers,
+)
 
 # CompositeSubtitleProvider returns early once it has at least this many
 # cached subtitles, skipping slower download providers.
@@ -273,6 +277,7 @@ class OpenSubtitlesProvider(SubtitleProvider):
             return os_api_call(
                 self.client.download_and_save,
                 subtitle,
+                filename=os_download_temp_name(),
                 max_attempts=6,
                 base_delay=3.0,
             )
@@ -422,6 +427,15 @@ class OpenSubtitlesProvider(SubtitleProvider):
                 try:
                     logger.info(f"Downloading subtitle for S{season:02d}E{ep_num:02d}")
                     srt_file = self._download_with_retry(subtitle)
+                    # An HTML error page or empty body must not land in the
+                    # cache under the episode's real filename.
+                    if not is_valid_srt_file(Path(srt_file)):
+                        logger.warning(
+                            f"OpenSubtitles S{season:02d}E{ep_num:02d} download is not "
+                            "a valid SRT; skipping"
+                        )
+                        Path(srt_file).unlink(missing_ok=True)
+                        continue
 
                     # Move to cache
                     target_name = f"{show_name} - S{season:02d}E{ep_num:02d}.srt"

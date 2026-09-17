@@ -166,3 +166,51 @@ class TestParseRetryAfter:
         exc.response = Mock()
         exc.response.headers = {"Retry-After": "12.5"}
         assert _parse_retry_after(exc) == 12.5
+
+
+@pytest.mark.unit
+class TestOsDownloadTempName:
+    """Issue #653: ``download_and_save`` without ``filename`` writes into the
+    working directory (the library defaults ``downloads_dir`` to "."). In the
+    Docker image that is ``/app``, root-owned while the app runs as uid 1000,
+    so every OpenSubtitles download died with PermissionError."""
+
+    def test_name_is_absolute_and_inside_system_temp_dir(self):
+        import tempfile
+        from pathlib import Path
+
+        from app.matcher.os_api_retry import os_download_temp_name
+
+        name = Path(os_download_temp_name())
+        assert name.is_absolute()
+        assert name.parent == Path(tempfile.gettempdir())
+
+    def test_names_are_unique_per_call(self):
+        from app.matcher.os_api_retry import os_download_temp_name
+
+        assert os_download_temp_name() != os_download_temp_name()
+
+    def test_real_client_saves_into_temp_dir_not_cwd(self, tmp_path, monkeypatch):
+        """Pin the library behaviour the fix relies on: an absolute filename
+        overrides ``downloads_dir='.'`` (pathlib joinpath discards the base)."""
+        import os
+        from pathlib import Path
+
+        from opensubtitlescom import OpenSubtitles
+
+        from app.matcher.os_api_retry import os_download_temp_name
+
+        cwd = tmp_path / "app"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        client = OpenSubtitles("Engram test", "key")
+        monkeypatch.setattr(
+            client, "download", lambda *a, **k: b"1\n00:00:01,000 --> 00:00:02,000\nhi\n"
+        )
+
+        saved = Path(client.download_and_save("12345", filename=os_download_temp_name()))
+        try:
+            assert saved.exists()
+            assert os.listdir(cwd) == []
+        finally:
+            saved.unlink(missing_ok=True)

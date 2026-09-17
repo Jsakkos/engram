@@ -707,3 +707,59 @@ class TestHealSingleGapWithRealScheduler:
             )
 
         assert healed["degraded"] is False
+
+
+@pytest.mark.unit
+class TestDownloadSubtitlesOpenSubtitlesSaveLocation:
+    """Issue #653: the bulk path must hand ``download_and_save`` an explicit
+    temp filename, or the library writes into the working directory (``/app``
+    in the Docker image, unwritable by the container user)."""
+
+    def _run(self, tmp_path, srt_text):
+        import tempfile
+        from pathlib import Path
+
+        (tmp_path / "data" / "999").mkdir(parents=True)
+        subtitle = types.SimpleNamespace(episode_number=1, season_number=1, release=None)
+        os_client = Mock()
+        saved: list[Path] = []
+
+        def fake_os_api_call(func, *args, **kwargs):
+            if func is os_client.search:
+                return types.SimpleNamespace(data=[subtitle])
+            if func is os_client.download_and_save:
+                target = Path(kwargs["filename"] + ".srt")
+                assert target.parent == Path(tempfile.gettempdir())
+                target.write_text(srt_text, encoding="utf-8")
+                saved.append(target)
+                return str(target)
+            raise AssertionError(f"unexpected os_api_call target: {func}")
+
+        with (
+            patch.object(ts._OS, "failed", False),
+            patch(
+                "app.services.config_service.get_config_sync",
+                return_value=_mock_config(tmp_path),
+            ),
+            patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
+            patch.object(ts, "fetch_season_details", return_value=1),
+            patch.object(ts, "fetch_season_episodes", return_value=[]),
+            patch.object(ts, "_precomputed_skip_result", return_value=None),
+            patch.object(ts, "_get_os_client", return_value=os_client),
+            patch.object(ts, "os_api_call", side_effect=fake_os_api_call),
+            patch.object(ts, "run_jobs", return_value=_scheduler_run()),
+        ):
+            result = ts.download_subtitles("Test Show", 1, tmdb_id=999, use_precomputed=False)
+        assert len(saved) == 1
+        return result, saved[0]
+
+    def test_download_saved_to_temp_then_moved_into_cache(self, tmp_path):
+        result, temp_file = self._run(tmp_path, _VALID_SRT)
+        by_code = {ep["code"]: ep for ep in result["episodes"]}
+        assert by_code["S01E01"]["source"] == "opensubtitles_api"
+        assert not temp_file.exists()
+        assert (tmp_path / "data" / "999" / "Test Show - S01E01.srt").exists()
+
+    def test_invalid_download_does_not_leak_temp_file(self, tmp_path):
+        _, temp_file = self._run(tmp_path, "not an srt")
+        assert not temp_file.exists()

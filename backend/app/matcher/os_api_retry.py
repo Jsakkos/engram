@@ -25,8 +25,11 @@ behavior — before this helper, login used an inline loop in
 parameters.
 """
 
+import tempfile
 import time
+import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import TypeVar
 
 import requests
@@ -68,6 +71,19 @@ _RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
 # Cap any single sleep at 5 minutes. Protects against a misbehaving server
 # (or a stray ``Retry-After: 999999``) hanging a long build run.
 _RETRY_AFTER_CAP_SECONDS = 300.0
+
+
+def os_download_temp_name() -> str:
+    """Absolute, unique filename to pass as ``download_and_save(filename=...)``.
+
+    Without it the library saves into ``downloads_dir``, which defaults to the
+    working directory. In the Docker image that is ``/app``, owned by root
+    while the app runs as uid 1000, so every download raised PermissionError
+    (#653). An absolute name wins over ``downloads_dir`` because the library
+    builds the path with ``Path.joinpath``. The library appends ``.srt``;
+    callers move the returned path into the cache (or unlink it).
+    """
+    return str(Path(tempfile.gettempdir()) / f"engram-os-{uuid.uuid4().hex}")
 
 
 def _parse_retry_after(exc: Exception) -> float | None:
