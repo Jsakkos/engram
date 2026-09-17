@@ -363,11 +363,33 @@ class SubtitleCache:
         self.subtitles = {}  # {(file_path, mtime_ns): parsed_content}
         self.chunk_cache = {}  # {(file_path, mtime_ns, chunk_idx): text}
         self._full_text_cache = {}  # {(file_path, mtime_ns): cleaned_full_text}
+        self._versions = {}  # {file_path: mtime_ns last seen}
+
+    def _current_key(self, srt_file):
+        """Key for the CURRENT bytes of ``srt_file``, dropping superseded ones.
+
+        These dicts are unbounded (unlike the TF-IDF and transcription caches),
+        so without this a file rewritten repeatedly across a long session would
+        leave one entry per rewrite behind forever. A superseded version can
+        never be read again, so it is evicted rather than bounded. The chunk
+        scan only runs on an actual version change, which is rare.
+        """
+        version = _file_version(srt_file)
+        previous = self._versions.get(srt_file)
+        if srt_file in self._versions and previous != version:
+            self.subtitles.pop((srt_file, previous), None)
+            self._full_text_cache.pop((srt_file, previous), None)
+            for stale in [
+                key for key in self.chunk_cache if key[0] == srt_file and key[1] == previous
+            ]:
+                del self.chunk_cache[stale]
+        self._versions[srt_file] = version
+        return (srt_file, version)
 
     def get_subtitle_content(self, srt_file):
         """Get the full raw content of a subtitle file, loading it only once."""
         srt_file = str(srt_file)
-        cache_key = (srt_file, _file_version(srt_file))
+        cache_key = self._current_key(srt_file)
         if cache_key not in self.subtitles:
             reader = SubtitleReader()
             self.subtitles[cache_key] = reader.read_srt_file(srt_file)
@@ -376,7 +398,7 @@ class SubtitleCache:
     def get_chunk(self, srt_file, chunk_idx, chunk_start, chunk_end):
         """Get a specific time chunk from a subtitle file, with caching."""
         srt_file = str(srt_file)
-        cache_key = (srt_file, _file_version(srt_file), chunk_idx)
+        cache_key = (*self._current_key(srt_file), chunk_idx)
 
         if cache_key not in self.chunk_cache:
             content = self.get_subtitle_content(srt_file)
@@ -397,7 +419,7 @@ class SubtitleCache:
         Result is cached for reuse.
         """
         srt_file = str(srt_file)
-        cache_key = (srt_file, _file_version(srt_file))
+        cache_key = self._current_key(srt_file)
         if cache_key not in self._full_text_cache:
             content = self.get_subtitle_content(srt_file)
             if not content:

@@ -1252,6 +1252,33 @@ class TestCacheInvalidationOnRewrite:
         _write_srt(srt, "repaired dialogue", mtime_ns=2_000_000_000_000_000_000)
         assert "repaired dialogue" in cache.get_full_text(srt)
 
+    def test_superseded_versions_are_evicted(self, tmp_path):
+        """Keying by (path, mtime) must not accumulate an entry per rewrite.
+
+        These dicts are unbounded (unlike the TF-IDF and transcription caches),
+        so a file rewritten repeatedly over a long session would otherwise leave
+        every previous version behind. A superseded version is never readable
+        again, so it is dropped rather than bounded.
+        """
+        srt = tmp_path / "show.S01E01.srt"
+        cache = SubtitleCache()
+        for n in range(1, 4):
+            _write_srt(srt, f"take {n}", mtime_ns=n * 1_000_000_000_000_000_000)
+            cache.get_chunk(srt, 0, 0, 999)
+            assert f"take {n}" in cache.get_full_text(srt)
+
+        assert len(cache.subtitles) == 1
+        assert len(cache._full_text_cache) == 1
+        assert len(cache.chunk_cache) == 1
+
+    def test_distinct_files_are_kept_side_by_side(self, tmp_path):
+        """Eviction is per path: a second file must not displace the first."""
+        cache = SubtitleCache()
+        for name in ("a.srt", "b.srt"):
+            _write_srt(tmp_path / name, f"dialogue of {name}")
+            cache.get_full_text(tmp_path / name)
+        assert len(cache._full_text_cache) == 2
+
     def test_version_of_missing_file_is_none(self, tmp_path):
         """A file that cannot be stat'ed still yields a usable (distinct) key."""
         assert ei._file_version(tmp_path / "absent.srt") is None
