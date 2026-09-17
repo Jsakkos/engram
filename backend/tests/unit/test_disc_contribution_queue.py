@@ -128,6 +128,32 @@ def test_build_rows_movie_main_feature():
     assert by_idx[5]["assignment"] == "extra"
 
 
+def test_build_rows_combined_episode_track_is_discarded():
+    """A track holding several episodes is sent as "discarded" for now.
+
+    The fingerprint server types a row's episode as an integer, so a range like
+    "17-18" would make it reject the whole disc and lose every row with it, and the
+    client's reader drops a non-integer episode anyway. Under-counting this one row
+    keeps the rest of the disc layout. The TheDiscDB export keeps the range form.
+    """
+    titles = [_title(3, matched_episode="S02E17-E18", match_source="engram")]
+    rows = build_title_rows(_tv_job(), titles)
+    assert rows[0]["assignment"] == "discarded"
+    assert rows[0]["season"] is None
+    assert rows[0]["episode"] is None
+
+
+def test_build_rows_episode_fields_are_always_integers_or_none():
+    titles = [
+        _title(1, matched_episode="S02E16", match_source="engram"),
+        _title(2, matched_episode="S02E17-E18", match_source="engram"),
+        _title(3, matched_episode="S01E01E03", match_source="engram"),
+    ]
+    for row in build_title_rows(_tv_job(), titles):
+        assert row["episode"] is None or isinstance(row["episode"], int)
+        assert row["season"] is None or isinstance(row["season"], int)
+
+
 def test_build_rows_discarded_track():
     # Unmatched / not-organized track on a TV disc → discarded.
     titles = [

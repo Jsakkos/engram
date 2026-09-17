@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { IcoRetry } from '../../app/components/icons';
 import { SvBadge, sv } from '../../app/components/synapse';
 import type { DiscTitle } from '../../types';
+import { displayEpisodeCode, episodeParts, selectionCollides } from './coverage';
 import {
     confidenceColor,
     formatDuration,
@@ -24,6 +25,15 @@ function assignmentLabel(
     if (!selection) return { text: 'needs review', color: sv.yellow };
     if (selection === 'extra') return { text: 'extra', color: sv.cyan };
     if (selection === 'skip') return { text: 'discarded', color: sv.inkFaint };
+    // A combined track names its first episode and counts the rest — three full
+    // episode titles would push the real information off the end of the row.
+    const parts = episodeParts(selection);
+    if (parts.length > 1) {
+        const shown = displayEpisodeCode(selection);
+        const first = episodeName(parts[0]);
+        const rest = `+${parts.length - 1}`;
+        return { text: first ? `${shown} · ${first} ${rest}` : shown, color: sv.cyan };
+    }
     const name = episodeName(selection);
     return { text: name ? `${selection} · ${name}` : selection, color: sv.cyan };
 }
@@ -59,7 +69,7 @@ export function TitleList({
             {titles.map((title) => {
                 const selection = selections[title.id];
                 const assignment = assignmentLabel(selection, episodeName);
-                const inConflict = !!selection && collisions.has(selection);
+                const inConflict = selectionCollides(selection, collisions);
                 const isActive = title.id === selectedTitleId;
                 const needsReview = !selection;
                 // Live, per-title in-flight signal driven by the WebSocket title

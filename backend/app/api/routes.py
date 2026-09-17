@@ -25,14 +25,15 @@ from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-# Network-origin gates live in app/api/guards.py so validation.py can depend on them
+# The endpoint gates live in app/api/guards.py so another router can depend on one
 # without importing this module (which imports validation.py back inside function
 # bodies, forming an import cycle). Imported here rather than re-exported by alias:
-# both names are used directly below, and tests key dependency_overrides on these
-# exact objects via app.api.routes.
-from app.api.guards import require_localhost, require_localhost_or_lan
+# all three names are used directly below, and tests key dependency_overrides on
+# these exact objects via app.api.routes.
+from app.api.guards import require_debug, require_localhost, require_localhost_or_lan
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
+from app.core.episode_codes import parse_episode_code
 from app.core.errors import AIProviderError
 from app.core.security import (
     is_allowed_image_url,
@@ -77,12 +78,6 @@ async def get_job_or_404(job_id: int, session: AsyncSession = Depends(get_sessio
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
-
-
-def require_debug() -> None:
-    """FastAPI dependency that blocks an endpoint unless debug mode is enabled."""
-    if not settings.debug:
-        raise HTTPException(status_code=403, detail="Simulation only available in debug mode")
 
 
 # Request/Response Models
@@ -722,15 +717,16 @@ async def get_job_titles(
     return list(result.scalars().all())
 
 
-_EPISODE_CODE_RE = re.compile(r"S(\d+)E(\d+)", re.IGNORECASE)
-
-
 class RosterEpisode(BaseModel):
     """One episode slot in the season roster with cross-disc coverage."""
 
     episode_code: str
     episode_number: int
     name: str
+    # TMDB runtime in minutes (None when TMDB doesn't carry one). Lets review
+    # spot a track holding several episodes: segment-format shows list ~7min
+    # episodes while the DVD track is a ~22min three-segment block.
+    runtime: int | None = None
     status: Literal["assigned", "duplicate", "missing", "off"]
     assigned_title_ids: list[int]
     # Subtitle-reference availability (the source of truth for auto-matching).
@@ -846,12 +842,14 @@ async def get_season_roster(
     )
     assigned: dict[int, list[int]] = {}
     for title in result.scalars().all():
-        if not title.matched_episode:
+        parsed = parse_episode_code(title.matched_episode)
+        if not parsed or parsed[0] != season_num:
             continue
-        match = _EPISODE_CODE_RE.search(title.matched_episode)
-        if not match or int(match.group(1)) != season_num:
-            continue
-        assigned.setdefault(int(match.group(2)), []).append(title.id)
+        # A combined track ("S01E01-E03") occupies EVERY episode it claims,
+        # so the roster shows all three slots filled by that one title rather
+        # than two phantom gaps beside it.
+        for episode_number in parsed[1]:
+            assigned.setdefault(episode_number, []).append(title.id)
 
     present = sorted(assigned)
     lo, hi = (present[0], present[-1]) if present else (0, -1)
@@ -886,6 +884,7 @@ async def get_season_roster(
             episode_code=(code := f"S{season_num:02d}E{ep['episode_number']:02d}"),
             episode_number=ep["episode_number"],
             name=ep.get("name") or "",
+            runtime=ep.get("runtime"),
             status=(
                 "duplicate"
                 if len(assigned.get(ep["episode_number"], [])) > 1

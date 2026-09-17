@@ -165,8 +165,11 @@ async def test_simulate_remove_disc(client):
 @pytest.mark.asyncio
 async def test_simulation_disabled_in_production(client):
     """Test that simulation endpoints are blocked when DEBUG=false."""
-    with patch("app.api.routes.settings") as mock_settings:
-        mock_settings.debug = False
+    # Patch the attribute on the settings singleton rather than a module's
+    # binding of it: require_debug reads the name from its own module, so a
+    # patch aimed at one importer's namespace silently stops gating when the
+    # dependency moves, and this test would pass a 200 as a 403.
+    with patch("app.config.settings.debug", False):
         response = await client.post(
             "/api/simulate/insert-disc",
             json={"volume_label": "BLOCKED"},

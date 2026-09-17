@@ -7,7 +7,6 @@ as the highest-trust source (user_review).
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -15,6 +14,7 @@ from loguru import logger
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.episode_codes import parse_episode_code
 from app.matcher.chromaprint_extractor import ChromaprintResult
 from app.models.disc_job import DiscJob, DiscTitle
 from app.models.fingerprint import FingerprintContribution, FingerprintRetraction
@@ -120,8 +120,21 @@ class ContributionCorrectionService:
                 f"tmdb_id={bool(job.tmdb_id)}"
             )
             return
-        m = re.match(r"S(\d{1,2})E(\d{1,3})", episode_code)
-        if not m:
+        # A combined track (one file holding several episodes) has no single
+        # episode to key a fingerprint on: contributing it as its first episode
+        # would publish a 22min three-segment block as the fingerprint of a 7min
+        # episode. Retraction of the old contribution has already happened; we
+        # simply don't publish a new one. Mirrors disc_contribution_queue's
+        # deliberate under-count for the same case.
+        parsed = parse_episode_code(episode_code)
+        if not parsed:
+            return
+        season, episodes = parsed
+        if len(episodes) > 1:
+            logger.info(
+                f"Skipping re-contribution for title {title.id}: {episode_code} spans "
+                f"{len(episodes)} episodes, which has no single fingerprint identity"
+            )
             return
         try:
             tmdb_id_val = int(job.tmdb_id)
@@ -138,8 +151,8 @@ class ContributionCorrectionService:
             title_id=title.id,
             chromaprint_blob=title.chromaprint_blob,
             tmdb_id=tmdb_id_val,
-            season=int(m.group(1)),
-            episode=int(m.group(2)),
+            season=season,
+            episode=episodes[0],
             match_confidence=1.0,
             match_source="user_review",
             disc_content_hash=disc_hash,
