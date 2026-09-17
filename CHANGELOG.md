@@ -12,6 +12,13 @@ All notable changes to Engram will be documented in this file.
   got no reference subtitle at all). Downloads are now saved to the system
   temp folder before moving into the subtitle cache. (#653)
 
+- **Later discs in a box set no longer collide with disc 1 when the disc has
+  no volume label.** Some drives (for example LibreDrive-flashed ones) report
+  an empty label, so every disc was treated as disc 1: its extras took disc 1's
+  filenames and organizing stopped on a "file exists" conflict. Engram now
+  reads the disc number from the disc name MakeMKV reports (such as "Season 3 -
+  Disc 2") when the label has none. (#655, thanks @wintheriscomming!)
+
 ## [0.36.0] - 2026-09-16
 
 _Highlights: a track holding several episodes can now be filed as one combined episode, and the shared subtitle cache is rebuilt and republished nightly by a server instead of by hand._
