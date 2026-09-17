@@ -18,7 +18,7 @@ _QUOTA_MSG = (
 )
 
 
-def _run_download(tmp_path, *, os_client, os_call=None):
+def _run_download(tmp_path, *, os_client, os_reason=None, os_call=None):
     patches = [
         patch(
             "app.services.config_service.get_config_sync",
@@ -28,7 +28,7 @@ def _run_download(tmp_path, *, os_client, os_call=None):
         patch.object(ts, "fetch_season_details", return_value=1),
         patch.object(ts, "fetch_season_episodes", return_value=[]),
         patch.object(ts, "_precomputed_skip_result", return_value=None),
-        patch.object(ts, "_get_os_client", return_value=os_client),
+        patch.object(ts, "_os_client_and_reason", return_value=(os_client, os_reason)),
         patch.object(ts, "run_jobs", return_value=_scheduler_run()),
     ]
     if os_call is not None:
@@ -66,12 +66,9 @@ class TestDownloadSubtitlesOsError:
         assert result["degraded"] is True
 
     def test_login_time_failure_reason_is_returned(self, tmp_path):
-        """Quota already spent at login: _get_os_client returns None, and the
-        reason it recorded must still reach the job."""
-        ts._OS.failed = True
-        ts._OS.failure_reason = "daily download quota exhausted"
-
-        result = _run_download(tmp_path, os_client=None)
+        """Quota already spent at login: no client, and the reason the lookup
+        gave must still reach the job."""
+        result = _run_download(tmp_path, os_client=None, os_reason="daily download quota exhausted")
 
         assert result["os_error"] == "daily download quota exhausted"
 
@@ -118,13 +115,19 @@ class TestOsFailureExpiry:
         spent.user_downloads_remaining = 0
         mock_os_api.return_value = spent
 
-        assert ts._get_os_client(self._config()) is None
+        assert ts._os_client_and_reason(self._config()) == (
+            None,
+            "daily download quota exhausted",
+        )
         assert ts._OS.failed is True
-        assert ts._OS.failure_reason == "daily download quota exhausted"
         assert ts._OS.retry_at is not None
 
-        # Still inside the lockout: no second login.
-        assert ts._get_os_client(self._config()) is None
+        # Still inside the lockout: no second login, and the reason comes back
+        # with the None rather than being re-read by the caller afterwards.
+        assert ts._os_client_and_reason(self._config()) == (
+            None,
+            "daily download quota exhausted",
+        )
         assert mock_os_api.call_count == 1
 
         # The lockout lapses and the quota has refilled.
@@ -143,7 +146,10 @@ class TestOsFailureExpiry:
         client = Mock()
         mock_os_api.return_value = client
         with patch.object(ts, "os_api_call", side_effect=Exception("401 Unauthorized")):
-            assert ts._get_os_client(self._config()) is None
+            assert ts._os_client_and_reason(self._config()) == (
+                None,
+                "login failed: 401 Unauthorized",
+            )
 
         assert ts._OS.failed is True
         assert ts._OS.failure_reason == "login failed: 401 Unauthorized"

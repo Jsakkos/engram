@@ -112,7 +112,7 @@ class TestDownloadSubtitlesMidRunDegradation:
             patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
             patch.object(ts, "fetch_season_details", return_value=1),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=Mock()),
+            patch.object(ts, "_os_client_and_reason", return_value=(Mock(), None)),
             patch.object(ts, "os_api_call", side_effect=Exception("406 quota exceeded")),
             patch.object(ts, "run_jobs", return_value=_scheduler_run()),
         ):
@@ -149,7 +149,7 @@ class TestDownloadSubtitlesMidRunDegradation:
             patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
             patch.object(ts, "fetch_season_details", return_value=2),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=Mock()),
+            patch.object(ts, "_os_client_and_reason", return_value=(Mock(), None)),
             patch.object(ts, "os_api_call", side_effect=Exception("406 quota exceeded")),
             patch.object(ts, "run_jobs", return_value=_scheduler_run(scraper_hits)),
         ):
@@ -183,7 +183,7 @@ class TestDownloadSubtitlesMidRunDegradation:
             patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
             patch.object(ts, "fetch_season_details", return_value=2),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=Mock()),
+            patch.object(ts, "_os_client_and_reason", return_value=(Mock(), None)),
             patch.object(ts, "os_api_call", side_effect=Exception("406 quota exceeded")),
             patch.object(ts, "run_jobs", return_value=_scheduler_run(scraper_hits)),
         ):
@@ -224,7 +224,7 @@ class TestDownloadSubtitlesMidRunDegradation:
             patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
             patch.object(ts, "fetch_season_details", return_value=1),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=client),
+            patch.object(ts, "_os_client_and_reason", return_value=(client, None)),
             patch.object(ts, "os_api_call", side_effect=_fake_os_call),
             patch.object(ts, "run_jobs", return_value=_scheduler_run()),
         ):
@@ -257,7 +257,7 @@ class TestDownloadSubtitlesMidRunDegradation:
             patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
             patch.object(ts, "fetch_season_details", return_value=1),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=client),
+            patch.object(ts, "_os_client_and_reason", return_value=(client, None)),
             patch.object(ts, "os_api_call", side_effect=Exception("connection reset")),
             patch.object(ts, "run_jobs", return_value=_scheduler_run()),
         ):
@@ -288,7 +288,7 @@ class TestDownloadSubtitlesLoginFailureDegradation:
             patch.object(ts, "fetch_show_details", return_value={"name": "Test Show"}),
             patch.object(ts, "fetch_season_details", return_value=1),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=None),
+            patch.object(ts, "_os_client_and_reason", return_value=(None, None)),
             patch.object(ts, "run_jobs", return_value=_scheduler_run()),
         ):
             result = ts.download_subtitles("Test Show", 1, tmdb_id=999, use_precomputed=False)
@@ -342,7 +342,7 @@ class TestDownloadSubtitlesOpenSubtitlesCredit:
             patch.object(ts, "fetch_season_details", return_value=2),
             patch.object(ts, "fetch_season_episodes", return_value=[]),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=os_client),
+            patch.object(ts, "_os_client_and_reason", return_value=(os_client, None)),
             patch.object(ts, "os_api_call", side_effect=fake_os_api_call),
             patch.object(ts, "run_jobs", return_value=_scheduler_run()),
         ):
@@ -389,7 +389,7 @@ class TestDownloadSubtitlesOpenSubtitlesCredit:
             patch.object(ts, "fetch_season_details", return_value=2),
             patch.object(ts, "fetch_season_episodes", return_value=[]),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=os_client),
+            patch.object(ts, "_os_client_and_reason", return_value=(os_client, None)),
             patch.object(ts, "os_api_call", side_effect=fake_os_api_call),
             patch.object(ts, "run_jobs", return_value=_scheduler_run()),
         ):
@@ -466,7 +466,7 @@ class TestDownloadSubtitlesScraperOutage:
             patch.object(ts, "fetch_season_details", return_value=2),
             patch.object(ts, "fetch_season_episodes", return_value=[]),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=Mock()),
+            patch.object(ts, "_os_client_and_reason", return_value=(Mock(), None)),
             patch.object(ts, "os_api_call", return_value=Mock(data=[])),
             patch.object(
                 ts,
@@ -493,7 +493,7 @@ class TestDownloadSubtitlesScraperOutage:
             patch.object(ts, "fetch_season_details", return_value=2),
             patch.object(ts, "fetch_season_episodes", return_value=[]),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=Mock()),
+            patch.object(ts, "_os_client_and_reason", return_value=(Mock(), None)),
             patch.object(ts, "os_api_call", return_value=Mock(data=[])),
             patch.object(ts, "run_jobs", return_value=_scheduler_run()),
         ):
@@ -522,7 +522,7 @@ class TestDownloadSubtitlesScraperOutage:
             patch.object(ts, "fetch_season_details", return_value=2),
             patch.object(ts, "fetch_season_episodes", return_value=[]),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=Mock()),
+            patch.object(ts, "_os_client_and_reason", return_value=(Mock(), None)),
             patch.object(ts, "os_api_call", return_value=Mock(data=[])),
             patch.object(
                 ts, "run_jobs", return_value=_scheduler_run(results=hits, failed=("addic7ed",))
@@ -745,7 +745,7 @@ class TestDownloadSubtitlesOpenSubtitlesSaveLocation:
             patch.object(ts, "fetch_season_details", return_value=1),
             patch.object(ts, "fetch_season_episodes", return_value=[]),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=os_client),
+            patch.object(ts, "_os_client_and_reason", return_value=(os_client, None)),
             patch.object(ts, "os_api_call", side_effect=fake_os_api_call),
             patch.object(ts, "run_jobs", return_value=_scheduler_run()),
         ):

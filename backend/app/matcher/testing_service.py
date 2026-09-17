@@ -237,33 +237,48 @@ def _os_disabled() -> bool:
 
 
 def _get_os_client(config) -> object | None:
-    """Return a logged-in OpenSubtitles client, cached for the process.
+    """Return a logged-in OpenSubtitles client, or None when it is unavailable.
+
+    See ``_os_client_and_reason``, which also says why it is unavailable.
+    """
+    return _os_client_and_reason(config)[0]
+
+
+def _os_client_and_reason(config) -> tuple[object | None, str | None]:
+    """Return ``(client, None)`` for a logged-in OpenSubtitles client, cached for
+    the process, or ``(None, reason)`` when the API is unavailable.
 
     Logs in once (with 429-aware backoff) and reuses the token across all
-    seasons/shows. Returns None on persistent failure so callers fall back to
-    scrapers. Thread-safe via ``_OS_LOGIN_LOCK``: concurrent callers wait on
-    the lock and observe the resulting client on the second check.
+    seasons/shows; callers fall back to scrapers on None. Thread-safe via
+    ``_OS_LOGIN_LOCK``: concurrent callers wait on the lock and observe the
+    resulting client on the second check. The reason is taken under the same
+    lock that sets it, so a concurrent job recording or expiring a failure
+    cannot hand this caller a reason that doesn't match its None.
     """
-    # Fast path (no lock): a logged-in client with a fresh token.
-    if _OS.failed and (_OS.retry_at is None or time.monotonic() < _OS.retry_at):
-        return None
-    if _OS.client is not None and (time.monotonic() - _OS.login_time) < _OS_TOKEN_MAX_AGE:
-        return _OS.client
+    # Fast path (no lock): a logged-in client with a fresh token. A failure goes
+    # through the lock so its reason is read consistently.
+    if (
+        not _OS.failed
+        and _OS.client is not None
+        and (time.monotonic() - _OS.login_time) < _OS_TOKEN_MAX_AGE
+    ):
+        return _OS.client, None
 
     with _OS_LOGIN_LOCK:
         # Double-check after acquiring the lock — another thread may have
         # completed the login (or flipped `failed`) while we were waiting.
         if _os_disabled():
-            return None
+            return None, _OS.failure_reason
         if _OS.client is not None and (time.monotonic() - _OS.login_time) < _OS_TOKEN_MAX_AGE:
-            return _OS.client
+            return _OS.client, None
 
         try:
             from opensubtitlescom import OpenSubtitles as _OSApi
         except ImportError:
             logger.warning("opensubtitlescom package not installed — skipping API path")
-            _mark_os_failed("the opensubtitlescom package is not installed")
-            return None
+            reason = "the opensubtitlescom package is not installed"
+            _mark_os_failed(reason)
+            return None, reason
 
         # Construct AND login inside the same try so a malformed config
         # (e.g., missing opensubtitles_api_key attribute → AttributeError)
@@ -283,8 +298,9 @@ def _get_os_client(config) -> object | None:
                 "using scrapers for the rest of this run",
                 exc_info=True,
             )
-            _mark_os_failed(f"login failed: {_describe_os_error(e)}")
-            return None
+            reason = f"login failed: {_describe_os_error(e)}"
+            _mark_os_failed(reason)
+            return None, reason
 
         # The login response only carries ``allowed_downloads`` — the daily
         # CAP (e.g. 1000 for VIP), NOT how many remain. Trusting it makes the
@@ -313,9 +329,10 @@ def _get_os_client(config) -> object | None:
             )
             # Expires so a long-running server picks OpenSubtitles back up once
             # the daily bucket refills, instead of only after a restart.
-            _mark_os_failed("daily download quota exhausted", retry_after=_OS_QUOTA_RETRY_SECONDS)
+            reason = "daily download quota exhausted"
+            _mark_os_failed(reason, retry_after=_OS_QUOTA_RETRY_SECONDS)
             _snapshot_os_quota(client)
-            return None
+            return None, reason
 
         if remaining is not None:
             logger.info(f"OpenSubtitles API login OK — {remaining} downloads remaining today")
@@ -327,7 +344,7 @@ def _get_os_client(config) -> object | None:
         # gives the build script's final summary a starting baseline even if
         # no downloads happen this run (e.g., the whole cache is already populated).
         _snapshot_os_quota(client)
-        return client
+        return client, None
 
 
 def _precomputed_skip_result(
@@ -758,10 +775,8 @@ def download_subtitles(
         and config.opensubtitles_username
         and config.opensubtitles_password
     ):
-        _os_client = _get_os_client(config)
-        if _os_client is None:
-            os_error = _OS.failure_reason
-        else:
+        _os_client, os_error = _os_client_and_reason(config)
+        if _os_client is not None:
             try:
                 import shutil
 

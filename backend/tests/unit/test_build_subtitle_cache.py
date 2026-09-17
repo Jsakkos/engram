@@ -1081,7 +1081,7 @@ class TestScraperOutageWritesNoCoverageRow:
             patch.object(ts, "fetch_season_details", return_value=4),
             patch.object(ts, "fetch_season_episodes", return_value=[]),
             patch.object(ts, "_precomputed_skip_result", return_value=None),
-            patch.object(ts, "_get_os_client", return_value=Mock()),
+            patch.object(ts, "_os_client_and_reason", return_value=(Mock(), None)),
             patch.object(ts, "os_api_call", return_value=Mock(data=[])),
             patch.object(ts, "run_jobs", return_value=scheduler_run),
         ):
