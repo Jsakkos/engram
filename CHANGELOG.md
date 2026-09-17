@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **OpenSubtitles downloads work in the Docker image again.** Every download
+  was saved into the app's install folder, which the container user cannot
+  write to, so each one failed and the episode fell back to the scrapers (or
+  got no reference subtitle at all). Downloads are now saved to the system
+  temp folder before moving into the subtitle cache. (#653)
+
 ## [0.36.0] - 2026-09-16
 
 _Highlights: a track holding several episodes can now be filed as one combined episode, and the shared subtitle cache is rebuilt and republished nightly by a server instead of by hand._

@@ -10,7 +10,7 @@ from loguru import logger
 from app import __version__
 from app.matcher.config_manager import get_config_manager
 from app.matcher.models import EpisodeInfo, SubtitleFile
-from app.matcher.os_api_retry import os_api_call
+from app.matcher.os_api_retry import os_api_call, os_download_temp_name
 from app.matcher.subtitle_utils import corpus_dir_name, parse_season_episode_numbers
 
 # CompositeSubtitleProvider returns early once it has at least this many
@@ -273,6 +273,7 @@ class OpenSubtitlesProvider(SubtitleProvider):
             return os_api_call(
                 self.client.download_and_save,
                 subtitle,
+                filename=os_download_temp_name(),
                 max_attempts=6,
                 base_delay=3.0,
             )

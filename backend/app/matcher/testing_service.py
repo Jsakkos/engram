@@ -19,7 +19,7 @@ from loguru import logger
 from app import __version__
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
-from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call
+from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call, os_download_temp_name
 from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
 from app.matcher.subtitle_provider import LocalSubtitleProvider
@@ -778,6 +778,7 @@ def download_subtitles(
                         srt_file = os_api_call(
                             _os_client.download_and_save,
                             subtitle,
+                            filename=os_download_temp_name(),
                             max_attempts=2,
                             base_delay=5.0,
                         )
@@ -786,6 +787,8 @@ def download_subtitles(
                             api_srt_map[ep_num] = srt_target
                             api_fresh_eps.add(ep_num)
                             seen_api_eps.add(ep_num)
+                        elif srt_file:
+                            Path(srt_file).unlink(missing_ok=True)
                     else:
                         api_srt_map[ep_num] = srt_target
                         seen_api_eps.add(ep_num)
