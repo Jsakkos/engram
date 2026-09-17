@@ -208,7 +208,7 @@ class TestSnapshotCaptureFromDisc:
             makemkv_path = "makemkvcon64.exe"
 
         drive_spec = f"dev:{drive}"
-        cmd = [str(makemkv_path), "-r", "info", drive_spec]
+        cmd = [str(makemkv_path), "-r", "--noscan", "info", drive_spec]
 
         print(f"\nScanning disc in {drive} ...")
         try:

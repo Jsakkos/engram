@@ -25,6 +25,7 @@ class TestBuildBackupCommand:
         assert cmd == [
             "mmk",
             "-r",
+            "--noscan",
             "--progress=-same",
             "--decrypt",
             "backup",

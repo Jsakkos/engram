@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.api.guards import require_localhost_or_lan
+from app.core.disc_source import NOSCAN
 from app.core.security import executable_basename_allowed, sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -240,7 +241,9 @@ def _probe_makemkv_version(path_str: str, *, timeout: float = _VERSION_PROBE_TIM
         return _VERSION_NOT_DETECTABLE
     try:
         result = subprocess.run(
-            [path_str, "-r", "info", "disc:99999"],
+            # NOSCAN: without it this probe blocks behind a drive that is mid-rip
+            # and reports "version probe timed out" for the length of the rip.
+            [path_str, "-r", NOSCAN, "info", "disc:99999"],
             capture_output=True,
             timeout=timeout,
             text=True,

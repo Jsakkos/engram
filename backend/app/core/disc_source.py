@@ -30,6 +30,15 @@ _SCHEMES = ("dev:", "disc:", "file:", "iso:")
 # A bare Windows drive letter ("E:", "E:\") or a POSIX device path.
 _BARE_DRIVE_RE = re.compile(r"^(?:[A-Za-z]:\\?|/dev/[A-Za-z0-9/]+)$")
 
+# Every makemkvcon call passes this, before the command verb. Without it MakeMKV
+# probes the media in EVERY drive on startup, and that probe blocks behind a
+# drive another job is reading: of two concurrent rips on two drives, the second
+# sits at 0.0x until the stall timeout ejects it (#652). The per-source locks
+# cannot prevent this, because the two drives hold different locks. The flag
+# only skips the probe of the other drives; the source named on the command
+# line is still opened and read.
+NOSCAN = "--noscan"
+
 
 class SourceKind(StrEnum):
     """What kind of thing a job reads from."""
@@ -228,7 +237,7 @@ def parse_drive_listing(output: str) -> dict[str, int]:
 def _run_drive_listing(makemkv_path: str) -> str:
     """Run the drive enumeration synchronously (called via asyncio.to_thread)."""
     result = subprocess.run(
-        [makemkv_path, "-r", "info", _DRIVE_LISTING_INDEX],
+        [makemkv_path, "-r", NOSCAN, "info", _DRIVE_LISTING_INDEX],
         capture_output=True,
         text=True,
         timeout=_DRIVE_LISTING_TIMEOUT,
