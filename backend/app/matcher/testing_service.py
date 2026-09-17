@@ -70,6 +70,13 @@ RETRIEVED_STATUSES = frozenset({"cached", "downloaded"})
 # attribute access on a single object reads as a plain "is referenced" and
 # also reduces top-of-module noise.
 _OS_TOKEN_MAX_AGE: float = 12 * 60 * 60  # re-login after 12h, well within 24h
+# How long a spent daily quota disables OpenSubtitles before the next season
+# re-probes it. Without an expiry `failed` outlives the quota reset for as long
+# as the server runs, so a job told "retry once the quota resets" would keep
+# failing until Engram restarted.
+_OS_QUOTA_RETRY_SECONDS: float = 60 * 60
+# Cap on an OpenSubtitles error quoted into a job's subtitle message.
+_OS_ERROR_MAX_CHARS = 300
 
 
 @dataclass
@@ -79,6 +86,11 @@ class _OSState:
     client: object | None = None
     login_time: float = 0.0
     failed: bool = False
+    # Why `failed` was set, for the job's subtitle message; None while healthy.
+    failure_reason: str | None = None
+    # Monotonic time after which a `failed` state may be retried. None keeps the
+    # failure sticky for the process (login/credential/package failures).
+    retry_at: float | None = None
     last_quota: dict | None = None
     last_logged_remaining: int | None = None
 
@@ -192,6 +204,38 @@ def probe_os_quota(config) -> int | None:
     return quota.get("remaining") if quota else None
 
 
+def _describe_os_error(exc: BaseException) -> str:
+    """One-line, length-capped text of an OpenSubtitles failure for a job message."""
+    text = " ".join(str(exc).split()) or type(exc).__name__
+    if len(text) > _OS_ERROR_MAX_CHARS:
+        text = text[: _OS_ERROR_MAX_CHARS - 3].rstrip() + "..."
+    return text
+
+
+def _mark_os_failed(reason: str, *, retry_after: float | None = None) -> None:
+    """Disable the API for this process, recording why and (optionally) until when."""
+    _OS.failed = True
+    _OS.failure_reason = reason
+    _OS.retry_at = None if retry_after is None else time.monotonic() + retry_after
+
+
+def _os_disabled() -> bool:
+    """True while a recorded failure still disables the API.
+
+    A failure with a ``retry_at`` (a spent daily quota) expires; clearing it here
+    lets the caller log in again and re-read the quota.
+    """
+    if not _OS.failed:
+        return False
+    if _OS.retry_at is None or time.monotonic() < _OS.retry_at:
+        return True
+    logger.info("OpenSubtitles API: quota lockout expired; re-checking the download quota")
+    _OS.failed = False
+    _OS.failure_reason = None
+    _OS.retry_at = None
+    return False
+
+
 def _get_os_client(config) -> object | None:
     """Return a logged-in OpenSubtitles client, cached for the process.
 
@@ -201,7 +245,7 @@ def _get_os_client(config) -> object | None:
     the lock and observe the resulting client on the second check.
     """
     # Fast path (no lock): a logged-in client with a fresh token.
-    if _OS.failed:
+    if _OS.failed and (_OS.retry_at is None or time.monotonic() < _OS.retry_at):
         return None
     if _OS.client is not None and (time.monotonic() - _OS.login_time) < _OS_TOKEN_MAX_AGE:
         return _OS.client
@@ -209,7 +253,7 @@ def _get_os_client(config) -> object | None:
     with _OS_LOGIN_LOCK:
         # Double-check after acquiring the lock — another thread may have
         # completed the login (or flipped `failed`) while we were waiting.
-        if _OS.failed:
+        if _os_disabled():
             return None
         if _OS.client is not None and (time.monotonic() - _OS.login_time) < _OS_TOKEN_MAX_AGE:
             return _OS.client
@@ -218,7 +262,7 @@ def _get_os_client(config) -> object | None:
             from opensubtitlescom import OpenSubtitles as _OSApi
         except ImportError:
             logger.warning("opensubtitlescom package not installed — skipping API path")
-            _OS.failed = True
+            _mark_os_failed("the opensubtitlescom package is not installed")
             return None
 
         # Construct AND login inside the same try so a malformed config
@@ -239,7 +283,7 @@ def _get_os_client(config) -> object | None:
                 "using scrapers for the rest of this run",
                 exc_info=True,
             )
-            _OS.failed = True
+            _mark_os_failed(f"login failed: {_describe_os_error(e)}")
             return None
 
         # The login response only carries ``allowed_downloads`` — the daily
@@ -258,16 +302,18 @@ def _get_os_client(config) -> object | None:
         remaining = getattr(client, "user_downloads_remaining", None)
 
         if remaining is not None and remaining <= 0:
-            # Quota is spent for today. Skip OpenSubtitles for the rest of the
-            # run instead of paying a search + 406 + retry on every season —
+            # Quota is spent for today. Skip OpenSubtitles for the next hour
+            # instead of paying a search + 406 + retry on every season —
             # the daily bucket won't refill for hours. Falls straight through
             # to the scrapers (Addic7ed / TVsubtitles).
             logger.warning(
                 f"OpenSubtitles API: daily download quota exhausted "
-                f"({remaining} remaining) — skipping OpenSubtitles for this run; "
+                f"({remaining} remaining); skipping OpenSubtitles for the next hour, "
                 "falling back to scrapers (Addic7ed/TVsubtitles)"
             )
-            _OS.failed = True
+            # Expires so a long-running server picks OpenSubtitles back up once
+            # the daily bucket refills, instead of only after a restart.
+            _mark_os_failed("daily download quota exhausted", retry_after=_OS_QUOTA_RETRY_SECONDS)
             _snapshot_os_quota(client)
             return None
 
@@ -676,8 +722,8 @@ def download_subtitles(
     # ~99% and a quota wall is invisible in the run summary.
     api_fresh_eps: set[int] = set()
     # `_OS.failed` only records unavailability discovered at LOGIN time and is
-    # sticky for the rest of the process (re-login only every _OS_TOKEN_MAX_AGE,
-    # 12h) -- it never re-evaluates once a login succeeds. A season whose
+    # sticky for the rest of the process (a spent quota for _OS_QUOTA_RETRY_SECONDS;
+    # re-login only every _OS_TOKEN_MAX_AGE, 12h) -- it never re-evaluates once a login succeeds. A season whose
     # search/download call fails mid-run (e.g. quota exhausted between logins)
     # falls through to the `except Exception` below without ever touching
     # `_OS.failed`. This season-local flag captures that case; it is
@@ -685,6 +731,9 @@ def download_subtitles(
     # process-wide signal so a single season's transient failure doesn't
     # disable OpenSubtitles for every remaining show in the run.
     os_failed_this_season = False
+    # Why OpenSubtitles did not serve this season (login-time or mid-run), so the
+    # job's message can name the cause instead of asking for an API key.
+    os_error: str | None = None
 
     # Skip the API entirely if every episode for this season is already cached on
     # disk — otherwise the unconditional `search()` below burns API rate limit on
@@ -710,7 +759,9 @@ def download_subtitles(
         and config.opensubtitles_password
     ):
         _os_client = _get_os_client(config)
-        if _os_client is not None:
+        if _os_client is None:
+            os_error = _OS.failure_reason
+        else:
             try:
                 import shutil
 
@@ -802,6 +853,7 @@ def download_subtitles(
                 _snapshot_os_quota(_os_client)
             except Exception as e:
                 os_failed_this_season = True
+                os_error = _describe_os_error(e)
                 logger.warning(
                     f"OpenSubtitles API failed ({e}), falling back to scrapers",
                     exc_info=True,
@@ -946,6 +998,9 @@ def download_subtitles(
         "total_episodes": episode_count,
         "episodes": episodes,
         "cache_dir": str(series_cache_dir),
+        # Text of the OpenSubtitles failure behind this season, or None when it
+        # served (or was never tried: no credentials, or everything cached).
+        "os_error": os_error,
         # True when this result is not a trustworthy measurement -- see
         # _is_degraded. Combines the sticky process-wide login-failure flag
         # with the season-local mid-run failure flag, since either one means

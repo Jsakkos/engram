@@ -520,6 +520,31 @@ EJECTED_RIP_MESSAGE = (
 )
 
 
+def _no_references_message(show_name: str, os_error: str | None, *, any_season: bool) -> str:
+    """The job's subtitle message when no season yielded reference subtitles.
+
+    ``os_error`` is the OpenSubtitles failure behind the empty result, if any.
+    Naming it matters: the usual cause is a spent daily download quota, where the
+    fix is to retry later ("Re-match all" re-runs a failed download), and the
+    generic "add an API key" advice would send the user after a key that is fine.
+    """
+    where = " in any season" if any_season else ""
+    alternatives = (
+        "drop .srt files into the show's cache folder, or assign episodes manually in Review."
+    )
+    if os_error:
+        return (
+            f"No reference subtitles found for '{show_name}'{where}: OpenSubtitles failed "
+            f"({os_error}) and no other subtitle source had them. If the daily download "
+            "quota ran out, use Re-match all in Review once it resets; otherwise check the "
+            f"OpenSubtitles account in Settings. You can also {alternatives}"
+        )
+    return (
+        f"No reference subtitles found for '{show_name}'{where}. Episode matching can't run "
+        f"without them: add an OpenSubtitles API key in Settings, {alternatives}"
+    )
+
+
 class MatchingCoordinator:
     """Coordinates episode matching: subtitle download, audio fingerprinting, DiscDB assignment."""
 
@@ -2354,6 +2379,7 @@ class MatchingCoordinator:
             from app.matcher.testing_service import download_subtitles
 
             canonical_name: str | None = None
+            os_error: str | None = None
             downloaded_total = 0
             failed_total = 0
             episode_total = 0
@@ -2375,6 +2401,8 @@ class MatchingCoordinator:
                 # First non-None canonical name wins (deterministic across seasons).
                 if result.get("show_name") and canonical_name is None:
                     canonical_name = result["show_name"]
+                if result.get("os_error") and os_error is None:
+                    os_error = result["os_error"]
                 # Per-season progress so the UI isn't silent during a cold multi-season fetch.
                 await ws_manager.broadcast_subtitle_event(
                     job_id,
@@ -2387,12 +2415,7 @@ class MatchingCoordinator:
             status = "completed" if downloaded_total > 0 else "failed"
             error_msg = None
             if status == "failed":
-                error_msg = (
-                    f"No reference subtitles found for '{show_name}' in any season. Episode "
-                    "matching can't run without them — add an OpenSubtitles API key in Settings, "
-                    "drop .srt files into the show's cache folder, or assign episodes manually "
-                    "in Review."
-                )
+                error_msg = _no_references_message(show_name, os_error, any_season=True)
 
             async with async_session() as session:
                 update_values: dict = {
@@ -2473,11 +2496,8 @@ class MatchingCoordinator:
 
             error_msg = None
             if status == "failed":
-                error_msg = (
-                    f"No reference subtitles found for '{show_name}'. Episode matching "
-                    "can't run without them — add an OpenSubtitles API key in Settings, "
-                    "drop .srt files into the show's cache folder, or assign episodes "
-                    "manually in Review."
+                error_msg = _no_references_message(
+                    show_name, result.get("os_error"), any_season=False
                 )
 
             if using_precomputed:

@@ -12,6 +12,13 @@ All notable changes to Engram will be documented in this file.
   got no reference subtitle at all). Downloads are now saved to the system
   temp folder before moving into the subtitle cache. (#653)
 
+- **A season with no subtitles now says why when OpenSubtitles failed.** When
+  the daily OpenSubtitles download quota ran out, the job told you to add an
+  API key even though yours was fine. The message now quotes the OpenSubtitles
+  error and suggests Re-match all in Review once the quota resets. A quota that
+  was already spent when Engram logged in also no longer switches OpenSubtitles
+  off until the server restarts; Engram checks it again after an hour. (#654)
+
 ## [0.36.0] - 2026-09-16
 
 _Highlights: a track holding several episodes can now be filed as one combined episode, and the shared subtitle cache is rebuilt and republished nightly by a server instead of by hand._
