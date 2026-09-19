@@ -4,7 +4,18 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-09-19
+
+_Highlights: two drives can rip at once, later discs in a box set no longer collide with disc 1, and OpenSubtitles failures are named instead of blamed on your API key._
+
 ### Fixed
+
+- **A season refused for unreadable reference subtitles now recovers without
+  a restart.** When a reference subtitle file was damaged, Engram rejected it
+  and downloaded a fresh copy to the same path, but kept serving the old
+  unreadable version from memory, so the season stayed refused with
+  `references_unreadable` until the backend restarted. A replaced file is now
+  re-read as soon as it changes. (#661)
 
 - **OpenSubtitles downloads work in the Docker image again.** Every download
   was saved into the app's install folder, which the container user cannot
