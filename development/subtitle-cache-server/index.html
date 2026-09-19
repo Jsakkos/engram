@@ -1,0 +1,1964 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/development/subtitle-cache-server/">
+      
+      
+        <link rel="prev" href="../subtitle-cache/">
+      
+      
+        <link rel="next" href="../brand/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Subtitle Cache Server Deployment - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#subtitle-cache-server-deployment" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Subtitle Cache Server Deployment
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-exactly-one-harvester" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why exactly one harvester
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cutover-from-the-laptop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cutover from the laptop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#first-run-supervised" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        First run (supervised)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start-the-timer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start the timer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the exit codes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-exactly-one-harvester" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why exactly one harvester
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cutover-from-the-laptop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cutover from the laptop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#first-run-supervised" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        First run (supervised)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start-the-timer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start the timer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the exit codes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="subtitle-cache-server-deployment">Subtitle cache: server deployment</h1>
+<p>The nightly subtitle-cache harvest runs on the Ubuntu host <code>pve-docker</code>
+(<code>jsakkos@192.168.1.122</code>) under a systemd <strong>user</strong> timer, and publishes to the
+rolling <code>subtitle-cache-latest</code> GitHub release.</p>
+<h2 id="why-exactly-one-harvester">Why exactly one harvester</h2>
+<p>The OpenSubtitles daily download quota is <strong>per account</strong>, not per machine, and
+each machine keeps its own <code>subtitle_coverage</code> table. Two harvesters race for
+the same 1,000/day bucket, and the loser records zero-coverage rows for seasons
+the winner already holds, skip-listing content that exists. That is the same
+defect the 2026-08-31 harvester repair fixed, reintroduced across machines. The
+laptop keeps its corpus as a backup but must not run <code>build_subtitle_cache.py</code>
+again.</p>
+<h2 id="install">Install</h2>
+<p>Before starting, make sure <code>gh auth login</code> has already been run for the
+<code>jsakkos</code> account on this host. The harvest's preflight check fails fast if
+it hasn't (see "Preflight failed" under Recovery, below), without touching
+quota, but there is no reason to discover that at 02:00 with nobody watching
+instead of now.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 1. uv (absent by default on this host)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>curl<span class="w"> </span>-LsSf<span class="w"> </span>https://astral.sh/uv/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">source</span><span class="w"> </span>~/.local/bin/env
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>uv<span class="w"> </span>--version
+</code></pre></div>
+<p>The installer updates shell rc files for future shells but does not put <code>uv</code>
+on <code>PATH</code> in the shell you just ran it in. If <code>uv --version</code> still fails after
+sourcing <code>~/.local/bin/env</code>, open a new shell and try again.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># 2. Bring the checkout to current main</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd</span><span class="w"> </span>~/engram<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>fetch<span class="w"> </span>origin<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>checkout<span class="w"> </span>main<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>pull<span class="w"> </span>--ff-only
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">cd</span><span class="w"> </span>backend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>sync<span class="w"> </span>--no-install-project
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>git<span class="w"> </span>-C<span class="w"> </span>~/engram<span class="w"> </span>log<span class="w"> </span>-1<span class="w"> </span>--oneline
+</code></pre></div>
+<p>Expected: a recent commit on <code>main</code>, not the stale <code>v0.8.1</code> tag the host
+started on.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># 3. Secrets (YOU write this file; copy the template from the repo)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>install<span class="w"> </span>-d<span class="w"> </span>-m<span class="w"> </span><span class="m">700</span><span class="w"> </span>~/.config/engram
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>install<span class="w"> </span>-m<span class="w"> </span><span class="m">600</span><span class="w"> </span>~/engram/deploy/subtitle-cache/engram-subtitle-cache.env.example<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>~/.config/engram/subtitle-cache.env
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="si">${</span><span class="nv">EDITOR</span><span class="k">:-</span><span class="nv">nano</span><span class="si">}</span><span class="w"> </span>~/.config/engram/subtitle-cache.env
+</code></pre></div>
+<p>Fill in <code>TMDB_API_KEY</code>, <code>OPENSUBTITLES_API_KEY</code>, <code>OPENSUBTITLES_USERNAME</code>, and
+<code>OPENSUBTITLES_PASSWORD</code>. Use LF line endings and leave no trailing whitespace
+after a value: <code>systemd</code>'s <code>EnvironmentFile</code> parser is <code>KEY=value</code> with no
+shell quoting or expansion, and a stray <code>\r</code> from a file edited on Windows or
+a trailing space is silently appended to the token or password. That surfaces
+as an opaque auth failure at 02:00 with nobody watching; the file's own
+comments cover verifying with <code>cat -A</code>. The file is never committed and its
+contents are never pasted into a terminal transcript, an issue, or a chat
+session.</p>
+<p>Verify the file has the four keys and non-empty values, without printing the
+values themselves:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>awk<span class="w"> </span>-F<span class="o">=</span><span class="w"> </span><span class="s1">'/^[A-Z]/ {printf "%s len=%d\n", $1, length($2)}'</span><span class="w"> </span>~/.config/engram/subtitle-cache.env
+</code></pre></div>
+<p>Expected: four lines, <code>TMDB_API_KEY</code>, <code>OPENSUBTITLES_API_KEY</code>,
+<code>OPENSUBTITLES_USERNAME</code>, <code>OPENSUBTITLES_PASSWORD</code>, each with <code>len=</code> greater
+than zero. A <code>TMDB_API_KEY len=</code> near 32 means the short v3 API key was
+pasted instead of the long v4 Read Access Token.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># 4. Units</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>install<span class="w"> </span>-d<span class="w"> </span>-m<span class="w"> </span><span class="m">755</span><span class="w"> </span>~/.config/systemd/user
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>install<span class="w"> </span>-m<span class="w"> </span><span class="m">644</span><span class="w"> </span>~/engram/deploy/subtitle-cache/engram-subtitle-cache.service<span class="w"> </span>~/.config/systemd/user/
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>install<span class="w"> </span>-m<span class="w"> </span><span class="m">644</span><span class="w"> </span>~/engram/deploy/subtitle-cache/engram-subtitle-cache.timer<span class="w"> </span>~/.config/systemd/user/
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>systemctl<span class="w"> </span>--user<span class="w"> </span>daemon-reload
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>systemctl<span class="w"> </span>--user<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>engram-subtitle-cache.timer
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>systemctl<span class="w"> </span>--user<span class="w"> </span>list-unit-files<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>engram-subtitle-cache
+</code></pre></div>
+<p>Expected: <code>engram-subtitle-cache.timer</code> listed as <code>enabled</code>, and
+<code>engram-subtitle-cache.service</code> listed as <code>static</code> (never <code>enabled</code>; see
+below).</p>
+<p><strong>Enable only the timer, never the service.</strong> The <code>.service</code> unit
+deliberately carries no <code>[Install]</code> section: <code>systemctl --user enable
+engram-subtitle-cache.service</code> would wire the harvest to <code>default.target</code> and
+fire it on every user-manager start (every login, every reboot), spending the
+metered OpenSubtitles quota far more than once a day. Only the <code>.timer</code> has an
+<code>[Install]</code> section, and it activates the service directly at its scheduled
+time.</p>
+<p><strong>This deliberately enables the timer without starting it (no <code>--now</code>).</strong>
+Enabling wires it to start at boot; it does not run it right now. Do not
+start the timer yet: the cache on this host is still empty, and a timer that
+fires against an empty <code>~/.engram/cache</code> re-harvests everything the laptop
+already holds, burning weeks of OpenSubtitles quota on content that already
+exists. Do the cutover below first, prove a supervised run publishes cleanly
+from the moved corpus, and only then start the timer, in "Start the timer"
+further down.</p>
+<p><strong>Do not add <code>ProtectHome</code> when hardening this unit further.</strong> It would
+break the job outright: <code>harvest.sh</code> needs to read and write the checkout
+(<code>~/engram</code>), <code>~/.engram/cache</code>, and <code>~/.engram/harvest</code>, and <code>gh</code> rewrites
+<code>~/.config/gh</code> on token refresh, all of which live under <code>$HOME</code>. The
+service file's own comments carry this same warning next to <code>ProtectSystem</code>.</p>
+<p><strong>Lingering is required</strong> and needs root:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>sudo<span class="w"> </span>loginctl<span class="w"> </span>enable-linger<span class="w"> </span>jsakkos
+</code></pre></div>
+<p>Without it the user manager is torn down at logout and the timer never fires
+while nobody is logged in. Verify with <code>loginctl show-user jsakkos -p Linger</code>,
+which must print <code>Linger=yes</code>.</p>
+<h2 id="cutover-from-the-laptop">Cutover from the laptop</h2>
+<p>Order matters, and it matters more than the mechanical order the install
+commands happen to appear in above: the timer must not be started until the
+corpus and its coverage database are in place. The coverage database is what
+stops the server re-harvesting 36,000 episodes it already has on disk, so it
+moves with the corpus, and only one machine may harvest at a time, so this is
+also the point where the laptop stops running <code>build_subtitle_cache.py</code>.</p>
+<p><code>~/.engram/cache</code> does not exist yet on a fresh host. Create the directory
+levels first: plain <code>rsync</code> creates only the final path component, not the
+parents.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>ssh<span class="w"> </span>jsakkos@192.168.1.122<span class="w"> </span><span class="s1">'install -d -m 755 ~/.engram/cache/data'</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># From the laptop (Git Bash), corpus first, then coverage:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>rsync<span class="w"> </span>-av<span class="w"> </span>--partial<span class="w"> </span>--progress<span class="w"> </span>~/.engram/cache/data/<span class="w"> </span>jsakkos@192.168.1.122:~/.engram/cache/data/
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>rsync<span class="w"> </span>-av<span class="w"> </span>--partial<span class="w"> </span>--progress<span class="w"> </span>~/.engram/cache/tmdb_cache.sqlite<span class="w"> </span>jsakkos@192.168.1.122:~/.engram/cache/
+</code></pre></div>
+<p>Verify the transfer landed completely before moving on:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># SRT file counts must match between laptop and server:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>find<span class="w"> </span>~/.engram/cache/data<span class="w"> </span>-name<span class="w"> </span><span class="s2">"*.srt"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>ssh<span class="w"> </span>jsakkos@192.168.1.122<span class="w"> </span><span class="s1">'find ~/.engram/cache/data -name "*.srt" | wc -l'</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># subtitle_coverage row counts must also match:</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import sqlite3; c=sqlite3.connect('</span><span class="nv">$HOME</span><span class="s2">/.engram/cache/tmdb_cache.sqlite'); print(c.execute('select count(*) from subtitle_coverage').fetchone()[0])"</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>ssh<span class="w"> </span>jsakkos@192.168.1.122<span class="w"> </span><span class="s1">'python3 -c "import sqlite3; c=sqlite3.connect(\"/home/jsakkos/.engram/cache/tmdb_cache.sqlite\"); print(c.execute(\"select count(*) from subtitle_coverage\").fetchone()[0])"'</span>
+</code></pre></div>
+<p>Expected: both pairs of counts match. A materially lower count on the server
+means an interrupted transfer; re-run the <code>rsync</code> (<code>--partial</code> makes it
+resumable) rather than proceeding.</p>
+<p>Then prove the server ships from disk at zero quota cost with a supervised
+run, before starting the timer. See "First run" below.</p>
+<h2 id="first-run-supervised">First run (supervised)</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>systemctl<span class="w"> </span>--user<span class="w"> </span>start<span class="w"> </span>engram-subtitle-cache.service
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>journalctl<span class="w"> </span>--user<span class="w"> </span>-u<span class="w"> </span>engram-subtitle-cache.service<span class="w"> </span>-f
+</code></pre></div>
+<p>What a healthy first run looks like:</p>
+<ul>
+<li><code>preflight ok (uv, gh, flock, show list, ...KB free)</code></li>
+<li><code>OpenSubtitles API: ACTIVE</code> and a real remaining-quota number near 1000</li>
+<li>a long run of seasons shipping from disk without downloads</li>
+<li><code>publish-guard: growth: ...</code> (or <code>within-tolerance</code>) with a show/episode
+  count close to the published baseline. <code>within-tolerance</code> covers a candidate
+  up to 2% below the baseline by design, so a small dip there is the guard
+  working as intended, not a warning sign; only a <code>blocked</code> or <code>undecided</code>
+  verdict needs attention.</li>
+<li><code>verified release assets: ... bytes, ... bytes</code></li>
+<li>either <code>harvest completed the full corpus</code> (exit 0) or, more commonly,
+  <code>UPLOAD SUCCEEDED. The harvest stopped early only because it hit its
+  download budget, which is the normal nightly outcome...</code> (exit 10)</li>
+</ul>
+<h2 id="start-the-timer">Start the timer</h2>
+<p>Only after the supervised first run above has published successfully (exit 0
+or 10, both mean the release updated) does the timer take over the nightly
+schedule:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>systemctl<span class="w"> </span>--user<span class="w"> </span>start<span class="w"> </span>engram-subtitle-cache.timer
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>systemctl<span class="w"> </span>--user<span class="w"> </span>list-timers<span class="w"> </span>engram-subtitle-cache.timer
+</code></pre></div>
+<p>Expected: a <code>NEXT</code> column showing tomorrow at roughly 02:00 UTC, plus the
+timer's randomized delay.</p>
+<h2 id="monitoring">Monitoring</h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Did last night run, and did it fail?</td>
+<td><code>systemctl --user status engram-subtitle-cache.service</code></td>
+</tr>
+<tr>
+<td>Did it publish, and was it a full corpus or a quota halt?</td>
+<td><code>journalctl --user -u engram-subtitle-cache.service --since yesterday \| grep 'harvest:'</code> (see the exit-code note below: a quota halt reports as success with status 0)</td>
+</tr>
+<tr>
+<td>When does it run next?</td>
+<td><code>systemctl --user list-timers engram-subtitle-cache.timer</code></td>
+</tr>
+<tr>
+<td>What happened?</td>
+<td><code>journalctl --user -u engram-subtitle-cache.service --since yesterday</code></td>
+</tr>
+<tr>
+<td>Is the release fresh?</td>
+<td><code>gh release view subtitle-cache-latest --repo Jsakkos/engram</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="reading-the-exit-codes">Reading the exit codes</h2>
+<p>The service's exit status is <code>harvest.sh</code>'s own exit code, not
+<code>build_subtitle_cache.py</code>'s. Several of these codes mean the run published
+successfully even though systemd would otherwise call the unit failed; that
+is why the service unit carries <code>SuccessExitStatus=10</code> (see below).</p>
+<p><strong><code>systemctl</code> will not show you exit 10.</strong> A code listed in
+<code>SuccessExitStatus</code> is normalised away: systemd reports <code>Result=success</code> and
+<code>ExecMainStatus=0</code>, so a quota-halted night and a full-corpus night look
+identical in <code>systemctl --user status</code>. Verified on systemd 255. To tell them
+apart, read the journal: a quota halt logs <code>harvest exit was 2</code> and the
+<code>UPLOAD SUCCEEDED ... DO NOT re-run</code> banner, while a full corpus logs
+<code>harvest completed the full corpus</code>. Every other code in the table is a real
+failure and does show up in <code>systemctl --user status</code> as
+<code>Result=exit-code</code> with the true <code>ExecMainStatus</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Exit</th>
+<th>Meaning</th>
+<th>Published?</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Harvest completed the full corpus; packed and published</td>
+<td>Yes</td>
+<td>None</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Harvest halted on the OpenSubtitles quota guard partway through; packed from disk and published anyway</td>
+<td>Yes, from disk</td>
+<td>None. This is the <strong>normal</strong> nightly outcome when <code>ENGRAM_MAX_DOWNLOADS</code> sits under the account's daily cap. Do not re-run the harvest today: a second run burns the remaining quota and can race the timer's next run. <code>SuccessExitStatus=10</code> in the service unit tells systemd to treat this as a clean run, so a healthy quota-halted night does not show up as a failed unit and train the operator to ignore real failures.</td>
+</tr>
+<tr>
+<td>20</td>
+<td>The shrink guard blocked the upload</td>
+<td>No; live release unchanged</td>
+<td>See "The shrink guard blocked the upload" below</td>
+</tr>
+<tr>
+<td>21</td>
+<td>The shrink guard could not decide (couldn't reach GitHub, malformed manifest, untrustworthy published baseline)</td>
+<td>No; live release unchanged</td>
+<td>Same as a guard block: read the journal, fix the underlying problem, re-run manually</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Everything else: preflight failure (missing <code>uv</code>/<code>gh</code>/<code>flock</code>, unauthenticated <code>gh</code>, missing show list, insufficient disk), lock already held, harvest process failure, pack failure, or an upload/verification failure after retries</td>
+<td>Usually no; an upload failure after all retries can leave the release <strong>inconsistent</strong></td>
+<td>Read the journal; see "Recovery" below</td>
+</tr>
+<tr>
+<td>143</td>
+<td>Terminated by <code>SIGTERM</code> (systemd <code>TimeoutStartSec</code>, or a manual <code>systemctl --user stop</code>)</td>
+<td>No</td>
+<td>Check whether the timeout is too tight for a cold run, or whether the stop was intentional</td>
+</tr>
+</tbody>
+</table>
+<h2 id="recovery">Recovery</h2>
+<p><strong>A second run started while one was already in progress.</strong> <code>harvest.sh</code>
+takes an exclusive <code>flock</code> on <code>$WORK_DIR/.harvest.lock</code> before touching
+anything metered. A run that finds the lock held logs <code>FATAL: another
+harvest is already running (lock held); exiting without touching the quota</code>
+and exits 1 immediately, without spending any quota or disturbing the
+in-progress run. No action needed beyond confirming only one run is actually
+active (<code>systemctl --user status engram-subtitle-cache.service</code>); if the
+"in-progress" run is actually stuck, investigate that one, not the one that
+backed off.</p>
+<p><strong>The shrink guard blocked the upload.</strong> The live release is untouched, which
+is the point. Compare by hand:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">cd</span><span class="w"> </span>~/engram/backend
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>scripts/publish_guard.py<span class="w"> </span>--candidate<span class="w"> </span>~/.engram/harvest/manifest.json
+</code></pre></div>
+<p>If the shrink is deliberate (a corpus pruning), re-run with <code>--allow-shrink</code>,
+then upload manually:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>gh<span class="w"> </span>release<span class="w"> </span>upload<span class="w"> </span>subtitle-cache-latest<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span>~/.engram/harvest/engram-subtitle-cache.tar.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span>~/.engram/harvest/manifest.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span>--clobber<span class="w"> </span>--repo<span class="w"> </span>Jsakkos/engram
+</code></pre></div>
+<p>If it is not deliberate, do not override it. Find out why the corpus lost
+content first.</p>
+<p><strong>An upload failed every retry, or post-upload verification failed.</strong>
+<code>harvest.sh</code> retries <code>gh release upload</code> up to <code>ENGRAM_UPLOAD_ATTEMPTS</code>
+(default 3) times with backoff, then verifies the two uploaded assets by
+re-fetching the release's asset list and comparing sizes against the local
+files. Either failure logs the same warning:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>release subtitle-cache-latest may now be INCONSISTENT (missing asset, or
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>tarball and manifest.json from different builds); re-upload
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>/home/jsakkos/.engram/harvest/engram-subtitle-cache.tar.gz and
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>/home/jsakkos/.engram/harvest/manifest.json by hand
+</code></pre></div>
+<p>This means the release can be left with a missing asset, or with a tarball
+and <code>manifest.json</code> from different builds (a client compares their embedded
+checksums and silently discards the download if they disagree, so installs
+quietly stop updating with only a debug-level client log). Re-upload both
+files by hand with the exact paths the script names in the log:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>gh<span class="w"> </span>release<span class="w"> </span>upload<span class="w"> </span>subtitle-cache-latest<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span>~/.engram/harvest/engram-subtitle-cache.tar.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span>~/.engram/harvest/manifest.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">  </span>--clobber<span class="w"> </span>--repo<span class="w"> </span>Jsakkos/engram
+</code></pre></div>
+<p>Then confirm both assets are present and the right size:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>gh<span class="w"> </span>release<span class="w"> </span>view<span class="w"> </span>subtitle-cache-latest<span class="w"> </span>--repo<span class="w"> </span>Jsakkos/engram<span class="w"> </span>--json<span class="w"> </span>assets<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.assets[] | "\(.name) \(.size)"'</span>
+</code></pre></div>
+<p><strong>Preflight failed before any quota was touched.</strong> Every publishing
+prerequisite is checked up front so a broken environment never costs a
+metered harvest. The journal line names the exact problem:</p>
+<ul>
+<li><code>FATAL: required tool 'uv' not found on PATH; install uv to ~/.local/bin and
+  check the unit's PATH=</code> (also raised for <code>gh</code> and <code>flock</code>, with the fix
+  named in the same line)</li>
+<li><code>FATAL: gh is not authenticated for github.com (exit N); run 'gh auth login'
+  as this user</code> (run <code>gh auth login</code> as <code>jsakkos</code>, not as the operator's own
+  account)</li>
+<li><code>FATAL: show list not found at &lt;path&gt;</code> (checkout is missing or
+  <code>ENGRAM_SHOW_LIST</code> points somewhere wrong)</li>
+<li><code>FATAL: only &lt;N&gt;KB free on &lt;dir&gt;'s filesystem, need &lt;N&gt;KB</code> (free up space;
+  the default floor is 1 GiB, roughly twice the artifact)</li>
+</ul>
+<p>None of these touch the quota; fix the named problem and either wait for the
+next scheduled run or start the service manually.</p>
+<p><strong>Quota exhausted every night.</strong> Check the true remaining quota; the login
+response's <code>allowed_downloads</code> is the daily CAP, not the remainder. A run that
+whose end-of-run summary reports <code>OS quota left:</code> as <code>0 downloads today</code> has
+nothing to do but wait ~24h.</p>
+<p><strong>Rolling back a bad publish.</strong> There is no history on a rolling release asset.
+Re-pack from a known-good corpus and <code>--clobber</code> over it.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
