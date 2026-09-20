@@ -6,6 +6,7 @@ ranking/reassignment loop and organize routing, plus check_job_completion's
 decision branches. The organizer and websocket layers are stubbed.
 """
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, Mock
 
@@ -1553,3 +1554,72 @@ class TestWrongSeasonVsWrongShowPrecedence:
         assert job.detected_season == 1
         coord._rematch_title.assert_not_awaited()
         assert job_id not in coord._season_retries
+
+
+@pytest.mark.unit
+class TestWrongSeasonRetryClearsBeforeDispatch:
+    """The cleared season must be COMMITTED before the first title is dispatched.
+
+    ``rematch_single_title`` is fire-and-forget: it awaits a commit and a
+    websocket broadcast before it reaches ``asyncio.create_task``, so those awaits
+    are suspension points. A task created for title N can therefore start running
+    -- and take its own fresh read of ``detected_season`` -- while the loop is
+    still dispatching title N+1. Clearing the season after the loop would leave
+    the first titles matching against the very season that matched nothing, which
+    is the bug this retry exists to fix.
+    """
+
+    async def test_every_dispatch_sees_the_cleared_season(self, tmp_path):
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+                (2, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=4229,
+            detected_season=3,
+        )
+        seen: list[int | None] = []
+
+        async def _spy_rematch(jid, tid, **kw):
+            # Stand in for the background match task's first fresh read of the
+            # job row, and yield the way the real dispatch does.
+            await asyncio.sleep(0)
+            async with _unit_session_factory() as s:
+                job = await s.get(DiscJob, jid)
+                seen.append(job.detected_season)
+
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        coord._rematch_title = _spy_rematch
+        coord._review_passes[job_id] = 999
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        assert seen == [None, None, None], f"a dispatched title read a stale season: {seen}"
+
+    async def test_season_is_restored_when_nothing_could_be_dispatched(self, tmp_path):
+        # Every title's staging file is gone. The sweep achieved nothing, so the
+        # job must look exactly as it did before rather than losing its season.
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=4229,
+            detected_season=3,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        coord._rematch_title = AsyncMock(side_effect=ValueError("staging file missing"))
+        coord._review_passes[job_id] = 999
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.detected_season == 3
+        assert job.state == JobState.REVIEW_NEEDED

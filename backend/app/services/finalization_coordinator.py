@@ -631,9 +631,26 @@ class FinalizationCoordinator:
             return False
 
         labelled = job.detected_season
+        prior_state = job.state
+        prior_status = job.conflict_status
         # Mark BEFORE dispatching: a re-entrant completion check (a title finishing
         # while the loop below is still dispatching) must not start a second sweep.
         self._season_retries.add(job_id)
+
+        # Clear and COMMIT the season BEFORE dispatching anything. ``rematch_single_title``
+        # is fire-and-forget: it awaits a commit and a websocket broadcast before it
+        # reaches ``asyncio.create_task``, and those awaits are suspension points, so
+        # a task created for title N can start running (and take its own fresh read of
+        # this row) while the loop below is still dispatching title N+1. Clearing
+        # afterwards would leave the earliest titles matching against the very season
+        # that matched nothing, non-deterministically and invisibly.
+        job.detected_season = None
+        job.conflict_status = f"Re-matching across all seasons (season {labelled} matched nothing)"
+        job.updated_at = datetime.now(UTC)
+        if job.state != JobState.MATCHING:
+            job.state = JobState.MATCHING
+        session.add(job)
+        await session.commit()
 
         candidates = [t for t in titles if t.is_selected and not t.is_extra]
         dispatched: list[int] = []
@@ -648,21 +665,25 @@ class FinalizationCoordinator:
                 logger.warning(f"Cross-season re-match: skipping title {t.id} (job {job_id}): {e}")
 
         if not dispatched:
+            # Nothing was re-dispatched (e.g. every staging file is gone), so the
+            # sweep achieved nothing and the pre-commit above must be undone: a job
+            # left season-less would show the user a disc with no season and send
+            # any later re-match down the expensive cross-season path for no reason.
+            job.detected_season = labelled
+            job.conflict_status = prior_status
+            job.state = prior_state
+            session.add(job)
+            await session.commit()
             await self._clear_review_state(session, job)
             return False
 
-        job.detected_season = None
         # The ladder was exhausted against the WRONG corpus, so its verdict says
         # nothing about the right one. Reset it or the cross-season results would
-        # be handed to a human without a single deep pass.
+        # be handed to a human without a single deep pass. Only after a dispatch
+        # actually happened: dropping the counters on the no-op path above would
+        # let the ladder re-run from pass 1 on the next completion re-entry.
         self._review_passes.pop(job_id, None)
         self._conflict_passes.pop(job_id, None)
-        job.conflict_status = f"Re-matching across all seasons (season {labelled} matched nothing)"
-        job.updated_at = datetime.now(UTC)
-        if job.state != JobState.MATCHING:
-            job.state = JobState.MATCHING
-        session.add(job)
-        await session.commit()
 
         logger.info(
             f"Job {job_id}: every title failed to match against labelled season "
