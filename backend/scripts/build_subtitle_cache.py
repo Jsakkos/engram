@@ -655,22 +655,39 @@ def _render_tally(tally: "RunTally") -> str:
 def _season_numbering_entry(tmdb_id: int | None, season: int, reference_count: int) -> dict:
     """Describe how one harvested season is numbered, for the manifest.
 
-    Mirrors ``pack_subtitle_cache._season_numbering_entry`` exactly, minus its
-    ``offline`` branch: this script always has TMDB configured because it
-    downloads subtitles, so a missing ``tmdb_id`` is its only unknown path. Both
-    scripts publish to the same rolling release, so a pack-built and a
-    build-built artifact must be indistinguishable to a consumer.
+    The corpus is numbered by whatever the subtitle providers index; TMDB may
+    number the same season differently (a segment-format show catalogues
+    ~7-minute shorts while the providers index 22-minute broadcast half-hours).
+    Recording which one a season was harvested in is the only way a consumer can
+    tell whether a code from it is a canonical TMDB coordinate, because both
+    schemes are stored under the same canonical season key.
+
+    **This is the single implementation for both builder scripts.**
+    ``pack_subtitle_cache`` imports it and adds only its ``offline``
+    short-circuit. They publish to the same rolling release, so a pack-built and
+    a build-built artifact must be indistinguishable to a consumer, and two
+    copies of this logic would be free to drift into saying different things
+    about the same season.
+
+    A ``tmdb_id`` of None yields UNKNOWN with no ``roster_size``: there is
+    nothing to compare against, and an unknown season must stay distinguishable
+    from a genuinely divergent one. That path is unreachable from this script's
+    own loop (it resolves every show against TMDB before harvesting) but is the
+    live unresolved-show path for the pack caller.
     """
     if tmdb_id is None:
         return {"scheme": SCHEME_UNKNOWN}
     try:
-        # Warm from harvest in the common case: this script fetches season
-        # details while downloading. Returns 0, not None, on a missing key or a
-        # failed request; derive_numbering_scheme maps that to UNKNOWN, so a
-        # slow or failing lookup degrades the marker rather than the build.
+        # Persistent-cached (TTL_SEASON). Always warm when called from this
+        # script: download_subtitles fetches season details for every season it
+        # harvests. NOT necessarily warm for the pack caller, which reads SRTs
+        # already on disk, so a cold cache there means one sequential TMDB call
+        # per season. Returns 0, not None, on a missing key or a failed request;
+        # derive_numbering_scheme maps that to UNKNOWN, so a slow or failing
+        # lookup degrades the marker rather than the run.
         roster_size = fetch_season_details(str(tmdb_id), season)
     except Exception as e:
-        # A roster lookup must never abort a build that can run for 12 hours.
+        # A roster lookup must never abort a run that can cover 500 shows.
         # Widest catch is deliberate: fetch_season_details already swallows its
         # own network errors, so anything reaching here is unanticipated and the
         # season simply becomes UNKNOWN.

@@ -43,7 +43,13 @@ import numpy as np
 
 # Reuse the canonical DB-bootstrap helpers so the standalone script sets up the
 # same schema/credentials path the running app uses (see build_subtitle_cache).
-from build_subtitle_cache import _bootstrap_config_from_env, _ensure_db_schema
+from build_subtitle_cache import (
+    _bootstrap_config_from_env,
+    _ensure_db_schema,
+)
+from build_subtitle_cache import (
+    _season_numbering_entry as _build_season_numbering_entry,
+)
 from loguru import logger
 from scipy import sparse
 
@@ -52,10 +58,7 @@ from app.matcher.episode_identification import (
     SubtitleCache,
     _corpus_show_dir,
 )
-from app.matcher.numbering_scheme import (
-    SCHEME_UNKNOWN,
-    derive_numbering_scheme,
-)
+from app.matcher.numbering_scheme import SCHEME_UNKNOWN
 from app.matcher.subtitle_utils import (
     MULTI_EP_RE as _MULTI_EP_RE,
 )
@@ -63,7 +66,7 @@ from app.matcher.subtitle_utils import (
     SINGLE_EP_RE as _SINGLE_EP_RE,
 )
 from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
-from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
+from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
@@ -93,39 +96,17 @@ def _season_numbering_entry(
 ) -> dict:
     """Describe how one harvested season is numbered, for the manifest.
 
-    The corpus is numbered by whatever the subtitle providers index; TMDB may
-    number the same season differently (a segment-format show catalogues
-    ~7-minute shorts while the providers index 22-minute broadcast half-hours).
-    Recording which one a season was harvested in is the only way a consumer can
-    tell whether a code from it is a canonical TMDB coordinate, because both
-    schemes are stored under the same canonical season key.
-
-    Offline packs and unresolved shows emit UNKNOWN with no ``roster_size``:
-    there is nothing to compare against, and an unknown season must stay
-    distinguishable from a genuinely divergent one.
+    Thin wrapper over the build script's implementation, which is the single
+    definition for both builders. The only thing this script adds is the
+    ``offline`` short-circuit: with ``--offline`` there is no TMDB to resolve a
+    canonical roster against, so the season is UNKNOWN and no lookup is even
+    attempted. Everything else (the roster lookup, its failure handling, and the
+    classification) is shared, so a pack-built and a build-built artifact cannot
+    disagree about how they describe the same season.
     """
-    if offline or tmdb_id is None:
+    if offline:
         return {"scheme": SCHEME_UNKNOWN}
-    try:
-        # Persistent-cached (TTL_SEASON). Usually warm: the harvest path calls
-        # fetch_season_details via addic7ed_client. It is NOT warm for a season
-        # sourced only from tvsubtitles, or for corpus data placed on disk by
-        # hand, so a cold cache means one sequential TMDB call per such season.
-        # Returns 0, not None, on a missing key or a failed request;
-        # derive_numbering_scheme maps that to UNKNOWN, so a slow or failing
-        # lookup degrades the marker rather than the pack.
-        roster_size = fetch_season_details(str(tmdb_id), season)
-    except Exception as e:
-        # A roster lookup must never abort a pack run that may cover 500 shows.
-        # Widest catch is deliberate: fetch_season_details already swallows its
-        # own network errors, so anything reaching here is unanticipated and the
-        # season simply becomes UNKNOWN.
-        logger.warning(f"  roster lookup failed for tmdb {tmdb_id} S{season:02d}: {e}")
-        roster_size = 0
-    scheme = derive_numbering_scheme(reference_count, roster_size)
-    if scheme == SCHEME_UNKNOWN:
-        return {"scheme": SCHEME_UNKNOWN}
-    return {"scheme": scheme, "roster_size": roster_size}
+    return _build_season_numbering_entry(tmdb_id, season, reference_count)
 
 
 def _discover_shows(data_dir: Path) -> dict[str, dict[int, list[tuple[int, str, Path]]]]:
