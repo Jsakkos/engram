@@ -63,12 +63,20 @@ def _ordering_for_title(match_details, ordering: str) -> str:
     if not isinstance(details, dict):
         return ordering
     if numbering_schemes_agree(details) is False:
+        if details.get("numbering_scheme"):
+            why = (
+                f"the published subtitle cache records this season as "
+                f"{details['numbering_scheme']!r} numbering against a "
+                f"{details.get('pack_roster_size')}-episode TMDB roster"
+            )
+        else:
+            why = (
+                f"its episode code came from a {details.get('reference_count')}-episode "
+                f"reference corpus against a {details.get('roster_size')}-episode TMDB roster"
+            )
         logger.info(
             f"Keeping aired numbering for this title instead of the {ordering} ordering: "
-            f"its episode code came from a {details.get('reference_count')}-episode "
-            f"reference corpus against a {details.get('roster_size')}-episode TMDB "
-            f"roster, so it is not a canonical coordinate the episode group can "
-            f"resolve."
+            f"{why}, so it is not a canonical coordinate the episode group can resolve."
         )
         return "aired"
     return ordering
