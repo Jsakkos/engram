@@ -287,3 +287,74 @@ class TestPrecomputedCacheService:
         # of fake_download/fake_update_config, the function we're testing
         # didn't honor the format-version check.
         await svc.ensure_precomputed_cache()
+
+
+@pytest.mark.unit
+class TestForwardsCompatibility:
+    """An unrecognised key at the CURRENT format version must still load.
+
+    This is the assumption the season-numbering marker was added on. It went in
+    additively so CACHE_FORMAT_VERSION could stay put, because both the matcher's
+    manifest loader and the cache downloader hard-refuse a version they do not
+    know: a bump would make every already-shipped backend fall back to scraping
+    the moment the nightly published, until its user updated.
+
+    The refusal side of that trade is already pinned by
+    TestEpisodeMatcherCacheLoader.test_format_version_mismatch_falls_back and by
+    test_precomputed_cache_service.test_format_version_mismatch_skips. This is
+    the other side: tolerance of additions at a version we DO know.
+    """
+
+    def _write_cache(self, tmp_path, show_entry_extra=None, manifest_extra=None):
+        show = "Test Show"
+        tmdb_id = 1
+        precomputed = tmp_path / "precomputed"
+        show_dir = precomputed / str(tmdb_id)
+        show_dir.mkdir(parents=True)
+
+        counts, idf = _build_counts()
+        np.save(precomputed / "idf.npy", idf)
+        sparse.save_npz(show_dir / "S01.npz", counts)
+        (show_dir / "S01.index.json").write_text(json.dumps(["S01E01", "S01E02", "S01E03"]))
+
+        entry = {"tmdb_id": tmdb_id, "name": show, "seasons": [1]}
+        entry.update(show_entry_extra or {})
+        manifest = {
+            "cache_format_version": CACHE_FORMAT_VERSION,
+            "vectorizer_config_hash": vectorizer_config_hash(),
+            "content_version": "test",
+            "shows": {str(tmdb_id): entry},
+        }
+        manifest.update(manifest_extra or {})
+        (precomputed / "manifest.json").write_text(json.dumps(manifest))
+        return show
+
+    def test_unknown_show_entry_key_still_loads(self, tmp_path):
+        show = self._write_cache(
+            tmp_path,
+            show_entry_extra={
+                "season_numbering": {"1": {"scheme": "divergent", "roster_size": 38}},
+                "some_future_key": {"anything": True},
+            },
+        )
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name=show)
+        loaded = matcher._load_precomputed_season(1)
+        assert loaded is not None
+        assert loaded[1] == ["S01E01", "S01E02", "S01E03"]
+
+    def test_unknown_top_level_key_still_loads(self, tmp_path):
+        show = self._write_cache(tmp_path, manifest_extra={"some_future_top_level": 1})
+        assert load_precomputed_manifest(tmp_path) is not None
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name=show)
+        assert matcher._load_precomputed_season(1) is not None
+
+    def test_the_marker_does_not_gate_loading(self, tmp_path):
+        # A divergent season must still LOAD. The marker changes how a matched
+        # code is interpreted downstream; it is not a reason to refuse the
+        # corpus, which is the only reference data that season has.
+        show = self._write_cache(
+            tmp_path,
+            show_entry_extra={"season_numbering": {"1": {"scheme": "divergent"}}},
+        )
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name=show)
+        assert matcher._load_precomputed_season(1) is not None
