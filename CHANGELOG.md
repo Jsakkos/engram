@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.36.2] - 2026-09-20
+
+_Highlights: box-set discs whose season label differs from TMDB now re-match across every season, segment-format shows are filed under the right episode number, and matched discs stop asking for a manual confirmation on every track._
+
 ### Fixed
 
 - **A disc whose season label doesn't match the show's TMDB seasons is now
