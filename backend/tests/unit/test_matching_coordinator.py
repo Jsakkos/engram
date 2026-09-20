@@ -2082,3 +2082,73 @@ class TestCombinedAssignmentPrefill:
         _apply_multi_episode_review(title, conjoined_hint=3)
         assert title.state == TitleState.REVIEW
         assert title.matched_episode == "S01E01"
+
+
+@pytest.mark.unit
+class TestCorpusRosterNamespaceGuard:
+    """A runtime-derived conjoined hint may only park a track when the reference
+    corpus could, in principle, have confirmed it.
+
+    Segment-format shows (Dexter's Laboratory) expose the failure: TMDB numbers
+    each ~7-minute short (38 entries for season 1) while the subtitle corpus is
+    numbered by 22-minute broadcast half-hours (13 entries). The runtime hint is
+    computed against the ROSTER and the verdict against the CORPUS, so when the
+    two are in different numbering schemes the hint fires on every track and the
+    verdict can never confirm it -- parking the whole disc for a human who has no
+    better information than the matcher did.
+    """
+
+    def _title(self, details: dict):
+        return SimpleNamespace(
+            state=TitleState.MATCHED,
+            matched_episode="S01E01",
+            match_details=json.dumps(details),
+            match_source="engram",
+        )
+
+    def _unconfirmed(self, **extra):
+        return {
+            "multi_episode": {
+                "is_multi_episode": False,
+                "reason": "single_episode",
+                "codes": [],
+            },
+            **extra,
+        }
+
+    def test_mismatched_namespace_does_not_park_an_unconfirmed_hint(self):
+        # Dexter's Laboratory S1: 13 half-hour references, 38-segment roster.
+        title = self._title(self._unconfirmed(reference_count=13, roster_size=38))
+        _apply_multi_episode_review(title, conjoined_hint=2)
+        assert title.state == TitleState.MATCHED
+        assert "error" not in json.loads(title.match_details)
+
+    def test_matching_namespace_still_parks_an_unconfirmed_hint(self):
+        title = self._title(self._unconfirmed(reference_count=26, roster_size=26))
+        _apply_multi_episode_review(title, conjoined_hint=2)
+        assert title.state == TitleState.REVIEW
+        assert json.loads(title.match_details)["error"] == MULTI_EPISODE_ERROR_CODE
+
+    def test_unknown_counts_still_park_an_unconfirmed_hint(self):
+        # Backwards compatibility: a result from before the counts were recorded
+        # keeps the old conservative behaviour.
+        title = self._title(self._unconfirmed())
+        _apply_multi_episode_review(title, conjoined_hint=2)
+        assert title.state == TitleState.REVIEW
+
+    def test_confirmed_verdict_parks_even_across_namespaces(self):
+        # Positional vote runs are direct evidence about THIS file. A namespace
+        # disagreement does not make two observed runs untrue.
+        details = {
+            "multi_episode": {
+                "is_multi_episode": True,
+                "reason": "contiguous_runs",
+                "codes": ["S01E01", "S01E02"],
+            },
+            "reference_count": 13,
+            "roster_size": 38,
+        }
+        title = self._title(details)
+        _apply_multi_episode_review(title, conjoined_hint=2)
+        assert title.state == TitleState.REVIEW
+        assert json.loads(title.match_details)["error"] == MULTI_EPISODE_ERROR_CODE

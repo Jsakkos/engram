@@ -1292,3 +1292,264 @@ class TestApplyDecisionFields:
         t = DiscTitle(job_id=1, title_index=0, matched_episode=None)
         FinalizationCoordinator._apply_decision_fields(t, "extra", None)
         assert t.is_extra is True
+
+
+@pytest.mark.unit
+class TestOrderingProjectionNamespaceGuard:
+    """The episode-ordering projection (#200) is the only code that DEREFERENCES a
+    matched episode code: it looks the canonical (season, episode) up in a TMDB
+    episode group. That is only sound when the code really is a canonical TMDB
+    coordinate.
+
+    Dexter's Laboratory is the counter-example. The matcher returned S01E01 from a
+    13-entry half-hour corpus, the projection read it as canonical segment 1 of a
+    38-entry season, and the DVD group mapped that to position 19 -- so a track the
+    review page called S01E01 was filed as S01E19.mkv. When the corpus and the
+    roster disagree on the season's size, the code is not a coordinate in the
+    group's space and the projection must not run.
+    """
+
+    def _details(self, **extra) -> str:
+        return json.dumps({"episode": "S1E1", **extra})
+
+    def test_mismatched_namespace_falls_back_to_aired(self):
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title(self._details(reference_count=13, roster_size=38), "dvd") == (
+            "aired"
+        )
+
+    def test_matching_namespace_keeps_the_chosen_ordering(self):
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title(self._details(reference_count=26, roster_size=26), "dvd") == (
+            "dvd"
+        )
+
+    def test_unknown_counts_keep_the_chosen_ordering(self):
+        # Results predating the counts must not silently lose the user's ordering.
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title(self._details(), "dvd") == "dvd"
+
+    def test_aired_is_unaffected(self):
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title(self._details(reference_count=13, roster_size=38), "aired") == (
+            "aired"
+        )
+
+    def test_malformed_details_keep_the_chosen_ordering(self):
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title("not json", "dvd") == "dvd"
+        assert _ordering_for_title(None, "dvd") == "dvd"
+
+
+@pytest.mark.unit
+class TestDetectWrongSeason:
+    """The pure wrong-season signal: a whole TV disc that matched NOTHING against
+    the season its LABEL claimed.
+
+    A disc's "Season 3" is the publisher's season, not TMDB's. For a show whose
+    DVD structure diverges from its broadcast structure (Dexter's Laboratory: DVD
+    season 3 is canonically season 2, episodes 37-75) the labelled season sends
+    matching at a reference corpus holding entirely different episodes, and every
+    track comes back at the noise floor.
+    """
+
+    def _job(self, **kw):
+        base = dict(
+            drive_id="import",
+            volume_label="SEASON_3",
+            content_type=ContentType.TV,
+            tmdb_id=4229,
+            tmdb_name="Dexter's Laboratory",
+            detected_season=3,
+            subtitle_status="partial",
+        )
+        base.update(kw)
+        return DiscJob(**base)
+
+    def _ttl(self, idx, matched_episode=None, is_extra=False, match_details=None):
+        return DiscTitle(
+            job_id=1,
+            title_index=idx,
+            duration_seconds=1340,
+            matched_episode=matched_episode,
+            is_extra=is_extra,
+            is_selected=True,
+            match_details=match_details,
+            state=TitleState.REVIEW,
+        )
+
+    def test_whole_disc_unmatched_against_labelled_season_is_detected(self):
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        assert _detect_wrong_season(self._job(), [self._ttl(0), self._ttl(1), self._ttl(2)])
+
+    def test_not_detected_when_any_title_matched(self):
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        titles = [self._ttl(0), self._ttl(1, matched_episode="S03E02"), self._ttl(2)]
+        assert not _detect_wrong_season(self._job(), titles)
+
+    def test_not_detected_without_a_pinned_season(self):
+        # Already searching every season: there is nothing left to unpin.
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        titles = [self._ttl(0), self._ttl(1)]
+        assert not _detect_wrong_season(self._job(detected_season=None), titles)
+
+    def test_not_detected_for_movie(self):
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        titles = [self._ttl(0), self._ttl(1)]
+        assert not _detect_wrong_season(self._job(content_type=ContentType.MOVIE), titles)
+
+    def test_not_detected_when_subtitles_never_delivered(self):
+        # No corpus at all: zero matches is expected for the RIGHT season too, so
+        # re-matching against every season would just burn passes (#370).
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        titles = [self._ttl(0), self._ttl(1)]
+        assert not _detect_wrong_season(self._job(subtitle_status=None), titles)
+
+    def test_not_detected_when_every_title_was_refused_for_references(self):
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        refused = json.dumps({"error": REFERENCES_UNREADABLE_ERROR_CODE})
+        titles = [self._ttl(0, match_details=refused), self._ttl(1, match_details=refused)]
+        assert not _detect_wrong_season(self._job(), titles)
+
+    def test_not_detected_with_a_single_episode_candidate(self):
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        assert not _detect_wrong_season(self._job(), [self._ttl(0)])
+
+    def test_extras_are_excluded_from_the_candidate_count(self):
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        titles = [self._ttl(0), self._ttl(1, is_extra=True), self._ttl(2, is_extra=True)]
+        assert not _detect_wrong_season(self._job(), titles)
+
+
+@pytest.mark.unit
+class TestWrongSeasonRetryInCompletion:
+    """A disc that matched nothing against its labelled season is re-matched across
+    every season before being handed to a human. The cross-season path already
+    exists for unknown-season discs; the label was simply never allowed to be wrong.
+    """
+
+    async def _exhausted_coord(self, job_id):
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        coord._rematch_title = AsyncMock()
+        # The season retry sits AFTER the review-escalation ladder, so pin the
+        # ladder as exhausted to reach it (mirrors the real sequence: deeper
+        # passes against the labelled season first, then question the season).
+        coord._review_passes[job_id] = 999
+        return coord
+
+    async def test_unmatched_disc_unpins_season_and_redispatches(self, tmp_path):
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+                (2, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=4229,
+            detected_season=3,
+        )
+        coord = await self._exhausted_coord(job_id)
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, titles = await _load(job_id)
+        assert job.detected_season is None
+        assert job.state == JobState.MATCHING
+        assert coord._rematch_title.await_count == 3
+        coord.finalize_disc_job.assert_not_called()
+        # The ladder is reset so the cross-season results get their own passes.
+        assert job_id not in coord._review_passes
+
+    async def test_retry_happens_once_per_job(self, tmp_path):
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=4229,
+            detected_season=3,
+        )
+        coord = await self._exhausted_coord(job_id)
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+        coord._rematch_title.reset_mock()
+        coord._review_passes[job_id] = 999
+
+        # Cross-season matching also came back empty: hand it to a human rather
+        # than looping. detected_season is already None, so the detector is silent.
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        coord._rematch_title.assert_not_awaited()
+
+    async def test_partially_matched_disc_is_not_retried(self, tmp_path):
+        job_id = await _seed_job(
+            [
+                (0, "S03E01", None, TitleState.MATCHED),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=4229,
+            detected_season=3,
+        )
+        coord = await self._exhausted_coord(job_id)
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.detected_season == 3
+        coord._rematch_title.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestWrongSeasonVsWrongShowPrecedence:
+    """Both detectors fire on the same observation (zero matches disc-wide). The
+    one carrying a corroborating artifact -- a persisted same-name twin -- wins.
+    """
+
+    async def test_persisted_twin_takes_wrong_show_not_a_season_sweep(self, tmp_path):
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            tmdb_id=3452,
+            candidates_json=FRASIER_CANDS,
+            detected_season=1,
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+        coord._rematch_title = AsyncMock()
+        coord._review_passes[job_id] = 999
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert "re-identify" in job.review_reason.lower()
+        # The season was never distrusted: the show is the better explanation.
+        assert job.detected_season == 1
+        coord._rematch_title.assert_not_awaited()
+        assert job_id not in coord._season_retries

@@ -2048,6 +2048,13 @@ class EpisodeMatcher:
                 "matches_rejected": matches_rejected_count,
                 "total_chunks": len(scan_points),
                 "multi_episode": multi_detail,
+                # How many episodes the corpus claims for this season. Recorded on
+                # every result, not just the refusal path above, because callers
+                # need it to tell whether the corpus is numbered like the TMDB
+                # roster: a segment-format show has a 13-entry half-hour corpus
+                # against a 38-entry segment roster, and a code from the former
+                # must not be read as a coordinate in the latter.
+                "reference_count": total,
             }
 
             if best_match:

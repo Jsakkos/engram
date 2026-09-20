@@ -4,6 +4,34 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A disc whose season label doesn't match the show's TMDB seasons is now
+  re-matched across every season instead of failing outright.** Box sets split
+  a show into their own "seasons": the Dexter's Laboratory DVD season 3 is
+  canonically season 2. Engram took the disc label as the TMDB season, matched
+  against a corpus of entirely different episodes, and handed the whole disc to
+  manual review. When every track on a disc fails to match its labelled season,
+  Engram now distrusts the label and searches all seasons, which is what it
+  already did for a disc with no season label at all.
+
+- **Episodes are no longer filed under a shifted number when a non-aired
+  ordering is selected.** For shows where TMDB catalogues each ~7-minute
+  segment separately (38 entries for Dexter's Laboratory season 1) but the
+  reference subtitles are per 22-minute broadcast (13), a track matched as
+  S01E01 was filed as `S01E19.mkv`: the DVD-ordering projection read the
+  matched number as a segment index it never was. Engram now detects that the
+  reference corpus and the TMDB roster disagree on the season's size and keeps
+  the matched number in the filename, so the file on disk matches what the
+  review page showed.
+
+- **Segment-format discs no longer send every track to review.** The same size
+  disagreement made the "this track looks like two joined episodes" check fire
+  on every track of a disc while making its confirmation impossible, so a disc
+  that matched perfectly still asked for 13 manual confirmations. The check now
+  stays silent when the reference subtitles could never have confirmed it. A
+  track whose audio genuinely shows two episodes is still held for review.
+
 ## [0.36.1] - 2026-09-19
 
 _Highlights: two drives can rip at once, later discs in a box set no longer collide with disc 1, and OpenSubtitles failures are named instead of blamed on your API key._
