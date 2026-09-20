@@ -52,6 +52,10 @@ from app.matcher.episode_identification import (
     SubtitleCache,
     _corpus_show_dir,
 )
+from app.matcher.numbering_scheme import (
+    SCHEME_UNKNOWN,
+    derive_numbering_scheme,
+)
 from app.matcher.subtitle_utils import (
     MULTI_EP_RE as _MULTI_EP_RE,
 )
@@ -59,7 +63,7 @@ from app.matcher.subtitle_utils import (
     SINGLE_EP_RE as _SINGLE_EP_RE,
 )
 from app.matcher.subtitle_utils import corpus_dir_name, sanitize_filename
-from app.matcher.tmdb_client import fetch_show_details, fetch_show_id
+from app.matcher.tmdb_client import fetch_season_details, fetch_show_details, fetch_show_id
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
@@ -82,6 +86,42 @@ def _norm_title(s: str) -> str:
     title content to be identical -- so it won't accept a different show.
     """
     return re.sub(r"[^a-z0-9]", "", _TRAILING_YEAR_RE.sub("", s.lower()))
+
+
+def _season_numbering_entry(
+    tmdb_id: int | None, season: int, reference_count: int, offline: bool
+) -> dict:
+    """Describe how one harvested season is numbered, for the manifest.
+
+    The corpus is numbered by whatever the subtitle providers index; TMDB may
+    number the same season differently (a segment-format show catalogues
+    ~7-minute shorts while the providers index 22-minute broadcast half-hours).
+    Recording which one a season was harvested in is the only way a consumer can
+    tell whether a code from it is a canonical TMDB coordinate, because both
+    schemes are stored under the same canonical season key.
+
+    Offline packs and unresolved shows emit UNKNOWN with no ``roster_size``:
+    there is nothing to compare against, and an unknown season must stay
+    distinguishable from a genuinely divergent one.
+    """
+    if offline or tmdb_id is None:
+        return {"scheme": SCHEME_UNKNOWN}
+    try:
+        # Persistent-cached (TTL_SEASON), so a season already fetched during
+        # harvest costs nothing. Returns 0, not None, on a missing key or a
+        # failed request; derive_numbering_scheme maps that to UNKNOWN.
+        roster_size = fetch_season_details(str(tmdb_id), season)
+    except Exception as e:
+        # A roster lookup must never abort a pack run that may cover 500 shows.
+        # Widest catch is deliberate: fetch_season_details already swallows its
+        # own network errors, so anything reaching here is unanticipated and the
+        # season simply becomes UNKNOWN.
+        logger.warning(f"  roster lookup failed for tmdb {tmdb_id} S{season:02d}: {e}")
+        roster_size = 0
+    scheme = derive_numbering_scheme(reference_count, roster_size)
+    if scheme == SCHEME_UNKNOWN:
+        return {"scheme": SCHEME_UNKNOWN}
+    return {"scheme": scheme, "roster_size": roster_size}
 
 
 def _discover_shows(data_dir: Path) -> dict[str, dict[int, list[tuple[int, str, Path]]]]:
@@ -295,6 +335,7 @@ def main() -> int:
 
         show_seasons: list[int] = []
         episode_counts: dict[str, int] = {}
+        season_numbering: dict[str, dict] = {}
         for season in sorted(by_season):
             episodes = sorted(by_season[season], key=lambda x: x[0])
             texts, codes = [], []
@@ -309,6 +350,9 @@ def main() -> int:
             blocks.append((corpus_key, season, codes, counts))
             show_seasons.append(season)
             episode_counts[str(season)] = len(codes)
+            season_numbering[str(season)] = _season_numbering_entry(
+                tmdb_id, season, len(codes), args.offline
+            )
 
         if show_seasons:
             manifest_shows[corpus_key] = {
@@ -316,6 +360,11 @@ def main() -> int:
                 "name": canonical,
                 "seasons": show_seasons,
                 "episode_counts": episode_counts,
+                # Additive: a backend that predates the marker ignores this key
+                # and keeps loading the pack, which is why CACHE_FORMAT_VERSION
+                # does not move. See the design doc for why a bump is the wrong
+                # trade (every shipped backend would fall back to scraping).
+                "season_numbering": season_numbering,
             }
 
     if not blocks:
