@@ -39,8 +39,13 @@ SCHEME_UNKNOWN = "unknown"
 VALID_SCHEMES = frozenset({SCHEME_TMDB_AIRED, SCHEME_DIVERGENT, SCHEME_UNKNOWN})
 
 
-def _usable_count(value) -> bool:
+def usable_count(value) -> bool:
     """A count is usable only if it is a positive, genuine int.
+
+    Public because two call sites need the same notion: this module classifying
+    a season, and the matcher deciding whether a marker's recorded roster is a
+    number worth stamping. A second, subtly different copy of the bool check is
+    exactly the drift this module exists to prevent.
 
     ``bool`` is a subclass of ``int`` in Python, so ``isinstance(True, int)`` is
     True and an accidental boolean would otherwise compare as 1.
@@ -61,6 +66,6 @@ def derive_numbering_scheme(reference_count, roster_size) -> str:
     transient-failure paths, so a non-positive roster must mean UNKNOWN. A TMDB
     outage during a nightly build must never brand healthy seasons DIVERGENT.
     """
-    if not _usable_count(reference_count) or not _usable_count(roster_size):
+    if not usable_count(reference_count) or not usable_count(roster_size):
         return SCHEME_UNKNOWN
     return SCHEME_TMDB_AIRED if reference_count == roster_size else SCHEME_DIVERGENT

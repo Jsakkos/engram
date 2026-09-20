@@ -259,34 +259,50 @@ class TestPrecomputedNumbering:
 
 
 @pytest.mark.unit
-class TestMatchStatsStamping:
+class TestStampNumbering:
     """The marker reaches match_details, which is what consumers read.
 
-    Exercised at the dict level rather than by driving identify_episode end to
-    end (that needs audio, ffmpeg and a real vector corpus). The contract these
-    pin is the shape numbering_schemes_agree consumes.
+    Calls the real ``stamp_numbering`` that ``identify_episode`` calls. It was
+    pulled out to module level precisely so a test could reach it: driving
+    ``identify_episode`` needs audio, ffmpeg and a real vector corpus, and a
+    test that re-implemented the branch would be free to drift from it.
     """
 
-    def _stamp(self, numbering):
-        """Reproduce the stamping branch from identify_episode."""
-        match_stats = {"reference_count": 13}
-        if numbering:
-            match_stats["numbering_scheme"] = numbering["scheme"]
-            if isinstance(numbering.get("roster_size"), int):
-                match_stats["pack_roster_size"] = numbering["roster_size"]
-        return match_stats
-
     def test_marked_season_stamps_scheme_and_roster(self):
-        stats = self._stamp({"scheme": SCHEME_DIVERGENT, "roster_size": 38})
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {"reference_count": 13}
+        stamp_numbering(stats, {"scheme": SCHEME_DIVERGENT, "roster_size": 38})
         assert stats["numbering_scheme"] == SCHEME_DIVERGENT
         assert stats["pack_roster_size"] == 38
 
     def test_scraped_season_stamps_nothing(self):
-        stats = self._stamp(None)
-        assert "numbering_scheme" not in stats
-        assert "pack_roster_size" not in stats
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {"reference_count": 13}
+        stamp_numbering(stats, None)
+        assert stats == {"reference_count": 13}
 
     def test_marker_without_roster_size_stamps_only_the_scheme(self):
-        stats = self._stamp({"scheme": SCHEME_TMDB_AIRED})
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {"reference_count": 13}
+        stamp_numbering(stats, {"scheme": SCHEME_TMDB_AIRED})
         assert stats["numbering_scheme"] == SCHEME_TMDB_AIRED
+        assert "pack_roster_size" not in stats
+
+    def test_a_boolean_roster_size_is_not_stamped(self):
+        # bool is an int subclass, so a naive isinstance check would stamp
+        # True as a roster of 1. The shared usable_count predicate excludes it.
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {"reference_count": 13}
+        stamp_numbering(stats, {"scheme": SCHEME_TMDB_AIRED, "roster_size": True})
+        assert "pack_roster_size" not in stats
+
+    def test_a_zero_roster_size_is_not_stamped(self):
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {"reference_count": 13}
+        stamp_numbering(stats, {"scheme": SCHEME_DIVERGENT, "roster_size": 0})
         assert "pack_roster_size" not in stats
