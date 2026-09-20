@@ -96,8 +96,14 @@ def _check_season_numbering(shows: dict) -> tuple[list[str], int, list[str]]:
             )
             continue
 
-        seasons = {str(s) for s in entry.get("seasons", [])}
-        episode_counts = entry.get("episode_counts") or {}
+        # `or {}` would let a truthy non-dict through, and a non-list
+        # `seasons` is not iterable. This manifest was downloaded from a GitHub
+        # release, so a malformed field has to become a failure line, never a
+        # traceback out of validate().
+        raw_seasons = entry.get("seasons", [])
+        seasons = {str(x) for x in raw_seasons} if isinstance(raw_seasons, list) else set()
+        raw_counts = entry.get("episode_counts")
+        episode_counts = raw_counts if isinstance(raw_counts, dict) else {}
         for season_key, marker in numbering.items():
             if season_key not in seasons:
                 failures.append(
@@ -223,7 +229,16 @@ def validate(assets_dir: Path) -> ValidationResult:
     # `get("shows", {})` falls back to {} only when the key is *absent* —
     # `"shows": null` would return None and len(None) raises TypeError,
     # bypassing the accumulated failures list. `or {}` handles both.
-    shows = manifest.get("shows") or {}
+    # Coerce once, here, rather than at each consumer: `or {}` substitutes only
+    # for a FALSY value, so a manifest carrying `"shows": [...]` would reach
+    # every `shows.items()` below and escape as a traceback. This script exists
+    # to turn a malformed release into a failure list, so a wrong type is a
+    # failure like any other.
+    shows = manifest.get("shows")
+    if shows is not None and not isinstance(shows, dict):
+        failures.append(f"shows in manifest is not an object: {type(shows).__name__}")
+        shows = {}
+    shows = shows or {}
     n_shows = len(shows)
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
@@ -256,7 +271,16 @@ def validate(assets_dir: Path) -> ValidationResult:
                         f"manifest shows entry {corpus_key!r} is missing the required "
                         f"'name' field (runtime name-fallback would never find it)"
                     )
+                # Not `entry.get("seasons", [])`: a non-list value is not
+                # iterable and would escape validate() as a traceback instead
+                # of the failure list this script exists to produce.
                 seasons = entry.get("seasons", [])
+                if not isinstance(seasons, list):
+                    failures.append(
+                        f"manifest shows entry {corpus_key!r} has a 'seasons' that is "
+                        f"not a list: {type(seasons).__name__}"
+                    )
+                    continue
                 show_slug = sanitize_filename(corpus_key)
                 for season in seasons:
                     npz_member = f"precomputed/{show_slug}/S{season:02d}.npz"

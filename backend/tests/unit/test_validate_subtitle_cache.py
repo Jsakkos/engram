@@ -474,3 +474,48 @@ class TestSeasonNumberingValidation:
         _make_assets(vsc, tmp_path, manifest_overrides={"shows": self._shows(["divergent"])})
         result = vsc.validate(tmp_path)
         assert any("season_numbering" in f for f in result.failures)
+
+
+@pytest.mark.unit
+class TestMalformedManifestDoesNotCrash:
+    """A malformed manifest field must become a failure line, not a traceback.
+
+    The manifest is downloaded from a GitHub release and this script is the
+    unattended nightly publish gate, so every one of these inputs previously
+    escaped validate() as an unhandled exception instead of the failure list
+    the module docstring promises.
+    """
+
+    def test_shows_that_is_not_an_object_is_a_failure_not_a_crash(self, vsc, tmp_path):
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": ["a", "b"]}, tarball_members=[])
+        result = vsc.validate(tmp_path)
+        assert any("shows in manifest is not an object" in f for f in result.failures)
+
+    def test_non_list_seasons_is_not_a_crash(self, vsc, tmp_path):
+        shows = {
+            "4229": {
+                "tmdb_id": 4229,
+                "name": "Dexter's Laboratory",
+                "seasons": 3,
+                "episode_counts": {"1": 13},
+                "season_numbering": {"1": {"scheme": "divergent", "roster_size": 38}},
+            }
+        }
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": shows}, tarball_members=[])
+        result = vsc.validate(tmp_path)
+        assert isinstance(result.failures, list)
+
+    def test_non_dict_episode_counts_is_not_a_crash(self, vsc, tmp_path):
+        shows = {
+            "4229": {
+                "tmdb_id": 4229,
+                "name": "Dexter's Laboratory",
+                "seasons": [1],
+                "episode_counts": "oops",
+                "season_numbering": {"1": {"scheme": "divergent", "roster_size": 38}},
+            }
+        }
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": shows}, tarball_members=[])
+        result = vsc.validate(tmp_path)
+        assert isinstance(result.failures, list)
+        assert result.summary["n_divergent_seasons"] == 1
