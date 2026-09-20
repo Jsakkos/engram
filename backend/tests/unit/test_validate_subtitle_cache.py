@@ -366,3 +366,111 @@ class TestMain:
         assert f"assets dir: {tmp_path}" in captured
         assert "unrelated.txt" in captured  # the dir-listing line itself
         assert "manifest.json not found" in captured
+
+
+@pytest.mark.unit
+class TestSeasonNumberingValidation:
+    """The marker is checked for shape, and divergence is reported, not failed.
+
+    A validator that failed on divergence would block every future publish of
+    every segment-format show, which is precisely the data the marker exists to
+    carry.
+    """
+
+    def _shows(self, season_numbering):
+        return {
+            "4229": {
+                "tmdb_id": 4229,
+                "name": "Dexter's Laboratory",
+                "seasons": [1],
+                "episode_counts": {"1": 13},
+                "season_numbering": season_numbering,
+            }
+        }
+
+    def test_divergent_season_passes_and_is_counted(self, vsc, tmp_path):
+        _make_assets(
+            vsc,
+            tmp_path,
+            manifest_overrides={
+                "shows": self._shows({"1": {"scheme": "divergent", "roster_size": 38}})
+            },
+        )
+        result = vsc.validate(tmp_path)
+        assert result.failures == []
+        assert result.summary["n_divergent_seasons"] == 1
+
+    def test_agreeing_season_is_not_counted_as_divergent(self, vsc, tmp_path):
+        _make_assets(
+            vsc,
+            tmp_path,
+            manifest_overrides={
+                "shows": self._shows({"1": {"scheme": "tmdb_aired", "roster_size": 13}})
+            },
+        )
+        result = vsc.validate(tmp_path)
+        assert result.failures == []
+        assert result.summary["n_divergent_seasons"] == 0
+
+    def test_pack_predating_the_marker_passes_with_zero_divergent(self, vsc, tmp_path):
+        shows = {
+            "4229": {
+                "tmdb_id": 4229,
+                "name": "Dexter's Laboratory",
+                "seasons": [1],
+                "episode_counts": {"1": 13},
+            }
+        }
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": shows})
+        result = vsc.validate(tmp_path)
+        assert result.failures == []
+        assert result.summary["n_divergent_seasons"] == 0
+
+    def test_unrecognised_scheme_fails(self, vsc, tmp_path):
+        _make_assets(
+            vsc,
+            tmp_path,
+            manifest_overrides={"shows": self._shows({"1": {"scheme": "tvdb", "roster_size": 38}})},
+        )
+        result = vsc.validate(tmp_path)
+        assert any("unrecognised numbering scheme" in f for f in result.failures)
+
+    def test_marker_for_a_season_not_in_seasons_fails(self, vsc, tmp_path):
+        _make_assets(
+            vsc,
+            tmp_path,
+            manifest_overrides={
+                "shows": self._shows(
+                    {
+                        "1": {"scheme": "tmdb_aired", "roster_size": 13},
+                        "9": {"scheme": "tmdb_aired", "roster_size": 13},
+                    }
+                )
+            },
+        )
+        result = vsc.validate(tmp_path)
+        assert any("season 9" in f for f in result.failures)
+
+    def test_tmdb_aired_roster_contradicting_episode_counts_fails(self, vsc, tmp_path):
+        # "tmdb_aired" means the two counts are equal by definition. A roster
+        # that disagrees with episode_counts means the builder emitted a
+        # self-contradictory marker.
+        _make_assets(
+            vsc,
+            tmp_path,
+            manifest_overrides={
+                "shows": self._shows({"1": {"scheme": "tmdb_aired", "roster_size": 38}})
+            },
+        )
+        result = vsc.validate(tmp_path)
+        assert any("contradicts" in f for f in result.failures)
+
+    def test_non_dict_marker_fails(self, vsc, tmp_path):
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": self._shows({"1": "divergent"})})
+        result = vsc.validate(tmp_path)
+        assert any("not a dict" in f for f in result.failures)
+
+    def test_non_dict_season_numbering_fails(self, vsc, tmp_path):
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": self._shows(["divergent"])})
+        result = vsc.validate(tmp_path)
+        assert any("season_numbering" in f for f in result.failures)
