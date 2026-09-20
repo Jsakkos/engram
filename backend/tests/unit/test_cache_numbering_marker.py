@@ -74,3 +74,50 @@ class TestPackSeasonNumberingEntry:
                 tmdb_id=4229, season=1, reference_count=13, offline=False
             )
         assert entry == {"scheme": SCHEME_UNKNOWN}
+
+
+@pytest.mark.unit
+class TestBuildSeasonNumberingEntry:
+    """build_subtitle_cache.py emits the identical marker from its harvest loop.
+
+    The two scripts publish to the same rolling release, so a pack-built and a
+    build-built artifact must be indistinguishable to a consumer.
+    """
+
+    def test_agreeing_counts_emit_tmdb_aired_with_roster_size(self, bsc):
+        with patch.object(bsc, "fetch_season_details", return_value=13) as mock_fetch:
+            entry = bsc._season_numbering_entry(tmdb_id=1396, season=1, reference_count=13)
+        assert entry == {"scheme": SCHEME_TMDB_AIRED, "roster_size": 13}
+        mock_fetch.assert_called_once_with("1396", 1)
+
+    def test_dexters_laboratory_emits_divergent(self, bsc):
+        with patch.object(bsc, "fetch_season_details", return_value=38):
+            entry = bsc._season_numbering_entry(tmdb_id=4229, season=1, reference_count=13)
+        assert entry == {"scheme": SCHEME_DIVERGENT, "roster_size": 38}
+
+    def test_missing_tmdb_id_emits_unknown_without_calling_tmdb(self, bsc):
+        with patch.object(bsc, "fetch_season_details") as mock_fetch:
+            entry = bsc._season_numbering_entry(tmdb_id=None, season=1, reference_count=13)
+        assert entry == {"scheme": SCHEME_UNKNOWN}
+        mock_fetch.assert_not_called()
+
+    def test_roster_lookup_returning_zero_emits_unknown(self, bsc):
+        with patch.object(bsc, "fetch_season_details", return_value=0):
+            entry = bsc._season_numbering_entry(tmdb_id=4229, season=1, reference_count=13)
+        assert entry == {"scheme": SCHEME_UNKNOWN}
+
+    def test_roster_lookup_raising_emits_unknown(self, bsc):
+        with patch.object(bsc, "fetch_season_details", side_effect=RuntimeError("boom")):
+            entry = bsc._season_numbering_entry(tmdb_id=4229, season=1, reference_count=13)
+        assert entry == {"scheme": SCHEME_UNKNOWN}
+
+    def test_both_scripts_agree_on_the_same_inputs(self, bsc, psc):
+        with (
+            patch.object(bsc, "fetch_season_details", return_value=38),
+            patch.object(psc, "fetch_season_details", return_value=38),
+        ):
+            built = bsc._season_numbering_entry(tmdb_id=4229, season=1, reference_count=13)
+            packed = psc._season_numbering_entry(
+                tmdb_id=4229, season=1, reference_count=13, offline=False
+            )
+        assert built == packed

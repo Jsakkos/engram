@@ -70,6 +70,10 @@ from scipy import sparse
 
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache, _corpus_show_dir
+from app.matcher.numbering_scheme import (
+    SCHEME_UNKNOWN,
+    derive_numbering_scheme,
+)
 from app.matcher.subtitle_utils import corpus_dir_name, discover_season_srts
 from app.matcher.testing_service import (
     RETRIEVED_STATUSES,
@@ -78,6 +82,7 @@ from app.matcher.testing_service import (
     probe_os_quota,
 )
 from app.matcher.tmdb_client import (
+    fetch_season_details,
     fetch_show_details,
     fetch_show_id,
     fetch_shows_by_vote_count,
@@ -647,6 +652,36 @@ def _render_tally(tally: "RunTally") -> str:
     return "\n".join(lines)
 
 
+def _season_numbering_entry(tmdb_id: int | None, season: int, reference_count: int) -> dict:
+    """Describe how one harvested season is numbered, for the manifest.
+
+    Mirrors ``pack_subtitle_cache._season_numbering_entry`` exactly, minus its
+    ``offline`` branch: this script always has TMDB configured because it
+    downloads subtitles, so a missing ``tmdb_id`` is its only unknown path. Both
+    scripts publish to the same rolling release, so a pack-built and a
+    build-built artifact must be indistinguishable to a consumer.
+    """
+    if tmdb_id is None:
+        return {"scheme": SCHEME_UNKNOWN}
+    try:
+        # Warm from harvest in the common case: this script fetches season
+        # details while downloading. Returns 0, not None, on a missing key or a
+        # failed request; derive_numbering_scheme maps that to UNKNOWN, so a
+        # slow or failing lookup degrades the marker rather than the build.
+        roster_size = fetch_season_details(str(tmdb_id), season)
+    except Exception as e:
+        # A roster lookup must never abort a build that can run for 12 hours.
+        # Widest catch is deliberate: fetch_season_details already swallows its
+        # own network errors, so anything reaching here is unanticipated and the
+        # season simply becomes UNKNOWN.
+        logger.warning(f"  roster lookup failed for tmdb {tmdb_id} S{season:02d}: {e}")
+        roster_size = 0
+    scheme = derive_numbering_scheme(reference_count, roster_size)
+    if scheme == SCHEME_UNKNOWN:
+        return {"scheme": SCHEME_UNKNOWN}
+    return {"scheme": scheme, "roster_size": roster_size}
+
+
 def main() -> int:
     # Before anything renders: a single non-ASCII title must not be able to
     # kill the run through the progress bar. See _ensure_utf8_output.
@@ -916,6 +951,7 @@ def main() -> int:
 
                 show_seasons: list[int] = []
                 episode_counts: dict[str, int] = {}
+                season_numbering: dict[str, dict] = {}
                 for season in sorted(by_season):
                     episodes = sorted(by_season[season], key=lambda x: x[0])
                     texts, codes = [], []
@@ -930,6 +966,11 @@ def main() -> int:
                     blocks.append((show["tmdb_id"], show["name"], season, codes, counts))
                     show_seasons.append(season)
                     episode_counts[str(season)] = len(codes)
+                    # Written after the same `continue` as episode_counts above,
+                    # so the two dicts always carry the identical season key set.
+                    season_numbering[str(season)] = _season_numbering_entry(
+                        show["tmdb_id"], season, len(codes)
+                    )
 
                 if show_seasons:
                     # v3: keyed by tmdb_id so same-named shows don't collide; the name
@@ -939,6 +980,9 @@ def main() -> int:
                         "name": show["name"],
                         "seasons": show_seasons,
                         "episode_counts": episode_counts,
+                        # Additive: a backend predating the marker ignores this
+                        # key, which is why CACHE_FORMAT_VERSION does not move.
+                        "season_numbering": season_numbering,
                     }
         except QuotaExhausted as e:
             halted_reason = str(e)
