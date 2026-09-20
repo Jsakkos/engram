@@ -2211,3 +2211,50 @@ class TestNumberingSchemesAgreePrefersTheMarker:
     def test_marker_alone_is_enough_without_any_counts(self):
         assert numbering_schemes_agree({"numbering_scheme": "divergent"}) is False
         assert numbering_schemes_agree({"numbering_scheme": "tmdb_aired"}) is True
+
+
+@pytest.mark.unit
+class TestNumberingDisagreementReason:
+    """The log line must name the source that actually decided.
+
+    A marker of "unknown" is present but does not decide: it falls through to
+    the count heuristic. Branching on "is a marker present" would credit the
+    marker for the heuristic's verdict and quote a build-time roster the
+    unknown season does not carry, rendering "a None-episode roster".
+    """
+
+    def test_divergent_marker_is_credited_to_the_cache(self):
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason(
+            {"numbering_scheme": "divergent", "pack_roster_size": 38}
+        )
+        assert "published subtitle cache" in why
+        assert "38-episode" in why
+
+    def test_unknown_marker_is_credited_to_the_heuristic(self):
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason(
+            {"numbering_scheme": "unknown", "reference_count": 13, "roster_size": 38}
+        )
+        assert "published subtitle cache" not in why
+        assert "13-episode reference corpus" in why
+        assert "38-episode TMDB roster" in why
+        assert "None" not in why
+
+    def test_unrecognised_marker_is_credited_to_the_heuristic(self):
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason(
+            {"numbering_scheme": "tvdb", "reference_count": 13, "roster_size": 38}
+        )
+        assert "published subtitle cache" not in why
+        assert "13-episode reference corpus" in why
+
+    def test_absent_marker_is_credited_to_the_heuristic(self):
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason({"reference_count": 13, "roster_size": 38})
+        assert "published subtitle cache" not in why
+        assert "13-episode reference corpus" in why

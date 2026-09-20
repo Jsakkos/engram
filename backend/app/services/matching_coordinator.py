@@ -492,6 +492,32 @@ def numbering_schemes_agree(details: dict) -> bool | None:
     return reference_count == roster_size
 
 
+def numbering_disagreement_reason(details: dict) -> str:
+    """Explain, for a log line, WHY the numbering was judged not to agree.
+
+    Both consumers of ``numbering_schemes_agree`` print a reason when it returns
+    False, and both must name the source that actually decided. That is not the
+    same as "is a marker present": a marker of ``unknown`` is present but does
+    NOT decide, because it falls through to the count heuristic. Branching on
+    truthiness would credit the marker for the heuristic's verdict and quote a
+    build-time roster that an unknown season usually does not carry, rendering
+    "a None-episode roster".
+
+    Shared rather than duplicated at the two call sites so the two sentences
+    cannot come to disagree about which source they are reporting.
+    """
+    scheme = details.get("numbering_scheme")
+    if scheme in (SCHEME_TMDB_AIRED, SCHEME_DIVERGENT):
+        return (
+            f"the published subtitle cache records this season as {scheme!r} numbering "
+            f"against a {details.get('pack_roster_size')}-episode TMDB roster"
+        )
+    return (
+        f"its episode code came from a {details.get('reference_count')}-episode reference "
+        f"corpus against a {details.get('roster_size')}-episode TMDB roster"
+    )
+
+
 def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) -> bool:
     """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
 
@@ -516,17 +542,7 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
     # knows it cannot answer. A CONFIRMED verdict is exempt -- observed vote runs
     # are direct evidence about this file whatever the corpus is numbered in.
     if not confirmed_multi and numbering_schemes_agree(details) is False:
-        if details.get("numbering_scheme"):
-            why = (
-                f"the published subtitle cache records this season as "
-                f"{details['numbering_scheme']!r} numbering against a "
-                f"{details.get('pack_roster_size')}-episode roster"
-            )
-        else:
-            why = (
-                f"the reference corpus holds {details.get('reference_count')} episodes "
-                f"for this season against a roster of {details.get('roster_size')}"
-            )
+        why = numbering_disagreement_reason(details)
         logger.info(
             f"Title {sanitize_log_value(getattr(title, 'id', None))}: runtime hint of "
             f"~{conjoined_hint} conjoined episodes not actionable: {why}, so the two use "
