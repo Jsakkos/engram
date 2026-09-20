@@ -107,9 +107,13 @@ def _season_numbering_entry(
     if offline or tmdb_id is None:
         return {"scheme": SCHEME_UNKNOWN}
     try:
-        # Persistent-cached (TTL_SEASON), so a season already fetched during
-        # harvest costs nothing. Returns 0, not None, on a missing key or a
-        # failed request; derive_numbering_scheme maps that to UNKNOWN.
+        # Persistent-cached (TTL_SEASON). Usually warm: the harvest path calls
+        # fetch_season_details via addic7ed_client. It is NOT warm for a season
+        # sourced only from tvsubtitles, or for corpus data placed on disk by
+        # hand, so a cold cache means one sequential TMDB call per such season.
+        # Returns 0, not None, on a missing key or a failed request;
+        # derive_numbering_scheme maps that to UNKNOWN, so a slow or failing
+        # lookup degrades the marker rather than the pack.
         roster_size = fetch_season_details(str(tmdb_id), season)
     except Exception as e:
         # A roster lookup must never abort a pack run that may cover 500 shows.
@@ -350,6 +354,10 @@ def main() -> int:
             blocks.append((corpus_key, season, codes, counts))
             show_seasons.append(season)
             episode_counts[str(season)] = len(codes)
+            # Written after the same `continue` as episode_counts above, so the
+            # two dicts always carry the identical season key set. A consumer
+            # looking up str(season) in one and finding it in the other is
+            # relying on that.
             season_numbering[str(season)] = _season_numbering_entry(
                 tmdb_id, season, len(codes), args.offline
             )

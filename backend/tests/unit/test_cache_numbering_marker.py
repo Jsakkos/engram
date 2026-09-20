@@ -74,25 +74,3 @@ class TestPackSeasonNumberingEntry:
                 tmdb_id=4229, season=1, reference_count=13, offline=False
             )
         assert entry == {"scheme": SCHEME_UNKNOWN}
-
-
-@pytest.mark.unit
-class TestPackManifestWiring:
-    """The helper's output reaches the manifest entry under string season keys."""
-
-    def test_season_numbering_keys_match_episode_counts_keys(self, psc):
-        # The manifest's season keys are strings because JSON has no integer
-        # keys; season_numbering must agree with episode_counts or a consumer
-        # looking up str(season) silently misses.
-        entry = {
-            "tmdb_id": 4229,
-            "name": "Dexter's Laboratory",
-            "seasons": [1, 2],
-            "episode_counts": {"1": 13, "2": 40},
-            "season_numbering": {
-                "1": psc._season_numbering_entry(4229, 1, 13, offline=True),
-                "2": psc._season_numbering_entry(4229, 2, 40, offline=True),
-            },
-        }
-        assert set(entry["season_numbering"]) == set(entry["episode_counts"])
-        assert all(isinstance(k, str) for k in entry["season_numbering"])
