@@ -533,7 +533,7 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
     { name = "chardet", specifier = ">=7.6.0" },
     { name = "chevron", specifier = ">=0.14.0" },
-    { name = "ctranslate2", specifier = ">=4.8.1" },
+    { name = "ctranslate2", specifier = ">=4.8.2" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "faster-whisper", specifier = ">=1.2.1" },
     { name = "gputil", marker = "extra == 'gpu'", specifier = ">=1.4.0" },
