@@ -448,6 +448,34 @@ def _combined_code(codes: list) -> str | None:
     return format_episode_code(seasons.pop(), episodes)
 
 
+def numbering_schemes_agree(details: dict) -> bool | None:
+    """Whether the reference corpus is numbered like the TMDB roster for this season.
+
+    The runtime hint is computed against the TMDB roster (``roster_size``) but the
+    multi-episode verdict is decided by votes cast over the reference corpus
+    (``reference_count``). When the two are numbered differently the hint fires on
+    every track and the verdict can never confirm it, so the pairing is not
+    evidence about the file at all.
+
+    Segment-format shows are where they diverge: TMDB catalogues each ~7-minute
+    short (38 entries for Dexter's Laboratory season 1) while the subtitle corpus
+    is numbered by 22-minute broadcast half-hours (13). Equal counts are the proxy
+    for "same numbering scheme"; it is a proxy, not a proof, but a corpus that
+    disagrees with the roster on how many episodes a season HAS cannot be speaking
+    the roster's language.
+
+    Returns None when either count is missing (results predating this record), so
+    callers keep their prior behaviour rather than inferring agreement.
+    """
+    reference_count = details.get("reference_count")
+    roster_size = details.get("roster_size")
+    if not isinstance(reference_count, int) or not isinstance(roster_size, int):
+        return None
+    if reference_count <= 0 or roster_size <= 0:
+        return None
+    return reference_count == roster_size
+
+
 def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) -> bool:
     """Park a conjoined (or possibly-conjoined) track in REVIEW. Returns True if it did.
 
@@ -464,6 +492,22 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
         multi_detail = {}
     confirmed_multi = bool(multi_detail.get("is_multi_episode"))
     if not (confirmed_multi or conjoined_hint):
+        return False
+
+    # A runtime-only hint against a corpus numbered differently from the roster is
+    # not evidence: the hint fires on every track of the disc and no verdict can
+    # ever clear it, so parking hands the reviewer a question the matcher already
+    # knows it cannot answer. A CONFIRMED verdict is exempt -- observed vote runs
+    # are direct evidence about this file whatever the corpus is numbered in.
+    if not confirmed_multi and numbering_schemes_agree(details) is False:
+        logger.info(
+            f"Title {sanitize_log_value(getattr(title, 'id', None))}: runtime hint of "
+            f"~{conjoined_hint} conjoined episodes not actionable -- the reference "
+            f"corpus holds {details.get('reference_count')} episodes for this season "
+            f"against a roster of {details.get('roster_size')}, so the two use "
+            f"different episode numbering and no vote run could confirm the hint. "
+            f"Leaving the match as-is."
+        )
         return False
     codes = multi_detail.get("codes") or []
     title.state = TitleState.REVIEW
@@ -1149,6 +1193,7 @@ class MatchingCoordinator:
         # the scalars under a brief session, release it, do the network work,
         # then reopen only to act on the result.
         conjoined_hint: int | None = None
+        roster_size: int | None = None
         try:
             job_tmdb_id: int | None = None
             job_detected_title: str | None = None
@@ -1168,6 +1213,7 @@ class MatchingCoordinator:
                 runtimes = await self._episode_runtimes_for_job(
                     job_id, job_tmdb_id, job_detected_title, job_detected_season
                 )
+                roster_size = len(runtimes) or None
                 if runtimes and title_duration:
                     title_minutes = title_duration / 60
                     if not _duration_matches_episode_runtime(title_minutes, runtimes):
@@ -1257,6 +1303,7 @@ class MatchingCoordinator:
                 min_vote_count,
                 advisory=advisory,
                 conjoined_hint=conjoined_hint,
+                roster_size=roster_size,
             )
         except Exception as e:
             logger.exception(
@@ -1425,6 +1472,13 @@ class MatchingCoordinator:
 
         season = seasons[0]
         job.detected_season = season
+        # Drop any runtime roster cached while the season was a DIFFERENT value.
+        # Normally there is none (an unpinned job skips the duration pre-filter
+        # entirely), but a job that was unpinned by the cross-season retry left one
+        # behind for the season that matched nothing — and the pre-filter reads
+        # this cache by job id alone, so the next title would size itself against
+        # the wrong season's episodes.
+        self._episode_runtimes.pop(job_id, None)
         cleared = prompt_kind(job.identity_prompt_json) == "season"
         if cleared:
             job.identity_prompt_json = None
@@ -1453,6 +1507,7 @@ class MatchingCoordinator:
         min_vote_count: int | None = None,
         advisory: bool = False,
         conjoined_hint: int | None = None,
+        roster_size: int | None = None,
     ) -> None:
         """Inner matching logic, called under the match semaphore.
 
@@ -1807,6 +1862,15 @@ class MatchingCoordinator:
                                 f"Failed to enqueue contribution for title {title.id}: {e}",
                                 exc_info=True,
                             )
+
+                # Stamp the roster size the duration pre-filter measured this title
+                # against, beside the corpus size the matcher recorded. Both live in
+                # match_details so every later reader -- the conjoined-hint gate
+                # below, the ordering projection at organize time -- can tell whether
+                # the episode code is a coordinate in the same numbering scheme TMDB
+                # uses, without re-deriving either number.
+                if roster_size and isinstance(result.match_details, dict):
+                    result.match_details.setdefault("roster_size", roster_size)
 
                 if result.match_details:
                     try:

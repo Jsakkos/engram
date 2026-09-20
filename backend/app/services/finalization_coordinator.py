@@ -24,6 +24,7 @@ from app.services.identity_prompts import prompt_kind
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     _is_rematchable_review,
+    numbering_schemes_agree,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,83 @@ def _refused_for_references(title) -> bool:
     except (json.JSONDecodeError, TypeError):
         return False
     return isinstance(details, dict) and details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE
+
+
+def _ordering_for_title(match_details, ordering: str) -> str:
+    """The output ordering to project ONE title through: ``ordering``, or "aired".
+
+    The projection looks a matched code up as a canonical TMDB ``(season, episode)``
+    inside an episode group. That dereference is only sound when the code IS a
+    canonical coordinate, and it is not when the reference corpus that produced it
+    is numbered differently from the TMDB roster: a 13-entry half-hour corpus
+    against a 38-entry segment season yields "S01E01" meaning "half-hour 1", which
+    the group then resolves to a wholly unrelated segment (Dexter's Laboratory
+    S01E01 filed as S01E19).
+
+    Degrading to "aired" keeps the matcher's own number in the filename. That
+    number is at least the one the review page showed, which is the property the
+    user actually relies on; projecting it would be precise about the wrong thing.
+    """
+    if ordering == "aired":
+        return ordering
+    try:
+        details = json.loads(match_details) if match_details else {}
+    except (json.JSONDecodeError, TypeError):
+        return ordering
+    if not isinstance(details, dict):
+        return ordering
+    if numbering_schemes_agree(details) is False:
+        logger.info(
+            f"Keeping aired numbering for this title instead of the {ordering} ordering: "
+            f"its episode code came from a {details.get('reference_count')}-episode "
+            f"reference corpus against a {details.get('roster_size')}-episode TMDB "
+            f"roster, so it is not a canonical coordinate the episode group can "
+            f"resolve."
+        )
+        return "aired"
+    return ordering
+
+
+def _detect_wrong_season(job, titles) -> bool:
+    """Detect a wrong LABELLED season from a wholesale match failure.
+
+    Dexter's-Laboratory-class bug: a disc labelled "Season 3" whose content is
+    canonically season 2 (the DVD boxset splits a 36-half-hour broadcast season
+    across three "seasons"). ``detected_season`` comes from the disc label or the
+    import folder and is then used as the TMDB aired season, so matching runs
+    against a corpus of entirely different episodes and the WHOLE disc returns
+    ``matched_episode is None``.
+
+    Deliberately a weaker signal than :func:`_detect_wrong_show`, which additionally
+    requires a persisted same-name twin. There is no equivalent corroborating
+    artifact for a season, and none is needed: the remedy is to search every
+    season instead of one, which costs matcher passes but cannot mis-file
+    anything. The sibling detector demands more because its remedy is to tell a
+    human they picked the wrong show.
+
+    Pure -- no DB/IO. Gated on a delivered corpus for the same reason as
+    :func:`_detect_wrong_show`: with nothing to match against, zero matches is the
+    expected outcome for the RIGHT season too (#370).
+    """
+    if job.content_type != ContentType.TV:
+        return False
+    # Already searching every season -- there is no label left to distrust.
+    if job.detected_season is None:
+        return False
+    if job.subtitle_status not in ("completed", "partial"):
+        return False
+
+    episode_candidates = [t for t in titles if t.is_selected and not t.is_extra]
+    if len(episode_candidates) < 2:
+        return False
+    if not all(t.matched_episode is None for t in episode_candidates):
+        return False
+    # A disc of titles the matcher REFUSED says nothing about which season it is:
+    # it was never matched against anything. Re-running across every season would
+    # hit the same refusal once per season.
+    if all(_refused_for_references(t) for t in episode_candidates):
+        return False
+    return True
 
 
 def _detect_wrong_show(job, titles) -> dict | None:
@@ -368,6 +446,11 @@ class FinalizationCoordinator:
         # plain reviews escalate on separate counters so one can't stall the other.
         self._conflict_passes: dict[int, int] = {}
         self._review_passes: dict[int, int] = {}
+        # Jobs whose labelled season has already been distrusted once. The
+        # zero-matches precondition makes a second retry near-impossible on its
+        # own (a re-pin needs matched titles, which is success), but the set makes
+        # "at most one cross-season sweep per job" explicit rather than emergent.
+        self._season_retries: set[int] = set()
 
     def set_callbacks(
         self,
@@ -400,6 +483,10 @@ class FinalizationCoordinator:
         """
         self._conflict_passes.pop(job_id, None)
         self._review_passes.pop(job_id, None)
+        # Deliberate: a user-driven rerun of matching gets a fresh cross-season
+        # budget too. The retry only fires on a total match failure, so restoring
+        # it cannot make a job that is matching anything churn.
+        self._season_retries.discard(job_id)
 
     async def on_terminal_clear_conflicts(self, job_id: int, _state) -> None:
         """Terminal-state hook: drop conflict-escalation tracking for the job.
@@ -518,6 +605,97 @@ class FinalizationCoordinator:
         logger.info(
             f"Job {job_id}: deep re-match for conflicts {list(conflicts)} at "
             f"{next_depth} scan points (pass {pass_no}/{len(ladder)}, titles {dispatched})"
+        )
+        return True
+
+    async def _maybe_retry_across_seasons(self, session, job, titles) -> bool:
+        """Re-match a whole-disc failure across every season instead of the labelled one.
+
+        The curator already searches every candidate season when
+        ``detected_season`` is None (a flat import folder). That path was only ever
+        reachable when the label was ABSENT; this makes it reachable when the label
+        is WRONG, which is the same situation with worse information.
+
+        Clearing ``detected_season`` is the entire mechanism: every downstream
+        reader re-reads it from the job row at match time (the duration pre-filter
+        and the curator both open their own session), so the re-dispatched titles
+        take the cross-season path without any further plumbing.
+
+        Returns ``True`` if a re-match was dispatched (job held in MATCHING; the
+        caller should return and let completion re-entry pick it back up).
+        """
+        job_id = job.id
+        if self._rematch_title is None or job_id in self._season_retries:
+            return False
+        if not _detect_wrong_season(job, titles):
+            return False
+
+        labelled = job.detected_season
+        prior_state = job.state
+        prior_status = job.conflict_status
+        # Mark BEFORE dispatching: a re-entrant completion check (a title finishing
+        # while the loop below is still dispatching) must not start a second sweep.
+        self._season_retries.add(job_id)
+
+        # Clear and COMMIT the season BEFORE dispatching anything. ``rematch_single_title``
+        # is fire-and-forget: it awaits a commit and a websocket broadcast before it
+        # reaches ``asyncio.create_task``, and those awaits are suspension points, so
+        # a task created for title N can start running (and take its own fresh read of
+        # this row) while the loop below is still dispatching title N+1. Clearing
+        # afterwards would leave the earliest titles matching against the very season
+        # that matched nothing, non-deterministically and invisibly.
+        job.detected_season = None
+        job.conflict_status = f"Re-matching across all seasons (season {labelled} matched nothing)"
+        job.updated_at = datetime.now(UTC)
+        if job.state != JobState.MATCHING:
+            job.state = JobState.MATCHING
+        session.add(job)
+        await session.commit()
+
+        candidates = [t for t in titles if t.is_selected and not t.is_extra]
+        dispatched: list[int] = []
+        for t in candidates:
+            try:
+                await self._rematch_title(job_id, t.id, source_preference="engram")
+                dispatched.append(t.id)
+            except Exception as e:
+                # Same rationale as the escalation loop: a missing staging file
+                # skips one title rather than aborting the sweep. Not
+                # BaseException, so CancelledError still propagates.
+                logger.warning(f"Cross-season re-match: skipping title {t.id} (job {job_id}): {e}")
+
+        if not dispatched:
+            # Nothing was re-dispatched (e.g. every staging file is gone), so the
+            # sweep achieved nothing and the pre-commit above must be undone: a job
+            # left season-less would show the user a disc with no season and send
+            # any later re-match down the expensive cross-season path for no reason.
+            job.detected_season = labelled
+            job.conflict_status = prior_status
+            job.state = prior_state
+            session.add(job)
+            await session.commit()
+            await self._clear_review_state(session, job)
+            return False
+
+        # The ladder was exhausted against the WRONG corpus, so its verdict says
+        # nothing about the right one. Reset it or the cross-season results would
+        # be handed to a human without a single deep pass. Only after a dispatch
+        # actually happened: dropping the counters on the no-op path above would
+        # let the ladder re-run from pass 1 on the next completion re-entry.
+        self._review_passes.pop(job_id, None)
+        self._conflict_passes.pop(job_id, None)
+
+        logger.info(
+            f"Job {job_id}: every title failed to match against labelled season "
+            f"{labelled} — unpinning it and re-matching {len(dispatched)} title(s) "
+            f"across all seasons. A disc's season is the publisher's, not TMDB's."
+        )
+        # No detected_season in the payload: the broadcast treats None as
+        # "unchanged" and has no clear sentinel for an int, and sending 0 would
+        # render as "Season 0" on the card. The status line above carries the
+        # news; the cleared value reaches the UI on the next job fetch.
+        await ws_manager.broadcast_job_update(
+            job_id, JobState.MATCHING.value, conflict_status=job.conflict_status
         )
         return True
 
@@ -814,6 +992,21 @@ class FinalizationCoordinator:
         if await self._maybe_escalate_reviews(
             session, job, matchable, wrong_show_suspected=bool(wrong_show)
         ):
+            return
+
+        # Deeper passes against the labelled season are now exhausted. If the disc
+        # STILL matched nothing, question the season: a boxset's "Season 3" need
+        # not be TMDB's season 3, and searching every season cannot mis-file
+        # anything, it only costs passes.
+        #
+        # A wrong season and a wrong show present IDENTICALLY (zero matches
+        # disc-wide), so the order matters. Wrong-show wins when it fires, because
+        # it carries a corroborating artifact the season hypothesis has no
+        # equivalent of: a persisted same-name twin. Sweeping every season of a
+        # show the disc isn't would burn a pass per season against a corpus that
+        # can never match, and would bury the actionable "you picked the wrong
+        # Frasier" behind a delay.
+        if not wrong_show and await self._maybe_retry_across_seasons(session, job, matchable):
             return
 
         # Wrong-show detector (Frasier 1993 vs 2023): if the full-coverage
@@ -1210,6 +1403,10 @@ class FinalizationCoordinator:
 
             logger.info(f"Organizing Title {tid} ({source_file.name}) -> {matched_episode}")
 
+            # Per title: a code from a corpus numbered unlike the TMDB roster is not
+            # a coordinate the episode group can resolve, so it keeps aired numbering.
+            _title_ordering = _ordering_for_title(cap["match_details"], ordering)
+
             if is_extra:
                 # Mirror the review path (apply_review / process_matched_titles):
                 # extras go to the season's Extras/ folder with "Extra tNN" naming,
@@ -1235,7 +1432,7 @@ class FinalizationCoordinator:
                     matched_episode,
                     _lib_path,
                     tmdb_id=_tmdb_id_str,
-                    ordering=ordering,
+                    ordering=_title_ordering,
                     episode_group_id=ordering_group_id,
                     year=_tmdb_year,
                 )
@@ -1246,7 +1443,7 @@ class FinalizationCoordinator:
                     _detected_title,
                     matched_episode,
                     tmdb_id=_tmdb_id_str,
-                    ordering=ordering,
+                    ordering=_title_ordering,
                     episode_group_id=ordering_group_id,
                     year=_tmdb_year,
                 )
@@ -1273,8 +1470,8 @@ class FinalizationCoordinator:
                 )
                 # Audit which output ordering was applied (#200) — episodes only;
                 # matched_episode itself stays canonical. Extras bypass projection.
-                if not is_extra and ordering != "aired":
-                    result["episode_ordering"] = ordering
+                if not is_extra and _title_ordering != "aired":
+                    result["episode_ordering"] = _title_ordering
                     result["episode_group_id"] = ordering_group_id
                 # Advance the extras slot only on a confirmed write.
                 if is_extra:
@@ -1698,6 +1895,9 @@ class FinalizationCoordinator:
                 source_file = Path(disc_title.output_filename)
                 if source_file.exists():
                     _lib_path = _library_path_for_job(job, "tv")
+                    # Per title: a code from a corpus numbered unlike the TMDB roster is not
+                    # a coordinate the episode group can resolve, so it keeps aired numbering.
+                    _title_ordering = _ordering_for_title(disc_title.match_details, ordering)
                     if disc_title.matched_episode == "extra":
                         org_result = await asyncio.to_thread(
                             organize_tv_extras,
@@ -1721,7 +1921,7 @@ class FinalizationCoordinator:
                                 disc_title.matched_episode,
                                 _lib_path,
                                 tmdb_id=_tmdb_id_str,
-                                ordering=ordering,
+                                ordering=_title_ordering,
                                 episode_group_id=ordering_group_id,
                                 year=_tmdb_year,
                             )
@@ -1732,7 +1932,7 @@ class FinalizationCoordinator:
                                 job.detected_title or job.volume_label,
                                 disc_title.matched_episode,
                                 tmdb_id=_tmdb_id_str,
-                                ordering=ordering,
+                                ordering=_title_ordering,
                                 episode_group_id=ordering_group_id,
                                 year=_tmdb_year,
                             )
@@ -1745,8 +1945,8 @@ class FinalizationCoordinator:
                             else None
                         )
                         disc_title.is_extra = disc_title.matched_episode == "extra"
-                        if disc_title.matched_episode != "extra" and ordering != "aired":
-                            disc_title.episode_ordering = ordering
+                        if disc_title.matched_episode != "extra" and _title_ordering != "aired":
+                            disc_title.episode_ordering = _title_ordering
                             disc_title.episode_group_id = ordering_group_id
                         disc_title.state = TitleState.COMPLETED
                         logger.info(f"Organized: {org_result['final_path']}")
@@ -1919,6 +2119,9 @@ class FinalizationCoordinator:
                     continue
 
                 _lib_path = _library_path_for_job(job, "tv")
+                # Per title: a code from a corpus numbered unlike the TMDB roster is not
+                # a coordinate the episode group can resolve, so it keeps aired numbering.
+                _title_ordering = _ordering_for_title(disc_title.match_details, ordering)
                 if disc_title.matched_episode == "extra":
                     org_result = await asyncio.to_thread(
                         organize_tv_extras,
@@ -1942,7 +2145,7 @@ class FinalizationCoordinator:
                             disc_title.matched_episode,
                             _lib_path,
                             tmdb_id=_tmdb_id_str,
-                            ordering=ordering,
+                            ordering=_title_ordering,
                             episode_group_id=ordering_group_id,
                             year=_tmdb_year,
                         )
@@ -1953,7 +2156,7 @@ class FinalizationCoordinator:
                             job.detected_title or job.volume_label,
                             disc_title.matched_episode,
                             tmdb_id=_tmdb_id_str,
-                            ordering=ordering,
+                            ordering=_title_ordering,
                             episode_group_id=ordering_group_id,
                             year=_tmdb_year,
                         )
@@ -1965,8 +2168,8 @@ class FinalizationCoordinator:
                         str(org_result.get("final_path")) if org_result.get("final_path") else None
                     )
                     disc_title.is_extra = disc_title.matched_episode == "extra"
-                    if disc_title.matched_episode != "extra" and ordering != "aired":
-                        disc_title.episode_ordering = ordering
+                    if disc_title.matched_episode != "extra" and _title_ordering != "aired":
+                        disc_title.episode_ordering = _title_ordering
                         disc_title.episode_group_id = ordering_group_id
                     disc_title.state = TitleState.COMPLETED
                     logger.info(f"Organized: {org_result['final_path']}")
