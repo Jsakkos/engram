@@ -4,6 +4,20 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **The published subtitle cache now records how each season is numbered.** Some
+  shows are catalogued by TMDB as individual short segments while the subtitle
+  sources number the longer broadcast episodes those segments were assembled
+  into, and until now nothing in the published cache said which of the two a
+  given season used. Every harvested season now carries that answer, along with
+  the episode count it was measured against, and Engram reads it instead of
+  guessing from how many reference subtitles a season happens to have. A track
+  matched as the first episode of a season is no longer at risk of being filed
+  under an unrelated episode number, and a season whose subtitles were topped up
+  after publication is no longer mistaken for one of these shows. Caches
+  published before this change keep working exactly as they did.
+
 ## [0.36.2] - 2026-09-20
 
 _Highlights: box-set discs whose season label differs from TMDB now re-match across every season, segment-format shows are filed under the right episode number, and matched discs stop asking for a manual confirmation on every track._

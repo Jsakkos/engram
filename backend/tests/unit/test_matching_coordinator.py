@@ -33,6 +33,7 @@ from app.services.matching_coordinator import (
     _same_episode_code,
     _scan_points_for_hint,
     episode_curator,
+    numbering_schemes_agree,
 )
 from tests.unit.conftest import _unit_session_factory
 
@@ -2152,3 +2153,120 @@ class TestCorpusRosterNamespaceGuard:
         _apply_multi_episode_review(title, conjoined_hint=2)
         assert title.state == TitleState.REVIEW
         assert json.loads(title.match_details)["error"] == MULTI_EPISODE_ERROR_CODE
+
+
+@pytest.mark.unit
+class TestNumberingSchemesAgreePrefersTheMarker:
+    """A recorded marker beats the size heuristic.
+
+    The heuristic infers agreement from two counts at match time. The marker is
+    the pack's own statement, made at build time against a known roster. Where
+    they disagree the marker wins, and the heuristic remains the answer for
+    packs that predate it and for scraped seasons that never came from a pack.
+    """
+
+    def test_marker_wins_when_counts_disagree(self):
+        # _augment_with_downloaded_srts grafts scraped SRTs onto a precomputed
+        # season, inflating reference_count. The heuristic would call this
+        # divergent; the marker knows better.
+        details = {
+            "numbering_scheme": "tmdb_aired",
+            "reference_count": 14,
+            "roster_size": 13,
+        }
+        assert numbering_schemes_agree(details) is True
+
+    def test_marker_wins_when_counts_coincidentally_agree(self):
+        details = {
+            "numbering_scheme": "divergent",
+            "reference_count": 13,
+            "roster_size": 13,
+        }
+        assert numbering_schemes_agree(details) is False
+
+    def test_absent_marker_falls_through_to_the_heuristic(self):
+        assert numbering_schemes_agree({"reference_count": 13, "roster_size": 38}) is False
+        assert numbering_schemes_agree({"reference_count": 13, "roster_size": 13}) is True
+
+    def test_unknown_marker_falls_through_to_the_heuristic(self):
+        details = {
+            "numbering_scheme": "unknown",
+            "reference_count": 13,
+            "roster_size": 38,
+        }
+        assert numbering_schemes_agree(details) is False
+
+    def test_unrecognised_marker_falls_through_to_the_heuristic(self):
+        details = {
+            "numbering_scheme": "tvdb",
+            "reference_count": 13,
+            "roster_size": 13,
+        }
+        assert numbering_schemes_agree(details) is True
+
+    def test_fall_through_still_returns_none_when_counts_are_unusable(self):
+        assert numbering_schemes_agree({"numbering_scheme": "unknown"}) is None
+        assert numbering_schemes_agree({}) is None
+
+    def test_marker_alone_is_enough_without_any_counts(self):
+        assert numbering_schemes_agree({"numbering_scheme": "divergent"}) is False
+        assert numbering_schemes_agree({"numbering_scheme": "tmdb_aired"}) is True
+
+
+@pytest.mark.unit
+class TestNumberingDisagreementReason:
+    """The log line must name the source that actually decided.
+
+    A marker of "unknown" is present but does not decide: it falls through to
+    the count heuristic. Branching on "is a marker present" would credit the
+    marker for the heuristic's verdict and quote a build-time roster the
+    unknown season does not carry, rendering "a None-episode roster".
+    """
+
+    def test_divergent_marker_is_credited_to_the_cache(self):
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason(
+            {"numbering_scheme": "divergent", "pack_roster_size": 38}
+        )
+        assert "published subtitle cache" in why
+        assert "38-episode" in why
+
+    def test_unknown_marker_is_credited_to_the_heuristic(self):
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason(
+            {"numbering_scheme": "unknown", "reference_count": 13, "roster_size": 38}
+        )
+        assert "published subtitle cache" not in why
+        assert "13-episode reference corpus" in why
+        assert "38-episode TMDB roster" in why
+        assert "None" not in why
+
+    def test_unrecognised_marker_is_credited_to_the_heuristic(self):
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason(
+            {"numbering_scheme": "tvdb", "reference_count": 13, "roster_size": 38}
+        )
+        assert "published subtitle cache" not in why
+        assert "13-episode reference corpus" in why
+
+    def test_absent_marker_is_credited_to_the_heuristic(self):
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason({"reference_count": 13, "roster_size": 38})
+        assert "published subtitle cache" not in why
+        assert "13-episode reference corpus" in why
+
+    def test_tmdb_aired_marker_is_never_offered_as_a_disagreement(self):
+        # tmdb_aired makes numbering_schemes_agree return True, so it can never
+        # be the reason for a False. Crediting it would print "records this
+        # season as tmdb_aired numbering" as the cause of a disagreement.
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason(
+            {"numbering_scheme": "tmdb_aired", "reference_count": 13, "roster_size": 38}
+        )
+        assert "tmdb_aired" not in why
+        assert "published subtitle cache" not in why

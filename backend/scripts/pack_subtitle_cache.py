@@ -43,7 +43,13 @@ import numpy as np
 
 # Reuse the canonical DB-bootstrap helpers so the standalone script sets up the
 # same schema/credentials path the running app uses (see build_subtitle_cache).
-from build_subtitle_cache import _bootstrap_config_from_env, _ensure_db_schema
+from build_subtitle_cache import (
+    _bootstrap_config_from_env,
+    _ensure_db_schema,
+)
+from build_subtitle_cache import (
+    _season_numbering_entry as _build_season_numbering_entry,
+)
 from loguru import logger
 from scipy import sparse
 
@@ -52,6 +58,7 @@ from app.matcher.episode_identification import (
     SubtitleCache,
     _corpus_show_dir,
 )
+from app.matcher.numbering_scheme import SCHEME_UNKNOWN
 from app.matcher.subtitle_utils import (
     MULTI_EP_RE as _MULTI_EP_RE,
 )
@@ -82,6 +89,24 @@ def _norm_title(s: str) -> str:
     title content to be identical -- so it won't accept a different show.
     """
     return re.sub(r"[^a-z0-9]", "", _TRAILING_YEAR_RE.sub("", s.lower()))
+
+
+def _season_numbering_entry(
+    tmdb_id: int | None, season: int, reference_count: int, offline: bool
+) -> dict:
+    """Describe how one harvested season is numbered, for the manifest.
+
+    Thin wrapper over the build script's implementation, which is the single
+    definition for both builders. The only thing this script adds is the
+    ``offline`` short-circuit: with ``--offline`` there is no TMDB to resolve a
+    canonical roster against, so the season is UNKNOWN and no lookup is even
+    attempted. Everything else (the roster lookup, its failure handling, and the
+    classification) is shared, so a pack-built and a build-built artifact cannot
+    disagree about how they describe the same season.
+    """
+    if offline:
+        return {"scheme": SCHEME_UNKNOWN}
+    return _build_season_numbering_entry(tmdb_id, season, reference_count)
 
 
 def _discover_shows(data_dir: Path) -> dict[str, dict[int, list[tuple[int, str, Path]]]]:
@@ -295,6 +320,7 @@ def main() -> int:
 
         show_seasons: list[int] = []
         episode_counts: dict[str, int] = {}
+        season_numbering: dict[str, dict] = {}
         for season in sorted(by_season):
             episodes = sorted(by_season[season], key=lambda x: x[0])
             texts, codes = [], []
@@ -309,6 +335,13 @@ def main() -> int:
             blocks.append((corpus_key, season, codes, counts))
             show_seasons.append(season)
             episode_counts[str(season)] = len(codes)
+            # Written after the same `continue` as episode_counts above, so the
+            # two dicts always carry the identical season key set. A consumer
+            # looking up str(season) in one and finding it in the other is
+            # relying on that.
+            season_numbering[str(season)] = _season_numbering_entry(
+                tmdb_id, season, len(codes), args.offline
+            )
 
         if show_seasons:
             manifest_shows[corpus_key] = {
@@ -316,6 +349,11 @@ def main() -> int:
                 "name": canonical,
                 "seasons": show_seasons,
                 "episode_counts": episode_counts,
+                # Additive: a backend that predates the marker ignores this key
+                # and keeps loading the pack, which is why CACHE_FORMAT_VERSION
+                # does not move. See the design doc for why a bump is the wrong
+                # trade (every shipped backend would fall back to scraping).
+                "season_numbering": season_numbering,
             }
 
     if not blocks:

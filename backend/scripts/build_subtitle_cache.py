@@ -70,6 +70,10 @@ from scipy import sparse
 
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache, _corpus_show_dir
+from app.matcher.numbering_scheme import (
+    SCHEME_UNKNOWN,
+    derive_numbering_scheme,
+)
 from app.matcher.subtitle_utils import corpus_dir_name, discover_season_srts
 from app.matcher.testing_service import (
     RETRIEVED_STATUSES,
@@ -78,6 +82,7 @@ from app.matcher.testing_service import (
     probe_os_quota,
 )
 from app.matcher.tmdb_client import (
+    fetch_season_details,
     fetch_show_details,
     fetch_show_id,
     fetch_shows_by_vote_count,
@@ -647,6 +652,53 @@ def _render_tally(tally: "RunTally") -> str:
     return "\n".join(lines)
 
 
+def _season_numbering_entry(tmdb_id: int | None, season: int, reference_count: int) -> dict:
+    """Describe how one harvested season is numbered, for the manifest.
+
+    The corpus is numbered by whatever the subtitle providers index; TMDB may
+    number the same season differently (a segment-format show catalogues
+    ~7-minute shorts while the providers index 22-minute broadcast half-hours).
+    Recording which one a season was harvested in is the only way a consumer can
+    tell whether a code from it is a canonical TMDB coordinate, because both
+    schemes are stored under the same canonical season key.
+
+    **This is the single implementation for both builder scripts.**
+    ``pack_subtitle_cache`` imports it and adds only its ``offline``
+    short-circuit. They publish to the same rolling release, so a pack-built and
+    a build-built artifact must be indistinguishable to a consumer, and two
+    copies of this logic would be free to drift into saying different things
+    about the same season.
+
+    A ``tmdb_id`` of None yields UNKNOWN with no ``roster_size``: there is
+    nothing to compare against, and an unknown season must stay distinguishable
+    from a genuinely divergent one. That path is unreachable from this script's
+    own loop (it resolves every show against TMDB before harvesting) but is the
+    live unresolved-show path for the pack caller.
+    """
+    if tmdb_id is None:
+        return {"scheme": SCHEME_UNKNOWN}
+    try:
+        # Persistent-cached (TTL_SEASON). Always warm when called from this
+        # script: download_subtitles fetches season details for every season it
+        # harvests. NOT necessarily warm for the pack caller, which reads SRTs
+        # already on disk, so a cold cache there means one sequential TMDB call
+        # per season. Returns 0, not None, on a missing key or a failed request;
+        # derive_numbering_scheme maps that to UNKNOWN, so a slow or failing
+        # lookup degrades the marker rather than the run.
+        roster_size = fetch_season_details(str(tmdb_id), season)
+    except Exception as e:
+        # A roster lookup must never abort a run that can cover 500 shows.
+        # Widest catch is deliberate: fetch_season_details already swallows its
+        # own network errors, so anything reaching here is unanticipated and the
+        # season simply becomes UNKNOWN.
+        logger.warning(f"  roster lookup failed for tmdb {tmdb_id} S{season:02d}: {e}")
+        roster_size = 0
+    scheme = derive_numbering_scheme(reference_count, roster_size)
+    if scheme == SCHEME_UNKNOWN:
+        return {"scheme": SCHEME_UNKNOWN}
+    return {"scheme": scheme, "roster_size": roster_size}
+
+
 def main() -> int:
     # Before anything renders: a single non-ASCII title must not be able to
     # kill the run through the progress bar. See _ensure_utf8_output.
@@ -916,6 +968,7 @@ def main() -> int:
 
                 show_seasons: list[int] = []
                 episode_counts: dict[str, int] = {}
+                season_numbering: dict[str, dict] = {}
                 for season in sorted(by_season):
                     episodes = sorted(by_season[season], key=lambda x: x[0])
                     texts, codes = [], []
@@ -930,6 +983,11 @@ def main() -> int:
                     blocks.append((show["tmdb_id"], show["name"], season, codes, counts))
                     show_seasons.append(season)
                     episode_counts[str(season)] = len(codes)
+                    # Written after the same `continue` as episode_counts above,
+                    # so the two dicts always carry the identical season key set.
+                    season_numbering[str(season)] = _season_numbering_entry(
+                        show["tmdb_id"], season, len(codes)
+                    )
 
                 if show_seasons:
                     # v3: keyed by tmdb_id so same-named shows don't collide; the name
@@ -939,6 +997,9 @@ def main() -> int:
                         "name": show["name"],
                         "seasons": show_seasons,
                         "episode_counts": episode_counts,
+                        # Additive: a backend predating the marker ignores this
+                        # key, which is why CACHE_FORMAT_VERSION does not move.
+                        "season_numbering": season_numbering,
                     }
         except QuotaExhausted as e:
             halted_reason = str(e)

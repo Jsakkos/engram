@@ -20,6 +20,7 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.multi_episode import decompose_vote_runs
+from app.matcher.numbering_scheme import SCHEME_UNKNOWN, VALID_SCHEMES, usable_count
 from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
 from app.matcher.srt_utils import is_watermark_block as _is_watermark_block
 from app.matcher.subtitle_utils import (
@@ -113,6 +114,34 @@ def canonical_scan_points(
             continue
         points.append(point)
     return points
+
+
+def stamp_numbering(match_stats: dict, numbering: dict | None) -> None:
+    """Record the pack's statement about this season's numbering on a result.
+
+    ``numbering`` is what ``EpisodeMatcher.precomputed_numbering`` returned, so
+    None means "the pack made no usable statement" (a scraped season, a pack
+    predating the marker, or an explicitly unknown one) and nothing is stamped.
+    Consumers then fall back to comparing ``reference_count`` against the
+    match-time ``roster_size``, which is the pre-marker behaviour.
+
+    ``pack_roster_size`` is deliberately named apart from the ``roster_size``
+    that the duration pre-filter writes at match time: this one was measured at
+    BUILD time against the canonical roster, and conflating the two would
+    reintroduce the confusion the marker exists to remove.
+
+    A module-level function rather than an inline block so a test can pin this
+    exact code path. Driving ``identify_episode`` needs audio, ffmpeg and a real
+    vector corpus, and a test that re-implemented the branch would be free to
+    drift from it.
+    """
+    if not numbering:
+        return
+    match_stats["numbering_scheme"] = numbering["scheme"]
+    # usable_count, not a local isinstance check: bool is an int subclass in
+    # Python, and the shared predicate already excludes it.
+    if usable_count(numbering.get("roster_size")):
+        match_stats["pack_roster_size"] = numbering["roster_size"]
 
 
 def load_precomputed_manifest(cache_dir) -> dict | None:
@@ -1317,6 +1346,34 @@ class EpisodeMatcher:
         """
         return self._load_precomputed_season(season_number)
 
+    def precomputed_numbering(self, season_number) -> dict | None:
+        """The numbering marker the shipped pack records for this show + season.
+
+        Returns ``{"scheme": ..., "roster_size": ...}`` when the manifest carries
+        a usable one, else ``None``. ``None`` covers every case a caller must not
+        treat as an answer: a pack built before the marker existed, a season the
+        pack does not describe, an explicitly ``unknown`` season, and a malformed
+        entry. The caller then stamps nothing and the runtime size heuristic
+        stays in charge, which is exactly the pre-marker behaviour.
+
+        Read as a per-call local by ``identify_episode``, never cached on the
+        instance. The matcher singleton is shared across concurrent
+        ``identify_episode`` threads (parallel ASR), so a season-scoped value in
+        an instance slot would be clobbered by a sibling thread's scan, the same
+        hazard the per-call TF-IDF matcher below exists to avoid.
+        """
+        manifest = self._load_precomputed_manifest()
+        _key, show_entry = _resolve_corpus_entry(manifest, self.show_name, self.expected_tmdb_id)
+        if not show_entry:
+            return None
+        marker = (show_entry.get("season_numbering") or {}).get(str(season_number))
+        if not isinstance(marker, dict):
+            return None
+        scheme = marker.get("scheme")
+        if scheme not in VALID_SCHEMES or scheme == SCHEME_UNKNOWN:
+            return None
+        return marker
+
     def _load_precomputed_season(self, season_number):
         """Load precomputed hashed TF-IDF vectors for this show/season.
 
@@ -1714,6 +1771,11 @@ class EpisodeMatcher:
             precomputed = self._load_precomputed_season(season_number)
             using_precomputed = precomputed is not None
 
+            # Per-call local, never an instance slot: see precomputed_numbering.
+            # A scraped season has no marker, so this stays None and every later
+            # reader falls back to the runtime size heuristic.
+            numbering = self.precomputed_numbering(season_number) if using_precomputed else None
+
             if using_precomputed:
                 ref_matrix, ref_episode_codes, idf_array = precomputed
                 reference_files = []  # no SRT files on disk in precomputed mode
@@ -2056,6 +2118,7 @@ class EpisodeMatcher:
                 # must not be read as a coordinate in the latter.
                 "reference_count": total,
             }
+            stamp_numbering(match_stats, numbering)
 
             if best_match:
                 # Merge stats into match_details before calibration so the helper

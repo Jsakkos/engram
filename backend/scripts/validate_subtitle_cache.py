@@ -33,6 +33,7 @@ _backend_dir = str(Path(__file__).parent.parent)
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
 
+from app.matcher.numbering_scheme import SCHEME_DIVERGENT, SCHEME_TMDB_AIRED, VALID_SCHEMES
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
     HASHING_N_FEATURES,
@@ -60,6 +61,96 @@ class ValidationResult:
 
     failures: list[str] = field(default_factory=list)
     summary: dict = field(default_factory=dict)
+
+
+def _season_label(season_key) -> str:
+    """``S01`` for a numeric key, to match the ``S{season:02d}`` form the rest of
+    this file (and every filename) uses. The key comes from downloaded JSON, so
+    a non-numeric one is shown verbatim rather than crashing the gate."""
+    key = str(season_key)
+    return f"S{int(key):02d}" if key.isdigit() else f"S{key}"
+
+
+def _check_season_numbering(shows: dict) -> tuple[list[str], int, list[str]]:
+    """Validate the per-season numbering markers across the whole manifest.
+
+    Returns ``(failures, n_divergent, divergent_labels)``.
+
+    Divergence is NOT a failure. A segment-format show's corpus genuinely is
+    numbered differently from the canonical TMDB roster (Dexter's Laboratory:
+    13 harvested broadcast half-hours against a 38-entry segment roster), and
+    recording that is the entire purpose of the marker. Failing on it would
+    block every future publish of every such show. It is counted and named
+    instead, so the corpus problem is visible from a publish-gate log rather
+    than only from a user's diagnostic bundle.
+
+    What IS a failure is a self-contradictory or malformed marker, because that
+    means the builder is emitting something no consumer can trust.
+    """
+    failures: list[str] = []
+    divergent: list[str] = []
+
+    for corpus_key, entry in shows.items():
+        if not isinstance(entry, dict):
+            continue  # already reported by the caller's shape check
+        numbering = entry.get("season_numbering")
+        if numbering is None:
+            continue  # pack predates the marker; the runtime falls back
+        show_display = entry.get("name") or corpus_key
+        if not isinstance(numbering, dict):
+            failures.append(
+                f"manifest shows entry {corpus_key!r} has a 'season_numbering' that "
+                f"is not a dict: {type(numbering).__name__}"
+            )
+            continue
+
+        # `or {}` would let a truthy non-dict through, and a non-list
+        # `seasons` is not iterable. This manifest was downloaded from a GitHub
+        # release, so a malformed field has to become a failure line, never a
+        # traceback out of validate().
+        raw_seasons = entry.get("seasons", [])
+        seasons = {str(x) for x in raw_seasons} if isinstance(raw_seasons, list) else set()
+        raw_counts = entry.get("episode_counts")
+        episode_counts = raw_counts if isinstance(raw_counts, dict) else {}
+        for season_key, marker in numbering.items():
+            if season_key not in seasons:
+                failures.append(
+                    f"{show_display!r} has numbering for season {season_key} but "
+                    f"season {season_key} is not in its 'seasons' list"
+                )
+                continue
+            if not isinstance(marker, dict):
+                failures.append(
+                    f"{show_display!r} {_season_label(season_key)} numbering marker is not a dict: "
+                    f"{type(marker).__name__}"
+                )
+                continue
+            scheme = marker.get("scheme")
+            if scheme not in VALID_SCHEMES:
+                failures.append(
+                    f"{show_display!r} {_season_label(season_key)} has an unrecognised numbering "
+                    f"scheme {scheme!r}; expected one of {sorted(VALID_SCHEMES)}"
+                )
+                continue
+            roster_size = marker.get("roster_size")
+            reference_count = episode_counts.get(season_key)
+            if (
+                scheme == SCHEME_TMDB_AIRED
+                and isinstance(roster_size, int)
+                and isinstance(reference_count, int)
+                and roster_size != reference_count
+            ):
+                failures.append(
+                    f"{show_display!r} {_season_label(season_key)} is marked {SCHEME_TMDB_AIRED!r} but "
+                    f"its roster_size {roster_size} contradicts its episode_counts "
+                    f"{reference_count}"
+                )
+            if scheme == SCHEME_DIVERGENT:
+                divergent.append(
+                    f"{show_display} {_season_label(season_key)} ({reference_count} refs vs {roster_size} roster)"
+                )
+
+    return failures, len(divergent), sorted(divergent)
 
 
 def validate(assets_dir: Path) -> ValidationResult:
@@ -146,7 +237,16 @@ def validate(assets_dir: Path) -> ValidationResult:
     # `get("shows", {})` falls back to {} only when the key is *absent* —
     # `"shows": null` would return None and len(None) raises TypeError,
     # bypassing the accumulated failures list. `or {}` handles both.
-    shows = manifest.get("shows") or {}
+    # Coerce once, here, rather than at each consumer: `or {}` substitutes only
+    # for a FALSY value, so a manifest carrying `"shows": [...]` would reach
+    # every `shows.items()` below and escape as a traceback. This script exists
+    # to turn a malformed release into a failure list, so a wrong type is a
+    # failure like any other.
+    shows = manifest.get("shows")
+    if shows is not None and not isinstance(shows, dict):
+        failures.append(f"shows in manifest is not an object: {type(shows).__name__}")
+        shows = {}
+    shows = shows or {}
     n_shows = len(shows)
     if n_shows == 0:
         failures.append("shows dict in manifest is empty — cache is unusable")
@@ -179,7 +279,16 @@ def validate(assets_dir: Path) -> ValidationResult:
                         f"manifest shows entry {corpus_key!r} is missing the required "
                         f"'name' field (runtime name-fallback would never find it)"
                     )
+                # Not `entry.get("seasons", [])`: a non-list value is not
+                # iterable and would escape validate() as a traceback instead
+                # of the failure list this script exists to produce.
                 seasons = entry.get("seasons", [])
+                if not isinstance(seasons, list):
+                    failures.append(
+                        f"manifest shows entry {corpus_key!r} has a 'seasons' that is "
+                        f"not a list: {type(seasons).__name__}"
+                    )
+                    continue
                 show_slug = sanitize_filename(corpus_key)
                 for season in seasons:
                     npz_member = f"precomputed/{show_slug}/S{season:02d}.npz"
@@ -200,11 +309,18 @@ def validate(assets_dir: Path) -> ValidationResult:
     except OSError:
         tarball_size = None
 
+    numbering_failures, n_divergent, divergent_labels = _check_season_numbering(shows)
+    failures.extend(numbering_failures)
+
     summary = {
         "cache_format_version": manifest.get("cache_format_version"),
         "vectorizer_config_hash": manifest.get("vectorizer_config_hash"),
         "n_features": manifest.get("n_features"),
         "n_shows": n_shows,
+        # Seasons whose corpus is numbered differently from the canonical TMDB
+        # roster. Informational, never a failure: see _check_season_numbering.
+        "n_divergent_seasons": n_divergent,
+        "divergent_seasons": divergent_labels,
         "tarball_size_bytes": tarball_size,
         "tarball_sha256": actual_sha,
     }
@@ -221,6 +337,17 @@ def main() -> int:
     # Diagnostic snapshot first so CI logs show what was inspected even on failure.
     if result.summary:
         for key, value in result.summary.items():
+            if key == "divergent_seasons":
+                # Informational, not a failure. Printed so the publish-gate log
+                # shows which shows ship a corpus numbered differently from
+                # TMDB's roster, without anyone needing a diagnostic bundle.
+                if value:
+                    print(f"divergent seasons ({len(value)}):")
+                    for label in value:
+                        print(f"  - {label}")
+                else:
+                    print("divergent seasons: none")
+                continue
             if key == "tarball_size_bytes":
                 # `value` is None when the tarball wasn't safely readable;
                 # the validate() comment explains the TOCTOU rationale.

@@ -24,6 +24,7 @@ from app.services.identity_prompts import prompt_kind
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     _is_rematchable_review,
+    numbering_disagreement_reason,
     numbering_schemes_agree,
 )
 
@@ -63,12 +64,10 @@ def _ordering_for_title(match_details, ordering: str) -> str:
     if not isinstance(details, dict):
         return ordering
     if numbering_schemes_agree(details) is False:
+        why = numbering_disagreement_reason(details)
         logger.info(
             f"Keeping aired numbering for this title instead of the {ordering} ordering: "
-            f"its episode code came from a {details.get('reference_count')}-episode "
-            f"reference corpus against a {details.get('roster_size')}-episode TMDB "
-            f"roster, so it is not a canonical coordinate the episode group can "
-            f"resolve."
+            f"{why}, so it is not a canonical coordinate the episode group can resolve."
         )
         return "aired"
     return ordering

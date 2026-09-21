@@ -26,6 +26,7 @@ from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
 from app.database import async_session
+from app.matcher.numbering_scheme import SCHEME_DIVERGENT, SCHEME_TMDB_AIRED
 from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
@@ -451,22 +452,37 @@ def _combined_code(codes: list) -> str | None:
 def numbering_schemes_agree(details: dict) -> bool | None:
     """Whether the reference corpus is numbered like the TMDB roster for this season.
 
-    The runtime hint is computed against the TMDB roster (``roster_size``) but the
-    multi-episode verdict is decided by votes cast over the reference corpus
-    (``reference_count``). When the two are numbered differently the hint fires on
-    every track and the verdict can never confirm it, so the pairing is not
-    evidence about the file at all.
+    Two consumers ask this: the #200 ordering projection, which must not
+    dereference a code that is not a canonical coordinate, and the conjoined
+    hint, whose runtime estimate is computed against the TMDB roster while the
+    verdict that would confirm it is voted over the reference corpus.
 
-    Segment-format shows are where they diverge: TMDB catalogues each ~7-minute
-    short (38 entries for Dexter's Laboratory season 1) while the subtitle corpus
-    is numbered by 22-minute broadcast half-hours (13). Equal counts are the proxy
-    for "same numbering scheme"; it is a proxy, not a proof, but a corpus that
-    disagrees with the roster on how many episodes a season HAS cannot be speaking
-    the roster's language.
+    Segment-format shows are where the two diverge: TMDB catalogues each
+    ~7-minute short (38 entries for Dexter's Laboratory season 1) while the
+    subtitle corpus is numbered by 22-minute broadcast half-hours (13).
 
-    Returns None when either count is missing (results predating this record), so
-    callers keep their prior behaviour rather than inferring agreement.
+    Answered in two ways, in this order:
+
+    1. ``numbering_scheme``, the marker the published pack records for the
+       season. This is the pack's own statement, made at build time against a
+       known roster, and it is the only source that does not have to infer.
+    2. Failing that, equal ``reference_count`` and ``roster_size``. A proxy, not
+       a proof, but a corpus that disagrees with the roster on how many episodes
+       a season HAS cannot be speaking the roster's language.
+
+    The fallback is not vestigial: it is the answer for packs published before
+    the marker existed, for seasons the builder could not resolve a roster for,
+    and for scraped-SRT seasons that never came from a pack at all.
+
+    Returns None when neither source can answer, so callers keep their prior
+    behaviour rather than inferring agreement.
     """
+    scheme = details.get("numbering_scheme")
+    if scheme == SCHEME_TMDB_AIRED:
+        return True
+    if scheme == SCHEME_DIVERGENT:
+        return False
+
     reference_count = details.get("reference_count")
     roster_size = details.get("roster_size")
     if not isinstance(reference_count, int) or not isinstance(roster_size, int):
@@ -474,6 +490,36 @@ def numbering_schemes_agree(details: dict) -> bool | None:
     if reference_count <= 0 or roster_size <= 0:
         return None
     return reference_count == roster_size
+
+
+def numbering_disagreement_reason(details: dict) -> str:
+    """Explain, for a log line, WHY the numbering was judged not to agree.
+
+    Both consumers of ``numbering_schemes_agree`` print a reason when it returns
+    False, and both must name the source that actually decided. That is not the
+    same as "is a marker present": a marker of ``unknown`` is present but does
+    NOT decide, because it falls through to the count heuristic. Branching on
+    truthiness would credit the marker for the heuristic's verdict and quote a
+    build-time roster that an unknown season usually does not carry, rendering
+    "a None-episode roster".
+
+    Shared rather than duplicated at the two call sites so the two sentences
+    cannot come to disagree about which source they are reporting.
+    """
+    # Only DIVERGENT credits the marker. It is the one scheme that makes
+    # numbering_schemes_agree return False; TMDB_AIRED makes it return True, so
+    # this function is never asked to explain it, and if it were, "records this
+    # season as tmdb_aired numbering" would be offered as the reason for a
+    # DISAGREEMENT, which is backwards.
+    if details.get("numbering_scheme") == SCHEME_DIVERGENT:
+        return (
+            f"the published subtitle cache records this season as divergent numbering "
+            f"against a {details.get('pack_roster_size')}-episode TMDB roster"
+        )
+    return (
+        f"its episode code came from a {details.get('reference_count')}-episode reference "
+        f"corpus against a {details.get('roster_size')}-episode TMDB roster"
+    )
 
 
 def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) -> bool:
@@ -500,11 +546,10 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
     # knows it cannot answer. A CONFIRMED verdict is exempt -- observed vote runs
     # are direct evidence about this file whatever the corpus is numbered in.
     if not confirmed_multi and numbering_schemes_agree(details) is False:
+        why = numbering_disagreement_reason(details)
         logger.info(
             f"Title {sanitize_log_value(getattr(title, 'id', None))}: runtime hint of "
-            f"~{conjoined_hint} conjoined episodes not actionable -- the reference "
-            f"corpus holds {details.get('reference_count')} episodes for this season "
-            f"against a roster of {details.get('roster_size')}, so the two use "
+            f"~{conjoined_hint} conjoined episodes not actionable: {why}, so the two use "
             f"different episode numbering and no vote run could confirm the hint. "
             f"Leaving the match as-is."
         )
