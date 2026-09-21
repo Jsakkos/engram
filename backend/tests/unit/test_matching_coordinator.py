@@ -2258,3 +2258,15 @@ class TestNumberingDisagreementReason:
         why = numbering_disagreement_reason({"reference_count": 13, "roster_size": 38})
         assert "published subtitle cache" not in why
         assert "13-episode reference corpus" in why
+
+    def test_tmdb_aired_marker_is_never_offered_as_a_disagreement(self):
+        # tmdb_aired makes numbering_schemes_agree return True, so it can never
+        # be the reason for a False. Crediting it would print "records this
+        # season as tmdb_aired numbering" as the cause of a disagreement.
+        from app.services.matching_coordinator import numbering_disagreement_reason
+
+        why = numbering_disagreement_reason(
+            {"numbering_scheme": "tmdb_aired", "reference_count": 13, "roster_size": 38}
+        )
+        assert "tmdb_aired" not in why
+        assert "published subtitle cache" not in why

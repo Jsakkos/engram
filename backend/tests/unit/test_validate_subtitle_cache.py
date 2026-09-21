@@ -519,3 +519,32 @@ class TestMalformedManifestDoesNotCrash:
         result = vsc.validate(tmp_path)
         assert isinstance(result.failures, list)
         assert result.summary["n_divergent_seasons"] == 1
+
+
+@pytest.mark.unit
+class TestSeasonLabel:
+    """Failure and divergence lines use the same S01 form as every filename."""
+
+    def test_numeric_key_is_zero_padded(self, vsc):
+        assert vsc._season_label("1") == "S01"
+        assert vsc._season_label("12") == "S12"
+
+    def test_non_numeric_key_is_shown_verbatim_not_crashed_on(self, vsc):
+        # The key comes from a downloaded manifest; the gate must not raise.
+        assert vsc._season_label("x") == "Sx"
+
+    def test_divergent_label_in_the_summary_is_padded(self, vsc, tmp_path):
+        shows = {
+            "4229": {
+                "tmdb_id": 4229,
+                "name": "Dexter's Laboratory",
+                "seasons": [1],
+                "episode_counts": {"1": 13},
+                "season_numbering": {"1": {"scheme": "divergent", "roster_size": 38}},
+            }
+        }
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": shows})
+        result = vsc.validate(tmp_path)
+        assert result.summary["divergent_seasons"] == [
+            "Dexter's Laboratory S01 (13 refs vs 38 roster)"
+        ]

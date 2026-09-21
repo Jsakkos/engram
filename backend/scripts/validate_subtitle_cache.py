@@ -63,6 +63,14 @@ class ValidationResult:
     summary: dict = field(default_factory=dict)
 
 
+def _season_label(season_key) -> str:
+    """``S01`` for a numeric key, to match the ``S{season:02d}`` form the rest of
+    this file (and every filename) uses. The key comes from downloaded JSON, so
+    a non-numeric one is shown verbatim rather than crashing the gate."""
+    key = str(season_key)
+    return f"S{int(key):02d}" if key.isdigit() else f"S{key}"
+
+
 def _check_season_numbering(shows: dict) -> tuple[list[str], int, list[str]]:
     """Validate the per-season numbering markers across the whole manifest.
 
@@ -113,14 +121,14 @@ def _check_season_numbering(shows: dict) -> tuple[list[str], int, list[str]]:
                 continue
             if not isinstance(marker, dict):
                 failures.append(
-                    f"{show_display!r} S{season_key} numbering marker is not a dict: "
+                    f"{show_display!r} {_season_label(season_key)} numbering marker is not a dict: "
                     f"{type(marker).__name__}"
                 )
                 continue
             scheme = marker.get("scheme")
             if scheme not in VALID_SCHEMES:
                 failures.append(
-                    f"{show_display!r} S{season_key} has an unrecognised numbering "
+                    f"{show_display!r} {_season_label(season_key)} has an unrecognised numbering "
                     f"scheme {scheme!r}; expected one of {sorted(VALID_SCHEMES)}"
                 )
                 continue
@@ -133,13 +141,13 @@ def _check_season_numbering(shows: dict) -> tuple[list[str], int, list[str]]:
                 and roster_size != reference_count
             ):
                 failures.append(
-                    f"{show_display!r} S{season_key} is marked {SCHEME_TMDB_AIRED!r} but "
+                    f"{show_display!r} {_season_label(season_key)} is marked {SCHEME_TMDB_AIRED!r} but "
                     f"its roster_size {roster_size} contradicts its episode_counts "
                     f"{reference_count}"
                 )
             if scheme == SCHEME_DIVERGENT:
                 divergent.append(
-                    f"{show_display} S{season_key} ({reference_count} refs vs {roster_size} roster)"
+                    f"{show_display} {_season_label(season_key)} ({reference_count} refs vs {roster_size} roster)"
                 )
 
     return failures, len(divergent), sorted(divergent)

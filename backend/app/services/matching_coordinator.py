@@ -506,10 +506,14 @@ def numbering_disagreement_reason(details: dict) -> str:
     Shared rather than duplicated at the two call sites so the two sentences
     cannot come to disagree about which source they are reporting.
     """
-    scheme = details.get("numbering_scheme")
-    if scheme in (SCHEME_TMDB_AIRED, SCHEME_DIVERGENT):
+    # Only DIVERGENT credits the marker. It is the one scheme that makes
+    # numbering_schemes_agree return False; TMDB_AIRED makes it return True, so
+    # this function is never asked to explain it, and if it were, "records this
+    # season as tmdb_aired numbering" would be offered as the reason for a
+    # DISAGREEMENT, which is backwards.
+    if details.get("numbering_scheme") == SCHEME_DIVERGENT:
         return (
-            f"the published subtitle cache records this season as {scheme!r} numbering "
+            f"the published subtitle cache records this season as divergent numbering "
             f"against a {details.get('pack_roster_size')}-episode TMDB roster"
         )
     return (
