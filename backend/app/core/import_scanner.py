@@ -26,6 +26,17 @@ _SEASON_RE = re.compile(r"^[Ss]eason\s*0*(\d+)$")
 # not shows, so a "Show / Disc N / *.mkv" layout resolves to one show, not many.
 _DISC_RE = re.compile(r"^[Dd]isc\s*0*\d+$")
 
+# Matches a show folder whose name also carries the season, as an external rip is
+# commonly named: "Psych Season 3", "Psych - S03", "PSYCH_S3_D1" (underscores are
+# already spaces by the time this runs). A season keyword is required, so a title
+# that merely ends in a number ("Babylon 5") is left alone, and the show part must
+# be non-empty, so a bare "Season 4" still takes the picked-season path (#667).
+_SHOW_SEASON_SUFFIX_RE = re.compile(
+    r"^(?P<show>.*?\S)[\s.-]+(?:season|series|s)\s*0*(?P<season>\d{1,2})"
+    r"(?:[\s.-]+(?:disc|d)\s*0*\d+)?$",
+    re.IGNORECASE,
+)
+
 # A directory holding one of these is a disc backup, not a folder of media.
 _DISC_IMAGE_MARKERS = ("BDMV", "VIDEO_TS")
 
@@ -127,6 +138,19 @@ def _clean_show(name: str) -> str:
     """Light cleanup of a folder name for use as a show title (keeps any year)."""
     cleaned = re.sub(r"\s+", " ", name.replace("_", " ")).strip()
     return cleaned or name
+
+
+def _split_show_season(name: str) -> tuple[str, int | None]:
+    """Clean a show folder name and split off a trailing season, if it has one.
+
+    "Psych Season 3" -> ("Psych", 3); "Seinfeld" -> ("Seinfeld", None). The
+    season is a fallback: an explicit "Season NN" folder below it wins.
+    """
+    cleaned = _clean_show(name)
+    m = _SHOW_SEASON_SUFFIX_RE.match(cleaned)
+    if not m:
+        return cleaned, None
+    return m.group("show"), int(m.group("season"))
 
 
 def _safe_size(p: Path) -> int:
@@ -235,7 +259,8 @@ def scan(path: Path) -> ImportScan:
         if path.suffix.lower() != ".mkv":
             return ImportScan(path.parent, [], [], 0, 0, False)
         size = _safe_size(path)
-        unit = ImportUnit(_clean_show(path.parent.name), None, [path], size)
+        show, season = _split_show_season(path.parent.name)
+        unit = ImportUnit(show, season, [path], size)
         return ImportScan(path.parent, [unit], [], 1, size, False, picked_is_show=True)
 
     root = path
@@ -276,25 +301,32 @@ def scan(path: Path) -> ImportScan:
         loose_files = sorted(f for f in files if f.parent == root)
         structured = [f for f in files if f.parent != root]
 
-    def show_for(file: Path) -> str | None:
+    def show_for(file: Path) -> tuple[str | None, int | None]:
+        """The file's show, plus any season carried in the show folder's name."""
         if picked_season is not None:
             # A "Season NN" folder at the filesystem root has no parent name; fall
             # back to None (the unresolved-show sentinel) rather than persisting "".
-            return _clean_show(root.parent.name) or None
+            show, _ = _split_show_season(root.parent.name)
+            return show or None, None
         if picked_is_show:
-            return _clean_show(root.name)
+            return _split_show_season(root.name)
         try:
             rel = file.relative_to(root)
         except ValueError:
-            return _clean_show(root.name)
-        return _clean_show(rel.parts[0]) if len(rel.parts) > 1 else _clean_show(root.name)
+            return _split_show_season(root.name)
+        return _split_show_season(rel.parts[0] if len(rel.parts) > 1 else root.name)
 
     groups: dict[tuple[str | None, int | None], list[Path]] = defaultdict(list)
     for f in structured:
+        show, suffix_season = show_for(f)
+        # Most specific first: a "Season NN" folder under the show, then the
+        # picked season folder itself, then the season in the show folder's name.
         season = _season_from_path(f, root)
         if season is None:
-            season = picked_season  # season folder is the root itself
-        groups[(show_for(f), season)].append(f)
+            season = picked_season
+        if season is None:
+            season = suffix_season
+        groups[(show, season)].append(f)
 
     units: list[ImportUnit] = []
     for (show, season), unit_files in sorted(

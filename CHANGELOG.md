@@ -18,6 +18,16 @@ All notable changes to Engram will be documented in this file.
   after publication is no longer mistaken for one of these shows. Caches
   published before this change keep working exactly as they did.
 
+### Fixed
+
+- **Imported folders named like "Psych Season 3" are now filed under the show's
+  real name.** The import took the folder name as the show name, so a season rip
+  named that way matched every episode correctly and still landed in
+  `TV/Psych Season 3/Season 03/`. The import now reads the season out of names
+  such as `Psych Season 3`, `Psych - S03` or `PSYCH_S3_D1`, and once TMDB has
+  identified the show, the library folder uses TMDB's name for it. Titles that
+  simply end in a number, like *Babylon 5*, are left alone. (#667)
+
 ## [0.36.2] - 2026-09-20
 
 _Highlights: box-set discs whose season label differs from TMDB now re-match across every season, segment-format shows are filed under the right episode number, and matched discs stop asking for a manual confirmation on every track._
