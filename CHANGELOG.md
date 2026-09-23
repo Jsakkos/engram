@@ -18,6 +18,17 @@ All notable changes to Engram will be documented in this file.
   after publication is no longer mistaken for one of these shows. Caches
   published before this change keep working exactly as they did.
 
+### Fixed
+
+- **Imported movies are moved into the library again.** Importing an existing
+  movie MKV with "Organize into library" identified the film correctly and then
+  reported the job as completed without moving anything, leaving the file in the
+  import folder. The movie is now renamed and filed under your Movies library
+  using your naming format, and "organize in place" imports land beside the
+  folder you picked. Only the files the import listed are moved: other MKVs in
+  the same folder are left alone, and choosing between two imported cuts in
+  review no longer deletes the one you didn't pick. (#676)
+
 ## [0.36.2] - 2026-09-20
 
 _Highlights: box-set discs whose season label differs from TMDB now re-match across every season, segment-format shows are filed under the right episode number, and matched discs stop asking for a manual confirmation on every track._

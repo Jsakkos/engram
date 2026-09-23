@@ -80,6 +80,7 @@ def _build_coordinator(content_type: ContentType, monkeypatch):
     coordinator._match_single_file = AsyncMock(return_value=None)
     coordinator._on_match_task_done = Mock()
     coordinator._finalize_disc_job = AsyncMock(return_value=None)
+    coordinator._finalize_movie = AsyncMock(return_value=None)
     coordinator._start_subtitle_download = Mock()
 
     # The autouse isolate_database fixture patches async_session in several
@@ -161,6 +162,25 @@ async def test_movie_import_advances_to_organizing_via_state_machine(tmp_path, m
 
 
 @pytest.mark.asyncio
+async def test_movie_import_organizes_through_movie_finalizer(tmp_path, monkeypatch):
+    """#676: a movie import must be organized by the movie tail. The TV finalizer
+    only organizes titles carrying an episode code, so it moved nothing and still
+    reported COMPLETED, leaving the MKV in the import folder."""
+    staging_dir = _make_staging(tmp_path, count=1)
+    coordinator, _broadcaster_ws, _module_ws = _build_coordinator(ContentType.MOVIE, monkeypatch)
+
+    job_id = await _make_job(str(staging_dir), "INCEPTION_2010")
+    await coordinator.identify_from_staging(job_id)
+
+    coordinator._finalize_disc_job.assert_not_awaited()
+    coordinator._finalize_movie.assert_awaited_once()
+    args, kwargs = coordinator._finalize_movie.await_args
+    assert args[0] == job_id
+    assert args[1] == staging_dir
+    assert kwargs == {"import_files": True}
+
+
+@pytest.mark.asyncio
 async def test_tv_import_skips_matching_when_transition_rejected(tmp_path, monkeypatch):
     """If the MATCHING transition is rejected (e.g. a concurrent cancel/fail), no per-title
     matching work runs — no job/title MATCHING broadcasts, no match tasks — so the UI never
@@ -199,3 +219,4 @@ async def test_movie_import_skips_finalize_when_transition_rejected(tmp_path, mo
     await coordinator.identify_from_staging(job_id)
 
     coordinator._finalize_disc_job.assert_not_awaited()
+    coordinator._finalize_movie.assert_not_awaited()

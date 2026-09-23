@@ -1583,6 +1583,13 @@ class FinalizationCoordinator:
                     / (job.detected_title or job.volume_label)
                 )
                 await self._state_machine.transition_to_completed(job, session)
+            elif stranded := [t for t in titles if t.state == TitleState.MATCHED]:
+                # MATCHED titles this sweep could not organize (no episode code)
+                # still hold files nobody moved. Reporting COMPLETED here is how a
+                # movie import "finished" with its MKV left in place (#676).
+                reason = f"{len(stranded)} title(s) matched but have no episode to organize"
+                logger.warning(f"Job {job_id}: {reason}")
+                await self._state_machine.transition_to_review(job, session, reason=reason)
             else:
                 job.progress_percent = 100.0
                 await self._state_machine.transition_to_completed(job, session)
@@ -1662,10 +1669,13 @@ class FinalizationCoordinator:
                             (await session.execute(cleanup_statement)).scalars().all()
                         )
 
+                        # A manual import's files are the user's originals, not
+                        # regenerable rips: an unselected cut stays where it is.
+                        _is_import = job.drive_id == "import"
                         for unselected in unselected_titles:
                             try:
                                 p = Path(unselected.output_filename)
-                                if p.exists():
+                                if p.exists() and not _is_import:
                                     p.unlink()
                                     logger.info(f"Deleted unselected file: {p}")
 
@@ -1700,7 +1710,10 @@ class FinalizationCoordinator:
                         _already_clean = bool(job.tmdb_name) and final_title == job.tmdb_name
 
                         _lib_path = _library_path_for_job(job, "movie")
-                        if _lib_path:
+                        if _lib_path or _is_import:
+                            # For an import the kept unselected files sit beside the
+                            # chosen one; an empty extras list stops the folder scan
+                            # from filing them as this movie's Extras.
                             org_result = await asyncio.to_thread(
                                 organize_movie,
                                 source_file,
@@ -1710,6 +1723,7 @@ class FinalizationCoordinator:
                                 tmdb_id=_tmdb_id,
                                 edition=_edition,
                                 already_clean=_already_clean,
+                                extra_files=[] if _is_import else None,
                             )
                         else:
                             org_result = await asyncio.to_thread(
