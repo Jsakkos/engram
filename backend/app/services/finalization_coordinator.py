@@ -15,6 +15,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.episode_codes import normalize_episode_code
 from app.core.organizer import check_library_writable
+from app.core.security import sanitize_log_value
 from app.database import async_session
 from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
@@ -1588,7 +1589,7 @@ class FinalizationCoordinator:
                 # still hold files nobody moved. Reporting COMPLETED here is how a
                 # movie import "finished" with its MKV left in place (#676).
                 reason = f"{len(stranded)} title(s) matched but have no episode to organize"
-                logger.warning(f"Job {job_id}: {reason}")
+                logger.warning(f"Job {sanitize_log_value(job_id)}: {reason}")
                 await self._state_machine.transition_to_review(job, session, reason=reason)
             else:
                 job.progress_percent = 100.0
