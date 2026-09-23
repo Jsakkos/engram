@@ -1235,9 +1235,12 @@ class IdentificationCoordinator:
                         job, JobState.MATCHING, session, broadcast=False
                     )
                     if succeeded:
+                        # detected_title: titles_discovered sent the folder hint, and
+                        # the TMDB name adopted above only reaches the card here.
                         await ws_manager.broadcast_job_update(
                             job_id,
                             JobState.MATCHING.value,
+                            detected_title=job.detected_title,
                             tmdb_degraded_reason=job.tmdb_degraded_reason or "",
                         )
 

@@ -387,3 +387,24 @@ async def test_import_ambiguous_show_keeps_folder_title(tmp_path, monkeypatch):
         job = await session.get(DiscJob, job_id)
         assert job.state == JobState.REVIEW_NEEDED
         assert job.detected_title == "Frasier Season 1"
+
+
+@pytest.mark.asyncio
+async def test_import_broadcasts_adopted_tmdb_name(tmp_path, monkeypatch):
+    """The dashboard learned the folder name from titles_discovered; the MATCHING
+    update must carry the TMDB name or the card keeps the stale one (#681 review)."""
+    staging = _make_staging(tmp_path, count=3)
+    coordinator, _bw, module_ws = _build_coordinator(
+        _fake_analysis(detected_name="Psych Season 3"), monkeypatch, signal=_psych_signal()
+    )
+    job_id = await _make_import_job(str(staging), "Psych Season 3")
+
+    await coordinator.identify_from_staging(job_id)
+
+    matching_updates = [
+        c
+        for c in module_ws.broadcast_job_update.await_args_list
+        if c.args[1:2] == (JobState.MATCHING.value,)
+    ]
+    assert matching_updates, "expected a MATCHING job_update"
+    assert matching_updates[-1].kwargs.get("detected_title") == "Psych"
