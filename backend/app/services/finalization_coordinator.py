@@ -207,6 +207,27 @@ def _no_reference_subtitles(job, titles) -> bool:
     return bool(episode_candidates) and all(t.matched_episode is None for t in episode_candidates)
 
 
+# Strategies a reviewer (or the configured default) can apply to a library
+# conflict. "ask" is the absence of one: the organizer reports FILE_EXISTS.
+CONFLICT_STRATEGIES = ("overwrite", "rename", "skip")
+
+
+async def _movie_conflict_strategy(title_choice: str | None) -> str:
+    """Pick the conflict strategy for a movie review organize (#685).
+
+    The reviewer's explicit choice wins. Without one, the configured
+    ``conflict_resolution_default`` applies; it was saved and shown in Settings
+    but read by nothing, so a conflict could only ever re-park the job. Anything
+    unrecognized degrades to "ask", which never touches the existing file.
+    """
+    if title_choice in CONFLICT_STRATEGIES:
+        return title_choice
+    from app.services.config_service import get_config as get_db_config
+
+    configured = getattr(await get_db_config(), "conflict_resolution_default", None)
+    return configured if configured in CONFLICT_STRATEGIES else "ask"
+
+
 def _library_path_for_job(job, content_type: str) -> "Path | None":
     """Return a library_path override for in_place jobs, or None for library mode."""
     if job.destination_mode != "in_place":
@@ -366,6 +387,21 @@ def _merge_match_details(existing: str | None, updates: dict) -> str:
             merged = {}
     merged.update(updates)
     return json.dumps(merged)
+
+
+def _clear_file_exists(existing: str | None) -> str | None:
+    """Drop a resolved FILE_EXISTS reason so the review badge does not stay lit."""
+    if not existing:
+        return existing
+    try:
+        parsed = json.loads(existing)
+    except (json.JSONDecodeError, TypeError):
+        return existing
+    if not isinstance(parsed, dict) or parsed.get("error") != "file_exists":
+        return existing
+    parsed.pop("error", None)
+    parsed.pop("message", None)
+    return json.dumps(parsed) if parsed else None
 
 
 def _organize_failure_details(existing: str | None, error: object) -> str:
@@ -1601,8 +1637,16 @@ class FinalizationCoordinator:
         title_id: int,
         episode_code: str | None = None,
         edition: str | None = None,
+        conflict_resolution: str | None = None,
     ) -> None:
-        """Apply a user's review decision for a title."""
+        """Apply a user's review decision for a title.
+
+        ``conflict_resolution`` ("overwrite" / "rename" / "skip") answers a
+        FILE_EXISTS conflict for a movie. It is recorded on the title and falls
+        back to the configured default when absent. TV organizes do not read it
+        yet: a TV conflict is usually a mis-assigned episode, which the
+        reviewer resolves by reassigning, not by replacing the library file.
+        """
         from datetime import UTC, datetime
 
         from app.core.organizer import movie_organizer, organize_movie
@@ -1617,6 +1661,8 @@ class FinalizationCoordinator:
                 raise ValueError("Title not found for this job")
 
             self._apply_decision_fields(title, episode_code, edition)
+            if conflict_resolution in CONFLICT_STRATEGIES:
+                title.conflict_resolution = conflict_resolution
             session.add(title)
             await session.commit()
 
@@ -1709,6 +1755,7 @@ class FinalizationCoordinator:
                         # tmdb_name that is NOT the title in use, and re-identify used
                         # to leave tmdb_name unset on a title it had just resolved.
                         _already_clean = bool(job.tmdb_name) and final_title == job.tmdb_name
+                        _conflict = await _movie_conflict_strategy(title.conflict_resolution)
 
                         _lib_path = _library_path_for_job(job, "movie")
                         if _lib_path or _is_import:
@@ -1721,6 +1768,7 @@ class FinalizationCoordinator:
                                 final_title,
                                 _tmdb_year,
                                 _lib_path,
+                                conflict_resolution=_conflict,
                                 tmdb_id=_tmdb_id,
                                 edition=_edition,
                                 already_clean=_already_clean,
@@ -1736,12 +1784,32 @@ class FinalizationCoordinator:
                                 tmdb_id=_tmdb_id,
                                 edition=_edition,
                                 already_clean=_already_clean,
+                                conflict_resolution=_conflict,
                             )
 
-                        if org_result["success"]:
+                        if org_result.get("skipped"):
+                            # "skip" keeps the library copy and leaves this rip in
+                            # staging. It reports success with no main_file, so it
+                            # must not fall into the organized branch below, which
+                            # would record organized_to/final_path as "None".
+                            title.state = TitleState.FAILED
+                            title.match_details = _merge_match_details(
+                                _clear_file_exists(title.match_details),
+                                {"reason": "Skipped: file already exists in library"},
+                            )
+                            session.add(title)
+                            job.progress_percent = 100.0
+                            job.error_message = None
+                            await self._state_machine.transition_to_completed(job, session)
+                            logger.info(
+                                "Kept the existing library file; the selected rip "
+                                f"stays in staging: {source_file}"
+                            )
+                        elif org_result["success"]:
                             title.state = TitleState.COMPLETED
                             title.organized_from = source_file.name
                             title.organized_to = str(org_result["main_file"])
+                            title.match_details = _clear_file_exists(title.match_details)
                             session.add(title)
                             _org_from = title.organized_from
                             _org_to = title.organized_to
@@ -2089,6 +2157,7 @@ class FinalizationCoordinator:
                 decision["title_id"],
                 episode_code=decision.get("episode_code"),
                 edition=decision.get("edition"),
+                conflict_resolution=decision.get("conflict_resolution"),
             )
 
     async def process_matched_titles(self, job_id: int) -> dict:

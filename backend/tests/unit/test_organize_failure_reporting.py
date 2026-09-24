@@ -535,7 +535,7 @@ class TestReviewSaveIsJobTagged:
 
         seen, probe = self._capture_job_id()
 
-        async def _fake(job_id, title_id, episode_code=None, edition=None):
+        async def _fake(job_id, title_id, episode_code=None, edition=None, **kwargs):
             probe()
 
         monkeypatch.setattr(jm.job_manager._finalization, "apply_review", _fake)

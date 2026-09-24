@@ -475,12 +475,18 @@ class ConfigUpdate(BaseModel):
     dashboard_base_url: str | None = None
 
 
+# How a reviewer answers a "file already exists in library" conflict (#685).
+# Omitted = use the configured conflict_resolution_default. Movies only for now.
+ConflictResolution = Literal["overwrite", "rename", "skip"]
+
+
 class ReviewRequest(BaseModel):
     """Request model for submitting a review decision."""
 
     title_id: int
     episode_code: str | None = None  # e.g., "S01E01"
     edition: str | None = None  # e.g., "Extended", "Theatrical"
+    conflict_resolution: ConflictResolution | None = None
 
 
 class ReviewDecision(BaseModel):
@@ -489,6 +495,7 @@ class ReviewDecision(BaseModel):
     title_id: int
     episode_code: str | None = None  # e.g., "S01E01", "extra", "skip"
     edition: str | None = None  # e.g., "Extended", "Theatrical"
+    conflict_resolution: ConflictResolution | None = None
 
 
 class ReviewBatchRequest(BaseModel):
@@ -1323,7 +1330,11 @@ async def submit_review(
 
     try:
         await job_manager.apply_review(
-            job.id, review.title_id, episode_code=review.episode_code, edition=review.edition
+            job.id,
+            review.title_id,
+            episode_code=review.episode_code,
+            edition=review.edition,
+            conflict_resolution=review.conflict_resolution,
         )
     except ValueError as e:
         # e.g. an unknown title_id — a client error, not a server fault.

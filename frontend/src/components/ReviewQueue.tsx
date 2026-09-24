@@ -5,7 +5,7 @@ import { Save, Package } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, type TitleAction } from './ReviewQueue/utils';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
@@ -19,6 +19,7 @@ import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './Rev
 import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
+import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
@@ -571,7 +572,11 @@ function ReviewQueue() {
         }
     };
 
-    const handleSaveMovie = async (titleId: number, matchAction: 'save' | 'skip') => {
+    const handleSaveMovie = async (
+        titleId: number,
+        matchAction: 'save' | 'skip',
+        conflictResolution?: ConflictResolution,
+    ) => {
         setIsSaving(true);
         setError(null);
         try {
@@ -582,11 +587,21 @@ function ReviewQueue() {
                     title_id: titleId,
                     episode_code: matchAction === 'skip' ? 'skip' : undefined,
                     edition: matchAction === 'save' ? (selectedEditions[titleId] || null) : undefined,
+                    conflict_resolution: conflictResolution,
                 }),
             });
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(`Review failed: ${response.status} ${text}`);
+            }
+            // The organize runs inside the request, so the job's state is already
+            // settled. If it landed back in review (a library conflict, #685),
+            // stay and show why instead of leaving the reviewer on the dashboard
+            // with nothing but another "needs review" notification.
+            const current = await fetchCurrentJob();
+            if (matchAction === 'save' && current?.state === 'review_needed') {
+                await fetchJobDetails();
+                return;
             }
             navigate('/');
         } catch (err) {
@@ -786,7 +801,9 @@ function ReviewQueue() {
                 >
                     {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
                     <SvNotice tone="warn">
-                        › MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.
+                        {titles.some((t) => t.state === 'review' && parseMatchDetails(t).error === 'file_exists')
+                            ? '› THIS MOVIE IS ALREADY IN THE LIBRARY. REPLACE IT, KEEP BOTH, OR DISCARD THIS RIP.'
+                            : '› MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.'}
                     </SvNotice>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -801,6 +818,16 @@ function ReviewQueue() {
                                         const rerip = getRerippableStateFromTitle(title.match_details);
                                         return rerip.isRerippable ? (
                                             <DamagedTrackNotice jobId={parseInt(jobId!)} titleId={title.id} state={rerip} />
+                                        ) : null;
+                                    })()}
+                                    {(() => {
+                                        const details = parseMatchDetails(title);
+                                        return title.state === 'review' && details.error === 'file_exists' ? (
+                                            <MovieConflictNotice
+                                                message={details.message || 'A file with this name already exists in the library.'}
+                                                disabled={isSaving}
+                                                onResolve={(r) => handleSaveMovie(title.id, 'save', r)}
+                                            />
                                         ) : null;
                                     })()}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>

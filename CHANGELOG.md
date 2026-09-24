@@ -20,6 +20,16 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **A movie that is already in your library no longer gets stuck in review.**
+  If the file Engram was about to create already existed, choosing a version
+  and pressing Select just sent the disc back to review, over and over, with a
+  fresh "needs review" notification each time. The review page now says which
+  file is in the way and offers **Replace existing** or **Keep both** (the new
+  rip is filed alongside as `(v2)`); Discard still keeps the library copy and
+  drops the rip. The page also stays open when a save lands back in review,
+  instead of returning to the dashboard with no explanation. The **Default
+  Conflict Resolution** setting now takes effect for these movie reviews;
+  until now it was saved but never used. (#686; reported by @katelovescode in #685)
 - **Imported folders named like "Psych Season 3" are now filed under the show's
   real name.** The import took the folder name as the show name, so a season rip
   named that way matched every episode correctly and still landed in
