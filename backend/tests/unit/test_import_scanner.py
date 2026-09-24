@@ -195,3 +195,86 @@ def test_picked_season_lowercase_padded(tmp_path: Path):
 
     assert scan.units[0].show_name == "Show"
     assert scan.units[0].season == 7
+
+
+# --- Season-suffixed show folders (#667) -------------------------------------
+# An external rip is commonly named "Psych Season 3". The folder is the show
+# folder, but its name carries the season too; taking it verbatim filed the
+# library under "TV/Psych Season 3/".
+
+
+def test_season_suffixed_show_folder_splits_show_and_season(tmp_path: Path):
+    show = tmp_path / "Psych Season 3"
+    _mkv(show / "t00.mkv")
+    _mkv(show / "t01.mkv")
+
+    scan = import_scanner.scan(show)
+
+    assert len(scan.units) == 1
+    assert scan.units[0].show_name == "Psych"
+    assert scan.units[0].season == 3
+    assert scan.picked_is_show is True
+
+
+def test_season_suffix_variants(tmp_path: Path):
+    cases = {
+        "Psych - Season 03": ("Psych", 3),
+        "Psych S3": ("Psych", 3),
+        "PSYCH_S03": ("PSYCH", 3),
+        "Psych Series 2": ("Psych", 2),
+        "Psych Season 3 Disc 1": ("Psych", 3),
+        "PSYCH_S3_D2": ("PSYCH", 3),
+        "The Office (2005) Season 4": ("The Office (2005)", 4),
+    }
+    for folder, expected in cases.items():
+        show = tmp_path / folder
+        _mkv(show / "a.mkv")
+        scan = import_scanner.scan(show)
+        assert (scan.units[0].show_name, scan.units[0].season) == expected, folder
+
+
+def test_names_that_are_not_season_suffixes_are_kept(tmp_path: Path):
+    # A trailing number with no season keyword is part of the title.
+    for folder in ("Babylon 5", "Stranger Things 4", "Blake's 7", "Class of 09"):
+        show = tmp_path / folder
+        _mkv(show / "a.mkv")
+        scan = import_scanner.scan(show)
+        assert scan.units[0].show_name == folder, folder
+        assert scan.units[0].season is None, folder
+
+
+def test_parent_of_season_suffixed_folders_groups_one_show(tmp_path: Path):
+    _mkv(tmp_path / "Psych Season 3" / "a.mkv")
+    _mkv(tmp_path / "Psych Season 4" / "b.mkv")
+
+    scan = import_scanner.scan(tmp_path)
+
+    assert [(u.show_name, u.season) for u in scan.units] == [("Psych", 3), ("Psych", 4)]
+
+
+def test_season_folder_beats_show_folder_suffix(tmp_path: Path):
+    # An explicit "Season NN" folder is the more specific signal.
+    _mkv(tmp_path / "Psych Season 3" / "Season 4" / "a.mkv")
+
+    scan = import_scanner.scan(tmp_path / "Psych Season 3")
+
+    assert scan.units[0].show_name == "Psych"
+    assert scan.units[0].season == 4
+
+
+def test_single_file_in_season_suffixed_folder(tmp_path: Path):
+    f = tmp_path / "Psych Season 3" / "t00.mkv"
+    _mkv(f)
+
+    scan = import_scanner.scan(f)
+
+    assert (scan.units[0].show_name, scan.units[0].season) == ("Psych", 3)
+
+
+def test_picked_season_folder_under_season_suffixed_parent(tmp_path: Path):
+    season_dir = tmp_path / "Psych Season 3" / "Season 3"
+    _mkv(season_dir / "a.mkv")
+
+    scan = import_scanner.scan(season_dir)
+
+    assert (scan.units[0].show_name, scan.units[0].season) == ("Psych", 3)

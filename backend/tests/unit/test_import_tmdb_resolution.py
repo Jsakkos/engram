@@ -310,3 +310,101 @@ async def test_resolve_missing_tmdb_id_prefers_tv_for_box_set(monkeypatch):
 
     assert job.tmdb_id == 246  # the series, not the fuzzy movie (980431)
     assert ContentType.TV in seen_prefers
+
+
+# --- The resolved TMDB name, not the folder name, names the show (#667) ---------
+# Matching keys on tmdb_id, so a folder named "Psych Season 3" matched Psych
+# correctly while the library was filed under "TV/Psych Season 3/", because every
+# organize call site reads detected_title and the import left the folder name there.
+
+
+def _psych_signal() -> SimpleNamespace:
+    return SimpleNamespace(
+        content_type=ContentType.TV,
+        confidence=0.85,
+        tmdb_id=1447,
+        tmdb_name="Psych",
+        ambiguous_identity=False,
+        candidates=[],
+        all_candidates=[{"tmdb_id": 1447, "name": "Psych", "year": "2006", "popularity": 40.0}],
+    )
+
+
+@pytest.mark.asyncio
+async def test_import_adopts_resolved_tmdb_name_as_show_title(tmp_path, monkeypatch):
+    staging = _make_staging(tmp_path, count=3)
+    coordinator, _bw, _mw = _build_coordinator(
+        _fake_analysis(detected_name="Psych Season 3"), monkeypatch, signal=_psych_signal()
+    )
+    job_id = await _make_import_job(str(staging), "Psych Season 3")
+
+    await coordinator.identify_from_staging(job_id)
+
+    async with _unit_session_factory() as session:
+        job = await session.get(DiscJob, job_id)
+        assert job.tmdb_id == 1447
+        assert job.detected_title == "Psych"
+        assert job.state == JobState.MATCHING
+
+    coordinator._start_subtitle_download.assert_called_once_with(job_id, "Psych", 3, 1447)
+
+
+@pytest.mark.asyncio
+async def test_import_adopts_tmdb_name_found_at_classification(tmp_path, monkeypatch):
+    """Classification can resolve the show itself; the folder-name hint must not
+    then overwrite the canonical name it found."""
+    staging = _make_staging(tmp_path, count=3)
+    analysis = _fake_analysis(detected_name="Psych Season 3")
+    analysis.tmdb_id = 1447
+    analysis.tmdb_name = "Psych"
+    coordinator, _bw, _mw = _build_coordinator(analysis, monkeypatch, signal=None)
+    job_id = await _make_import_job(str(staging), "Psych Season 3")
+    async with _unit_session_factory() as session:
+        job = await session.get(DiscJob, job_id)
+        job.detected_title = "Psych Season 3"  # the scanner's folder-derived hint
+        await session.commit()
+
+    await coordinator.identify_from_staging(job_id)
+
+    async with _unit_session_factory() as session:
+        job = await session.get(DiscJob, job_id)
+        assert job.detected_title == "Psych"
+
+
+@pytest.mark.asyncio
+async def test_import_ambiguous_show_keeps_folder_title(tmp_path, monkeypatch):
+    """A same-name twin is routed to review unresolved, so it must keep the user's
+    folder name rather than adopting one twin's name before the user picks."""
+    staging = _make_staging(tmp_path, count=3)
+    coordinator, _bw, _mw = _build_coordinator(
+        _fake_analysis(detected_name="Frasier Season 1"), monkeypatch, signal=_ambiguous_signal()
+    )
+    job_id = await _make_import_job(str(staging), "SEASON_1")
+
+    await coordinator.identify_from_staging(job_id)
+
+    async with _unit_session_factory() as session:
+        job = await session.get(DiscJob, job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert job.detected_title == "Frasier Season 1"
+
+
+@pytest.mark.asyncio
+async def test_import_broadcasts_adopted_tmdb_name(tmp_path, monkeypatch):
+    """The dashboard learned the folder name from titles_discovered; the MATCHING
+    update must carry the TMDB name or the card keeps the stale one (#681 review)."""
+    staging = _make_staging(tmp_path, count=3)
+    coordinator, _bw, module_ws = _build_coordinator(
+        _fake_analysis(detected_name="Psych Season 3"), monkeypatch, signal=_psych_signal()
+    )
+    job_id = await _make_import_job(str(staging), "Psych Season 3")
+
+    await coordinator.identify_from_staging(job_id)
+
+    matching_updates = [
+        c
+        for c in module_ws.broadcast_job_update.await_args_list
+        if c.args[1:2] == (JobState.MATCHING.value,)
+    ]
+    assert matching_updates, "expected a MATCHING job_update"
+    assert matching_updates[-1].kwargs.get("detected_title") == "Psych"

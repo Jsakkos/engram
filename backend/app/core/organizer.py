@@ -511,6 +511,7 @@ def organize_movie(
     tmdb_id: str | int | None = None,
     edition: str | None = None,
     already_clean: bool = False,
+    extra_files: list[Path] | None = None,
 ) -> dict:
     """Organize a ripped movie into the library.
 
@@ -530,6 +531,11 @@ def organize_movie(
         already_clean: True when ``movie_name`` is a canonical TMDB title that must
             not be run through ``clean_movie_name`` (which is built for volume
             labels and would turn "Spider-Man" into "Spider Man").
+        extra_files: The exact files to treat as extras, instead of every other MKV
+            in the main file's folder. A manual import's folder belongs to the user
+            and may hold MKVs the job never scanned; sweeping those into Extras/
+            would move files nobody asked Engram to touch (#676). ``None`` keeps
+            the folder scan, which is right for Engram's own staging directory.
 
     Returns:
         dict with 'success', 'main_file', 'extras', 'extras_mapping', 'error' keys
@@ -634,7 +640,10 @@ def organize_movie(
 
         # Move extras if requested
         if move_extras:
-            extras = find_extras(staging_dir, main_file)
+            if extra_files is None:
+                extras = find_extras(staging_dir, main_file)
+            else:
+                extras = [f for f in extra_files if f != main_file and f.exists()]
             if extras:
                 extras_dir = dest_dir / "Extras"
                 extras_dir.mkdir(exist_ok=True)

@@ -33,7 +33,7 @@ from app.core.extractor import (
     title_index_from_filename,
 )
 from app.core.log_context import job_log_context, with_job_log_context
-from app.core.organizer import movie_organizer
+from app.core.organizer import movie_organizer, organize_movie
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.database import async_session
@@ -42,7 +42,7 @@ from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.backup_reconcile import ReconcileOutcome, reconcile_titles
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
-from app.services.finalization_coordinator import FinalizationCoordinator
+from app.services.finalization_coordinator import FinalizationCoordinator, _library_path_for_job
 from app.services.identification_coordinator import (
     NO_TITLE_REVIEW_REASON,
     IdentificationCoordinator,
@@ -294,6 +294,7 @@ class JobManager:
             run_ripping=self._run_ripping,
             run_backup=self._run_backup,
             finalize_disc_job=self._finalization.finalize_disc_job,
+            finalize_movie=self._finalize_ripped_movie,
         )
         self._finalization.set_callbacks(
             run_ripping=self._run_ripping,
@@ -4116,16 +4117,24 @@ class JobManager:
         output_dir: Path,
         volume_label: str,
         detected_title: str | None,
+        *,
+        import_files: bool = False,
     ) -> None:
         """Run the movie tail of a finished rip: feature resolution → organize.
 
-        Shared by the rip-end movie branch of ``_run_ripping`` and the post-rip
-        identity-answer path (``_resume_movie_post_rip``, walk-away B5) so the
-        two can't diverge. Multi-title discs go through TheDiscDB-MainMovie /
-        feature-vs-extras resolution (possibly parking in review); otherwise
-        the job organizes and completes. Title state is not a gate here — the
-        completion loop finishes every non-terminal title, including ones an
-        identity answer released to MATCHED or left QUEUED.
+        Shared by the rip-end movie branch of ``_run_ripping``, the post-rip
+        identity-answer path (``_resume_movie_post_rip``, walk-away B5), and the
+        movie branch of ``identify_from_staging`` so they can't diverge.
+        Multi-title discs go through TheDiscDB-MainMovie / feature-vs-extras
+        resolution (possibly parking in review); otherwise the job organizes and
+        completes. Title state is not a gate here: the completion loop finishes
+        every non-terminal title, including ones an identity answer released to
+        MATCHED or left QUEUED.
+
+        ``import_files`` marks an import of existing MKVs: ``output_dir`` is then
+        the user's own folder, so the organize is driven by the job's titles (the
+        selected feature plus the other titles as extras) instead of by scanning
+        the folder. Imports also honour ``destination_mode`` (#676).
         """
         safe_job = sanitize_log_value(job_id)
         async with async_session() as session:
@@ -4168,20 +4177,45 @@ class JobManager:
             if _selected is None and ripped_titles:
                 _selected = ripped_titles[0]
             _edition = _selected.edition if _selected else None
+            # None for library mode, which covers every disc rip.
+            _lib_path = _library_path_for_job(job, "movie")
+            _main_file: Path | None = None
+            _extra_files: list[Path] | None = None
+            if import_files:
+                if _selected and _selected.output_filename:
+                    _main_file = Path(_selected.output_filename)
+                _extra_files = [
+                    Path(t.output_filename)
+                    for t in ripped_titles
+                    if t.output_filename and t is not _selected
+                ]
             await session.commit()
 
         await ws_manager.broadcast_job_update(job_id, JobState.ORGANIZING.value)
 
-        organize_result = await asyncio.to_thread(
-            movie_organizer.organize,
-            output_dir,
-            volume_label,
-            detected_title,
-            _tmdb_year,
-            tmdb_id=_tmdb_id,
-            edition=_edition,
-            already_clean=_already_clean,
-        )
+        if _lib_path is None and not import_files:
+            organize_result = await asyncio.to_thread(
+                movie_organizer.organize,
+                output_dir,
+                volume_label,
+                detected_title,
+                _tmdb_year,
+                tmdb_id=_tmdb_id,
+                edition=_edition,
+                already_clean=_already_clean,
+            )
+        else:
+            organize_result = await asyncio.to_thread(
+                organize_movie,
+                _main_file or output_dir,
+                detected_title or volume_label,
+                _tmdb_year,
+                _lib_path,
+                tmdb_id=_tmdb_id,
+                edition=_edition,
+                already_clean=_already_clean,
+                extra_files=_extra_files,
+            )
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)

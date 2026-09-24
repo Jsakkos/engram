@@ -30,6 +30,21 @@ All notable changes to Engram will be documented in this file.
   instead of returning to the dashboard with no explanation. The **Default
   Conflict Resolution** setting now takes effect for these movie reviews;
   until now it was saved but never used. (#685, thanks @katelovescode!)
+- **Imported folders named like "Psych Season 3" are now filed under the show's
+  real name.** The import took the folder name as the show name, so a season rip
+  named that way matched every episode correctly and still landed in
+  `TV/Psych Season 3/Season 03/`. The import now reads the season out of names
+  such as `Psych Season 3`, `Psych - S03` or `PSYCH_S3_D1`, and once TMDB has
+  identified the show, the library folder uses TMDB's name for it. Titles that
+  simply end in a number, like *Babylon 5*, are left alone. (#667)
+- **Imported movies are moved into the library again.** Importing an existing
+  movie MKV with "Organize into library" identified the film correctly and then
+  reported the job as completed without moving anything, leaving the file in the
+  import folder. The movie is now renamed and filed under your Movies library
+  using your naming format, and "organize in place" imports land beside the
+  folder you picked. Only the files the import listed are moved: other MKVs in
+  the same folder are left alone, and choosing between two imported cuts in
+  review no longer deletes the one you didn't pick. (#676)
 
 ## [0.36.2] - 2026-09-20
 
