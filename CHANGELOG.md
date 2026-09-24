@@ -18,6 +18,19 @@ All notable changes to Engram will be documented in this file.
   after publication is no longer mistaken for one of these shows. Caches
   published before this change keep working exactly as they did.
 
+### Fixed
+
+- **A movie that is already in your library no longer gets stuck in review.**
+  If the file Engram was about to create already existed, choosing a version
+  and pressing Select just sent the disc back to review, over and over, with a
+  fresh "needs review" notification each time. The review page now says which
+  file is in the way and offers **Replace existing** or **Keep both** (the new
+  rip is filed alongside as `(v2)`); Discard still keeps the library copy and
+  drops the rip. The page also stays open when a save lands back in review,
+  instead of returning to the dashboard with no explanation. The **Default
+  Conflict Resolution** setting now takes effect for these movie reviews;
+  until now it was saved but never used. (#685, thanks @katelovescode!)
+
 ## [0.36.2] - 2026-09-20
 
 _Highlights: box-set discs whose season label differs from TMDB now re-match across every season, segment-format shows are filed under the right episode number, and matched discs stop asking for a manual confirmation on every track._
