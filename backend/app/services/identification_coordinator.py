@@ -329,6 +329,7 @@ class IdentificationCoordinator:
         self._run_ripping: callable = None
         self._run_backup: callable = None
         self._finalize_disc_job: callable = None
+        self._finalize_movie: callable = None
 
     def set_callbacks(
         self,
@@ -345,6 +346,7 @@ class IdentificationCoordinator:
         run_ripping,
         run_backup,
         finalize_disc_job,
+        finalize_movie=None,
     ) -> None:
         """Set cross-coordinator callbacks after all coordinators are constructed."""
         self._get_discdb_mappings = get_discdb_mappings
@@ -359,6 +361,7 @@ class IdentificationCoordinator:
         self._run_ripping = run_ripping
         self._run_backup = run_backup
         self._finalize_disc_job = finalize_disc_job
+        self._finalize_movie = finalize_movie
 
     async def _next_state_after_identify(self, drive_id: str) -> JobState:
         """Read the live config and pick RIPPING or BACKING_UP for this disc."""
@@ -1205,6 +1208,19 @@ class IdentificationCoordinator:
                     )
                     return
 
+                # The folder name was only a search hint. Once TMDB has pinned the show
+                # (ambiguous twins returned above), name it as TMDB does: matching already
+                # keys on tmdb_id, and every organize call site reads detected_title, so
+                # leaving the hint here filed "Psych Season 3" under TV/Psych Season 3/
+                # (#667). Mirrors re_identify.
+                if job.content_type == ContentType.TV and job.tmdb_id and job.tmdb_name:
+                    if job.detected_title != job.tmdb_name:
+                        logger.info(
+                            f"Job {job_id}: naming show '{job.tmdb_name}' from TMDB "
+                            f"(import folder hint was '{job.detected_title}')"
+                        )
+                        job.detected_title = job.tmdb_name
+
                 # Skip ripping — files already exist. Proceed to matching/organization.
                 # Imports keep automatic all-seasons prefetch (flat folders genuinely
                 # span seasons); only physical discs get the season prompt.
@@ -1222,9 +1238,12 @@ class IdentificationCoordinator:
                         job, JobState.MATCHING, session, broadcast=False
                     )
                     if succeeded:
+                        # detected_title: titles_discovered sent the folder hint, and
+                        # the TMDB name adopted above only reaches the card here.
                         await ws_manager.broadcast_job_update(
                             job_id,
                             JobState.MATCHING.value,
+                            detected_title=job.detected_title,
                             tmdb_degraded_reason=job.tmdb_degraded_reason or "",
                         )
 
@@ -1292,8 +1311,17 @@ class IdentificationCoordinator:
                         session.add(dt)
                     await session.commit()
 
-                    # Run organization
-                    await self._finalize_disc_job(job_id)
+                    # Run organization through the movie tail. finalize_disc_job is
+                    # the TV finalizer: it only organizes titles carrying an episode
+                    # code, so a movie handed to it moved nothing and still reported
+                    # COMPLETED (#676).
+                    await self._finalize_movie(
+                        job_id,
+                        staging_dir,
+                        job.volume_label,
+                        job.detected_title,
+                        import_files=True,
+                    )
 
             except Exception as e:
                 logger.exception(f"Error processing staging import for job {job_id}")
