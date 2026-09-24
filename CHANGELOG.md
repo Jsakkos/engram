@@ -20,6 +20,13 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **Imported folders named like "Psych Season 3" are now filed under the show's
+  real name.** The import took the folder name as the show name, so a season rip
+  named that way matched every episode correctly and still landed in
+  `TV/Psych Season 3/Season 03/`. The import now reads the season out of names
+  such as `Psych Season 3`, `Psych - S03` or `PSYCH_S3_D1`, and once TMDB has
+  identified the show, the library folder uses TMDB's name for it. Titles that
+  simply end in a number, like *Babylon 5*, are left alone. (#667)
 - **Imported movies are moved into the library again.** Importing an existing
   movie MKV with "Organize into library" identified the film correctly and then
   reported the job as completed without moving anything, leaving the file in the

@@ -1208,6 +1208,19 @@ class IdentificationCoordinator:
                     )
                     return
 
+                # The folder name was only a search hint. Once TMDB has pinned the show
+                # (ambiguous twins returned above), name it as TMDB does: matching already
+                # keys on tmdb_id, and every organize call site reads detected_title, so
+                # leaving the hint here filed "Psych Season 3" under TV/Psych Season 3/
+                # (#667). Mirrors re_identify.
+                if job.content_type == ContentType.TV and job.tmdb_id and job.tmdb_name:
+                    if job.detected_title != job.tmdb_name:
+                        logger.info(
+                            f"Job {job_id}: naming show '{job.tmdb_name}' from TMDB "
+                            f"(import folder hint was '{job.detected_title}')"
+                        )
+                        job.detected_title = job.tmdb_name
+
                 # Skip ripping — files already exist. Proceed to matching/organization.
                 # Imports keep automatic all-seasons prefetch (flat folders genuinely
                 # span seasons); only physical discs get the season prompt.
@@ -1225,9 +1238,12 @@ class IdentificationCoordinator:
                         job, JobState.MATCHING, session, broadcast=False
                     )
                     if succeeded:
+                        # detected_title: titles_discovered sent the folder hint, and
+                        # the TMDB name adopted above only reaches the card here.
                         await ws_manager.broadcast_job_update(
                             job_id,
                             JobState.MATCHING.value,
+                            detected_title=job.detected_title,
                             tmdb_degraded_reason=job.tmdb_degraded_reason or "",
                         )
 
