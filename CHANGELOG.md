@@ -29,7 +29,7 @@ All notable changes to Engram will be documented in this file.
   drops the rip. The page also stays open when a save lands back in review,
   instead of returning to the dashboard with no explanation. The **Default
   Conflict Resolution** setting now takes effect for these movie reviews;
-  until now it was saved but never used. (#685, thanks @katelovescode!)
+  until now it was saved but never used. (#686; reported by @katelovescode in #685)
 - **Imported folders named like "Psych Season 3" are now filed under the show's
   real name.** The import took the folder name as the show name, so a season rip
   named that way matched every episode correctly and still landed in
