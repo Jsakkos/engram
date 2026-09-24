@@ -2368,6 +2368,7 @@ class JobManager:
         title_id: int,
         episode_code: str | None = None,
         edition: str | None = None,
+        conflict_resolution: str | None = None,
     ) -> None:
         """Apply a user's review decision for a title."""
         # Bind the job into the logging context: this runs straight off an API
@@ -2382,7 +2383,9 @@ class JobManager:
             # job-tagged: it is the one line that explains why a later organize
             # hit the retry path at all, so it must survive the bundle's grep.
             await self._prewarmer.cancel_and_wait(job_id)
-            await self._finalization.apply_review(job_id, title_id, episode_code, edition)
+            await self._finalization.apply_review(
+                job_id, title_id, episode_code, edition, conflict_resolution=conflict_resolution
+            )
 
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
         """Apply several review decisions for a job in one atomic pass."""

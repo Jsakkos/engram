@@ -702,6 +702,7 @@ class MovieOrganizer:
         tmdb_id: str | int | None = None,
         edition: str | None = None,
         already_clean: bool = False,
+        conflict_resolution: str = "ask",
     ) -> dict:
         """Organize a movie from staging to library.
 
@@ -712,6 +713,7 @@ class MovieOrganizer:
             staging_dir,
             movie_name,
             year,
+            conflict_resolution=conflict_resolution,
             tmdb_id=tmdb_id,
             edition=edition,
             already_clean=already_clean,
