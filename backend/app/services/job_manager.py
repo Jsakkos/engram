@@ -42,7 +42,12 @@ from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.backup_reconcile import ReconcileOutcome, reconcile_titles
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
-from app.services.finalization_coordinator import FinalizationCoordinator, _library_path_for_job
+from app.services.finalization_coordinator import (
+    FinalizationCoordinator,
+    _library_path_for_job,
+    _merge_match_details,
+    _movie_conflict_strategy,
+)
 from app.services.identification_coordinator import (
     NO_TITLE_REVIEW_REASON,
     IdentificationCoordinator,
@@ -4177,6 +4182,12 @@ class JobManager:
             if _selected is None and ripped_titles:
                 _selected = ripped_titles[0]
             _edition = _selected.edition if _selected else None
+            _selected_id = _selected.id if _selected else None
+            # A choice already recorded on the title wins; otherwise the configured
+            # default applies. "ask" (the default default) parks a conflict in review.
+            _conflict = await _movie_conflict_strategy(
+                _selected.conflict_resolution if _selected else None
+            )
             # None for library mode, which covers every disc rip.
             _lib_path = _library_path_for_job(job, "movie")
             _main_file: Path | None = None
@@ -4203,6 +4214,7 @@ class JobManager:
                 tmdb_id=_tmdb_id,
                 edition=_edition,
                 already_clean=_already_clean,
+                conflict_resolution=_conflict,
             )
         else:
             organize_result = await asyncio.to_thread(
@@ -4211,6 +4223,7 @@ class JobManager:
                 detected_title or volume_label,
                 _tmdb_year,
                 _lib_path,
+                conflict_resolution=_conflict,
                 tmdb_id=_tmdb_id,
                 edition=_edition,
                 already_clean=_already_clean,
@@ -4222,7 +4235,49 @@ class JobManager:
             if not job:
                 return
 
-            if organize_result["success"]:
+            if organize_result.get("skipped"):
+                # "skip" keeps the library copy and leaves the rip in staging. It
+                # reports success with main_file=None, so it must not reach the
+                # organized branch below, which would write "None" into final_path
+                # and organized_to (mirrors apply_review).
+                titles_result = await session.execute(
+                    select(DiscTitle).where(DiscTitle.job_id == job_id)
+                )
+                for t in titles_result.scalars().all():
+                    if t.state not in (TitleState.COMPLETED, TitleState.FAILED):
+                        t.state = TitleState.FAILED
+                        t.match_details = _merge_match_details(
+                            t.match_details,
+                            {"reason": "Skipped: file already exists in library"},
+                        )
+                        session.add(t)
+                job.progress_percent = 100.0
+                job.error_message = None
+                await state_machine.transition_to_completed(job, session)
+                logger.info(
+                    f"Job {safe_job}: kept the existing library file; the new copy stays "
+                    f"where it was, in {output_dir}"
+                )
+            elif organize_result.get("error_code") == "FILE_EXISTS":
+                # Park in review rather than failing, so MovieConflictNotice can offer
+                # Replace / Keep both. The reason goes on the title being organized,
+                # which is the one apply_review resolves.
+                selected = await session.get(DiscTitle, _selected_id) if _selected_id else None
+                if selected is not None:
+                    selected.state = TitleState.REVIEW
+                    selected.match_details = _merge_match_details(
+                        selected.match_details,
+                        {"error": "file_exists", "message": str(organize_result["error"])},
+                    )
+                    session.add(selected)
+                await state_machine.transition_to_review(
+                    job, session, reason="File already exists in library"
+                )
+                logger.warning(
+                    f"Job {safe_job}: organization conflict, waiting for review: "
+                    f"{organize_result['error']}"
+                )
+            elif organize_result["success"]:
                 job.final_path = str(organize_result["main_file"])
                 job.progress_percent = 100.0
 

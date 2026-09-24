@@ -476,7 +476,8 @@ class ConfigUpdate(BaseModel):
 
 
 # How a reviewer answers a "file already exists in library" conflict (#685).
-# Omitted = use the configured conflict_resolution_default. Movies only for now.
+# Omitted = the configured conflict_resolution_default for a movie, "ask" for a TV
+# track (the default never applies to TV). A TV "skip" is recorded as a Discard.
 ConflictResolution = Literal["overwrite", "rename", "skip"]
 
 
