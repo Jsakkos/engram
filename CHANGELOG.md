@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-09-24
+
+_Highlights: a movie already in your library can be replaced or kept alongside from the review page instead of looping, imported movies and season-named TV folders are filed correctly, and the published subtitle cache records each season's numbering scheme._
+
 ### Added
 
 - **The published subtitle cache now records how each season is numbered.** Some
@@ -36,7 +40,6 @@ All notable changes to Engram will be documented in this file.
   already in the library usually means a duplicate or mis-matched track, and
   replacing it automatically could overwrite the right episode with the wrong
   one. (#685, thanks @katelovescode!)
-  until now it was saved but never used. (#686; reported by @katelovescode in #685)
 - **Imported folders named like "Psych Season 3" are now filed under the show's
   real name.** The import took the folder name as the show name, so a season rip
   named that way matched every episode correctly and still landed in
