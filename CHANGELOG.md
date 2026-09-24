@@ -27,6 +27,14 @@ All notable changes to Engram will be documented in this file.
   such as `Psych Season 3`, `Psych - S03` or `PSYCH_S3_D1`, and once TMDB has
   identified the show, the library folder uses TMDB's name for it. Titles that
   simply end in a number, like *Babylon 5*, are left alone. (#667)
+- **Imported movies are moved into the library again.** Importing an existing
+  movie MKV with "Organize into library" identified the film correctly and then
+  reported the job as completed without moving anything, leaving the file in the
+  import folder. The movie is now renamed and filed under your Movies library
+  using your naming format, and "organize in place" imports land beside the
+  folder you picked. Only the files the import listed are moved: other MKVs in
+  the same folder are left alone, and choosing between two imported cuts in
+  review no longer deletes the one you didn't pick. (#676)
 
 ## [0.36.2] - 2026-09-20
 
