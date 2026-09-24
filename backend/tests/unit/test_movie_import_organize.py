@@ -170,6 +170,56 @@ class TestMovieImportOrganize:
         assert not extra.exists()
 
 
+@pytest.mark.unit
+class TestImportLibraryConflict:
+    """The import branch organizes through organize_movie, not movie_organizer, so
+    the #685 conflict strategy has to reach it too (it merged in beside #676)."""
+
+    async def test_existing_library_file_parks_for_review_and_touches_nothing(self, tmp_path):
+        source_dir = tmp_path / "engram_import" / f"{MOVIE} (1933)"
+        src = _mkv(source_dir / f"{MOVIE} (1933).mkv")
+        library = tmp_path / "Movies"
+        existing = _mkv(library / FOLDER / f"{FOLDER}.mkv")
+        existing.write_bytes(b"library copy")
+        job_id = await _seed_import(source_dir, [src])
+
+        with _cfg(library):
+            job = await _finalize(job_id, source_dir)
+
+        assert job.state == JobState.REVIEW_NEEDED
+        assert src.exists()
+        assert existing.read_bytes() == b"library copy"
+        async with _unit_session_factory() as session:
+            title = (
+                await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            ).scalar_one()
+        assert title.state == TitleState.REVIEW
+        assert json.loads(title.match_details)["error"] == "file_exists"
+
+    async def test_recorded_rename_files_the_import_beside_the_existing_copy(self, tmp_path):
+        source_dir = tmp_path / "engram_import" / f"{MOVIE} (1933)"
+        src = _mkv(source_dir / f"{MOVIE} (1933).mkv")
+        library = tmp_path / "Movies"
+        existing = _mkv(library / FOLDER / f"{FOLDER}.mkv")
+        job_id = await _seed_import(source_dir, [src])
+        async with _unit_session_factory() as session:
+            title = (
+                await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            ).scalar_one()
+            title.conflict_resolution = "rename"
+            session.add(title)
+            await session.commit()
+
+        with _cfg(library):
+            job = await _finalize(job_id, source_dir)
+
+        renamed = library / FOLDER / f"{FOLDER} (v2).mkv"
+        assert job.state == JobState.COMPLETED
+        assert renamed.exists()
+        assert existing.exists()
+        assert job.final_path == str(renamed)
+
+
 @pytest.fixture
 def _fc_session(monkeypatch):
     monkeypatch.setattr(
