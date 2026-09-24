@@ -227,6 +227,18 @@ async def _movie_conflict_strategy(title_choice: str | None) -> str:
     return configured if configured in CONFLICT_STRATEGIES else "ask"
 
 
+def _tv_conflict_strategy(title_choice: str | None) -> str:
+    """Pick the conflict strategy for a TV episode organize.
+
+    Only an explicit per-track choice counts; the configured default is
+    deliberately NOT consulted. A TV FILE_EXISTS is usually a duplicate track or
+    a mis-matched episode, so a blanket "overwrite" would replace a correct
+    episode with a wrong one. "skip" never reaches here: apply_review turns it
+    into a Discard. See docs/superpowers/specs/2026-09-23-tv-conflict-resolution.md.
+    """
+    return title_choice if title_choice in ("overwrite", "rename") else "ask"
+
+
 def _library_path_for_job(job, content_type: str) -> "Path | None":
     """Return a library_path override for in_place jobs, or None for library mode."""
     if job.destination_mode != "in_place":
@@ -388,16 +400,22 @@ def _merge_match_details(existing: str | None, updates: dict) -> str:
     return json.dumps(merged)
 
 
-def _clear_file_exists(existing: str | None) -> str | None:
-    """Drop a resolved FILE_EXISTS reason so the review badge does not stay lit."""
+def _has_file_exists(existing: str | None) -> bool:
+    """True when a title's match_details records an unresolved library conflict."""
     if not existing:
-        return existing
+        return False
     try:
         parsed = json.loads(existing)
     except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(parsed, dict) and parsed.get("error") == "file_exists"
+
+
+def _clear_file_exists(existing: str | None) -> str | None:
+    """Drop a resolved FILE_EXISTS reason so the review badge does not stay lit."""
+    if not _has_file_exists(existing):
         return existing
-    if not isinstance(parsed, dict) or parsed.get("error") != "file_exists":
-        return existing
+    parsed = json.loads(existing)
     parsed.pop("error", None)
     parsed.pop("message", None)
     return json.dumps(parsed) if parsed else None
@@ -1359,6 +1377,7 @@ class FinalizationCoordinator:
                     "output_filename": t.output_filename,
                     "match_confidence": t.match_confidence,
                     "match_details": t.match_details,
+                    "conflict_resolution": t.conflict_resolution,
                 }
                 for t in titles
                 if t.state == TitleState.MATCHED and t.matched_episode
@@ -1466,6 +1485,7 @@ class FinalizationCoordinator:
                     _detected_title or _volume_label,
                     matched_episode,
                     _lib_path,
+                    _tv_conflict_strategy(cap["conflict_resolution"]),
                     tmdb_id=_tmdb_id_str,
                     ordering=_title_ordering,
                     episode_group_id=ordering_group_id,
@@ -1481,6 +1501,7 @@ class FinalizationCoordinator:
                     ordering=_title_ordering,
                     episode_group_id=ordering_group_id,
                     year=_tmdb_year,
+                    conflict_resolution=_tv_conflict_strategy(cap["conflict_resolution"]),
                 )
 
             # Classification is independent of the file move: a failed extra still
@@ -1634,10 +1655,9 @@ class FinalizationCoordinator:
         """Apply a user's review decision for a title.
 
         ``conflict_resolution`` ("overwrite" / "rename" / "skip") answers a
-        FILE_EXISTS conflict for a movie. It is recorded on the title and falls
-        back to the configured default when absent. TV organizes do not read it
-        yet: a TV conflict is usually a mis-assigned episode, which the
-        reviewer resolves by reassigning, not by replacing the library file.
+        FILE_EXISTS conflict and is recorded on the title. A movie falls back to
+        the configured default when absent; a TV track honors only an explicit
+        choice, and its "skip" is a Discard (see ``_apply_decision_fields``).
         """
         from datetime import UTC, datetime
 
@@ -1652,9 +1672,13 @@ class FinalizationCoordinator:
             if not title or title.job_id != job_id:
                 raise ValueError("Title not found for this job")
 
-            self._apply_decision_fields(title, episode_code, edition)
-            if conflict_resolution in CONFLICT_STRATEGIES:
-                title.conflict_resolution = conflict_resolution
+            self._apply_decision_fields(
+                title,
+                episode_code,
+                edition,
+                conflict_resolution,
+                is_tv=job.content_type != ContentType.MOVIE,
+            )
             session.add(title)
             await session.commit()
 
@@ -1698,15 +1722,21 @@ class FinalizationCoordinator:
                         await session.commit()
                         await self._broadcaster.broadcast_job_state_changed(job_id, job.state)
 
-                        # Clean up unselected ripped files
-                        cleanup_statement = select(DiscTitle).where(
-                            DiscTitle.job_id == job_id,
-                            DiscTitle.id != title_id,
-                            DiscTitle.output_filename.isnot(None),
-                        )
-                        unselected_titles = (
-                            (await session.execute(cleanup_statement)).scalars().all()
-                        )
+                        # Clean up unselected ripped files. Not when this review is
+                        # answering a library conflict: the version was already
+                        # chosen (by the rip-end auto-select or an earlier review),
+                        # so the other files on the job are extras the reviewer
+                        # never rejected, and deleting them here would lose them.
+                        unselected_titles = []
+                        if not _has_file_exists(title.match_details):
+                            cleanup_statement = select(DiscTitle).where(
+                                DiscTitle.job_id == job_id,
+                                DiscTitle.id != title_id,
+                                DiscTitle.output_filename.isnot(None),
+                            )
+                            unselected_titles = (
+                                (await session.execute(cleanup_statement)).scalars().all()
+                            )
 
                         for unselected in unselected_titles:
                             try:
@@ -1847,13 +1877,38 @@ class FinalizationCoordinator:
 
     @staticmethod
     def _apply_decision_fields(
-        title: DiscTitle, episode_code: str | None, edition: str | None
+        title: DiscTitle,
+        episode_code: str | None,
+        edition: str | None,
+        conflict_resolution: str | None = None,
+        *,
+        is_tv: bool = False,
     ) -> None:
         """Apply a single review decision to a title's fields (no commit).
 
         Shared by the single-title ``apply_review`` and the batch path so both
         record decisions identically. Does not organize or change job state.
+
+        A recorded conflict choice answers a conflict on ONE target path, so a
+        decision that moves the target (new episode, new edition) clears it;
+        otherwise "Replace" chosen for S01E03 would silently replace S01E05
+        after a later reassignment. A choice sent with the same decision is
+        applied after the clear. For TV, "skip" (keep the library copy) is
+        exactly a Discard, so it becomes one and the organizer never sees it.
         """
+        if is_tv and conflict_resolution == "skip":
+            episode_code, conflict_resolution = "skip", None
+
+        target_moved = (
+            episode_code not in (None, "", "skip")
+            and (episode_code if episode_code == "extra" else normalize_episode_code(episode_code))
+            != title.matched_episode
+        ) or bool(edition and edition != title.edition)
+        if target_moved:
+            title.conflict_resolution = None
+        if conflict_resolution in CONFLICT_STRATEGIES:
+            title.conflict_resolution = conflict_resolution
+
         if episode_code:
             # Canonicalize so padded/unpadded and hyphen/run-on spellings of one
             # assignment ("S1E3", "S01E03"; "S01E01E02", "S01E01-E02") can't land
@@ -1987,6 +2042,7 @@ class FinalizationCoordinator:
                                 job.detected_title or job.volume_label,
                                 disc_title.matched_episode,
                                 _lib_path,
+                                _tv_conflict_strategy(disc_title.conflict_resolution),
                                 tmdb_id=_tmdb_id_str,
                                 ordering=_title_ordering,
                                 episode_group_id=ordering_group_id,
@@ -2002,6 +2058,9 @@ class FinalizationCoordinator:
                                 ordering=_title_ordering,
                                 episode_group_id=ordering_group_id,
                                 year=_tmdb_year,
+                                conflict_resolution=_tv_conflict_strategy(
+                                    disc_title.conflict_resolution
+                                ),
                             )
                     if org_result["success"]:
                         success_count += 1
@@ -2122,7 +2181,11 @@ class FinalizationCoordinator:
                     if not title or title.job_id != job_id:
                         raise ValueError(f"Title {decision['title_id']} not found for this job")
                     self._apply_decision_fields(
-                        title, decision.get("episode_code"), decision.get("edition")
+                        title,
+                        decision.get("episode_code"),
+                        decision.get("edition"),
+                        decision.get("conflict_resolution"),
+                        is_tv=True,
                     )
                     session.add(title)
                 await session.commit()
@@ -2212,6 +2275,7 @@ class FinalizationCoordinator:
                             job.detected_title or job.volume_label,
                             disc_title.matched_episode,
                             _lib_path,
+                            _tv_conflict_strategy(disc_title.conflict_resolution),
                             tmdb_id=_tmdb_id_str,
                             ordering=_title_ordering,
                             episode_group_id=ordering_group_id,
@@ -2227,6 +2291,9 @@ class FinalizationCoordinator:
                             ordering=_title_ordering,
                             episode_group_id=ordering_group_id,
                             year=_tmdb_year,
+                            conflict_resolution=_tv_conflict_strategy(
+                                disc_title.conflict_resolution
+                            ),
                         )
 
                 if org_result["success"]:

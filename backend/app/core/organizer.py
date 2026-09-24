@@ -965,6 +965,7 @@ class TVOrganizer:
         ordering: str = "aired",
         episode_group_id: str | None = None,
         year: int | None = None,
+        conflict_resolution: str = "ask",
     ) -> dict:
         """Organize a TV episode from staging to library.
 
@@ -976,6 +977,7 @@ class TVOrganizer:
             source_file,
             show_name,
             episode_code,
+            conflict_resolution=conflict_resolution,
             tmdb_id=tmdb_id,
             ordering=ordering,
             episode_group_id=episode_group_id,

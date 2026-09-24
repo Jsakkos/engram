@@ -29,7 +29,13 @@ All notable changes to Engram will be documented in this file.
   drops the rip. The page also stays open when a save lands back in review,
   instead of returning to the dashboard with no explanation. The **Default
   Conflict Resolution** setting now takes effect for these movie reviews;
-  until now it was saved but never used. (#685, thanks @katelovescode!)
+  until now it was saved but never used. The same conflict on a movie that
+  never needed a review used to fail the disc outright; it now follows the
+  setting too, and with the default of asking it opens the same review. For a
+  TV disc the setting deliberately does not apply, because a TV episode that is
+  already in the library usually means a duplicate or mis-matched track, and
+  replacing it automatically could overwrite the right episode with the wrong
+  one. (#685, thanks @katelovescode!)
 
 ## [0.36.2] - 2026-09-20
 

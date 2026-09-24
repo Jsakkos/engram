@@ -234,6 +234,205 @@ class TestSkipKeepsTheExistingFile:
         assert "already exists" in json.loads(title.match_details)["reason"]
 
 
+@pytest.fixture
+def job_manager_module(monkeypatch):
+    # importlib, not `import ... as`: the package re-exports the singleton.
+    jm = importlib.import_module("app.services.job_manager")
+    # No Discord task off a terminal or review transition (it would leak a pooled
+    # connection, and the review hook would read the stubbed config).
+    monkeypatch.setattr(jm.state_machine, "_on_terminal_callbacks", [])
+    monkeypatch.setattr(jm.state_machine, "_on_transition_callbacks", [])
+    return jm
+
+
+async def _seed_ripped_movie(tmp_path, *, conflict_resolution=None, with_extra=False):
+    """A single-feature movie whose rip just finished (the auto-organize input)."""
+    feature = tmp_path / "title_t00.mkv"
+    feature.write_bytes(b"x")
+    async with _unit_session_factory() as session:
+        job = DiscJob(
+            drive_id="/dev/sr0",
+            volume_label="HAIRSPRAY_DISC1",
+            content_type=ContentType.MOVIE,
+            state=JobState.RIPPING,
+            detected_title="Hairspray",
+            tmdb_name="Hairspray",
+            tmdb_year=2007,
+            staging_path=str(tmp_path),
+        )
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        title = DiscTitle(
+            job_id=job.id,
+            title_index=0,
+            duration_seconds=6967,
+            is_selected=True,
+            output_filename=str(feature),
+            state=TitleState.MATCHED,
+            conflict_resolution=conflict_resolution,
+        )
+        session.add(title)
+        extra_id = None
+        if with_extra:
+            # Tagged by _resolve_multi_title_movie: deselected, is_extra, still ripped.
+            extra_file = tmp_path / "title_t01.mkv"
+            extra_file.write_bytes(b"x")
+            extra = DiscTitle(
+                job_id=job.id,
+                title_index=1,
+                duration_seconds=900,
+                is_selected=False,
+                is_extra=True,
+                output_filename=str(extra_file),
+                state=TitleState.MATCHED,
+            )
+            session.add(extra)
+        await session.commit()
+        await session.refresh(title)
+        if with_extra:
+            await session.refresh(extra)
+            extra_id = extra.id
+        return job.id, title.id, extra_id
+
+
+async def _finalize(jm, job_id: int, tmp_path) -> None:
+    await jm.job_manager._finalize_ripped_movie(job_id, tmp_path, "HAIRSPRAY_DISC1", "Hairspray")
+
+
+class TestAutomaticOrganizeConflict:
+    """The rip-end organize (``_finalize_ripped_movie``) hit the same conflict with
+    no strategy, and on FILE_EXISTS it FAILED the job outright, so the movie
+    review's Replace / Keep both could never be offered."""
+
+    async def test_file_exists_parks_for_review_instead_of_failing(
+        self, tmp_path, monkeypatch, conflict_default, job_manager_module
+    ):
+        organize = _organize_returning(monkeypatch, _file_exists_result())
+        job_id, title_id, _ = await _seed_ripped_movie(tmp_path)
+
+        await _finalize(job_manager_module, job_id, tmp_path)
+
+        assert organize.call_args.kwargs["conflict_resolution"] == "ask"
+        job, title = await _load(job_id, title_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert title.state == TitleState.REVIEW
+        # The shape MovieConflictNotice reads.
+        details = json.loads(title.match_details)
+        assert details["error"] == "file_exists"
+        assert EXISTING in details["message"]
+
+    async def test_configured_default_reaches_the_organizer(
+        self, tmp_path, monkeypatch, conflict_default, job_manager_module
+    ):
+        conflict_default("rename")
+        final = tmp_path / "Hairspray (2007) (v2).mkv"
+        organize = _organize_returning(
+            monkeypatch,
+            {"success": True, "main_file": final, "extras": [], "extras_mapping": {}},
+        )
+        job_id, title_id, _ = await _seed_ripped_movie(tmp_path)
+
+        await _finalize(job_manager_module, job_id, tmp_path)
+
+        assert organize.call_args.kwargs["conflict_resolution"] == "rename"
+        job, title = await _load(job_id, title_id)
+        assert job.state == JobState.COMPLETED
+        assert job.final_path == str(final)
+
+    async def test_choice_recorded_on_the_title_wins_over_the_default(
+        self, tmp_path, monkeypatch, conflict_default, job_manager_module
+    ):
+        # A choice made in review before the title finished ripping (apply_review
+        # records it, then re-rips) must survive into the rip-end organize.
+        conflict_default("skip")
+        organize = _organize_returning(
+            monkeypatch,
+            {"success": True, "main_file": "/x.mkv", "extras": [], "extras_mapping": {}},
+        )
+        job_id, _, _ = await _seed_ripped_movie(tmp_path, conflict_resolution="overwrite")
+
+        await _finalize(job_manager_module, job_id, tmp_path)
+
+        assert organize.call_args.kwargs["conflict_resolution"] == "overwrite"
+
+    async def test_skip_completes_without_claiming_an_organized_file(
+        self, tmp_path, monkeypatch, conflict_default, job_manager_module
+    ):
+        conflict_default("skip")
+        _organize_returning(
+            monkeypatch,
+            {"success": True, "skipped": True, "main_file": None, "extras": []},
+        )
+        job_id, title_id, _ = await _seed_ripped_movie(tmp_path)
+
+        await _finalize(job_manager_module, job_id, tmp_path)
+
+        job, title = await _load(job_id, title_id)
+        assert job.state == JobState.COMPLETED
+        assert job.final_path is None
+        assert title.organized_to is None
+        assert title.state == TitleState.FAILED
+        assert "already exists" in json.loads(title.match_details)["reason"]
+
+    async def test_resolving_the_parked_conflict_keeps_the_extras(
+        self, tmp_path, monkeypatch, conflict_default, job_manager_module
+    ):
+        # apply_review deletes every other ripped file as an "unselected version".
+        # For a conflict review the version was already chosen, so the only other
+        # files are extras; deleting them would be worse than the old FAILED path,
+        # which left everything in staging.
+        _organize_returning(monkeypatch, _file_exists_result())
+        job_id, title_id, extra_id = await _seed_ripped_movie(tmp_path, with_extra=True)
+        await _finalize(job_manager_module, job_id, tmp_path)
+
+        final = "/library/movies/Hairspray (2007)/Hairspray (2007).mkv"
+        _organize_returning(
+            monkeypatch,
+            {"success": True, "main_file": final, "extras": [], "extras_mapping": {}},
+        )
+        await _make_coord().apply_review(job_id, title_id, conflict_resolution="overwrite")
+
+        job, _ = await _load(job_id, title_id)
+        assert job.state == JobState.COMPLETED
+        _, extra = await _load(job_id, extra_id)
+        assert (tmp_path / "title_t01.mkv").exists()
+        assert extra.state != TitleState.FAILED
+
+
+class TestVersionReviewStillDiscardsUnselected:
+    async def test_picking_a_version_deletes_the_other_cut(
+        self, tmp_path, monkeypatch, conflict_default
+    ):
+        # The keep-extras guard above is scoped to conflict reviews; the multi-cut
+        # review still discards the version the reviewer did not pick.
+        _organize_returning(
+            monkeypatch,
+            {"success": True, "main_file": "/x.mkv", "extras": [], "extras_mapping": {}},
+        )
+        job_id, title_id = await _seed_movie(tmp_path)
+        other = tmp_path / "title_t03.mkv"
+        other.write_bytes(b"x")
+        async with _unit_session_factory() as session:
+            chosen = await session.get(DiscTitle, title_id)
+            chosen.match_details = None  # a version pick, not a conflict
+            session.add(chosen)
+            session.add(
+                DiscTitle(
+                    job_id=job_id,
+                    title_index=3,
+                    duration_seconds=7200,
+                    output_filename=str(other),
+                    state=TitleState.REVIEW,
+                )
+            )
+            await session.commit()
+
+        await _make_coord().apply_review(job_id, title_id, edition="Theatrical")
+
+        assert not other.exists()
+
+
 class TestReviewRouteCarriesTheChoice:
     @pytest.fixture
     async def client(self):
