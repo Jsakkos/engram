@@ -4,6 +4,13 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **The dashboard now runs on React 19.** No visible change is intended; this keeps the
+  frontend on a supported React line and unblocks dependency updates that already require
+  it. Two unused packages (`react-popper`, `@popperjs/core`) that do not support React 19
+  were removed.
+
 ## [0.37.0] - 2026-09-24
 
 _Highlights: a movie already in your library can be replaced or kept alongside from the review page instead of looping, imported movies and season-named TV folders are filed correctly, and the published subtitle cache records each season's numbering scheme._
