@@ -593,16 +593,26 @@ class TestAlembicSelfHealing:
     every later migration on every subsequent startup.
     """
 
-    def test_upgrade_heals_when_head_column_already_present(self, tmp_path):
+    def test_upgrade_heals_when_head_column_already_present(self, tmp_path, monkeypatch):
         """A DB whose schema already matches head, but whose alembic_version
         is one revision behind, must self-heal to head instead of getting
         stuck retrying the same failing migration forever.
+
+        Every shipped revision now guards its add_column (app/migration_guards),
+        so the duplicate-column error is forced here: the heal is the backstop
+        for a future revision that forgets the guard.
         """
         from alembic import command
         from alembic.config import Config
         from alembic.script import ScriptDirectory
+        from sqlalchemy.exc import OperationalError
 
         import app.database as db_mod
+
+        def unguarded_add_column(_cfg, _rev):
+            raise OperationalError(
+                "ALTER TABLE", {}, Exception("duplicate column name: backup_path")
+            )
 
         db_path = tmp_path / "self_heal.db"
         sync_engine = create_engine(f"sqlite:///{db_path}")
@@ -629,6 +639,7 @@ class TestAlembicSelfHealing:
             # create_all() already put there.
             command.stamp(alembic_cfg, down_revision)
 
+            monkeypatch.setattr(command, "upgrade", unguarded_add_column)
             db_mod._run_alembic_upgrade()
 
             from alembic.runtime.migration import MigrationContext

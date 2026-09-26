@@ -15,6 +15,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing
+
 # revision identifiers, used by Alembic.
 revision: str = "e7a2b9c4d1f8"
 down_revision: str | Sequence[str] | None = "d4e5f6a7b8c9"
@@ -23,8 +25,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("disc_jobs", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("tmdb_degraded_reason", sa.String(), nullable=True))
+    add_column_if_missing(
+        "disc_jobs", sa.Column("tmdb_degraded_reason", sa.String(), nullable=True)
+    )
 
 
 def downgrade() -> None:

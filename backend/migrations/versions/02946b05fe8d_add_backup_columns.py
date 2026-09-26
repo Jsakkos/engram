@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing
+
 # revision identifiers, used by Alembic.
 revision: str = "02946b05fe8d"
 down_revision: str | Sequence[str] | None = "a4c81f6b2e39"
@@ -20,20 +22,22 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column("disc_jobs", sa.Column("source_spec", sa.String(), nullable=True))
-    op.add_column("disc_jobs", sa.Column("backup_path", sa.String(), nullable=True))
-    op.add_column("disc_jobs", sa.Column("backup_status", sa.String(), nullable=True))
-    op.add_column("disc_jobs", sa.Column("backup_status_reason", sa.String(), nullable=True))
-    op.add_column(
+    add_column_if_missing("disc_jobs", sa.Column("source_spec", sa.String(), nullable=True))
+    add_column_if_missing("disc_jobs", sa.Column("backup_path", sa.String(), nullable=True))
+    add_column_if_missing("disc_jobs", sa.Column("backup_status", sa.String(), nullable=True))
+    add_column_if_missing(
+        "disc_jobs", sa.Column("backup_status_reason", sa.String(), nullable=True)
+    )
+    add_column_if_missing(
         "app_config",
         sa.Column("backup_path", sa.String(), nullable=False, server_default=sa.text("''")),
     )
     # server_default 0: this is opt-in, so an upgraded row must come back OFF.
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column("backup_before_rip", sa.Boolean(), nullable=False, server_default=sa.text("0")),
     )
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "timeout_backing_up_seconds",
