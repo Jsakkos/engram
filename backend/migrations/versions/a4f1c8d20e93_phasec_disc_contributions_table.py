@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import index_exists, table_exists
+
 # revision identifiers, used by Alembic.
 revision: str = "a4f1c8d20e93"
 down_revision: str | Sequence[str] | None = "5ea422081173"
@@ -19,35 +21,39 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "disc_contributions",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "queued_at",
-            sa.DateTime(),
-            nullable=False,
-            server_default=sa.text("(datetime('now'))"),
-        ),
-        sa.Column("disc_content_hash", sa.LargeBinary(), nullable=False),
-        sa.Column("tmdb_id", sa.Integer(), nullable=False),
-        sa.Column("content_type", sa.String(), nullable=False),
-        sa.Column("season", sa.Integer(), nullable=True),
-        sa.Column("titles_json", sa.String(), nullable=False),
-        sa.Column("pseudonym", sa.String(), nullable=False),
-        sa.Column("uploaded_at", sa.DateTime(), nullable=True),
-        sa.Column("upload_attempts", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("upload_status", sa.String(), nullable=True),
-        sa.Column("upload_error_msg", sa.String(), nullable=True),
-    )
+    # create_all() in init_db() makes this table (from the model) before
+    # Alembic runs, so only create it on a DB that lacks it.
+    if not table_exists("disc_contributions"):
+        op.create_table(
+            "disc_contributions",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column(
+                "queued_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.text("(datetime('now'))"),
+            ),
+            sa.Column("disc_content_hash", sa.LargeBinary(), nullable=False),
+            sa.Column("tmdb_id", sa.Integer(), nullable=False),
+            sa.Column("content_type", sa.String(), nullable=False),
+            sa.Column("season", sa.Integer(), nullable=True),
+            sa.Column("titles_json", sa.String(), nullable=False),
+            sa.Column("pseudonym", sa.String(), nullable=False),
+            sa.Column("uploaded_at", sa.DateTime(), nullable=True),
+            sa.Column("upload_attempts", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("upload_status", sa.String(), nullable=True),
+            sa.Column("upload_error_msg", sa.String(), nullable=True),
+        )
     # Composite index for the enqueue dedup probe (filters on
     # pseudonym + disc_content_hash before each insert). Mirrors the
     # DiscContribution model's __table_args__ so Alembic-upgraded and
     # create_all (frozen-build) databases converge on the same schema.
-    op.create_index(
-        "ix_disc_contributions_dedup",
-        "disc_contributions",
-        ["pseudonym", "disc_content_hash"],
-    )
+    if not index_exists("disc_contributions", "ix_disc_contributions_dedup"):
+        op.create_index(
+            "ix_disc_contributions_dedup",
+            "disc_contributions",
+            ["pseudonym", "disc_content_hash"],
+        )
 
 
 def downgrade() -> None:

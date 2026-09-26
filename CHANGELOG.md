@@ -22,6 +22,17 @@ All notable changes to Engram will be documented in this file.
   it. Two unused packages (`react-popper`, `@popperjs/core`) that do not support React 19
   were removed.
 
+### Fixed
+
+- **Long-upgraded databases no longer get stuck partway through their schema
+  migrations.** On a database first created by an older release, one migration
+  tried to drop a column that Engram's startup had already removed, failed, and
+  left every later migration unapplied on every launch (logged as `Alembic
+  migration failed (non-fatal): 'is_transcoding_enabled'`). All migrations now
+  check the live schema first and skip work that is already done, so these
+  databases catch up to the current schema on the next start. A migration that
+  does fail now logs which revision is stuck and how many are blocked behind it.
+
 ## [0.37.0] - 2026-09-24
 
 _Highlights: a movie already in your library can be replaced or kept alongside from the review page instead of looping, imported movies and season-named TV folders are filed correctly, and the published subtitle cache records each season's numbering scheme._

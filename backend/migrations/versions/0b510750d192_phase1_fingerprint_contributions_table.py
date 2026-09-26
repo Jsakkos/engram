@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import table_exists
+
 # revision identifiers, used by Alembic.
 revision: str = "0b510750d192"
 down_revision: str | Sequence[str] | None = "53b4ddc7751e"
@@ -19,29 +21,32 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "fingerprint_contributions",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "queued_at",
-            sa.DateTime(),
-            nullable=False,
-            server_default=sa.text("(datetime('now'))"),
-        ),
-        sa.Column(
-            "title_id", sa.Integer(), sa.ForeignKey("disc_titles.id"), nullable=True, index=True
-        ),
-        sa.Column("chromaprint_blob", sa.LargeBinary(), nullable=False),
-        sa.Column("tmdb_id", sa.Integer(), nullable=False),
-        sa.Column("season", sa.Integer(), nullable=True),
-        sa.Column("episode", sa.Integer(), nullable=True),
-        sa.Column("match_confidence", sa.Float(), nullable=False),
-        sa.Column("match_source", sa.String(), nullable=False),
-        sa.Column("disc_content_hash", sa.LargeBinary(), nullable=True),
-        sa.Column("pseudonym", sa.String(), nullable=False),
-        sa.Column("uploaded_at", sa.DateTime(), nullable=True),
-        sa.Column("upload_attempts", sa.Integer(), nullable=False, server_default="0"),
-    )
+    # create_all() in init_db() makes this table (from the model) before
+    # Alembic runs, so only create it on a DB that lacks it.
+    if not table_exists("fingerprint_contributions"):
+        op.create_table(
+            "fingerprint_contributions",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column(
+                "queued_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.text("(datetime('now'))"),
+            ),
+            sa.Column(
+                "title_id", sa.Integer(), sa.ForeignKey("disc_titles.id"), nullable=True, index=True
+            ),
+            sa.Column("chromaprint_blob", sa.LargeBinary(), nullable=False),
+            sa.Column("tmdb_id", sa.Integer(), nullable=False),
+            sa.Column("season", sa.Integer(), nullable=True),
+            sa.Column("episode", sa.Integer(), nullable=True),
+            sa.Column("match_confidence", sa.Float(), nullable=False),
+            sa.Column("match_source", sa.String(), nullable=False),
+            sa.Column("disc_content_hash", sa.LargeBinary(), nullable=True),
+            sa.Column("pseudonym", sa.String(), nullable=False),
+            sa.Column("uploaded_at", sa.DateTime(), nullable=True),
+            sa.Column("upload_attempts", sa.Integer(), nullable=False, server_default="0"),
+        )
 
 
 def downgrade() -> None:

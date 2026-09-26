@@ -146,12 +146,16 @@ def _upgrade_to_head_self_healing(alembic_cfg, sync_engine) -> None:
     the failure as "already applied": stamp past just that one revision and
     keep going.
 
-    Safe only because _add_missing_columns() backfills *columns* for every
-    table before Alembic ever runs — it does not create indexes/constraints or
-    run data backfills. Stamping a revision "done" on a duplicate-column error
-    assumes the whole revision is a no-op, so a migration must not combine
-    add_column() with other DDL or data operations in the same upgrade(), or
-    that other work would be silently skipped whenever this self-heal fires.
+    This is a backstop. Revisions are written to be idempotent against the
+    out-of-band writers (see app/migration_guards.py), so a correctly guarded
+    revision never reaches this path. Stamping a revision "done" on a
+    duplicate-column error assumes the whole revision is a no-op, so any other
+    DDL or data work in an unguarded revision would be silently skipped here.
+
+    Any other failure is re-raised and leaves alembic_version where it is, so
+    that revision AND every later one stay unapplied on each startup until the
+    revision is fixed. That is logged as an error naming the stuck revision,
+    rather than looking like a one-off warning.
     """
     from alembic import command
     from alembic.runtime.migration import MigrationContext
@@ -171,14 +175,26 @@ def _upgrade_to_head_self_healing(alembic_cfg, sync_engine) -> None:
         if current == script.get_current_head():
             return
 
+        next_revs = script.get_revision(current).nextrev if current else None
+        next_rev = next(iter(next_revs)) if next_revs else None
         try:
             command.upgrade(alembic_cfg, "+1")
-        except OperationalError as e:
-            if "duplicate column name" not in str(e).lower():
-                raise
-            next_revs = script.get_revision(current).nextrev if current else None
-            next_rev = next(iter(next_revs)) if next_revs else None
-            if next_rev is None:
+        except Exception as e:
+            healable = (
+                isinstance(e, OperationalError)
+                and "duplicate column name" in str(e).lower()
+                and next_rev is not None
+            )
+            if not healable:
+                # iterate_revisions includes its lower bound; the current
+                # revision is already applied, so it is not pending.
+                pending = list(script.iterate_revisions("heads", current or "base"))
+                blocked = len(pending) - (1 if current else 0)
+                logger.error(
+                    f"Alembic: revision {next_rev or '(first)'} failed; alembic_version "
+                    f"stays at {current or 'base'} and {blocked} pending revision(s) will "
+                    f"not apply until it is fixed: {e!r}"
+                )
                 raise
             logger.warning(
                 f"Alembic: revision {next_rev} adds a column that already exists "

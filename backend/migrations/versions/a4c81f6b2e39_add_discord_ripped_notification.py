@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing
+
 # revision identifiers, used by Alembic.
 revision: str = "a4c81f6b2e39"
 down_revision: str | Sequence[str] | None = "c3e17a2b8d40"
@@ -20,7 +22,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "discord_template_ripped", sa.String(), nullable=False, server_default=sa.text("''")
@@ -28,7 +30,7 @@ def upgrade() -> None:
     )
     # server_default 0, unlike the other three notify toggles: this event is
     # opt-in, so an upgraded row must come back OFF.
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "discord_notify_ripped", sa.Boolean(), nullable=False, server_default=sa.text("0")
