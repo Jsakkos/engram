@@ -7,11 +7,11 @@ such a DB, which froze alembic_version at 9b793042b934 and blocked every later
 revision on every startup (seen nightly on the subtitle-cache harvest server).
 """
 
+import importlib
+
 import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlmodel import SQLModel
-
-import app.models  # noqa: F401  (register every table on SQLModel.metadata)
 
 DROP_REV = "f3a9c1e7b204"
 BEFORE_DROP_REV = "9b793042b934"
@@ -29,6 +29,9 @@ def alembic_db(tmp_path):
     from alembic.config import Config
 
     import app.database as db_mod
+
+    # Register every model table on SQLModel.metadata before create_all().
+    importlib.import_module("app.models")
 
     db_path = tmp_path / "migrate.db"
     sync_engine = create_engine(f"sqlite:///{db_path}")
