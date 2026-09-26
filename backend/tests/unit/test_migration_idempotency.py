@@ -164,14 +164,15 @@ class TestWholeChainIdempotency:
 
 @pytest.mark.unit
 class TestSelfHealFailureReporting:
-    def test_unhealable_failure_logs_stuck_revision_and_reraises(self, alembic_db, monkeypatch):
-        """A non-duplicate-column failure must still propagate (stamping past
-        it would silently skip its work), but the log has to say that the stamp
-        is stuck and how many revisions are blocked behind it.
-        """
-        from alembic import command
+    """A non-duplicate-column failure must still propagate (stamping past it
+    would silently skip its work), but it has to be reported ONCE, as an error
+    with the traceback, saying the stamp is stuck and how many revisions are
+    blocked, not as a one-off "non-fatal" warning.
+    """
 
-        import app.database as db_mod
+    @staticmethod
+    def _stuck_on_drop(alembic_db, monkeypatch):
+        from alembic import command
 
         cfg, engine = alembic_db
         command.stamp(cfg, BEFORE_DROP_REV)
@@ -179,15 +180,38 @@ class TestSelfHealFailureReporting:
         def fake_upgrade(_cfg, _rev):
             raise KeyError(COLUMN)
 
-        errors: list[str] = []
         monkeypatch.setattr(command, "upgrade", fake_upgrade)
-        monkeypatch.setattr(db_mod.logger, "error", lambda msg, *a, **k: errors.append(msg))
+        return cfg, engine
 
-        with pytest.raises(KeyError):
+    def test_unhealable_failure_reraises_with_stuck_revision(self, alembic_db, monkeypatch):
+        import app.database as db_mod
+
+        cfg, engine = self._stuck_on_drop(alembic_db, monkeypatch)
+
+        with pytest.raises(KeyError) as excinfo:
             db_mod._upgrade_to_head_self_healing(cfg, engine)
 
         assert _current_rev(engine) == BEFORE_DROP_REV
+        stuck = getattr(excinfo.value, db_mod._STUCK_REVISION_ATTR)
+        assert f"revision {DROP_REV} failed" in stuck
+        assert f"stays at {BEFORE_DROP_REV}" in stuck
+        assert "24 pending revision(s)" in stuck
+
+    def test_stuck_revision_logged_once_as_error_with_traceback(self, alembic_db, monkeypatch):
+        import app.database as db_mod
+
+        _cfg, engine = self._stuck_on_drop(alembic_db, monkeypatch)
+        errors: list[tuple[str, dict]] = []
+        warnings: list[str] = []
+        monkeypatch.setattr(db_mod.logger, "error", lambda msg, *a, **k: errors.append((msg, k)))
+        monkeypatch.setattr(db_mod.logger, "warning", lambda msg, *a, **k: warnings.append(msg))
+
+        db_mod._run_alembic_upgrade()
+
+        assert warnings == []
         assert len(errors) == 1
-        assert f"revision {DROP_REV} failed" in errors[0]
-        assert f"stays at {BEFORE_DROP_REV}" in errors[0]
-        assert "24 pending revision(s)" in errors[0]
+        msg, kwargs = errors[0]
+        assert kwargs.get("exc_info") is True
+        assert f"revision {DROP_REV} failed" in msg
+        assert "24 pending revision(s)" in msg
+        assert _current_rev(engine) == BEFORE_DROP_REV

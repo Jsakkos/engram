@@ -97,6 +97,12 @@ async def init_db() -> None:
     logger.info("Database initialized successfully")
 
 
+# Attribute _upgrade_to_head_self_healing sets on an exception it re-raises,
+# carrying which revision is stuck, so _run_alembic_upgrade logs the failure
+# once (as an error, with the traceback) rather than twice.
+_STUCK_REVISION_ATTR = "engram_stuck_revision"
+
+
 def _run_alembic_upgrade() -> None:
     """Run Alembic upgrade to head, stamping if this is a fresh database."""
     if not _ALEMBIC_INI.exists():
@@ -129,7 +135,13 @@ def _run_alembic_upgrade() -> None:
 
         sync_engine.dispose()
     except Exception as e:
-        logger.warning(f"Alembic migration failed (non-fatal): {e}", exc_info=True)
+        stuck = getattr(e, _STUCK_REVISION_ATTR, None)
+        if stuck:
+            # Startup continues, but this is not a one-off: the stamp is frozen
+            # and every later revision stays unapplied until it is fixed.
+            logger.error(f"Alembic migration failed: {stuck}", exc_info=True)
+        else:
+            logger.warning(f"Alembic migration failed (non-fatal): {e}", exc_info=True)
 
 
 def _upgrade_to_head_self_healing(alembic_cfg, sync_engine) -> None:
@@ -154,8 +166,9 @@ def _upgrade_to_head_self_healing(alembic_cfg, sync_engine) -> None:
 
     Any other failure is re-raised and leaves alembic_version where it is, so
     that revision AND every later one stay unapplied on each startup until the
-    revision is fixed. That is logged as an error naming the stuck revision,
-    rather than looking like a one-off warning.
+    revision is fixed. The exception carries a message naming the stuck
+    revision and the blocked count, which _run_alembic_upgrade logs as an error
+    rather than as a one-off "non-fatal" warning.
     """
     from alembic import command
     from alembic.runtime.migration import MigrationContext
@@ -190,10 +203,12 @@ def _upgrade_to_head_self_healing(alembic_cfg, sync_engine) -> None:
                 # revision is already applied, so it is not pending.
                 pending = list(script.iterate_revisions("heads", current or "base"))
                 blocked = len(pending) - (1 if current else 0)
-                logger.error(
-                    f"Alembic: revision {next_rev or '(first)'} failed; alembic_version "
-                    f"stays at {current or 'base'} and {blocked} pending revision(s) will "
-                    f"not apply until it is fixed: {e!r}"
+                setattr(
+                    e,
+                    _STUCK_REVISION_ATTR,
+                    f"revision {next_rev or '(first)'} failed; alembic_version stays at "
+                    f"{current or 'base'} and {blocked} pending revision(s) will not "
+                    f"apply until it is fixed: {e!r}",
                 )
                 raise
             logger.warning(
