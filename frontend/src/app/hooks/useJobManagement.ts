@@ -101,7 +101,7 @@ export function useJobManagement(devMode: boolean = false) {
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
     // Stable ref to fetchJobsAndTitles so the listener/onOpen closures don't go stale
-    const fetchRef = useRef<() => Promise<void>>();
+    const fetchRef = useRef<(() => Promise<void>) | undefined>(undefined);
     // Trailing-debounce timer for unknown-job refetches.
     const debouncedRefetchRef = useRef<number | null>(null);
     // Guards against the very first onOpen (initial connect) double-fetching,
