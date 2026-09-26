@@ -48,7 +48,7 @@ export default function IdentityFields({
     const [searchResults, setSearchResults] = useState<TmdbResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const titleInputRef = useRef<HTMLInputElement>(null);
-    const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+    const searchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
     useEffect(() => {
         if (autoFocus) titleInputRef.current?.focus();

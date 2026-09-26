@@ -185,7 +185,7 @@ Integrated from standalone `mkv-episode-matcher` project. Flattened directory st
 
 ### Frontend (`frontend/src/`)
 
-React 18 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at localhost:8000.
+React 19 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at localhost:8000.
 
 **Key libraries**: React Router v7, Framer Motion, Recharts, React Hook Form, Tailwind CSS v4, shadcn/ui components.
 
