@@ -48,7 +48,7 @@ services:
       # MakeMKV license or current beta key (https://www.makemkv.com/forum/viewtopic.php?t=1053).
       # The beta key rotates ~monthly; refresh it here or in the setup wizard.
       MAKEMKV_APP_KEY: ""
-      # "latest" tracks the current MakeMKV release; pin a version (e.g. 1.18.1)
+      # "latest" tracks the current MakeMKV release; pin a version (e.g. 2.0.0)
       # for reproducible builds.
       MAKEMKV_VERSION: "latest"
 
