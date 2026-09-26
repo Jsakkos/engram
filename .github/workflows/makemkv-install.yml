@@ -22,7 +22,7 @@ jobs:
       matrix:
         version:
           - latest    # tests version detection + real compile
-          - "1.18.3"  # pinned baseline; update when a new version releases
+          - "2.0.0"   # pinned baseline; update when a new version releases
 
     steps:
       - uses: actions/checkout@v6
