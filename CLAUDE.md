@@ -187,7 +187,7 @@ Integrated from standalone `mkv-episode-matcher` project. Flattened directory st
 
 React 19 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at localhost:8000.
 
-**Key libraries**: React Router v7, Framer Motion, Recharts, React Hook Form, Tailwind CSS v4, shadcn/ui components.
+**Key libraries**: React Router v7, Framer Motion, Tailwind CSS v4, Radix UI primitives (tooltip, select).
 
 - **Dashboard** (`app/App.tsx`) — Filterable job card list (Active, Done, All) with `DiscCard` components showing content type badges, progress bars, speed/ETA, track counts, subtitle indicators, expandable track lists, and cancel buttons. Built on the **Synapse v2 brand system** (`docs/design_handoff_brand/`) — three-arc mark + horizontal read-line, cyan + magenta accents, JetBrains Mono telemetry, sharp 90° panels with corner ticks. Brand primitives live under `frontend/src/app/components/synapse/` (`SvMark`, `Wordmark`, `Lockup*`, `AppIcon`, `Splash`, `SvPanel`) and the 30 custom icons under `frontend/src/app/components/icons/` (`Ico*`). Developer reference: `docs/development/brand.md`.
 - **DiscCard** (`app/components/DiscCard.tsx`) — Main job display component with subcomponents: `DiscCard/MediaTypeBadge`, `DiscCard/DiscMetadata`, `DiscCard/ActionButtons`, `DiscCard/hooks/usePosterImage`

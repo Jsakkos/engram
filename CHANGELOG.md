@@ -4,6 +4,17 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- **Unused frontend dependencies.** 39 packages left over from the original UI
+  template were never imported by the dashboard and have been dropped: recharts,
+  react-hook-form, react-day-picker, date-fns, react-slick,
+  react-responsive-masonry, react-dnd (+ html5 backend), embla-carousel-react,
+  input-otp, vaul, cmdk, react-resizable-panels, next-themes,
+  class-variance-authority, and 24 unused `@radix-ui/*` packages (only tooltip
+  and select remain). No user-facing change; smaller installs and fewer
+  dependency-update PRs.
+
 ### Changed
 
 - **The dashboard now runs on React 19.** No visible change is intended; this keeps the

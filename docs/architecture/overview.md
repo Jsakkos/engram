@@ -107,7 +107,7 @@ Integrated from the standalone [mkv-episode-matcher](https://github.com/Jsakkos/
 
 The frontend is a React 19 + TypeScript + Vite single-page application located in `frontend/src/`. Vite proxies `/api` and `/ws` requests to the backend at `localhost:8000` during development.
 
-**Key libraries**: React Router v7, Framer Motion, Recharts, React Hook Form, Tailwind CSS v4, shadcn/ui, Lucide React, Sonner.
+**Key libraries**: React Router v7, Framer Motion, Tailwind CSS v4, Radix UI primitives (tooltip, select), Lucide React, Sonner.
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
