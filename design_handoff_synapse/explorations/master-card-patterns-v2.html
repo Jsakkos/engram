@@ -1,0 +1,160 @@
+<h2>Master-card patterns for grouped submissions</h2>
+<p class="subtitle">When discs are dragged together, they form one "master submission" that expands to show each disc. Which expansion pattern fits Engram best? Click an option to flag a preference.</p>
+
+<div class="options">
+  <div class="option" data-choice="accordion" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Accordion master &mdash; header + indented children</h3>
+      <p>Master row expands to show indented child rows beneath. Drop disc on header to add. Drop child outside to ungroup.</p>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">A · Accordion master (expanded)</div>
+  <div class="mockup-body" style="padding:24px;background:#0a0e14">
+    <div style="border:1px solid #22d3ee;border-radius:6px;padding:16px;font-family:monospace">
+      <div style="display:flex;align-items:center;gap:12px;color:#22d3ee">
+        <span style="display:inline-block;transform:rotate(90deg);font-size:14px">▸</span>
+        <span style="color:#22d3ee;font-weight:600;font-size:15px">For All Mankind</span>
+        <span style="color:#888;font-size:13px">Season 1 · TV</span>
+        <span style="color:#888;font-size:11px;margin-left:6px">UPC 043996634404</span>
+        <span style="margin-left:auto;display:flex;gap:8px">
+          <span style="color:#22d3ee;border:1px solid #22d3ee;padding:4px 12px;border-radius:3px;font-size:11px">⚲ SUBMIT GROUP (4 DISCS)</span>
+          <span style="color:#d946ef;border:1px solid #d946ef;padding:4px 12px;border-radius:3px;font-size:11px">⌃ ENHANCE</span>
+        </span>
+      </div>
+      <div style="margin-top:14px;margin-left:30px;border-left:2px solid rgba(34,211,238,0.3);padding-left:16px">
+        <div style="color:#cbd5e1;font-size:12px;padding:6px 0;display:flex;justify-content:space-between;border-bottom:1px solid #1f2937">
+          <span><span style="color:#22d3ee">Disc 1</span> · 4F98348A...0000 · 4 titles · Blu-ray</span>
+          <span style="color:#10b981">EXPORTED</span>
+        </div>
+        <div style="color:#cbd5e1;font-size:12px;padding:6px 0;display:flex;justify-content:space-between;border-bottom:1px solid #1f2937">
+          <span><span style="color:#22d3ee">Disc 2</span> · 7BFC7C5A...0000 · 4 titles · Blu-ray</span>
+          <span style="color:#10b981">EXPORTED</span>
+        </div>
+        <div style="color:#cbd5e1;font-size:12px;padding:6px 0;display:flex;justify-content:space-between;border-bottom:1px solid #1f2937">
+          <span><span style="color:#22d3ee">Disc 3</span> · 13269471...0000 · 4 titles · Blu-ray</span>
+          <span style="color:#10b981">EXPORTED</span>
+        </div>
+        <div style="color:#cbd5e1;font-size:12px;padding:6px 0;display:flex;justify-content:space-between">
+          <span><span style="color:#22d3ee">Disc 4</span> · CA8AE296...0000 · 5 titles · Blu-ray</span>
+          <span style="color:#10b981">EXPORTED</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="hub" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Hub card with disc chips</h3>
+      <p>Compact card with release metadata + horizontal disc chips. Click chip for detail panel. Drag chip out to ungroup; drag disc onto hub to add.</p>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">B · Hub card with disc chips</div>
+  <div class="mockup-body" style="padding:24px;background:#0a0e14">
+    <div style="border:2px solid #d946ef;border-radius:8px;padding:18px;font-family:monospace;position:relative;box-shadow:0 0 24px rgba(217,70,239,0.15)">
+      <div style="position:absolute;top:-9px;left:14px;background:#0a0e14;color:#d946ef;font-size:10px;padding:2px 8px;border:1px solid #d946ef;border-radius:3px;letter-spacing:1px">RELEASE GROUP</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="color:#d946ef;font-weight:600;font-size:16px">For All Mankind</div>
+          <div style="color:#888;font-size:12px;margin-top:2px">Season 1 · 4 discs · UPC 043996634404 · 2019</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span style="color:#22d3ee;border:1px solid #22d3ee;padding:5px 12px;border-radius:3px;font-size:11px">⚲ SUBMIT</span>
+          <span style="color:#d946ef;border:1px solid #d946ef;padding:5px 12px;border-radius:3px;font-size:11px">⌃ ENHANCE</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <div style="background:rgba(217,70,239,0.12);border:1px solid rgba(217,70,239,0.5);padding:8px 12px;border-radius:5px;font-size:11px">
+          <div style="color:#d946ef;font-weight:600">Disc 1</div>
+          <div style="color:#888;margin-top:2px">4F98348A · 4 titles</div>
+          <div style="color:#10b981;margin-top:2px;font-size:10px">EXPORTED</div>
+        </div>
+        <div style="background:rgba(217,70,239,0.12);border:1px solid rgba(217,70,239,0.5);padding:8px 12px;border-radius:5px;font-size:11px">
+          <div style="color:#d946ef;font-weight:600">Disc 2</div>
+          <div style="color:#888;margin-top:2px">7BFC7C5A · 4 titles</div>
+          <div style="color:#10b981;margin-top:2px;font-size:10px">EXPORTED</div>
+        </div>
+        <div style="background:rgba(217,70,239,0.12);border:1px solid rgba(217,70,239,0.5);padding:8px 12px;border-radius:5px;font-size:11px">
+          <div style="color:#d946ef;font-weight:600">Disc 3</div>
+          <div style="color:#888;margin-top:2px">13269471 · 4 titles</div>
+          <div style="color:#10b981;margin-top:2px;font-size:10px">EXPORTED</div>
+        </div>
+        <div style="background:rgba(217,70,239,0.12);border:1px solid rgba(217,70,239,0.5);padding:8px 12px;border-radius:5px;font-size:11px">
+          <div style="color:#d946ef;font-weight:600">Disc 4</div>
+          <div style="color:#888;margin-top:2px">CA8AE296 · 5 titles</div>
+          <div style="color:#10b981;margin-top:2px;font-size:10px">EXPORTED</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.2);padding:8px 12px;border-radius:5px;font-size:11px;color:#666;display:flex;align-items:center;justify-content:center;min-width:90px">
+          ＋ drop disc
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="stack" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Stacked deck &mdash; physical box-set metaphor</h3>
+      <p>Master shows as a "deck" of discs with depth. Click "Fan out" to splay into individual cards. Most evocative; less efficient for seeing all hashes at once.</p>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">C · Stacked deck (collapsed) and fanned-out detail</div>
+  <div class="mockup-body" style="padding:24px;background:#0a0e14;display:flex;gap:32px;align-items:center;justify-content:center">
+    <div style="position:relative;width:340px;height:200px">
+      <div style="position:absolute;top:18px;left:18px;width:300px;height:160px;background:#0a0e14;border:1px solid rgba(251,191,36,0.25);border-radius:8px"></div>
+      <div style="position:absolute;top:12px;left:12px;width:300px;height:160px;background:#0a0e14;border:1px solid rgba(251,191,36,0.45);border-radius:8px"></div>
+      <div style="position:absolute;top:6px;left:6px;width:300px;height:160px;background:#0a0e14;border:1px solid rgba(251,191,36,0.65);border-radius:8px"></div>
+      <div style="position:absolute;top:0;left:0;width:300px;height:160px;background:#0a0e14;border:1px solid #fbbf24;border-radius:8px;padding:14px;font-family:monospace;box-shadow:0 0 20px rgba(251,191,36,0.2)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="color:#fbbf24;font-weight:600;font-size:14px">For All Mankind</div>
+            <div style="color:#888;font-size:11px;margin-top:2px">Season 1 · 4 discs</div>
+          </div>
+          <span style="color:#fbbf24;font-size:9px;border:1px solid #fbbf24;padding:2px 6px;border-radius:3px">DECK 4</span>
+        </div>
+        <div style="color:#666;font-size:10px;margin-top:14px">UPC 043996634404</div>
+        <div style="position:absolute;bottom:14px;left:14px;right:14px;display:flex;gap:8px">
+          <span style="color:#fbbf24;border:1px solid #fbbf24;padding:4px 10px;border-radius:3px;font-size:10px;flex:1;text-align:center">⚲ SUBMIT</span>
+          <span style="color:#888;border:1px solid #333;padding:4px 10px;border-radius:3px;font-size:10px;flex:1;text-align:center">⤢ FAN OUT</span>
+        </div>
+      </div>
+    </div>
+    <div style="color:#666;font-size:24px">→</div>
+    <div style="display:flex;gap:8px;font-family:monospace">
+      <div style="width:80px;height:160px;background:#0a0e14;border:1px solid #fbbf24;border-radius:6px;padding:8px;transform:rotate(-3deg)">
+        <div style="color:#fbbf24;font-size:11px;font-weight:600">Disc 1</div>
+        <div style="color:#666;font-size:9px;margin-top:2px">4F98348A</div>
+        <div style="color:#10b981;font-size:8px;margin-top:6px">EXPORTED</div>
+      </div>
+      <div style="width:80px;height:160px;background:#0a0e14;border:1px solid #fbbf24;border-radius:6px;padding:8px;transform:rotate(-1deg)">
+        <div style="color:#fbbf24;font-size:11px;font-weight:600">Disc 2</div>
+        <div style="color:#666;font-size:9px;margin-top:2px">7BFC7C5A</div>
+        <div style="color:#10b981;font-size:8px;margin-top:6px">EXPORTED</div>
+      </div>
+      <div style="width:80px;height:160px;background:#0a0e14;border:1px solid #fbbf24;border-radius:6px;padding:8px;transform:rotate(1deg)">
+        <div style="color:#fbbf24;font-size:11px;font-weight:600">Disc 3</div>
+        <div style="color:#666;font-size:9px;margin-top:2px">13269471</div>
+        <div style="color:#10b981;font-size:8px;margin-top:6px">EXPORTED</div>
+      </div>
+      <div style="width:80px;height:160px;background:#0a0e14;border:1px solid #fbbf24;border-radius:6px;padding:8px;transform:rotate(3deg)">
+        <div style="color:#fbbf24;font-size:11px;font-weight:600">Disc 4</div>
+        <div style="color:#666;font-size:9px;margin-top:2px">CA8AE296</div>
+        <div style="color:#10b981;font-size:8px;margin-top:6px">EXPORTED</div>
+      </div>
+    </div>
+  </div>
+</div>
