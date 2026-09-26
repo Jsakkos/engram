@@ -60,7 +60,7 @@ GHCR on each release.
 | `PUID` / `PGID` | `1000` | User/group the server runs as. Match your host user (`id -u` / `id -g`) so library files aren't root-owned. |
 | `TZ` | `Etc/UTC` | Container timezone. |
 | `MAKEMKV_APP_KEY` | _(empty)_ | MakeMKV license / beta key. Written to MakeMKV's `settings.conf` on start. Can also be set later in the wizard. |
-| `MAKEMKV_VERSION` | `latest` | MakeMKV version to compile. Pin a number (e.g. `1.18.1`) for reproducibility. |
+| `MAKEMKV_VERSION` | `latest` | MakeMKV version to compile. Pin a number (e.g. `2.0.0`) for reproducibility. |
 | `MAKEMKV_SKIP_INSTALL` | _(unset)_ | Set to `1` to skip the MakeMKV compile (used for CI/smoke tests; ripping is unavailable). |
 
 The server also honors `DATABASE_URL`, `HOST`, `PORT`, and `DEBUG` — these are

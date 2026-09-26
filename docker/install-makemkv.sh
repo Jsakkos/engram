@@ -105,7 +105,7 @@ if [ "${VERSION}" = "latest" ]; then
             echo "       The download page format has probably changed; makemkv.com serving an" >&2
             echo "       error or maintenance page with a 200 status would look the same." >&2
         fi
-        echo "       Set MAKEMKV_VERSION to a specific release (e.g. 1.18.1) to skip detection." >&2
+        echo "       Set MAKEMKV_VERSION to a specific release (e.g. 2.0.0) to skip detection." >&2
         exit 1
     fi
 fi
