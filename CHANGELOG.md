@@ -4,6 +4,17 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- **Unused frontend dependencies.** 41 packages left over from the original UI
+  template were never imported by the dashboard and have been dropped: recharts,
+  react-hook-form, react-day-picker, date-fns, react-slick,
+  react-responsive-masonry, react-dnd (+ html5 backend), embla-carousel-react,
+  input-otp, vaul, cmdk, react-resizable-panels, next-themes,
+  class-variance-authority, @popperjs/core, react-popper, and 24 unused
+  `@radix-ui/*` packages (only tooltip and select remain). No user-facing
+  change; smaller installs and fewer dependency-update PRs.
+
 ## [0.37.0] - 2026-09-24
 
 _Highlights: a movie already in your library can be replaced or kept alongside from the review page instead of looping, imported movies and season-named TV folders are filed correctly, and the published subtitle cache records each season's numbering scheme._
