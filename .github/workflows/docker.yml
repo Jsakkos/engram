@@ -40,7 +40,7 @@ jobs:
     if: >-
       !(github.event_name == 'pull_request' && startsWith(github.event.pull_request.title, 'chore: release v'))
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # When dispatched with an explicit tag, check out that tag's code.
           ref: ${{ inputs.tag || github.sha }}
