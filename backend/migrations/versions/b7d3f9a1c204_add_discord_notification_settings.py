@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing
+
 # revision identifiers, used by Alembic.
 revision: str = "b7d3f9a1c204"
 down_revision: str | Sequence[str] | None = "f1a2b3c4d5e6"
@@ -20,13 +22,13 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "discord_template_review", sa.String(), nullable=False, server_default=sa.text("''")
         ),
     )
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "discord_notify_completed",
@@ -35,25 +37,25 @@ def upgrade() -> None:
             server_default=sa.text("1"),
         ),
     )
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "discord_notify_failed", sa.Boolean(), nullable=False, server_default=sa.text("1")
         ),
     )
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "discord_notify_review", sa.Boolean(), nullable=False, server_default=sa.text("1")
         ),
     )
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "discord_mention_review", sa.String(), nullable=False, server_default=sa.text("''")
         ),
     )
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column("dashboard_base_url", sa.String(), nullable=False, server_default=sa.text("''")),
     )

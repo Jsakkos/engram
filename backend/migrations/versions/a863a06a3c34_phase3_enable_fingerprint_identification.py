@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing
+
 # revision identifiers, used by Alembic.
 revision: str = "a863a06a3c34"
 down_revision: str | Sequence[str] | None = "a1b2c3d4e5f6"
@@ -19,15 +21,15 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("app_config", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column(
-                "enable_fingerprint_identification",
-                sa.Boolean(),
-                nullable=False,
-                server_default=sa.text("0"),
-            )
-        )
+    add_column_if_missing(
+        "app_config",
+        sa.Column(
+            "enable_fingerprint_identification",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("0"),
+        ),
+    )
 
 
 def downgrade() -> None:

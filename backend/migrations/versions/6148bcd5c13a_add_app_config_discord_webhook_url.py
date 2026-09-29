@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing
+
 # revision identifiers, used by Alembic.
 revision: str = "6148bcd5c13a"
 down_revision: str | Sequence[str] | None = "bff8c5e2c810"
@@ -20,7 +22,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column(
             "discord_webhook_url",

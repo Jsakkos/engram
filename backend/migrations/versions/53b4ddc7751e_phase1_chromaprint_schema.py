@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing
+
 # revision identifiers, used by Alembic.
 revision: str = "53b4ddc7751e"
 down_revision: str | Sequence[str] | None = "f3a9c1e7b204"
@@ -19,20 +21,25 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("disc_titles", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("chromaprint_blob", sa.LargeBinary(), nullable=True))
-        batch_op.add_column(sa.Column("chromaprint_extracted_at", sa.DateTime(), nullable=True))
-    with op.batch_alter_table("app_config", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("fpcalc_path", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("contribution_pseudonym", sa.String(), nullable=True))
-        batch_op.add_column(
-            sa.Column(
-                "enable_fingerprint_contributions",
-                sa.Boolean(),
-                nullable=False,
-                server_default=sa.text("1"),
-            )
-        )
+    add_column_if_missing(
+        "disc_titles", sa.Column("chromaprint_blob", sa.LargeBinary(), nullable=True)
+    )
+    add_column_if_missing(
+        "disc_titles", sa.Column("chromaprint_extracted_at", sa.DateTime(), nullable=True)
+    )
+    add_column_if_missing("app_config", sa.Column("fpcalc_path", sa.String(), nullable=True))
+    add_column_if_missing(
+        "app_config", sa.Column("contribution_pseudonym", sa.String(), nullable=True)
+    )
+    add_column_if_missing(
+        "app_config",
+        sa.Column(
+            "enable_fingerprint_contributions",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("1"),
+        ),
+    )
 
 
 def downgrade() -> None:

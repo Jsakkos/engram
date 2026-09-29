@@ -1,449 +1,1382 @@
-rank,tmdb_id,name,year,origin_country,networks,discdb_discs
-1,1399,Game of Thrones,2011,US,HBO,33
-2,66732,Stranger Things,2016,US,Netflix,4
-4,1402,The Walking Dead,2010,US,AMC,54
-5,1396,Breaking Bad,2008,US,AMC,0
-7,63174,Lucifer,2016,US,FOX; Netflix,0
-8,69050,Riverdale,2017,US,The CW,0
-9,71712,The Good Doctor,2017,US,ABC,0
-10,85271,WandaVision,2021,US,Disney+,2
-11,76479,The Boys,2019,US,Prime Video,6
-12,1418,The Big Bang Theory,2007,US,CBS,16
-13,84958,Loki,2021,US,Disney+,4
-14,60735,The Flash,2014,US,The CW,0
-15,60574,Peaky Blinders,2013,GB,BBC One; BBC Two,0
-16,1416,Grey's Anatomy,2005,US,ABC,0
-17,82856,The Mandalorian,2019,US,Disney+,6
-18,60625,Rick and Morty,2013,US,Adult Swim,7
-19,456,The Simpsons,1989,US,FOX,0
-20,85552,Euphoria,2019,US,HBO,0
-21,119051,Wednesday,2022,US,Netflix,2
-23,18165,The Vampire Diaries,2009,US,The CW,0
-25,1668,Friends,1994,US,NBC,25
-26,88396,The Falcon and the Winter Soldier,2021,US,Disney+,0
-28,48866,The 100,2014,US,The CW,0
-29,1622,Supernatural,2005,US,The WB; The CW,58
-30,87108,Chernobyl,2019,US,HBO,0
-32,44217,Vikings,2013,CA,Prime Video; History,27
-33,1408,House,2004,US,FOX,0
-37,100088,The Last of Us,2023,US,HBO,7
-40,60059,Better Call Saul,2015,US,AMC,0
-41,19885,Sherlock,2010,GB,BBC One,4
-42,1412,Arrow,2012,US,The CW,0
-43,42009,Black Mirror,2011,GB,Channel 4; Netflix,0
-44,63247,Westworld,2016,US,HBO,9
-45,1413,American Horror Story,2011,US,FX,0
-47,94997,House of the Dragon,2022,US,HBO,12
-48,2288,Prison Break,2005,US,FOX,0
-49,94605,Arcane,2021,US,Netflix,4
-50,95557,INVINCIBLE,2021,US,Prime Video,0
-51,37680,Suits,2011,US,USA Network,34
-52,1100,How I Met Your Mother,2005,US,CBS,0
-53,1405,Dexter,2006,US,Showtime,24
-55,62560,Mr. Robot,2015,US,USA Network,0
-60,2316,The Office,2005,US,NBC,72
-62,62286,Fear the Walking Dead,2015,US,AMC,0
-65,4607,Lost,2004,US,ABC,0
-66,2190,South Park,1997,US,Comedy Central,93
-67,1434,Family Guy,1999,US,FOX,0
-68,70785,Anne with an E,2017,CA,CBC Television,0
-70,12971,Dragon Ball Z,1989,JP,Fuji TV,37
-71,246,Avatar: The Last Airbender,2005,US,Nickelodeon,19
-72,2004,Malcolm in the Middle,2000,US,FOX,0
-73,34524,Teen Wolf,2011,US,MTV,0
-74,91363,What If...?,2021,US,Disney+,0
-77,4604,Smallville,2001,US,The WB; The CW,42
-79,62688,Supergirl,2015,US,CBS; The CW,0
-81,5920,The Mentalist,2008,US,CBS,0
-83,2734,Law & Order: Special Victims Unit,1999,US,NBC,0
-84,90462,Chucky,2021,US,USA Network; Syfy,2
-85,4613,Band of Brothers,2001,US,HBO,6
-86,60797,Scorpion,2014,US,CBS,0
-87,46648,True Detective,2014,US,HBO,0
-89,4057,Criminal Minds,2005,US,CBS; Paramount+,0
-91,48891,Brooklyn Nine-Nine,2013,US,NBC; FOX,17
-92,78191,You,2018,US,Lifetime; Netflix,0
-93,46331,Under the Dome,2013,US,CBS,0
-94,1403,Marvel's Agents of S.H.I.E.L.D.,2013,US,ABC,0
-96,615,Futurama,1999,US,FOX; Comedy Central; Hulu,0
-97,88329,Hawkeye,2021,US,Disney+,0
-100,60708,Gotham,2014,US,FOX,18
-101,2691,Two and a Half Men,2003,US,CBS,0
-102,46896,The Originals,2013,US,The CW,0
-103,46952,The Blacklist,2013,US,NBC,0
-104,4087,The X-Files,1993,US,FOX,60
-105,74577,The End of the F***ing World,2017,GB,Channel 4,0
-107,39351,Grimm,2011,US,NBC,0
-108,1911,Bones,2005,US,FOX,0
-109,92749,Moon Knight,2022,US,Disney+,2
-110,40075,Gravity Falls,2012,US,Disney Channel; Disney XD,0
-111,1398,The Sopranos,1999,US,HBO,0
-112,44953,El Señor de los Cielos,2013,US,Telemundo,0
-113,71886,Siren,2018,US,Freeform,0
-114,80213,The Purge,2018,US,USA Network,0
-116,110492,Peacemaker,2022,US,HBO Max; HBO Max,0
-117,57243,Doctor Who,2005,GB,BBC One,59
-118,1421,Modern Family,2009,US,ABC,0
-119,34307,Shameless,2011,US,Showtime,0
-120,19614,It,1990,US,ABC,0
-123,124364,FROM,2022,US,Epix; MGM+,0
-124,1409,Sons of Anarchy,2008,US,FX,23
-125,60622,Fargo,2014,US,FX,0
-126,79744,The Rookie,2018,US,ABC,0
-127,69478,The Handmaid's Tale,2017,US,Hulu,0
-128,387,SpongeBob SquarePants,1999,US,Nickelodeon,8
-129,1425,House of Cards,2013,US,Netflix,0
-130,52814,Halo,2022,US,Paramount+,0
-133,73586,Yellowstone,2018,US,Paramount Network,26
-134,15260,Adventure Time,2010,US,Cartoon Network,0
-137,79460,Legacies,2018,US,The CW,0
-138,71728,Young Sheldon,2017,US,CBS,0
-139,115036,The Book of Boba Fett,2021,US,Disney+,0
-141,46296,Spartacus,2010,US,STARZ,0
-142,60866,iZombie,2015,US,The CW,0
-143,67335,Sin senos sí hay paraíso,2016,CO/US,Telemundo,0
-144,40008,Hannibal,2013,US,NBC,0
-145,56570,Outlander,2014,US,STARZ,0
-147,61222,BoJack Horseman,2014,US,Netflix,4
-148,75450,Titans,2018,US,DC Universe; HBO Max,0
-151,106379,Fallout,2024,US,Prime Video,3
-152,63639,The Expanse,2015,US,Syfy; Prime Video,15
-153,1424,Orange Is the New Black,2013,US,Netflix,0
-154,31917,Pretty Little Liars,2010,US,ABC Family; Freeform,0
-155,1705,Fringe,2008,US,FOX,0
-156,75219,9-1-1,2018,US,ABC; FOX,0
-160,95057,Superman & Lois,2021,US,The CW,0
-162,1438,The Wire,2002,US,HBO,0
-164,95396,Severance,2022,US,Apple TV,3
-168,58841,Chicago P.D.,2014,US,NBC,0
-170,1407,Homeland,2011,US,Showtime,0
-171,1920,Twin Peaks,1990,US,ABC; Showtime,21
-172,1639,Heroes,2006,US,NBC,0
-173,62710,Blindspot,2015,US,NBC,0
-175,16997,The Pacific,2010,US,HBO,0
-177,1981,Charmed,1998,US,The WB,0
-178,4614,NCIS,2003,US,CBS,0
-181,39272,Once Upon a Time,2011,US,ABC,0
-182,1892,The Fresh Prince of Bel-Air,1990,US,NBC,0
-183,62643,DC's Legends of Tomorrow,2016,US,The CW,0
-186,44006,Chicago Fire,2012,US,NBC,0
-187,1437,Firefly,2002,US,FOX,0
-188,1433,American Dad!,2005,US,FOX; TBS,0
-190,4194,Star Wars: The Clone Wars,2008,US,Cartoon Network; Netflix; Disney+,0
-191,65494,The Crown,2016,GB/US,Netflix,48
-192,97546,Ted Lasso,2020,US,Apple TV,15
-193,1400,Seinfeld,1989,US,NBC,24
-194,33880,The Legend of Korra,2012,US,Nickelodeon,8
-196,1395,Gossip Girl,2007,US,The CW,0
-197,27240,Seven Deadly Sins,2008,US,History,0
-200,31132,Regular Show,2010,US,Cartoon Network,0
-201,92830,Obi-Wan Kenobi,2022,US,Disney+,2
-205,105,Sex and the City,1998,US,HBO,0
-209,11250,Pasión de Gavilanes,2003,US,Telemundo,0
-213,1419,Castle,2009,US,ABC,0
-216,693,Desperate Housewives,2004,US,ABC,0
-217,18347,Community,2009,US,NBC; Yahoo! Screen,12
-219,10545,True Blood,2008,US,HBO,0
-222,1411,Person of Interest,2011,US,CBS,0
-227,83867,Andor,2022,US,Disney+,3
-228,67198,Star Trek: Discovery,2017,US,CBS All Access; Paramount+,0
-230,95,Buffy the Vampire Slayer,1997,US,The WB; UPN,0
-231,47640,The Strain,2014,US,FX,0
-232,61550,Marvel's Agent Carter,2015,US,ABC,0
-234,63333,The Last Kingdom,2015,GB,Netflix; BBC Two,0
-235,66573,The Good Place,2016,US,NBC,9
-236,31586,La Reina del Sur,2011,US,Telemundo,0
-237,2038,Drake & Josh,2004,US,Nickelodeon,0
-239,60573,Silicon Valley,2014,US,HBO,0
-243,85949,Star Trek: Picard,2020,US,CBS All Access; Paramount+,0
-244,68507,His Dark Materials,2019,GB,BBC One,2
-247,1606,Ghost Whisperer,2005,US,CBS,0
-248,32798,Hawaii Five-0,2010,US,CBS,0
-249,63401,We Bare Bears,2015,US,Cartoon Network,0
-252,1415,Elementary,2012,US,CBS,0
-254,2098,Batman: The Animated Series,1992,US,FOX; Fox Kids,0
-255,67070,Fleabag,2016,GB,BBC Three; BBC One,0
-256,4629,Stargate SG-1,1997,CA/US,Showtime; Syfy,0
-258,62046,Scream Queens,2015,US,FOX,0
-259,8592,Parks and Recreation,2009,US,NBC,20
-262,92685,The Owl House,2020,US,Disney Channel,0
-263,4686,Ben 10,2005,US,Cartoon Network,0
-264,79696,Manifest,2018,US,NBC; Netflix,0
-268,46639,American Gods,2017,US,STARZ,0
-269,1973,24,2001,US,FOX,0
-270,61056,How to Get Away with Murder,2014,US,ABC,0
-272,1972,Battlestar Galactica,2004,CA/GB/US,Syfy,41
-274,46786,Bates Motel,2013,US,A&E,0
-275,655,Star Trek: The Next Generation,1987,US,Syndication,41
-276,61617,Over the Garden Wall,2014,US,Cartoon Network,1
-277,62264,Ash vs Evil Dead,2015,US,STARZ,0
-278,126308,Shōgun,2024,US,FX; Hulu,0
-279,64464,11.22.63,2016,US,Hulu,0
-280,37606,The Amazing World of Gumball,2011,IE/DE/US/GB,Cartoon Network,0
-281,31251,Victorious,2010,US,Nickelodeon,0
-283,39340,2 Broke Girls,2011,US,CBS,0
-285,1620,CSI: Miami,2002,US,CBS,0
-288,64432,The Magicians,2015,US,Syfy,0
-291,31356,Big Time Rush,2009,US,Nickelodeon,0
-292,66292,Big Little Lies,2017,US,HBO,0
-293,86430,Your Honor,2020,US,Showtime,0
-294,58474,Cosmos,2014,US,FOX; National Geographic,0
-296,84661,The Outsider,2020,US,HBO,0
-297,8358,Lie to Me,2009,US,FOX,0
-298,115004,Mare of Easttown,2021,US,HBO,0
-299,1420,New Girl,2011,US,FOX,0
-300,71411,El Chapo,2017,US,Univision,0
-301,4589,Arrested Development,2003,US,FOX; Netflix,0
-304,2085,Courage the Cowardly Dog,1999,US,Cartoon Network,8
-305,71789,SEAL Team,2017,US,CBS; Paramount+,0
-306,67136,This Is Us,2016,US,NBC,0
-307,76331,Succession,2018,US,HBO,12
-308,60743,Constantine,2014,US,NBC,0
-310,2490,The IT Crowd,2006,GB,Channel 4,5
-311,79788,Watchmen,2019,US,HBO,0
-314,128839,La Brea,2021,US,NBC,0
-316,52,That '70s Show,1998,US,FOX,0
-317,89247,Batwoman,2019,US,The CW,5
-318,131927,Dexter: New Blood,2021,US,Showtime,4
-319,69629,The Gifted,2017,US,FOX,0
-321,71790,S.W.A.T.,2017,US,CBS,0
-322,89456,Primal,2019,US,Adult Swim,0
-324,4327,Mr. Bean,1990,GB,ITV1,0
-332,76773,Station 19,2018,US,ABC,0
-333,21510,White Collar,2009,US,USA Network,0
-336,5371,iCarly,2007,US,Nickelodeon,0
-338,67195,Legion,2017,US,FX,0
-343,54671,Penny Dreadful,2014,US,Showtime,0
-344,1104,Mad Men,2007,US,AMC,0
-348,61923,Star vs. the Forces of Evil,2015,US,Disney XD; Disney Channel,0
-349,72750,Killing Eve,2018,US,BBC America,0
-350,1891,Rome,2005,US,HBO,0
-351,253,Star Trek,1966,US,NBC,0
-353,79525,The Last Dance,2020,US,ESPN,3
-354,62017,The Man in the High Castle,2015,US,Prime Video,0
-357,65708,Taboo,2017,GB,BBC One,0
-359,47665,Black Sails,2014,US,STARZ,12
-360,79501,Doom Patrol,2019,US,DC Universe; HBO Max; Max,0
-361,200875,IT: Welcome to Derry,2025,US,HBO,3
-363,42671,Elfen Lied,2004,JP,AT-X,2
-364,92782,Ms. Marvel,2022,US,Disney+,0
-367,56296,Orphan Black,2013,US/CA,Space; BBC America,0
-368,10283,Archer,2009,US,FX; FXX,0
-370,2384,Knight Rider,1982,US,NBC,16
-372,111803,The White Lotus,2021,US,HBO,3
-373,79680,Snowpiercer,2020,US,TNT; AMC,0
-374,90461,Monsters at Work,2021,US,Disney XD; Disney Channel; Disney+,0
-376,4616,Xena: Warrior Princess,1995,US,Syndication,0
-378,900,Skins,2007,GB,E4,0
-380,71738,The Orville,2017,US,FOX; Hulu,0
-382,1431,CSI: Crime Scene Investigation,2000,US,CBS,0
-383,41727,Banshee,2013,US,Cinemax,0
-389,4574,X-Men,1992,US,FOX; YTV; Syndication; Fox Kids,0
-391,4336,Drawn Together,2004,US,Comedy Central,0
-392,89905,Normal People,2020,GB,BBC Three,0
-393,61175,Steven Universe,2013,US,Cartoon Network,0
-394,2710,It's Always Sunny in Philadelphia,2005,US,FX; FXX,0
-396,194764,The Penguin,2024,US,HBO,0
-398,34967,Falling Skies,2011,US,TNT,0
-400,604,Teen Titans,2003,US,The WB; Cartoon Network,0
-401,74016,The Resident,2018,US,FOX,0
-404,1215,Californication,2007,US,Showtime,0
-407,66276,The Night Of,2016,US,HBO,0
-410,61859,The Night Manager,2016,GB,BBC One,0
-411,64230,Preacher,2016,US,AMC,0
-413,54650,Power,2014,US,STARZ,0
-414,2352,The Nanny,1993,US,CBS,0
-418,1621,Boardwalk Empire,2010,US,HBO,23
-420,62650,Chicago Med,2015,US,NBC,0
-423,4586,Gilmore Girls,2000,US,The WB; The CW,0
-424,1695,Monk,2002,US,USA Network,32
-425,1044,Planet Earth,2006,GB,BBC One,0
-426,17610,NCIS: Los Angeles,2009,US,CBS,0
-427,39852,The Sinner,2017,US,USA Network,0
-430,605,"Sabrina, the Teenage Witch",1996,US,ABC; The WB,24
-432,89393,9-1-1: Lone Star,2020,US,FOX,0
-433,33217,Young Justice,2010,US,Cartoon Network; DC Universe; HBO Max,0
-434,4658,ALF,1986,US,NBC,0
-437,63210,Shadowhunters,2016,US,Freeform,0
-439,94305,The Walking Dead: World Beyond,2020,US,AMC,0
-440,114461,Ahsoka,2023,US,Disney+,0
-442,54344,The Leftovers,2014,US,HBO,0
-444,1404,Chuck,2007,US,NBC,0
-445,1426,Luther,2010,GB,BBC One,0
-446,33907,Downton Abbey,2010,GB,ITV1,0
-447,4239,Married... with Children,1987,US,FOX,0
-455,6040,Ben 10: Alien Force,2008,US,Cartoon Network,0
-456,3498,Wizards of Waverly Place,2007,US,Disney Channel,0
-457,7842,The Tom and Jerry Show,1975,US,ABC,0
-458,62823,Scream: The TV Series,2015,US,MTV; VH1,0
-460,2290,Stargate Atlantis,2004,CA/US,Syfy,0
-461,60948,12 Monkeys,2015,US,Syfy,0
-462,2309,Danny Phantom,2004,US,Nickelodeon,0
-463,80986,DC's Stargirl,2020,US,The CW; DC Universe,0
-466,74440,Harley Quinn,2019,US,DC Universe; HBO Max; Max,0
-467,61852,Henry Danger,2014,US,Nickelodeon,0
-471,73107,Barry,2018,US,HBO,0
-473,888,Spider-Man,1994,US,FOX; Fox Kids,0
-475,7225,Merlin,2008,GB,BBC One,0
-476,4313,Full House,1987,US,ABC,0
-477,80307,Bodyguard,2018,GB,BBC One,0
-479,67026,Designated Survivor,2016,US,ABC; Netflix,0
-482,79649,Project Blue Book,2019,US,History,0
-484,2317,My Name Is Earl,2005,US,NBC,0
-485,18123,Scooby-Doo! Mystery Incorporated,2010,US,Cartoon Network,0
-486,222766,The Day of the Jackal,2024,GB,Sky Atlantic; Sky Showcase,0
-487,50825,Sleepy Hollow,2013,US,FOX,0
-488,1274,Six Feet Under,2001,US,HBO,0
-489,252,Everybody Hates Chris,2005,US,UPN; The CW,0
-492,4630,The Fairly OddParents,2001,CA/US,Nickelodeon; Nicktoons,0
-494,1855,Star Trek: Voyager,1995,US,UPN,0
-498,1988,ThunderCats,1985,US,Syndication,0
-499,4500,The Wonder Years,1988,US,ABC,0
-500,80350,New Amsterdam,2018,US,NBC,0
-501,32726,Bob's Burgers,2011,US,FOX,0
-502,3763,Dinosaurs,1991,US,ABC; Syndication,0
-506,1778,Zoey 101,2005,US,Nickelodeon,0
-508,70453,Sharp Objects,2018,US,HBO,0
-509,1516,The A-Team,1983,US,NBC,0
-511,46533,The Americans,2013,US,FX,0
-512,79240,Swamp Thing,2019,US,DC Universe,0
-513,64513,American Crime Story,2016,US,FX,0
-516,102966,100 días para enamorarnos,2020,US,Telemundo,0
-518,34391,Marvel's Ultimate Spider-Man,2012,US,Disney XD,0
-522,64122,The Shannara Chronicles,2016,US,MTV; Spike,0
-523,6357,The Twilight Zone,1959,US,CBS,24
-524,62852,Billions,2016,US,Showtime,0
-528,86848,Evil,2019,US,CBS; Paramount+,0
-530,60802,The Last Ship,2014,US,TNT,0
-532,31295,Misfits,2009,GB,E4,0
-533,897,The Grim Adventures of Billy and Mandy,2001,US,Cartoon Network,0
-534,1877,Phineas and Ferb,2007,US,Disney XD; Disney Channel,0
-536,157239,Alien: Earth,2025,US,FX; Hulu,0
-538,1600,Ned's Declassified School Survival Guide,2004,US,Nickelodeon,0
-540,32692,Blue Bloods,2010,US,CBS,0
-541,2426,Angel,1999,US,The WB,0
-542,607,The Powerpuff Girls,1998,US,Cartoon Network,0
-545,60554,Star Wars Rebels,2014,US,Disney XD,0
-547,83631,What We Do in the Shadows,2019,US,FX,0
-549,1781,Little House on the Prairie,1974,US,NBC,0
-550,186,Weeds,2005,US,Showtime,0
-551,433,Terminator: The Sarah Connor Chronicles,2008,US,FOX,0
-552,1996,The Flintstones,1960,US,ABC,0
-553,1427,Broadchurch,2013,GB,ITV1,0
-555,75191,The Terror,2018,US,AMC; Shudder; AMC+,0
-556,14141,V,1983,US,NBC,0
-557,1447,Psych,2006,US,USA Network,0
-558,537,Hey Arnold!,1996,US,Nickelodeon,0
-560,2391,Tales from the Crypt,1989,US,HBO,0
-564,49010,The Fall,2013,IE,RTÉ One,0
-565,67133,MacGyver,2016,US,CBS,0
-569,71365,Battlestar Galactica,2003,CA,Syfy,0
-570,96580,Resident Alien,2021,US,USA Network; Syfy,0
-572,61888,The Last Man on Earth,2015,US,FOX,0
-575,74387,Final Space,2018,US/CA,Adult Swim; TBS,0
-578,43899,The Bible,2013,US,History,0
-579,580,Star Trek: Deep Space Nine,1993,US,Syndication,0
-580,117488,Yellowjackets,2021,US,Showtime; Paramount+ with Showtime,0
-582,2996,The Office,2001,GB,BBC Two,0
-584,71663,Black Lightning,2018,US,The CW,0
-586,61345,Z Nation,2014,US,Syfy,0
-587,1406,Deadwood,2004,US,HBO,0
-589,314,Star Trek: Enterprise,2001,US,UPN,0
-590,1417,Glee,2009,US,FOX,0
-591,62687,Limitless,2015,US,CBS,0
-593,43020,Continuum,2012,CA,Showcase,0
-594,2673,The O.C.,2003,US,FOX,0
-599,118357,1883,2021,US,Paramount+,3
-601,68595,Planet Earth II,2016,GB,BBC One,0
-602,12313,Shadow Hunter,2005,CA,Space,0
-603,65820,Van Helsing,2016,US,Syfy,0
-605,4588,ER,1994,US,NBC,0
-607,14814,Keeping Up with the Kardashians,2007,US,E!,0
-609,2875,MacGyver,1985,US,ABC,0
-611,4546,Curb Your Enthusiasm,2000,US,HBO,24
-618,80748,FBI,2018,US,CBS,0
-619,3854,The Spectacular Spider-Man,2008,US,Disney XD; The CW,0
-620,72002,Dynasty,2017,US,The CW,0
-622,61418,Jane the Virgin,2014,US,The CW,0
-623,67773,Dirk Gently's Holistic Detective Agency,2016,US,BBC America,0
-624,53425,Wayward Pines,2015,US,FOX,0
-631,46994,Slugterra,2012,CA,Disney XD; Family Chrgd,0
-633,2723,Samurai Jack,2001,US,Cartoon Network; Adult Swim,5
-634,4229,Dexter's Laboratory,1996,US,Cartoon Network,0
-636,2382,Freaks and Geeks,1999,US,NBC; Fox Family,0
-638,31109,Ben 10: Ultimate Alien,2010,US,Cartoon Network,0
-641,48865,Reign,2013,US,The CW,0
-642,3452,Frasier,1993,US,NBC,0
-643,32754,Terra Nova,2011,US,FOX,0
-645,240,Jackie Chan Adventures,2000,US,The WB,0
-647,224372,A Knight of the Seven Kingdoms,2026,US,HBO,0
-648,84200,Justice League Unlimited,2004,US,Cartoon Network,0
-649,34415,The Killing,2011,US,AMC; Netflix,0
-651,45,Top Gear,2002,GB,BBC One; BBC Two,0
-652,110290,Mums Make Porn,2019,GB,Channel 4,0
-653,98387,Rubi,2020,US,Univision,0
-654,85077,The Chosen,2019,US,Prime Video; VidAngel; Angel; TheChosen.tv,0
-655,1414,The Shield,2002,US,FX,18
-656,211684,The Walking Dead: Daryl Dixon,2023,US,AMC,0
-657,77236,A Discovery of Witches,2018,GB,Sky One; Sky Max,0
-658,3475,The L Word,2004,US,Showtime,0
-659,62425,Dark Matter,2015,CA,Syfy; Space,0
-660,2129,The Adventures of Jimmy Neutron: Boy Genius,2002,US,Nickelodeon,0
-661,67683,Travelers,2016,CA,Showcase; Netflix,0
-662,67557,The Grand Tour,2016,GB,Prime Video,0
-664,83851,The Undoing,2020,US,HBO,0
-665,61593,Mr. Pickles,2014,US,Adult Swim,0
-666,1436,Justified,2010,US,FX,19
-667,65495,Atlanta,2016,US,FX,0
-668,39358,Revenge,2011,US,ABC,0
-669,2328,Power Rangers,1993,US,ABC; Nickelodeon; ABC Family; Toon Disney; Netflix; Fox Kids,0
-672,3322,Oz,1997,US,HBO,0
-673,9687,The Odyssey,1997,ZA/TR/DE/IT/US/GB,CTV; NBC,0
-676,1423,Ray Donovan,2013,US,Showtime,0
-677,160,Teenage Mutant Ninja Turtles,1987,US,CBS; USA Network; Syndication,0
-680,2942,The Tudors,2007,US,Showtime,0
-681,873,Columbo,1971,US,ABC; NBC,0
-682,76231,Mayans M.C.,2018,US,FX,0
-684,47450,Into the Badlands,2015,US,AMC,0
-685,86850,Dracula,2020,GB,BBC One,0
-687,68315,The Mist,2017,US,Spike,0
-689,926,"Scooby-Doo, Where Are You!",1969,US,ABC; CBS,0
-691,1660,I Dream of Jeannie,1965,US,NBC,0
-693,2025,"Beverly Hills, 90210",1990,US,FOX,0
-696,57532,PAW Patrol,2013,US,Nickelodeon,0
-700,62649,Superstore,2015,US,NBC,0
-702,2207,Fawlty Towers,1975,GB,BBC Two,0
-703,62704,Ballers,2015,US,HBO,2
-704,65988,Wynonna Earp,2016,CA/US,Syfy; Space; CTV Sci-Fi Channel,0
-709,60694,Last Week Tonight with John Oliver,2014,US,HBO,0
-710,606,"Ed, Edd n Eddy",1999,US/CA,Cartoon Network,0
-711,21494,V,2009,CA/US,ABC,0
-717,4608,30 Rock,2006,US,NBC,20
-718,67116,Lethal Weapon,2016,US,FOX,0
-722,66786,Timeless,2016,US,NBC,0
-723,100,I Am Not an Animal,2004,GB,BBC Two,0
-724,51817,Teenage Mutant Ninja Turtles,2012,US,Nickelodeon; Nicktoons,0
-726,5148,Stargate Universe,2009,US,Syfy,0
-729,2660,Codename: Kids Next Door,2002,US,Cartoon Network,0
-734,38693,Ninjago: Masters of Spinjitzu,2012,US,YTV; Cartoon Network; Teletoon,0
-735,4018,Quantum Leap,1989,US,NBC,0
-736,33623,The Avengers: Earth's Mightiest Heroes,2010,US,Disney XD,0
-740,82,Animaniacs,1993,US,The WB; Fox Kids,0
-744,82816,Lovecraft Country,2020,US,HBO,0
-745,94280,Steven Universe Future,2019,US,Cartoon Network,0
-748,68716,Marvel's Inhumans,2017,US,ABC,0
-749,61733,Empire,2015,US,FOX,0
-751,71694,Snowfall,2017,US,FX,0
-753,44305,DreamWorks Dragons,2012,US,Cartoon Network,0
-754,157744,1923,2022,US,Paramount+,3
-755,68734,El Chema,2016,US,Telemundo,0
-756,2458,CSI: NY,2004,US,CBS,0
-760,15819,Warehouse 13,2009,US,Syfy,0
-761,4556,Scrubs,2001,US,ABC; NBC,0
-762,688,The West Wing,1999,US,NBC,0
-763,2046,Alias,2001,US,ABC,0
-764,2919,Burn Notice,2007,US,USA Network,0
-765,4598,Boston Legal,2004,US,ABC,0
-766,903,Black Books,2000,GB,Channel 4,0
-767,4271,Farscape,1999,AU/US,Syfy,0
-768,3137,Babylon 5,1994,US,TNT; Syndication,0
+rank,tmdb_id,name,year,origin_country,networks,discdb_discs,original_language,tier,vote_count
+1,1399,Game of Thrones,2011,US,HBO,33,en,0,27844
+2,66732,Stranger Things,2016,US,Netflix,4,en,0,21889
+3,1402,The Walking Dead,2010,US,AMC,54,en,0,18225
+4,1396,Breaking Bad,2008,US,AMC,0,en,0,18713
+5,63174,Lucifer,2016,US,FOX; Netflix,0,en,0,15703
+6,69050,Riverdale,2017,US,The CW,0,en,0,13799
+7,71712,The Good Doctor,2017,US,ABC,0,en,0,12942
+8,85271,WandaVision,2021,US,Disney+,2,en,0,12925
+9,76479,The Boys,2019,US,Prime Video,6,en,0,13476
+10,1418,The Big Bang Theory,2007,US,CBS,16,en,0,12829
+11,84958,Loki,2021,US,Disney+,4,en,0,12748
+12,60735,The Flash,2014,US,The CW,0,en,0,11787
+13,60574,Peaky Blinders,2013,GB,BBC One; BBC Two,0,en,0,11410
+14,1416,Grey's Anatomy,2005,US,ABC,0,en,0,11064
+15,82856,The Mandalorian,2019,US,Disney+,6,en,0,11268
+16,60625,Rick and Morty,2013,US,Adult Swim,7,en,0,11429
+17,456,The Simpsons,1989,US,FOX,0,en,0,11037
+18,85552,Euphoria,2019,US,HBO,0,en,0,11096
+19,119051,Wednesday,2022,US,Netflix,2,en,0,10838
+20,18165,The Vampire Diaries,2009,US,The CW,0,en,0,9783
+21,1668,Friends,1994,US,NBC,25,en,0,9429
+22,88396,The Falcon and the Winter Soldier,2021,US,Disney+,0,en,0,9019
+23,48866,The 100,2014,US,The CW,0,en,0,8805
+24,1622,Supernatural,2005,US,The WB; The CW,58,en,0,8714
+25,87108,Chernobyl,2019,US,HBO,0,en,0,8349
+26,44217,Vikings,2013,CA,Prime Video; History,27,en,0,7916
+27,1408,House,2004,US,FOX,0,en,0,7912
+28,100088,The Last of Us,2023,US,HBO,7,en,0,7372
+29,60059,Better Call Saul,2015,US,AMC,0,en,0,6914
+30,19885,Sherlock,2010,GB,BBC One,4,en,0,6730
+31,1412,Arrow,2012,US,The CW,0,en,0,6492
+32,42009,Black Mirror,2011,GB,Channel 4; Netflix,0,en,0,6546
+33,63247,Westworld,2016,US,HBO,9,en,0,6401
+34,1413,American Horror Story,2011,US,FX,0,en,0,6198
+35,94997,House of the Dragon,2022,US,HBO,12,en,0,7172
+36,2288,Prison Break,2005,US,FOX,0,en,0,6179
+37,94605,Arcane,2021,US,Netflix,4,en,0,6197
+38,95557,INVINCIBLE,2021,US,Prime Video,0,en,0,6088
+39,37680,Suits,2011,US,USA Network,34,en,0,5926
+40,1100,How I Met Your Mother,2005,US,CBS,0,en,0,5974
+41,1405,Dexter,2006,US,Showtime,24,en,0,5886
+42,62560,Mr. Robot,2015,US,USA Network,0,en,0,5602
+43,2316,The Office,2005,US,NBC,72,en,0,5517
+44,62286,Fear the Walking Dead,2015,US,AMC,0,en,0,5247
+45,4607,Lost,2004,US,ABC,0,en,0,5363
+46,2190,South Park,1997,US,Comedy Central,93,en,0,5171
+47,1434,Family Guy,1999,US,FOX,0,en,0,5125
+48,70785,Anne with an E,2017,CA,CBC Television,0,en,0,4996
+49,246,Avatar: The Last Airbender,2005,US,Nickelodeon,19,en,0,5120
+50,2004,Malcolm in the Middle,2000,US,FOX,0,en,0,4991
+51,34524,Teen Wolf,2011,US,MTV,0,en,0,4809
+52,91363,What If...?,2021,US,Disney+,0,en,0,4734
+53,4604,Smallville,2001,US,The WB; The CW,42,en,0,4619
+54,62688,Supergirl,2015,US,CBS; The CW,0,en,0,4469
+55,5920,The Mentalist,2008,US,CBS,0,en,0,4784
+56,2734,Law & Order: Special Victims Unit,1999,US,NBC,0,en,0,4360
+57,90462,Chucky,2021,US,USA Network; Syfy,2,en,0,4219
+58,4613,Band of Brothers,2001,US,HBO,6,en,0,4381
+59,60797,Scorpion,2014,US,CBS,0,en,0,4187
+60,46648,True Detective,2014,US,HBO,0,en,0,4388
+61,4057,Criminal Minds,2005,US,CBS; Paramount+,0,en,0,4178
+62,48891,Brooklyn Nine-Nine,2013,US,NBC; FOX,17,en,0,4158
+63,78191,You,2018,US,Lifetime; Netflix,0,en,0,4100
+64,46331,Under the Dome,2013,US,CBS,0,en,0,3960
+65,1403,Marvel's Agents of S.H.I.E.L.D.,2013,US,ABC,0,en,0,3906
+66,615,Futurama,1999,US,FOX; Comedy Central; Hulu,0,en,0,3920
+67,88329,Hawkeye,2021,US,Disney+,0,en,0,3854
+68,60708,Gotham,2014,US,FOX,18,en,0,3808
+69,2691,Two and a Half Men,2003,US,CBS,0,en,0,3797
+70,46896,The Originals,2013,US,The CW,0,en,0,3656
+71,46952,The Blacklist,2013,US,NBC,0,en,0,3731
+72,4087,The X-Files,1993,US,FOX,60,en,0,3729
+73,74577,The End of the F***ing World,2017,GB,Channel 4; Channel 4 (Online),0,en,0,3685
+74,39351,Grimm,2011,US,NBC,0,en,0,3642
+75,1911,Bones,2005,US,FOX,0,en,0,3595
+76,92749,Moon Knight,2022,US,Disney+,2,en,0,3721
+77,40075,Gravity Falls,2012,US,Disney Channel; Disney XD,0,en,0,3613
+78,1398,The Sopranos,1999,US,HBO,0,en,0,3699
+79,71886,Siren,2018,US,Freeform,0,en,0,3435
+80,80213,The Purge,2018,US,USA Network,0,en,0,3415
+81,110492,Peacemaker,2022,US,HBO Max; HBO Max,0,en,0,3564
+82,57243,Doctor Who,2005,GB,BBC One,59,en,0,3467
+83,1421,Modern Family,2009,US,ABC,0,en,0,3540
+84,34307,Shameless,2011,US,Showtime,0,en,0,3515
+85,19614,It,1990,US,ABC,0,en,0,3391
+86,124364,FROM,2022,US,Epix; MGM+,0,en,0,4300
+87,1409,Sons of Anarchy,2008,US,FX,23,en,0,3402
+88,60622,Fargo,2014,US,FX,0,en,0,3440
+89,79744,The Rookie,2018,US,ABC,0,en,0,3551
+90,69478,The Handmaid's Tale,2017,US,Hulu,0,en,0,3447
+91,387,SpongeBob SquarePants,1999,US,Nickelodeon,8,en,0,3278
+92,1425,House of Cards,2013,US,Netflix,0,en,0,3312
+93,52814,Halo,2022,US,Paramount+,0,en,0,3283
+94,73586,Yellowstone,2018,US,Paramount Network,26,en,0,3350
+95,15260,Adventure Time,2010,US,Cartoon Network,0,en,0,3222
+96,79460,Legacies,2018,US,The CW,0,en,0,3052
+97,71728,Young Sheldon,2017,US,CBS,0,en,0,3104
+98,115036,The Book of Boba Fett,2021,US,Disney+,0,en,0,3111
+99,46296,Spartacus,2010,US,STARZ,0,en,0,3068
+100,60866,iZombie,2015,US,The CW,0,en,0,2974
+101,40008,Hannibal,2013,US,NBC,0,en,0,3070
+102,56570,Outlander,2014,US,STARZ,0,en,0,2990
+103,61222,BoJack Horseman,2014,US,Netflix,4,en,0,2980
+104,75450,Titans,2018,US,DC Universe; HBO Max,0,en,0,2905
+105,106379,Fallout,2024,US,Prime Video,3,en,0,3133
+106,63639,The Expanse,2015,US,Syfy; Prime Video,15,en,0,2935
+107,1424,Orange Is the New Black,2013,US,Netflix,0,en,0,2912
+108,31917,Pretty Little Liars,2010,US,ABC Family; Freeform,0,en,0,2843
+109,1705,Fringe,2008,US,FOX,0,en,0,2932
+110,75219,9-1-1,2018,US,ABC; FOX,0,en,0,2861
+111,95057,Superman & Lois,2021,US,The CW,0,en,0,2769
+112,1438,The Wire,2002,US,HBO,0,en,0,2836
+113,95396,Severance,2022,US,Apple TV,3,en,0,2986
+114,58841,Chicago P.D.,2014,US,NBC,0,en,0,2636
+115,1407,Homeland,2011,US,Showtime,0,en,0,2711
+116,1920,Twin Peaks,1990,US,ABC; Showtime,21,en,0,2719
+117,1639,Heroes,2006,US,NBC,0,en,0,2687
+118,62710,Blindspot,2015,US,NBC,0,en,0,2590
+119,16997,The Pacific,2010,US,HBO,0,en,0,2599
+120,1981,Charmed,1998,US,The WB,0,en,0,2587
+121,4614,NCIS,2003,US,CBS,0,en,0,2578
+122,39272,Once Upon a Time,2011,US,ABC,0,en,0,2551
+123,1892,The Fresh Prince of Bel-Air,1990,US,NBC,0,en,0,2531
+124,62643,DC's Legends of Tomorrow,2016,US,The CW,0,en,0,2524
+125,44006,Chicago Fire,2012,US,NBC,0,en,0,2442
+126,1437,Firefly,2002,US,FOX,0,en,0,2513
+127,1433,American Dad!,2005,US,FOX; TBS,0,en,0,2456
+128,4194,Star Wars: The Clone Wars,2008,US,Cartoon Network; Netflix; Disney+,0,en,0,2429
+129,65494,The Crown,2016,GB/US,Netflix,48,en,0,2432
+130,97546,Ted Lasso,2020,US,Apple TV,15,en,0,2697
+131,1400,Seinfeld,1989,US,NBC,24,en,0,2462
+132,33880,The Legend of Korra,2012,US,Nickelodeon,8,en,0,2432
+133,1395,Gossip Girl,2007,US,The CW,0,en,0,2357
+134,27240,Seven Deadly Sins,2008,US,History,0,en,0,2285
+135,31132,Regular Show,2010,US,Cartoon Network,0,en,0,2318
+136,92830,Obi-Wan Kenobi,2022,US,Disney+,2,en,0,2367
+137,105,Sex and the City,1998,US,HBO,0,en,0,2205
+138,1419,Castle,2009,US,ABC,0,en,0,2156
+139,693,Desperate Housewives,2004,US,ABC,0,en,0,2141
+140,18347,Community,2009,US,NBC; Yahoo! Screen,12,en,0,2182
+141,10545,True Blood,2008,US,HBO,0,en,0,2150
+142,1411,Person of Interest,2011,US,CBS,0,en,0,2172
+143,83867,Andor,2022,US,Disney+,3,en,0,2235
+144,67198,Star Trek: Discovery,2017,US,CBS All Access; Paramount+,0,en,0,2108
+145,95,Buffy the Vampire Slayer,1997,US,The WB; UPN,0,en,0,2070
+146,47640,The Strain,2014,US,FX,0,en,0,2064
+147,61550,Marvel's Agent Carter,2015,US,ABC,0,en,0,2059
+148,63333,The Last Kingdom,2015,GB,Netflix; BBC Two,0,en,0,2049
+149,66573,The Good Place,2016,US,NBC,9,en,0,2079
+150,2038,Drake & Josh,2004,US,Nickelodeon,0,en,0,1978
+151,60573,Silicon Valley,2014,US,HBO,0,en,0,2042
+152,85949,Star Trek: Picard,2020,US,CBS All Access; Paramount+,0,en,0,1958
+153,68507,His Dark Materials,2019,GB,BBC One,2,en,0,1962
+154,1606,Ghost Whisperer,2005,US,CBS,0,en,0,1916
+155,32798,Hawaii Five-0,2010,US,CBS,0,en,0,1908
+156,63401,We Bare Bears,2015,US,Cartoon Network,0,en,0,1870
+157,1415,Elementary,2012,US,CBS,0,en,0,1902
+158,2098,Batman: The Animated Series,1992,US,Fox Kids,0,en,0,1904
+159,67070,Fleabag,2016,GB,BBC Three; BBC One,0,en,0,1955
+160,4629,Stargate SG-1,1997,US/CA,Showtime; Syfy,0,en,0,1906
+161,62046,Scream Queens,2015,US,FOX,0,en,0,1829
+162,8592,Parks and Recreation,2009,US,NBC,20,en,0,1931
+163,92685,The Owl House,2020,US,Disney Channel,0,en,0,1843
+164,4686,Ben 10,2005,US,Cartoon Network,0,en,0,1840
+165,79696,Manifest,2018,US,NBC; Netflix,0,en,0,1861
+166,46639,American Gods,2017,US,STARZ,0,en,0,1841
+167,1973,24,2001,US,FOX,0,en,0,1892
+168,61056,How to Get Away with Murder,2014,US,ABC,0,en,0,1826
+169,1972,Battlestar Galactica,2004,CA/US/GB,Syfy,41,en,0,1862
+170,46786,Bates Motel,2013,US,A&E,0,en,0,1827
+171,655,Star Trek: The Next Generation,1987,US,Syndication,41,en,0,1859
+172,61617,Over the Garden Wall,2014,US,Cartoon Network,1,en,0,1824
+173,62264,Ash vs Evil Dead,2015,US,STARZ,0,en,0,1811
+174,126308,Shōgun,2024,US,FX; Hulu,0,en,0,1908
+175,64464,11.22.63,2016,US,Hulu,0,en,0,1819
+176,37606,The Amazing World of Gumball,2011,US,Cartoon Network,0,en,0,1795
+177,31251,Victorious,2010,US,Nickelodeon,0,en,0,1746
+178,39340,2 Broke Girls,2011,US,CBS,0,en,0,1796
+179,1620,CSI: Miami,2002,US,CBS,0,en,0,1752
+180,64432,The Magicians,2015,US,Syfy,0,en,0,1724
+181,31356,Big Time Rush,2009,US,Nickelodeon,0,en,0,1688
+182,66292,Big Little Lies,2017,US,HBO,0,en,0,1747
+183,86430,Your Honor,2020,US,Showtime,0,en,0,1715
+184,58474,Cosmos,2014,US,FOX; National Geographic,0,en,0,1742
+185,84661,The Outsider,2020,US,HBO,0,en,0,1760
+186,8358,Lie to Me,2009,US,FOX,0,en,0,1741
+187,115004,Mare of Easttown,2021,US,HBO,0,en,0,1766
+188,1420,New Girl,2011,US,FOX,0,en,0,1736
+189,4589,Arrested Development,2003,US,FOX; Netflix,0,en,0,1761
+190,2085,Courage the Cowardly Dog,1999,US,Cartoon Network,8,en,0,1677
+191,71789,SEAL Team,2017,US,CBS; Paramount+,0,en,0,1680
+192,67136,This Is Us,2016,US,NBC,0,en,0,1675
+193,76331,Succession,2018,US,HBO,12,en,0,1783
+194,60743,Constantine,2014,US,NBC,0,en,0,1665
+195,2490,The IT Crowd,2006,GB,Channel 4,5,en,0,1702
+196,79788,Watchmen,2019,US,HBO,0,en,0,1700
+197,128839,La Brea,2021,US,NBC,0,en,0,1629
+198,52,That '70s Show,1998,US,FOX,0,en,0,1668
+199,89247,Batwoman,2019,US,The CW,5,en,0,1610
+200,131927,Dexter: New Blood,2021,US,Showtime,4,en,0,1720
+201,69629,The Gifted,2017,US,FOX,0,en,0,1610
+202,71790,S.W.A.T.,2017,US,CBS,0,en,0,1608
+203,89456,Primal,2019,US,Adult Swim,0,en,0,1620
+204,4327,Mr. Bean,1990,GB,ITV1,0,en,0,1648
+205,76773,Station 19,2018,US,ABC,0,en,0,1562
+206,21510,White Collar,2009,US,USA Network,0,en,0,1611
+207,5371,iCarly,2007,US,Nickelodeon,0,en,0,1576
+208,67195,Legion,2017,US,FX,0,en,0,1608
+209,54671,Penny Dreadful,2014,US,Showtime,0,en,0,1572
+210,1104,Mad Men,2007,US,AMC,0,en,0,1607
+211,61923,Star vs. the Forces of Evil,2015,US,Disney XD; Disney Channel,0,en,0,1529
+212,72750,Killing Eve,2018,US,BBC America,0,en,0,1563
+213,1891,Rome,2005,US,HBO,0,en,0,1578
+214,253,Star Trek,1966,US,NBC,0,en,0,1566
+215,79525,The Last Dance,2020,US,ESPN,3,en,0,1535
+216,62017,The Man in the High Castle,2015,US,Prime Video,0,en,0,1563
+217,65708,Taboo,2017,GB,BBC One,0,en,0,1536
+218,47665,Black Sails,2014,US,STARZ,12,en,0,1527
+219,79501,Doom Patrol,2019,US,DC Universe; HBO Max; Max,0,en,0,1495
+220,200875,IT: Welcome to Derry,2025,US,HBO,3,en,0,1678
+221,92782,Ms. Marvel,2022,US,Disney+,0,en,0,1528
+222,56296,Orphan Black,2013,US/CA,Space; BBC America,0,en,0,1494
+223,10283,Archer,2009,US,FX; FXX,0,en,0,1490
+224,2384,Knight Rider,1982,US,NBC,16,en,0,1469
+225,111803,The White Lotus,2021,US,HBO,3,en,0,1549
+226,79680,Snowpiercer,2020,US,TNT; AMC,0,en,0,1489
+227,90461,Monsters at Work,2021,US,Disney XD; Disney Channel; Disney+,0,en,0,1415
+228,4616,Xena: Warrior Princess,1995,US,Syndication,0,en,0,1452
+229,900,Skins,2007,GB,E4,0,en,0,1438
+230,71738,The Orville,2017,US,FOX; Hulu,0,en,0,1477
+231,1431,CSI: Crime Scene Investigation,2000,US,CBS,0,en,0,1438
+232,41727,Banshee,2013,US,Cinemax,0,en,0,1460
+233,4574,X-Men,1992,US,FOX; YTV; Syndication; Fox Kids,0,en,0,1409
+234,4336,Drawn Together,2004,US,Comedy Central,0,en,0,1378
+235,89905,Normal People,2020,GB,BBC Three,0,en,0,1396
+236,61175,Steven Universe,2013,US,Cartoon Network,0,en,0,1391
+237,2710,It's Always Sunny in Philadelphia,2005,US,FX; FXX,0,en,0,1419
+238,194764,The Penguin,2024,US,HBO,0,en,0,1500
+239,34967,Falling Skies,2011,US,TNT,0,en,0,1393
+240,604,Teen Titans,2003,US,The WB; Cartoon Network,0,en,0,1366
+241,74016,The Resident,2018,US,FOX,0,en,0,1343
+242,1215,Californication,2007,US,Showtime,0,en,0,1379
+243,66276,The Night Of,2016,US,HBO,0,en,0,1414
+244,61859,The Night Manager,2016,GB,BBC One,0,en,0,1391
+245,64230,Preacher,2016,US,AMC,0,en,0,1362
+246,54650,Power,2014,US,STARZ,0,en,0,1311
+247,2352,The Nanny,1993,US,CBS,0,en,0,1340
+248,1621,Boardwalk Empire,2010,US,HBO,23,en,0,1329
+249,62650,Chicago Med,2015,US,NBC,0,en,0,1278
+250,4586,Gilmore Girls,2000,US,The WB; The CW,0,en,0,1310
+251,1695,Monk,2002,US,USA Network,32,en,0,1320
+252,1044,Planet Earth,2006,GB,BBC One,0,en,0,1292
+253,17610,NCIS: Los Angeles,2009,US,CBS,0,en,0,1268
+254,39852,The Sinner,2017,US,USA Network,0,en,0,1310
+255,605,"Sabrina, the Teenage Witch",1996,US,ABC; The WB,24,en,0,1252
+256,89393,9-1-1: Lone Star,2020,US,FOX,0,en,0,1242
+257,33217,Young Justice,2010,US,Cartoon Network; DC Universe; HBO Max,0,en,0,1255
+258,4658,ALF,1986,US,NBC,0,en,0,1269
+259,63210,Shadowhunters,2016,US,Freeform,0,en,0,1258
+260,94305,The Walking Dead: World Beyond,2020,US,AMC,0,en,0,1226
+261,114461,Ahsoka,2023,US,Disney+,0,en,0,1323
+262,54344,The Leftovers,2014,US,HBO,0,en,0,1294
+263,1404,Chuck,2007,US,NBC,0,en,0,1260
+264,1426,Luther,2010,GB,BBC One,0,en,0,1257
+265,33907,Downton Abbey,2010,GB,ITV1,0,en,0,1258
+266,4239,Married... with Children,1987,US,FOX,0,en,0,1276
+267,6040,Ben 10: Alien Force,2008,US,Cartoon Network,0,en,0,1198
+268,3498,Wizards of Waverly Place,2007,US,Disney Channel,0,en,0,1206
+269,62823,Scream: The TV Series,2015,US,MTV; VH1,0,en,0,1190
+270,2290,Stargate Atlantis,2004,CA/US,Syfy,0,en,0,1240
+271,60948,12 Monkeys,2015,US,Syfy,0,en,0,1224
+272,2309,Danny Phantom,2004,US,Nickelodeon,0,en,0,1181
+273,80986,DC's Stargirl,2020,US,The CW; DC Universe,0,en,0,1197
+274,74440,Harley Quinn,2019,US,DC Universe; HBO Max; Max,0,en,0,1188
+275,61852,Henry Danger,2014,US,Nickelodeon,0,en,0,1173
+276,73107,Barry,2018,US,HBO,0,en,0,1224
+277,888,Spider-Man,1994,US,FOX; Fox Kids,0,en,0,1178
+278,7225,Merlin,2008,GB,BBC One,0,en,0,1196
+279,4313,Full House,1987,US,ABC,0,en,0,1175
+280,80307,Bodyguard,2018,GB,BBC One,0,en,0,1223
+281,67026,Designated Survivor,2016,US,ABC; Netflix,0,en,0,1192
+282,79649,Project Blue Book,2019,US,History,0,en,0,1138
+283,2317,My Name Is Earl,2005,US,NBC,0,en,0,1183
+284,18123,Scooby-Doo! Mystery Incorporated,2010,US,Cartoon Network,0,en,0,1139
+285,222766,The Day of the Jackal,2024,GB,Sky Atlantic; Sky Showcase,0,en,0,1351
+286,50825,Sleepy Hollow,2013,US,FOX,0,en,0,1139
+287,1274,Six Feet Under,2001,US,HBO,0,en,0,1183
+288,252,Everybody Hates Chris,2005,US,UPN; The CW,0,en,0,1151
+289,4630,The Fairly OddParents,2001,CA/US,Nickelodeon; Nicktoons,0,en,0,1144
+290,1855,Star Trek: Voyager,1995,US,UPN,0,en,0,1165
+291,1988,ThunderCats,1985,US,Syndication,0,en,0,1122
+292,4500,The Wonder Years,1988,US,ABC,0,en,0,1116
+293,80350,New Amsterdam,2018,US,NBC,0,en,0,1117
+294,32726,Bob's Burgers,2011,US,FOX,0,en,0,1143
+295,3763,Dinosaurs,1991,US,ABC; Syndication,0,en,0,1119
+296,1778,Zoey 101,2005,US,Nickelodeon,0,en,0,1079
+297,70453,Sharp Objects,2018,US,HBO,0,en,0,1137
+298,1516,The A-Team,1983,US,NBC,0,en,0,1121
+299,46533,The Americans,2013,US,FX,0,en,0,1116
+300,79240,Swamp Thing,2019,US,DC Universe,0,en,0,1087
+301,64513,American Crime Story,2016,US,FX,0,en,0,1083
+302,34391,Marvel's Ultimate Spider-Man,2012,US,Disney XD,0,en,0,1058
+303,64122,The Shannara Chronicles,2016,US,MTV; Spike,0,en,0,1058
+304,6357,The Twilight Zone,1959,US,CBS,24,en,0,1077
+305,62852,Billions,2016,US,Showtime,0,en,0,1078
+306,86848,Evil,2019,US,CBS; Paramount+,0,en,0,1082
+307,60802,The Last Ship,2014,US,TNT,0,en,0,1087
+308,31295,Misfits,2009,GB,E4,0,en,0,1069
+309,897,The Grim Adventures of Billy and Mandy,2001,US,Cartoon Network,0,en,0,1035
+310,1877,Phineas and Ferb,2007,US,Disney XD; Disney Channel,0,en,0,1062
+311,157239,Alien: Earth,2025,US,FX; Hulu,0,en,0,1161
+312,32692,Blue Bloods,2010,US,CBS,0,en,0,1029
+313,2426,Angel,1999,US,The WB,0,en,0,1032
+314,607,The Powerpuff Girls,1998,US,Cartoon Network,0,en,0,1034
+315,60554,Star Wars Rebels,2014,US,Disney XD,0,en,0,1036
+316,83631,What We Do in the Shadows,2019,US,FX,0,en,0,1058
+317,1781,Little House on the Prairie,1974,US,NBC,0,en,0,1037
+318,186,Weeds,2005,US,Showtime,0,en,0,1043
+319,433,Terminator: The Sarah Connor Chronicles,2008,US,FOX,0,en,0,1038
+320,1996,The Flintstones,1960,US,ABC,0,en,0,1025
+321,1427,Broadchurch,2013,GB,ITV1,0,en,0,1050
+322,75191,The Terror,2018,US,AMC,0,en,0,1053
+323,14141,V,1983,US,NBC,0,en,0,1005
+324,1447,Psych,2006,US,USA Network,0,en,0,1043
+325,537,Hey Arnold!,1996,US,Nickelodeon,0,en,0,1003
+326,2391,Tales from the Crypt,1989,US,HBO,0,en,0,1018
+327,49010,The Fall,2013,IE,RTÉ One,0,en,0,1008
+328,67133,MacGyver,2016,US,CBS,0,en,0,984
+329,71365,Battlestar Galactica,2003,CA,Syfy,0,en,0,1018
+330,96580,Resident Alien,2021,US,USA Network; Syfy,0,en,0,1068
+331,61888,The Last Man on Earth,2015,US,FOX,0,en,0,1003
+332,74387,Final Space,2018,US/CA,Adult Swim; TBS,0,en,0,995
+333,43899,The Bible,2013,US,History,0,en,0,950
+334,580,Star Trek: Deep Space Nine,1993,US,Syndication,0,en,0,1029
+335,117488,Yellowjackets,2021,US,Showtime; Paramount+ with Showtime,0,en,0,1042
+336,2996,The Office,2001,GB,BBC Two,0,en,0,1007
+337,71663,Black Lightning,2018,US,The CW,0,en,0,983
+338,61345,Z Nation,2014,US,Syfy,0,en,0,993
+339,1406,Deadwood,2004,US,HBO,0,en,0,1002
+340,314,Star Trek: Enterprise,2001,US,UPN,0,en,0,990
+341,1417,Glee,2009,US,FOX,0,en,0,978
+342,62687,Limitless,2015,US,CBS,0,en,0,985
+343,43020,Continuum,2012,CA,Showcase,0,en,0,975
+344,2673,The O.C.,2003,US,FOX,0,en,0,977
+345,118357,1883,2021,US,Paramount+,3,en,0,1040
+346,68595,Planet Earth II,2016,GB,BBC One,0,en,0,977
+347,12313,Shadow Hunter,2005,CA,Space,0,en,0,923
+348,65820,Van Helsing,2016,US,Syfy,0,en,0,950
+349,4588,ER,1994,US,NBC,0,en,0,971
+350,14814,Keeping Up with the Kardashians,2007,US,E!,0,en,0,928
+351,2875,MacGyver,1985,US,ABC,0,en,0,967
+352,4546,Curb Your Enthusiasm,2000,US,HBO,24,en,0,980
+353,80748,FBI,2018,US,CBS,0,en,0,950
+354,3854,The Spectacular Spider-Man,2008,US,Disney XD; The CW,0,en,0,939
+355,72002,Dynasty,2017,US,The CW,0,en,0,912
+356,61418,Jane the Virgin,2014,US,The CW,0,en,0,913
+357,67773,Dirk Gently's Holistic Detective Agency,2016,US,BBC America,0,en,0,947
+358,53425,Wayward Pines,2015,US,FOX,0,en,0,958
+359,46994,Slugterra,2012,CA,Disney XD; Family Chrgd,0,en,0,919
+360,2723,Samurai Jack,2001,US,Cartoon Network; Adult Swim,5,en,0,934
+361,4229,Dexter's Laboratory,1996,US,Cartoon Network,0,en,0,922
+362,2382,Freaks and Geeks,1999,US,NBC; Fox Family,0,en,0,934
+363,31109,Ben 10: Ultimate Alien,2010,US,Cartoon Network,0,en,0,908
+364,48865,Reign,2013,US,The CW,0,en,0,893
+365,3452,Frasier,1993,US,NBC,0,en,0,942
+366,32754,Terra Nova,2011,US,FOX,0,en,0,918
+367,240,Jackie Chan Adventures,2000,US,The WB,0,en,0,895
+368,224372,A Knight of the Seven Kingdoms,2026,US,HBO,0,en,0,1196
+369,84200,Justice League Unlimited,2004,US,Cartoon Network,0,en,0,898
+370,34415,The Killing,2011,US,AMC; Netflix,0,en,0,910
+371,45,Top Gear,2002,GB,BBC One; BBC Two,0,en,0,913
+372,110290,Mums Make Porn,2019,GB,Channel 4,0,en,0,857
+373,85077,The Chosen,2019,US,Prime Video; VidAngel; Angel; TheChosen.tv,0,en,0,1001
+374,1414,The Shield,2002,US,FX,18,en,0,908
+375,211684,The Walking Dead: Daryl Dixon,2023,US,AMC,0,en,0,927
+376,77236,A Discovery of Witches,2018,GB,Sky One; Sky Max,0,en,0,897
+377,3475,The L Word,2004,US,Showtime,0,en,0,870
+378,62425,Dark Matter,2015,CA,Syfy; Space,0,en,0,893
+379,2129,The Adventures of Jimmy Neutron: Boy Genius,2002,US,Nickelodeon,0,en,0,876
+380,67683,Travelers,2016,CA,Showcase; Netflix,0,en,0,906
+381,67557,The Grand Tour,2016,GB,Prime Video,0,en,0,897
+382,83851,The Undoing,2020,US,HBO,0,en,0,903
+383,61593,Mr. Pickles,2014,US,Adult Swim,0,en,0,874
+384,1436,Justified,2010,US,FX,19,en,0,891
+385,65495,Atlanta,2016,US,FX,0,en,0,885
+386,39358,Revenge,2011,US,ABC,0,en,0,858
+387,2328,Power Rangers,1993,US,ABC; Nickelodeon; ABC Family; Toon Disney; Netflix; Fox Kids,0,en,0,868
+388,3322,Oz,1997,US,HBO,0,en,0,884
+389,9687,The Odyssey,1997,US/GB,NBC,0,en,0,890
+390,1423,Ray Donovan,2013,US,Showtime,0,en,0,864
+391,160,Teenage Mutant Ninja Turtles,1987,US,CBS; USA Network; Syndication,0,en,0,870
+392,2942,The Tudors,2007,US,Showtime,0,en,0,863
+393,873,Columbo,1971,US,ABC; NBC,0,en,0,859
+394,76231,Mayans M.C.,2018,US,FX,0,en,0,845
+395,47450,Into the Badlands,2015,US,AMC,0,en,0,844
+396,86850,Dracula,2020,GB,BBC One,0,en,0,858
+397,68315,The Mist,2017,US,Spike,0,en,0,868
+398,926,"Scooby-Doo, Where Are You!",1969,US,ABC; CBS,0,en,0,852
+399,1660,I Dream of Jeannie,1965,US,NBC,0,en,0,844
+400,2025,"Beverly Hills, 90210",1990,US,FOX,0,en,0,852
+401,57532,PAW Patrol,2013,US,Nickelodeon,0,en,0,821
+402,62649,Superstore,2015,US,NBC,0,en,0,872
+403,2207,Fawlty Towers,1975,GB,BBC Two,0,en,0,853
+404,62704,Ballers,2015,US,HBO,2,en,0,816
+405,65988,Wynonna Earp,2016,CA/US,Syfy; Space; CTV Sci-Fi Channel,0,en,0,830
+406,60694,Last Week Tonight with John Oliver,2014,US,HBO,0,en,0,844
+407,606,"Ed, Edd n Eddy",1999,CA/US,Cartoon Network,0,en,0,819
+408,21494,V,2009,US/CA,ABC,0,en,0,848
+409,4608,30 Rock,2006,US,NBC,20,en,0,851
+410,67116,Lethal Weapon,2016,US,FOX,0,en,0,812
+411,66786,Timeless,2016,US,NBC,0,en,0,823
+412,100,I Am Not an Animal,2004,GB,BBC Two,0,en,0,787
+413,51817,Teenage Mutant Ninja Turtles,2012,US,Nickelodeon; Nicktoons,0,en,0,808
+414,5148,Stargate Universe,2009,US,Syfy,0,en,0,829
+415,2660,Codename: Kids Next Door,2002,US,Cartoon Network,0,en,0,791
+416,38693,Ninjago: Masters of Spinjitzu,2012,US,Cartoon Network,0,en,0,794
+417,4018,Quantum Leap,1989,US,NBC,0,en,0,804
+418,33623,The Avengers: Earth's Mightiest Heroes,2010,US,Disney XD,0,en,0,794
+419,82,Animaniacs,1993,US,The WB; Fox Kids,0,en,0,789
+420,82816,Lovecraft Country,2020,US,HBO,0,en,0,803
+421,94280,Steven Universe Future,2019,US,Cartoon Network,0,en,0,783
+422,68716,Marvel's Inhumans,2017,US,ABC,0,en,0,796
+423,61733,Empire,2015,US,FOX,0,en,0,763
+424,71694,Snowfall,2017,US,FX,0,en,0,813
+425,44305,DreamWorks Dragons,2012,US,Cartoon Network,0,en,0,767
+426,157744,1923,2022,US,Paramount+,3,en,0,858
+427,2458,CSI: NY,2004,US,CBS,0,en,0,784
+428,15819,Warehouse 13,2009,US,Syfy,0,en,0,783
+429,4556,Scrubs,2001,US,ABC; NBC,0,en,0,247
+430,688,The West Wing,1999,US,NBC,0,en,0,614
+431,2046,Alias,2001,US,ABC,0,en,0,729
+432,2919,Burn Notice,2007,US,USA Network,0,en,0,612
+433,4598,Boston Legal,2004,US,ABC,0,en,0,399
+434,903,Black Books,2000,GB,Channel 4,0,en,0,641
+435,4271,Farscape,1999,US/AU,Nine Network; Syfy,0,en,0,636
+436,3137,Babylon 5,1994,US,TNT; Syndication,0,en,0,624
+437,81356,Sex Education,2019,GB,Netflix,,en,0,8011
+438,71912,The Witcher,2019,US,Netflix,,en,0,6919
+439,82883,The Act,2019,US,Hulu,,en,0,5210
+440,66788,13 Reasons Why,2017,US,Netflix,,en,0,4671
+441,63351,Narcos,2015,US,Netflix,,en,0,3464
+442,91239,Bridgerton,2020,US,Netflix,,en,0,3407
+443,67744,MINDHUNTER,2017,US,Netflix,,en,0,3127
+444,69740,Ozark,2017,US,Netflix,,en,0,2931
+445,90802,The Sandman,2022,US,Netflix,,en,0,2750
+446,125988,Silo,2023,US,Apple TV,,en,0,2737
+447,90260,I Am Not Okay with This,2020,US,Netflix,,en,0,2012
+448,136315,The Bear,2022,US,Hulu,,en,0,1946
+449,61664,Sense8,2015,US,Netflix,,en,0,1942
+450,85723,Raised by Wolves,2020,US,HBO Max,,en,0,1858
+451,93740,Foundation,2021,US,Apple TV,,en,0,1833
+452,124834,Heartstopper,2022,GB,Netflix,,en,0,1776
+453,82728,Bluey,2018,AU,ABC Kids,,en,0,747
+454,4620,Eureka,2006,US,Syfy,,en,0,744
+455,81723,The Gilded Age,2022,US,HBO,,en,0,272
+456,2625,Diagnosis: Murder,1993,US,CBS,,en,0,128
+457,195241,Frasier,2023,US,Paramount+,,en,0,79
+458,86374,War of the Worlds,2019,FR,Canal+,,en,1,940
+459,220102,Spider-Noir,2026,US,MGM+,,en,1,866
+460,194583,The Walking Dead: Dead City,2023,US,AMC,,en,1,804
+461,79086,Godfather of Harlem,2019,US,Epix; MGM+,,en,1,789
+462,1422,The Middle,2009,US,ABC,,en,1,780
+463,918,M*A*S*H,1972,US,CBS,,en,1,773
+464,15621,The Newsroom,2012,US,HBO,,en,1,772
+465,67135,The Exorcist,2016,US,FOX,,en,1,770
+466,4238,The King of Queens,1998,US,CBS,,en,1,769
+467,4482,Bewitched,1964,US,ABC,,en,1,766
+468,1481,The 4400,2004,US,USA Network,,en,1,763
+469,66857,Shooter,2016,US,USA Network,,en,1,754
+470,61662,Schitt's Creek,2015,CA,CBC Television,,en,1,753
+471,5522,Doña Bárbara,2008,US,Telemundo,,en,1,752
+472,4610,Hannah Montana,2006,US,Disney Channel,,en,1,750
+473,1558,Home Improvement,1991,US,ABC,,en,1,748
+474,849,Monty Python's Flying Circus,1969,GB,BBC One,,en,1,745
+475,206586,The Walking Dead: The Ones Who Live,2024,US,AMC,,en,1,741
+476,1432,Veronica Mars,2004,US,UPN; The CW; Hulu,,en,1,738
+477,45140,Teen Titans Go!,2013,US,Cartoon Network,,en,1,736
+478,4345,Saved by the Bell,1989,US,NBC,,en,1,736
+479,62816,Quantico,2015,US,ABC,,en,1,734
+480,71769,The Alienist,2018,US,TNT,,en,1,734
+481,549,Law & Order,1990,US,NBC,,en,1,729
+482,2260,H2O: Just Add Water,2006,AU,10,,en,1,727
+483,80828,The Nevers,2021,US,HBO,,en,1,723
+484,46028,Girl Meets World,2014,US,Disney Channel,,en,1,723
+485,121,Doctor Who,1963,GB,BBC One; BBC Television,,en,1,723
+486,40293,Da Vinci's Demons,2013,US,STARZ,,en,1,722
+487,62822,Humans,2015,GB,Channel 4,,en,1,721
+488,85021,Gangs of London,2020,GB,Sky Atlantic,,en,1,718
+489,71715,Good Girls,2018,US,NBC,,en,1,718
+490,141,Cheers,1982,US,NBC,,en,1,715
+491,46511,Utopia,2013,GB,Channel 4,,en,1,715
+492,1435,The Good Wife,2009,US,CBS,,en,1,707
+493,64684,And Then There Were None,2015,GB,BBC One,,en,1,705
+494,2122,King of the Hill,1997,US,FOX; Hulu,,en,1,701
+495,652,"What's New, Scooby-Doo?",2002,US,The WB,,en,1,700
+496,2131,Daria,1997,US,MTV,,en,1,698
+497,59427,Marvel's Avengers,2013,US,Disney XD,,en,1,695
+498,15655,Knight Rider,2008,US,NBC,,en,1,693
+499,73544,Warrior,2019,US,Cinemax; Max,,en,1,687
+500,66190,Marvel's Cloak & Dagger,2018,US,Freeform,,en,1,686
+501,226637,High Potential,2024,US,ABC,,en,1,682
+502,32351,Ugly Americans,2010,US,Comedy Central,,en,1,682
+503,62858,Colony,2016,US,USA Network,,en,1,678
+504,2140,Everybody Loves Raymond,1996,US,CBS,,en,1,678
+505,1940,Entourage,2004,US,HBO,,en,1,674
+506,60726,Forever,2014,US,ABC,,en,1,669
+507,1126,Happy Tree Friends,2000,US,YouTube; Mondo Media,,en,1,666
+508,2405,Johnny Bravo,1997,US,Cartoon Network,,en,1,664
+509,259909,Dexter: Resurrection,2025,US,Paramount+ with Showtime,,en,1,658
+510,1428,MythBusters,2003,US,Discovery; SBS,,en,1,657
+511,90228,Dune: Prophecy,2024,US,HBO,,en,1,654
+512,49011,Mom,2013,US,CBS,,en,1,651
+513,1410,Revolution,2012,US,NBC,,en,1,650
+514,513,Batman Beyond,1999,US,The WB; Cartoon Network,,en,1,639
+515,42025,Mako: Island of Secrets,2013,AU,10; Eleven,,en,1,633
+516,2327,Dawson's Creek,1998,US,The WB,,en,1,633
+517,79084,POSE,2018,US,FX,,en,1,631
+518,269,One Tree Hill,2003,US,The WB; The CW,,en,1,631
+519,1618,Justice League,2001,US,Cartoon Network,,en,1,628
+520,62517,Zoo,2015,US,CBS,,en,1,625
+521,39269,Scandal,2012,US,ABC,,en,1,623
+522,18197,The Langoliers,1995,US,ABC,,en,1,622
+523,4615,Hercules: The Legendary Journeys,1995,US,Syndication,,en,1,620
+524,2287,Batman,1966,US,ABC,,en,1,620
+525,301507,Heated Rivalry,2025,CA,Crave,,en,1,619
+526,45094,The Following,2013,US,FOX,,en,1,616
+527,58981,The Thundermans,2013,US,Nickelodeon,,en,1,610
+528,299167,Dutton Ranch,2026,US,Paramount Network; Paramount+,,en,1,605
+529,32962,Louie,2010,US,FX,,en,1,598
+530,4454,Will & Grace,1998,US,NBC,,en,1,597
+531,709,Robot Chicken,2005,US,Adult Swim,,en,1,594
+532,1777,Boy Meets World,1993,US,ABC,,en,1,593
+533,59659,Halt and Catch Fire,2014,US,AMC,,en,1,591
+534,14929,Heartland,2007,CA,CBC Television,,en,1,590
+535,36,Medium,2005,US,NBC; CBS,,en,1,591
+536,3772,"Walker, Texas Ranger",1993,US,CBS,,en,1,589
+537,424,Torchwood,2006,GB,BBC Three; BBC One; BBC Two,,en,1,588
+538,155,3rd Rock from the Sun,1996,US,NBC,,en,1,587
+539,790,Agatha Christie's Poirot,1989,GB,ITV1,,en,1,586
+540,60858,Heroes Reborn,2015,US,NBC,,en,1,584
+541,51019,Almost Human,2013,US,FOX,,en,1,581
+542,7246,Blackadder,1983,GB,BBC One,,en,1,579
+543,365,Jericho,2006,US,CBS,,en,1,579
+544,51704,Defiance,2013,US,Syfy,,en,1,577
+545,66025,Animal Kingdom,2016,US,TNT,,en,1,574
+546,19649,Jesus of Nazareth,1977,IT/GB,NBC; ITV1; Rai 1,,en,1,573
+547,1457,Pride and Prejudice,1995,GB,BBC One,,en,1,571
+548,19092,FlashForward,2009,US,ABC,,en,1,565
+549,4386,Baywatch,1989,US,NBC; Syndication,,en,1,564
+550,91977,Motherland: Fort Salem,2020,US,Freeform,,en,1,559
+551,2692,My Wife and Kids,2001,US,ABC,,en,1,559
+552,72597,Manhunt,2017,US,Discovery; Spectrum,,en,1,557
+553,32868,Nikita,2010,US,The CW,,en,1,556
+554,16118,Salem's Lot,1979,US,CBS,,en,1,555
+555,2947,Veep,2012,US,HBO,,en,1,546
+556,2902,Queer as Folk,2000,US,Showtime,,en,1,546
+557,17035,Generation Kill,2008,US,HBO,,en,1,545
+558,61599,The Librarians,2014,US,TNT,,en,1,544
+559,1908,Miami Vice,1984,US,NBC,,en,1,544
+560,62413,Killjoys,2015,CA,Syfy; Space,,en,1,542
+561,61929,The Jinx,2015,US,HBO,,en,1,541
+562,3750,Nip/Tuck,2003,US,FX,,en,1,539
+563,504,The Ren & Stimpy Show,1991,CA/US,Nickelodeon,,en,1,539
+564,7317,The Inbetweeners,2008,GB,E4,,en,1,537
+565,61014,The Knick,2014,US,Cinemax,,en,1,536
+566,33025,The Borgias,2011,US,Showtime,,en,1,534
+567,9045,The Stand,1994,US,ABC,,en,1,533
+568,236,The Flash,1990,US,CBS,,en,1,532
+569,9957,The Mask: Animated Series,1995,US,CBS; Syndication,,en,1,525
+570,2407,Dark Angel,2000,US,FOX,,en,1,525
+571,66871,SIX,2017,US,History,,en,1,524
+572,72339,HAPPY!,2017,US,Syfy,,en,1,523
+573,3868,The Lost Room,2006,US,Syfy,,en,1,522
+574,3122,Star Wars: Clone Wars,2003,US,Cartoon Network,,en,1,520
+575,33001,Haven,2010,CA/US,Syfy,,en,1,519
+576,4515,Lois & Clark: The New Adventures of Superman,1993,US,ABC,,en,1,519
+577,745,Spaced,1999,GB,Channel 4,,en,1,519
+578,14956,Dollhouse,2009,US,FOX,,en,1,516
+579,2566,Dead Like Me,2003,US,Showtime,,en,1,518
+580,648,The Incredible Hulk,1977,US,CBS,,en,1,516
+581,1759,The Cosby Show,1984,US,NBC,,en,1,515
+582,219937,Dexter: Original Sin,2024,US,Paramount+ with Showtime,,en,1,515
+583,2604,The Boondocks,2005,US,Adult Swim,,en,1,513
+584,71340,Krypton,2018,US,Syfy,,en,1,510
+585,4624,Roswell,1999,US,The WB; UPN,,en,1,508
+586,32895,Rizzoli & Isles,2010,US,TNT,,en,1,506
+587,79863,Pretty Little Liars: The Perfectionists,2019,US,Freeform,,en,1,505
+588,1719,Gargoyles,1994,US,ABC; Syndication,,en,1,502
+589,43982,Line of Duty,2012,GB,BBC One; BBC Two,,en,1,500
+590,1018,Bonanza,1959,US,NBC,,en,1,500
+591,4331,Wonder Woman,1975,US,CBS; ABC,,en,1,499
+592,82428,All American,2018,US,The CW,,en,1,497
+593,64394,Outcast,2016,US,Cinemax,,en,1,497
+594,2119,Airwolf,1984,US,CBS; USA Network,,en,1,497
+595,111800,The Old Man,2022,US,FX,,en,1,496
+596,79611,Charmed,2018,US,The CW,,en,1,494
+597,58811,Helix,2014,CA/US,Syfy,,en,1,494
+598,5639,Pushing Daisies,2007,US,ABC,,en,1,492
+599,129035,The Walking Dead: Origins,2021,US,AMC,,en,1,491
+600,4324,"Dr. Quinn, Medicine Woman",1993,US,CBS,,en,1,489
+601,1649,Sliders,1995,US,FOX; Syfy,,en,1,488
+602,1712,The Munsters,1964,US,CBS,,en,1,487
+603,1401,Hell on Wheels,2011,US,AMC,,en,1,485
+604,66676,Queen of the South,2016,US,USA Network,,en,1,481
+605,61387,NCIS: New Orleans,2014,US,CBS,,en,1,481
+606,126027,Ghosts,2021,US,CBS,,en,1,479
+607,15632,The Cleveland Show,2009,US,FOX,,en,1,477
+608,13943,Beavis and Butt-Head,1993,US,MTV,,en,1,477
+609,3793,Invader ZIM,2001,US,Nickelodeon; Nicktoons,,en,1,477
+610,2617,Step by Step,1991,US,ABC; CBS,,en,1,477
+611,91875,Prodigal Son,2019,US,FOX,,en,1,475
+612,44606,Beauty and the Beast,2012,US,The CW,,en,1,474
+613,31941,Blue Mountain State,2010,US,Spike,,en,1,474
+614,126506,Smiling Friends,2020,US,Adult Swim,,en,1,473
+615,77184,Halo: The Fall of Reach,2015,US,,,en,1,472
+616,185,Carnivàle,2003,US,HBO,,en,1,472
+617,63647,Childhood's End,2015,US,Syfy,,en,1,471
+618,484,"Murder, She Wrote",1984,US,CBS,,en,1,471
+619,86428,The Spanish Princess,2019,US,STARZ,,en,1,470
+620,39525,Wilfred,2011,US,FX; FXX,,en,1,469
+621,2171,Cold Case,2003,US,CBS,,en,1,464
+622,63646,Counterpart,2017,US,STARZ,,en,1,462
+623,734,"Magnum, P.I.",1980,US,CBS,,en,1,462
+624,326,Red Dwarf,1988,GB,BBC Two; U&Dave,,en,1,462
+625,1430,Cosmos: A Personal Voyage,1980,US,PBS,,en,1,461
+626,95350,Lanterns,2026,US,HBO,,en,1,463
+627,42282,Girls,2012,US,HBO,,en,1,459
+628,64387,The Girlfriend Experience,2016,US,STARZ,,en,1,458
+629,33852,Lost Girl,2010,CA,Syfy; Showcase,,en,1,458
+630,14009,The Addams Family,1964,US,ABC,,en,1,457
+631,6024,Police Squad!,1982,US,ABC,,en,1,454
+632,815,Peep Show,2003,GB,Channel 4,,en,1,455
+633,7482,Leverage,2008,US,TNT,,en,1,453
+634,578,Numb3rs,2005,US,CBS,,en,1,453
+635,713,Chappelle's Show,2003,US,Comedy Central,,en,1,452
+636,70513,Salvation,2017,US,CBS,,en,1,451
+637,94372,FBI: Most Wanted,2020,US,CBS,,en,1,450
+638,90811,Avenue 5,2020,US,HBO,,en,1,450
+639,82001,"Roswell, New Mexico",2019,US,The CW,,en,1,449
+640,19654,Rose Red,2002,US,ABC,,en,1,448
+641,4455,Get Smart,1965,US,NBC; CBS,,en,1,448
+642,1663,The Six Million Dollar Man,1974,US,ABC; Red Letter Films,,en,1,446
+643,85273,NOS4A2,2019,US,AMC; BBC America,,en,1,441
+644,76148,Derry Girls,2018,GB,Channel 4,,en,1,439
+645,65817,The Deuce,2017,US,HBO,,en,1,438
+646,58937,Masters of Sex,2013,US,Showtime,,en,1,438
+647,2693,Extras,2005,GB,HBO; BBC Two,,en,1,438
+648,128098,Interview with the Vampire,2022,US,AMC,,en,1,436
+649,66008,You Me Her,2016,CA/US,Audience,,en,1,436
+650,15826,1000 Ways to Die,2009,US,Spike,,en,1,435
+651,2432,Taken,2002,US,Syfy,,en,1,435
+652,4414,Highlander: The Series,1992,US,Syndication; RTL; TF1; M6,,en,1,434
+653,70485,Mr. Mercedes,2017,US,Audience,,en,1,428
+654,61463,The Affair,2014,US,Showtime,,en,1,428
+655,39859,Awkward.,2011,US,MTV,,en,1,426
+656,59186,Impractical Jokers,2011,US,TBS; truTV,,en,1,424
+657,877,Caprica,2010,US,Syfy,,en,1,423
+658,61244,Happy Valley,2014,GB,BBC One,,en,1,421
+659,33234,The Pillars of the Earth,2010,US,STARZ,,en,1,421
+660,46638,Top of the Lake,2013,US,SundanceTV; BBC Two,,en,1,419
+661,1998,Moonlighting,1985,US,ABC,,en,1,419
+662,58928,Dracula,2013,US,NBC,,en,1,417
+663,63201,Glitch,2015,AU,ABC TV,,en,1,416
+664,32573,Strike Back,2010,GB,Sky One; Cinemax,,en,1,416
+665,1678,The Golden Girls,1985,US,NBC,,en,1,414
+666,121710,Inside Man,2022,GB,BBC One,,en,1,414
+667,2706,Roseanne,1988,US,ABC,,en,1,413
+668,16946,Life,2009,GB,BBC One,,en,1,411
+669,2742,Flight of the Conchords,2007,US,HBO,,en,1,411
+670,4625,The New Batman Adventures,1997,US,The WB,,en,1,410
+671,4376,JAG,1995,US,NBC; CBS,,en,1,410
+672,2423,Celebrity Deathmatch,1998,US,MTV2; MTV; The Comedy Network,,en,1,410
+673,72755,Absentia,2017,US,Prime Video; AXN,,en,1,409
+674,13579,The Blue Planet,2001,GB,BBC One,,en,1,409
+675,66840,Bull,2016,US,CBS,,en,1,408
+676,59375,Liv and Maddie,2013,US,Disney Channel,,en,1,408
+677,93454,The Serpent,2021,GB,BBC One,,en,1,406
+678,219,Kyle XY,2006,US,ABC Family,,en,1,407
+679,99121,Walker,2021,US,The CW,,en,1,405
+680,1739,According to Jim,2001,US,ABC,,en,1,405
+681,72705,Marvel's Spider-Man,2017,US,Disney XD,,en,1,399
+682,60905,Salem,2014,US,WGN America,,en,1,399
+683,79588,Pennyworth: The Origin of Batman's Butler,2019,US,Epix; HBO Max,,en,1,398
+684,85853,Perry Mason,2020,US,HBO,,en,1,394
+685,88713,We Are Who We Are,2020,US,HBO,,en,1,392
+686,1664,Spider-Man: The New Animated Series,2003,CA/US,MTV,,en,1,392
+687,228305,Task,2025,US,HBO,,en,1,390
+688,87104,Years and Years,2019,GB,BBC One,,en,1,390
+689,60626,From Dusk Till Dawn: The Series,2014,US,El Rey Network,,en,1,390
+690,4601,Law & Order: Criminal Intent,2001,US,NBC; USA Network,,en,1,389
+691,2192,Robotech,1985,US,Syndication,,en,1,387
+692,66185,The Story of God with Morgan Freeman,2016,US,National Geographic,,en,1,386
+693,1480,Ally McBeal,1997,US,FOX,,en,1,386
+694,70391,Philip K. Dick's Electric Dreams,2017,GB,Channel 4,,en,1,384
+695,19566,Frank Herbert's Dune,2000,US,Syfy,,en,1,384
+696,98201,Cruel Summer,2021,US,Freeform,,en,1,383
+697,68427,Mars,2016,US,National Geographic,,en,1,380
+698,48860,The Tomorrow People,2013,US,The CW,,en,1,380
+699,46976,Hitler: The Rise of Evil,2003,CA,CBC Television,,en,1,380
+700,62211,Sonic Boom,2014,US,Cartoon Network; Boomerang,,en,1,379
+701,49009,The Goldbergs,2013,US,ABC,,en,1,379
+702,72615,Alias Grace,2017,CA,CBC Television,,en,1,377
+703,99799,Alex Rider,2020,GB,Prime Video; IMDb TV; Amazon Freevee,,en,1,376
+704,97890,Power Book II: Ghost,2020,US,STARZ,,en,1,376
+705,43016,Hatfields & McCoys,2012,US,History,,en,1,375
+706,764,Midsomer Murders,1997,GB,ITV1,,en,1,375
+707,218342,A Good Girl's Guide to Murder,2024,GB,BBC Three,,en,1,374
+708,83685,Penny Dreadful: City of Angels,2020,US,Showtime,,en,1,374
+709,7704,Legend of the Seeker,2008,US,Syndication,,en,1,374
+710,37664,The Secret Circle,2011,US,The CW,,en,1,373
+711,28379,The Diary of Anne Frank,2009,GB,BBC One,,en,1,373
+712,2685,Family Matters,1989,US,ABC; CBS,,en,1,373
+713,290856,Marshals,2026,US,CBS,,en,1,373
+714,202284,Ninja Kamui,2024,US,Adult Swim,,en,1,372
+715,58111,Extant,2014,US,CBS,,en,1,372
+716,57092,The White Queen,2013,GB,BBC One,,en,1,371
+717,8624,Eastbound & Down,2009,US,HBO,,en,1,371
+718,1466,Joey,2004,US,NBC,,en,1,371
+719,81358,Mr Inbetween,2018,US,FX,,en,1,370
+720,74313,Blue Planet II,2017,GB,BBC One,,en,1,370
+721,39297,Last Man Standing,2011,US,ABC; FOX,,en,1,369
+722,207863,Mayfair Witches,2023,US,AMC,,en,1,366
+723,77459,The Passage,2019,US,FOX,,en,1,365
+724,4459,The Muppet Show,1976,GB,ITV1,,en,1,365
+725,60741,Ascension,2014,US,Syfy,,en,1,364
+726,397,The Dukes of Hazzard,1979,US,CBS,,en,1,364
+727,112077,Scenes from a Marriage,2021,US,HBO,,en,1,362
+728,32729,No Ordinary Family,2010,US,ABC,,en,1,361
+729,85349,Amphibia,2019,US,Disney Channel,,en,1,360
+730,3319,Darkwing Duck,1991,US,ABC; Disney Channel; Syndication,,en,1,360
+731,95259,Dare Me,2019,US,USA Network,,en,1,359
+732,1813,Father Ted,1995,IE/GB,Channel 4,,en,1,359
+733,1450,The Closer,2005,US,TNT,,en,1,360
+734,3172,Private Practice,2007,US,ABC,,en,1,358
+735,1867,The Shining,1997,US,ABC,,en,1,358
+736,39362,Alphas,2011,US,Syfy,,en,1,357
+737,73925,Kidding,2018,US,Showtime,,en,1,356
+738,64555,Frontier,2016,CA,Discovery,,en,1,356
+739,93166,The Capture,2019,GB,BBC One,,en,1,355
+740,65784,Slasher,2016,US,Netflix; Chiller,,en,1,354
+741,19544,Afro Samurai,2007,US,Spike,,en,1,354
+742,237,Mortal Kombat: Conquest,1998,US,TNT; Syndication,,en,1,354
+743,2719,Coupling,2000,US/GB,BBC Two,,en,1,353
+744,50035,Clarence,2014,US,Cartoon Network,,en,1,352
+745,39276,Unforgettable,2011,US,CBS; A&E,,en,1,352
+746,10268,Primeval,2007,GB,ITV1; U&W,,en,1,352
+747,5028,Storm of the Century,1999,US,ABC,,en,1,352
+748,79593,Magnum P.I.,2018,US,NBC; CBS,,en,1,350
+749,61381,black-ish,2014,US,ABC,,en,1,350
+750,2359,Spin City,1996,US,ABC,,en,1,350
+751,228878,Common Side Effects,2025,US,Adult Swim,,en,1,349
+752,33873,Sonny with a Chance,2009,US,Disney Channel,,en,1,349
+753,39331,Don't Trust the B---- in Apartment 23,2012,US,ABC,,en,1,348
+754,72787,Patrick Melrose,2018,US,Showtime,,en,1,347
+755,61378,Madam Secretary,2014,US,CBS,,en,1,347
+756,75663,Deadly Class,2019,US,Syfy,,en,1,346
+757,32815,Raising Hope,2010,US,FOX,,en,1,346
+758,78950,Miracle Workers,2019,US,TBS,,en,1,345
+759,73117,Knightfall,2017,US,History,,en,1,345
+760,15114,John Adams,2008,US,HBO,,en,1,345
+761,41956,Death in Paradise,2011,GB,BBC One,,en,1,344
+762,246386,All Her Fault,2025,GB,Sky Atlantic,,en,1,342
+763,46880,The Fosters,2013,US,ABC Family; Freeform,,en,1,340
+764,39510,Touch,2012,US,FOX,,en,1,339
+765,7831,Dead Set,2008,GB,E4,,en,1,340
+766,239770,Doctor Who,2024,GB,BBC One,,en,1,338
+767,43901,Longmire,2012,US,A&E; Netflix,,en,1,338
+768,3796,Trailer Park Boys,2001,CA,Showcase; Netflix,,en,1,338
+769,240459,Spartacus: House of Ashur,2025,US,STARZ,,en,1,337
+770,211288,Tracker,2024,US,CBS,,en,1,338
+771,135251,The Idol,2023,US,HBO,,en,1,336
+772,124271,NCIS: Hawaiʻi,2021,US,CBS,,en,1,336
+773,125935,Abbott Elementary,2021,US,ABC,,en,1,335
+774,95205,The Equalizer,2021,US,CBS,,en,1,335
+775,2973,Life on Mars,2006,GB,BBC One,,en,1,333
+776,39279,Hart of Dixie,2011,US,The CW,,en,1,332
+777,4278,Friday Night Lights,2006,US,NBC; The 101,,en,1,331
+778,62084,Poldark,2015,GB,BBC One,,en,1,329
+779,58957,Nathan for You,2013,US,Comedy Central,,en,1,329
+780,122194,CSI: Vegas,2021,US,CBS,,en,1,328
+781,72350,DuckTales,2017,US,Disney Channel; Disney XD,,en,1,328
+782,61335,Fortitude,2015,GB,Sky Atlantic,,en,1,328
+783,91425,Infinity Train,2019,US,Cartoon Network; HBO Max,,en,1,327
+784,81879,Mrs. Fletcher,2019,US,HBO,,en,1,328
+785,49157,Houdini,2014,CA,History,,en,1,327
+786,61585,Olive Kitteridge,2014,US,HBO,,en,1,327
+787,3470,Masters of Horror,2005,US,Showtime,,en,1,326
+788,67752,Channel Zero,2016,US,Syfy,,en,1,325
+789,51370,Resurrection,2014,US,ABC,,en,1,324
+790,82782,The Righteous Gemstones,2019,US,HBO,,en,1,323
+791,32608,Ancient Aliens,2010,US,History,,en,1,323
+792,114165,Kung Fu,2021,US,The CW,,en,1,322
+793,41691,Merlin,1998,US,NBC,,en,1,322
+794,36994,Workaholics,2011,US,Comedy Central,,en,1,322
+795,4357,Mission: Impossible,1966,US,CBS,,en,1,322
+796,103026,Undertaker: The Last Ride,2020,US,WWE Network,,en,1,321
+797,83981,The War of the Worlds,2019,GB,BBC One,,en,1,320
+798,8724,Frozen Planet,2011,GB,BBC One,,en,1,320
+799,3845,Happy Days,1974,US,ABC,,en,1,320
+800,72,Only Fools and Horses,1981,GB,BBC One,,en,1,318
+801,60685,Dominion,2014,US,Syfy,,en,1,317
+802,35339,Alcatraz,2012,US,FOX,,en,1,317
+803,1795,Jackass,2000,US,MTV; MTV2,,en,1,316
+804,70128,Genius,2017,US,National Geographic,,en,1,313
+805,6549,Wolverine and the X-Men,2009,US,Nicktoons,,en,1,313
+806,2985,Andromeda,2000,CA/US,Syfy; Syndication; Global TV,,en,1,313
+807,89572,Nancy Drew,2019,US,The CW,,en,1,312
+808,101591,BMF,2021,US,STARZ,,en,1,311
+809,61555,The Missing,2014,BE/FR/GB,BBC One,,en,1,311
+810,10331,Spawn,1997,US,HBO,,en,1,311
+811,1310,Sanctuary,2008,US,Syfy,,en,1,311
+812,634,Who's the Boss?,1984,US,ABC,,en,1,311
+813,106158,Law & Order: Organized Crime,2021,US,NBC; Peacock,,en,1,309
+814,61692,Fresh Off the Boat,2015,US,ABC,,en,1,307
+815,128113,The Winchesters,2022,US,The CW,,en,1,304
+816,70215,The White Princess,2017,US,STARZ,,en,1,304
+817,12786,Murdoch Mysteries,2008,CA,CBC Television; Citytv,,en,1,305
+818,100010,Big Sky,2020,US,ABC,,en,1,302
+819,83949,Treadstone,2019,US,USA Network,,en,1,302
+820,46619,Rectify,2013,US,SundanceTV,,en,1,302
+821,67861,"Midnight, Texas",2017,US,NBC,,en,1,300
+822,218347,Sweetpea,2024,GB,Sky One; Sky Atlantic; Sky Showcase,,en,1,299
+823,72039,Escape at Dannemora,2018,US,Showtime,,en,1,299
+824,44856,Wentworth,2013,AU,showcase; FOX Showcase,,en,1,299
+825,2410,Diff'rent Strokes,1978,US,ABC; NBC,,en,1,299
+826,219971,The Agency,2024,US,Paramount+; Paramount+ with Showtime,,en,1,298
+827,65150,Vice Principals,2016,US,HBO,,en,1,298
+828,42368,Lilyhammer,2012,NO,Netflix; NRK1,,en,1,298
+829,501,Battlestar Galactica,1978,US,ABC,,en,1,297
+830,195339,Pantheon,2022,US,Netflix; AMC+; HIDIVE,,en,1,296
+831,88166,I Know This Much Is True,2020,US,HBO,,en,1,297
+832,71146,Condor,2018,US,Audience; Epix,,en,1,296
+833,66023,Marcella,2016,GB,ITV1,,en,1,296
+834,44264,Endeavour,2013,GB,ITV1,,en,1,296
+835,42878,Anger Management,2012,US,FX,,en,1,296
+836,39336,The River,2012,US,ABC,,en,1,296
+837,4626,Ugly Betty,2006,US,ABC,,en,1,296
+838,90,Mayday,2003,CA,Discovery,,en,1,296
+839,125949,We Own This City,2022,US,HBO,,en,1,295
+840,11767,Yu-Gi-Oh! Capsule Monsters,2006,US,FOX,,en,1,295
+841,243881,House of David,2025,US,Prime Video; Wonder Project,,en,1,294
+842,3461,Dharma & Greg,1997,US,ABC,,en,1,294
+843,15804,Batman: The Brave and the Bold,2008,US,Cartoon Network,,en,1,293
+844,67419,Victoria,2016,GB,ITV1,,en,1,292
+845,31078,Bored to Death,2009,US,HBO,,en,1,292
+846,4602,That's So Raven,2003,US,Disney Channel,,en,1,291
+847,99583,Danger Force,2020,US,Nickelodeon,,en,1,290
+848,61746,Inside No. 9,2014,GB,BBC Two,,en,1,289
+849,6618,Total Drama Island,2007,CA,Cartoon Network; Teletoon,,en,1,288
+850,2397,Beauty and the Beast,1987,US/FR,CBS,,en,1,288
+851,39957,Perception,2012,US,TNT,,en,1,287
+852,35016,House of Anubis,2011,BE/US/GB,Nickelodeon,,en,1,287
+853,63418,Code Black,2015,US,CBS,,en,1,285
+854,4330,Millennium,1996,CA/US,FOX,,en,1,285
+855,247518,Grotesquerie,2024,US,FX,,en,1,284
+856,126167,Vigil,2021,GB,BBC One,,en,1,284
+857,18520,Drop Dead Diva,2009,US,Lifetime,,en,1,283
+858,7354,Harper's Island,2009,US,CBS,,en,1,284
+859,2593,Without a Trace,2002,US,CBS,,en,1,284
+860,2275,The Bionic Woman,1976,US,ABC,,en,1,283
+861,126116,Time,2021,GB,BBC One,,en,1,282
+862,79340,The Outpost,2018,US,The CW,,en,1,282
+863,103302,Clarice,2021,US,CBS,,en,1,281
+864,93292,Duncanville,2020,US,FOX,,en,1,281
+865,90812,Industry,2020,GB,HBO,,en,1,281
+866,66789,24: Legacy,2017,US,FOX,,en,1,281
+867,42154,World War II in Colour,2009,GB,Military Channel; PLANÈTE+,,en,1,282
+868,92053,For Life,2020,US,ABC,,en,1,280
+869,66551,The Mick,2017,US,FOX,,en,1,280
+870,66310,StartUp,2016,US,Crackle,,en,1,280
+871,61864,Good Witch,2015,US,Hallmark Channel,,en,1,280
+872,18202,Cougar Town,2009,US,ABC; TBS,,en,1,280
+873,2211,'Allo 'Allo!,1984,GB,BBC One,,en,1,280
+874,496,Family Ties,1982,US,NBC,,en,1,280
+875,125928,My Adventures with Superman,2023,US,Adult Swim,,en,1,279
+876,87539,Katy Keene,2020,US,The CW,,en,1,279
+877,60556,Bitten,2014,CA,Space; Syfy,,en,1,279
+878,167,La Femme Nikita,1997,US/CA,USA Network,,en,1,279
+879,204284,The Rehearsal,2022,US,HBO,,en,1,278
+880,31631,Covert Affairs,2010,US,USA Network,,en,1,278
+881,3797,Life,2007,US,NBC,,en,1,279
+882,21650,I'm in the Band,2009,US,Disney XD,,en,1,277
+883,15822,Zorro,1990,US,The Family Channel,,en,1,276
+884,72748,Strike,2017,GB,BBC One,,en,1,276
+885,68006,Taken,2017,US,NBC,,en,1,275
+886,126118,Chapelwaite,2021,US,Epix,,en,1,274
+887,114547,Secrets of Sulphur Springs,2021,US,Disney Channel,,en,1,274
+888,81322,The Time Traveler's Wife,2022,US,HBO,,en,1,274
+889,40546,The 10th Kingdom,2000,US,NBC,,en,1,274
+890,39468,Mildred Pierce,2011,US,HBO,,en,1,273
+891,34014,An Idiot Abroad,2010,GB,Sky One,,en,1,272
+892,125282,The Cleaning Lady,2022,US,FOX,,en,1,271
+893,17174,Ghosts,2019,GB,BBC One,,en,1,271
+894,2389,Las Vegas,2003,US,NBC,,en,1,271
+895,75006,The Umbrella Academy,2019,US,Netflix,,en,2,10146
+896,77169,Cobra Kai,2018,US,Netflix; YouTube Premium,,en,2,7022
+897,87739,The Queen's Gambit,2020,US,Netflix,,en,2,5787
+898,61889,Marvel's Daredevil,2015,US,Netflix,,en,2,5414
+899,86831,"Love, Death & Robots",2019,US,Netflix,,en,2,4192
+900,84773,The Lord of the Rings: The Rings of Power,2022,US,Prime Video,,en,2,3935
+901,79242,Chilling Adventures of Sabrina,2018,US,Netflix,,en,2,3817
+902,108978,Reacher,2022,US,Prime Video,,en,2,3418
+903,67178,Marvel's The Punisher,2017,US,Netflix,,en,2,3369
+904,113988,DAHMER - Monster: The Jeffrey Dahmer Story,2022,US,Netflix,,en,2,2944
+905,80752,See,2019,US,Apple TV,,en,2,2937
+906,72844,The Haunting of Hill House,2018,US,Netflix,,en,2,2859
+907,153312,Tulsa King,2022,US,Paramount+,,en,2,2802
+908,62127,Marvel's Iron Fist,2017,US,Netflix,,en,2,2750
+909,38472,Marvel's Jessica Jones,2015,US,Netflix,,en,2,2721
+910,92783,She-Hulk: Attorney at Law,2022,US,Disney+,,en,2,2604
+911,71914,The Wheel of Time,2021,US,Prime Video,,en,2,2501
+912,71915,Good Omens,2019,GB,Prime Video,,en,2,2437
+913,68421,Altered Carbon,2018,US,Netflix,,en,2,2385
+914,107113,Only Murders in the Building,2021,US,Hulu,,en,2,2291
+915,62126,Marvel's Luke Cage,2016,US,Netflix,,en,2,2095
+916,111110,ONE PIECE,2023,US,Netflix,,en,2,1947
+917,100883,Never Have I Ever,2020,US,Netflix,,en,2,1944
+918,75758,Lost in Space,2018,US,Netflix,,en,2,1932
+919,73375,Tom Clancy's Jack Ryan,2018,US,Prime Video,,en,2,1900
+920,96815,"Sex, Explained",2020,US,Netflix,,en,2,1882
+921,117581,Ginny & Georgia,2021,US,Netflix,,en,2,1833
+922,249042,Adolescence,2025,GB/US,Netflix,,en,2,1793
+923,62285,Marvel's The Defenders,2017,US,Netflix,,en,2,1730
+924,80743,Insatiable,2018,US,Netflix,,en,2,1713
+925,108545,3 Body Problem,2024,US,Netflix,,en,2,1685
+926,97186,"Love, Victor",2020,US,Hulu; Disney+,,en,2,1666
+927,103768,Sweet Tooth,2021,US,Netflix,,en,2,1664
+928,94954,Hazbin Hotel,2024,US,Prime Video,,en,2,1661
+929,113962,Lioness,2023,US,Paramount+,,en,2,1643
+930,205715,Gen V,2023,US,Prime Video,,en,2,1629
+931,85720,Shadow and Bone,2021,US,Netflix,,en,2,1625
+932,87784,Defending Jacob,2020,US,Apple TV,,en,2,1621
+933,71024,Castlevania,2017,US,Netflix,,en,2,1615
+934,82596,Emily in Paris,2020,US,Netflix,,en,2,1594
+935,97180,Selena: The Series,2020,US,Netflix,,en,2,1585
+936,97175,Fate: The Winx Saga,2021,GB,Netflix,,en,2,1576
+937,80968,Narcos: Mexico,2018,US,Netflix,,en,2,1543
+938,86423,Locke & Key,2020,US,Netflix,,en,2,1510
+939,86248,Upload,2020,US,Prime Video,,en,2,1497
+940,109958,The Haunting of Bly Manor,2020,US,Netflix,,en,2,1487
+941,114472,Secret Invasion,2023,US,Disney+,,en,2,1474
+942,69061,The OA,2016,US,Netflix,,en,2,1463
+943,90027,Carnival Row,2019,US,Prime Video,,en,2,1459
+944,202411,Monarch: Legacy of Monsters,2023,US,Apple TV,,en,2,1407
+945,126280,Sex/Life,2021,US,Netflix,,en,2,1405
+946,95403,The Peripheral,2022,US,Prime Video,,en,2,1405
+947,82452,Avatar: The Last Airbender,2024,US,Netflix,,en,2,1370
+948,73021,Disenchantment,2018,US,Netflix,,en,2,1363
+949,87689,Warrior Nun,2020,CA,Netflix,,en,2,1339
+950,97400,Midnight Mass,2021,US,Netflix,,en,2,1324
+951,100757,Outer Banks,2020,US,Netflix,,en,2,1287
+952,81354,Ratched,2020,US,Netflix,,en,2,1285
+953,71578,Atypical,2017,US,Netflix,,en,2,1281
+954,129552,The Night Agent,2023,US,Netflix,,en,2,1274
+955,241259,Baby Reindeer,2024,GB,Netflix,,en,2,1266
+956,74204,Big Mouth,2017,US,Netflix,,en,2,1260
+957,127235,Invasion,2021,US,Apple TV,,en,2,1230
+958,120911,The Terminal List,2022,US,Prime Video,,en,2,1223
+959,93812,The Great,2020,US,Hulu,,en,2,1199
+960,105971,Star Wars: The Bad Batch,2021,US,Disney+,,en,2,1195
+961,68267,Trollhunters: Tales of Arcadia,2016,US,Netflix,,en,2,1174
+962,79410,After Life,2019,GB,Netflix,,en,2,1154
+963,194766,The Summer I Turned Pretty,2022,US,Prime Video,,en,2,1141
+964,225171,Pluribus,2025,US,Apple TV,,en,2,1124
+965,202555,Daredevil: Born Again,2025,US,Disney+,,en,2,1119
+966,116135,Vikings: Valhalla,2022,US,Netflix,,en,2,1097
+967,155537,Black Bird,2022,US,Apple TV,,en,2,1083
+968,83659,Guillermo del Toro's Cabinet of Curiosities,2022,US,Netflix,,en,2,1080
+969,81355,When They See Us,2019,US,Netflix,,en,2,1076
+970,65294,A Series of Unfortunate Events,2017,US,Netflix,,en,2,1070
+971,84977,Russian Doll,2019,US,Netflix,,en,2,1068
+972,73411,Maniac,2018,US,Netflix,,en,2,1054
+973,87917,For All Mankind,2019,US,Apple TV,,en,2,1049
+974,154385,BEEF,2023,US,Netflix,,en,2,1043
+975,138501,Agatha All Along,2024,US,Disney+,,en,2,1043
+976,97727,Inside Job,2021,US,Netflix,,en,2,1019
+977,70796,The Marvelous Mrs. Maisel,2017,US,Prime Video,,en,2,1006
+978,67466,Marvel's Runaways,2017,US,Hulu,,en,2,1003
+979,95480,Slow Horses,2022,GB,Apple TV,,en,2,1003
+980,113036,American Horror Stories,2021,US,Hulu,,en,2,1000
+981,83125,Cursed,2020,GB,Netflix,,en,2,998
+982,89901,Dickinson,2019,US,Apple TV,,en,2,997
+983,111141,Maid,2021,US,Netflix,,en,2,993
+984,250307,The Pitt,2025,US,Max; HBO Max,,en,2,987
+985,236235,The Gentlemen,2024,GB,Netflix,,en,2,971
+986,88055,Servant,2019,US,Apple TV,,en,2,963
+987,96713,The Midnight Gospel,2020,US,Netflix,,en,2,962
+988,90282,The Morning Show,2019,US,Apple TV,,en,2,954
+989,82104,The Order,2019,US,Netflix,,en,2,936
+990,114479,The Acolyte,2024,US,Disney+,,en,2,924
+991,247718,MobLand,2025,GB/US,Paramount+; Paramount+,,en,2,922
+992,54155,Hanna,2019,US,Prime Video,,en,2,913
+993,138502,X-Men '97,2024,US,Disney+,,en,2,896
+994,157065,The Fall of the House of Usher,2023,US,Netflix,,en,2,892
+995,85922,Space Force,2020,US,Netflix,,en,2,881
+996,81349,Devs,2020,US,Hulu,,en,2,874
+997,198102,Hijack,2023,GB,Apple TV,,en,2,873
+998,273240,Off Campus,2026,US,Prime Video,,en,2,868
+999,69470,Santa Clarita Diet,2017,US,Netflix,,en,2,862
+1000,91275,Unbelievable,2019,US,Netflix,,en,2,858
+1001,103516,Star Trek: Strange New Worlds,2022,US,Paramount+,,en,2,857
+1002,225180,BLUE EYE SAMURAI,2023,US,Netflix,,en,2,855
+1003,103540,Percy Jackson and the Olympians,2023,US,Hulu; Disney+,,en,2,843
+1004,79732,She-Ra and the Princesses of Power,2018,US,Netflix,,en,2,841
+1005,210232,The Watcher,2022,US,Netflix,,en,2,828
+1006,106541,The Witcher: Blood Origin,2022,US,Netflix,,en,2,825
+1007,56295,Halo 4: Forward Unto Dawn,2012,US,YouTube,,en,2,822
+1008,119243,iCarly,2021,US,Paramount+,,en,2,817
+1009,196322,Dark Matter,2024,US,Apple TV,,en,2,803
+1010,93484,Jupiter's Legacy,2021,US,Netflix,,en,2,802
+1011,85801,High School Musical: The Musical: The Series,2019,US,Disney+,,en,2,799
+1012,60585,Bosch,2015,US,Prime Video,,en,2,764
+1013,112314,Archive 81,2022,US,Netflix,,en,2,761
+1014,86382,The Stand,2020,US,CBS All Access,,en,2,757
+1015,201834,ted,2024,US,Peacock,,en,2,756
+1016,97173,Behind Her Eyes,2021,GB,Netflix,,en,2,754
+1017,73467,Godless,2017,US,Netflix,,en,2,751
+1018,196454,Queen Charlotte: A Bridgerton Story,2023,US,Netflix,,en,2,744
+1019,197588,Man vs Bee,2022,GB,Netflix,,en,2,728
+1020,136311,Shrinking,2023,US,Apple TV,,en,2,725
+1021,81046,The Dragon Prince,2018,US,Netflix,,en,2,721
+1022,135934,The Legend of Vox Machina,2022,US,Prime Video,,en,2,718
+1023,72710,The Continental: From the World of John Wick,2023,US,Peacock,,en,2,714
+1024,71116,Castle Rock,2018,US,Hulu,,en,2,714
+1025,114695,Marvel Studios Legends,2021,US,Disney+,,en,2,703
+1026,195670,"XO, Kitty",2023,US,Netflix,,en,2,699
+1027,96129,Don't F**k with Cats: Hunting an Internet Killer,2019,GB,Netflix,,en,2,689
+1028,156933,Presumed Innocent,2024,US,Apple TV,,en,2,689
+1029,76747,On My Block,2018,US,Netflix,,en,2,688
+1030,97951,Mayor of Kingstown,2021,US,Paramount+,,en,2,680
+1031,97645,Solar Opposites,2020,US,Hulu,,en,2,677
+1032,90855,SAINT SEIYA: Knights of the Zodiac,2019,US,Netflix; Crunchyroll,,en,2,672
+1033,122226,Echo,2024,US,Hulu; Disney+,,en,2,664
+1034,87083,Formula 1: Drive to Survive,2019,GB,Netflix,,en,2,663
+1035,46518,Masters of the Air,2024,US,Apple TV,,en,2,658
+1036,93287,The Flight Attendant,2020,US,HBO Max,,en,2,657
+1037,81357,Dead to Me,2019,US,Netflix,,en,2,657
+1038,108296,Resident Evil,2022,US,Netflix,,en,2,655
+1039,61671,Unbreakable Kimmy Schmidt,2015,US,Netflix,,en,2,650
+1040,79622,Hunters,2020,US,Prime Video,,en,2,649
+1041,84647,The Society,2019,US,Netflix,,en,2,646
+1042,157741,Landman,2024,US,Paramount+,,en,2,644
+1043,60699,Marco Polo,2014,US,Netflix,,en,2,642
+1044,111111,Blood of Zeus,2020,US,Netflix,,en,2,641
+1045,88052,Black Summer,2019,US,Netflix,,en,2,638
+1046,88640,Looking for Alaska,2019,US,Hulu,,en,2,637
+1047,73157,Future Man,2017,US,Hulu,,en,2,636
+1048,88989,Nine Perfect Strangers,2021,US,Hulu,,en,2,634
+1049,96557,Pandemic: How to Prevent an Outbreak,2020,US,Netflix,,en,2,633
+1050,106292,Julie and the Phantoms,2020,US,Netflix,,en,2,631
+1051,88324,Virgin River,2019,US,Netflix,,en,2,614
+1052,100698,Tiger King,2020,US,Netflix,,en,2,612
+1053,64254,Master of None,2015,US,Netflix,,en,2,607
+1054,64439,Making a Murderer,2015,US,Netflix,,en,2,606
+1055,107124,Animaniacs,2020,US,Hulu,,en,2,604
+1056,63623,Fuller House,2016,US,Netflix,,en,2,601
+1057,96608,The Stranger,2020,GB,Netflix,,en,2,598
+1058,233629,Bodies,2023,GB,Netflix,,en,2,597
+1059,261579,Secret Level,2024,US,Prime Video,,en,2,595
+1060,286801,Monster: The Ed Gein Story,2025,US,Netflix,,en,2,581
+1061,42295,Hemlock Grove,2013,US,Netflix,,en,2,580
+1062,114922,Citadel,2023,US,Prime Video,,en,2,579
+1063,84231,Wayne,2019,US,YouTube Premium,,en,2,579
+1064,5739,Dr. Horrible's Sing-Along Blog,2008,US,Hulu,,en,2,571
+1065,221300,FUBAR,2023,US,Netflix,,en,2,570
+1066,116799,The Lincoln Lawyer,2022,US,Netflix,,en,2,568
+1067,225634,Monsters: The Lyle and Erik Menendez Story,2024,US,Netflix,,en,2,564
+1068,133748,Twisted Metal,2023,US,Peacock,,en,2,561
+1069,94810,Adventure Time: Distant Lands,2020,US,HBO Max,,en,2,561
+1070,120998,Poker Face,2023,US,Peacock,,en,2,555
+1071,110695,Dopesick,2021,US,Hulu,,en,2,554
+1072,116450,And Just Like That…,2021,US,HBO Max; Max; HBO Max,,en,2,553
+1073,245927,Paradise,2025,US,Hulu,,en,2,551
+1074,111838,The Woman in the House Across the Street from the Girl in the Window,2022,US,Netflix,,en,2,550
+1075,114501,Dug Days,2021,US,Disney+,,en,2,548
+1076,220801,Fool Me Once,2024,GB,Netflix,,en,2,546
+1077,259731,HIS & HERS,2026,US,Netflix,,en,2,541
+1078,241554,Murderbot,2025,US,Apple TV,,en,2,540
+1079,99588,Kamp Koral: SpongeBob's Under Years,2021,US,Paramount+,,en,2,523
+1080,95171,Prehistoric Planet,2022,GB,Apple TV,,en,2,522
+1081,215866,American Primeval,2025,US,Netflix,,en,2,517
+1082,93784,Tales from the Loop,2020,US,Prime Video,,en,2,516
+1083,124800,Love & Death,2023,US,HBO Max; Max,,en,2,510
+1084,156902,Kaleidoscope,2023,US,Netflix,,en,2,508
+1085,114471,Ironheart,2025,US,Disney+,,en,2,509
+1086,278178,I Will Find You,2026,US,Netflix,,en,2,508
+1087,270476,Widow's Bay,2026,US,Apple TV,,en,2,506
+1088,203085,Star Wars: Tales of the Jedi,2022,US,Disney+,,en,2,506
+1089,113367,The Wilds,2020,US,Prime Video,,en,2,505
+1090,67384,Goliath,2016,US,Prime Video,,en,2,504
+1091,216082,Zero Day,2025,US,Netflix,,en,2,502
+1092,210916,The Recruit,2022,US,Netflix,,en,2,501
+1093,95665,Inventing Anna,2022,US,Netflix,,en,2,500
+1094,93392,Raising Dion,2019,US,Netflix,,en,2,497
+1095,84469,Cowboy Bebop,2021,US,Netflix,,en,2,496
+1096,114478,Star Wars: Visions,2021,JP/US,Disney+,,en,2,493
+1097,78903,Utopia,2020,US,Prime Video,,en,2,493
+1098,245703,Dept. Q,2025,GB/US,Netflix,,en,2,492
+1099,79130,Another Life,2019,US,Netflix,,en,2,492
+1100,78173,Dragons: Race to the Edge,2015,US,Netflix,,en,2,491
+1101,202879,Star Wars: Skeleton Crew,2024,US,Disney+,,en,2,490
+1102,120462,Them,2021,US,Prime Video,,en,2,489
+1103,83478,Daybreak,2019,US,Netflix,,en,2,489
+1104,85948,Star Trek: Lower Decks,2020,US,CBS All Access; Paramount+,,en,2,486
+1105,98161,Home Before Dark,2020,US,Apple TV,,en,2,485
+1106,118956,DOTA: Dragon's Blood,2021,US,Netflix,,en,2,484
+1107,203857,The Diplomat,2023,US,Netflix,,en,2,481
+1108,235930,Devil May Cry,2025,US,Netflix,,en,2,479
+1109,83880,Our Planet,2019,GB,Netflix,,en,2,478
+1110,98178,Amazing Stories,2020,US,Apple TV,,en,2,477
+1111,94951,Mythic Quest,2020,US,Apple TV,,en,2,475
+1112,158300,Knuckles,2024,US,Paramount+,,en,2,472
+1113,129495,Clickbait,2021,AU/US,Netflix,,en,2,471
+1114,83135,The Twilight Zone,2019,US,CBS All Access,,en,2,469
+1115,204154,Scavengers Reign,2023,US,Max,,en,2,465
+1116,112162,Pacific Rim: The Black,2021,US,Netflix,,en,2,464
+1117,63522,F is for Family,2015,US,Netflix,,en,2,464
+1118,111837,Willow,2022,US,Disney+,,en,2,461
+1119,103506,Jeffrey Epstein: Filthy Rich,2020,US,Netflix,,en,2,461
+1120,71809,The Dark Crystal: Age of Resistance,2019,US,Netflix,,en,2,456
+1121,90972,Station Eleven,2021,US,HBO Max,,en,2,452
+1122,68799,Gilmore Girls: A Year in the Life,2016,US,Netflix,,en,2,452
+1123,248852,UNTAMED,2025,US,Netflix,,en,2,451
+1124,152483,The Boys Presents: Diabolical,2022,US,Prime Video,,en,2,448
+1125,70573,GLOW,2017,US,Netflix,,en,2,448
+1126,225385,Black Doves,2024,GB,Netflix,,en,2,444
+1127,99626,The Trials of Gabriel Fernandez,2020,US,Netflix,,en,2,444
+1128,61838,Barbie: Life in the Dreamhouse,2012,US,YouTube,,en,2,442
+1129,81292,Messiah,2020,US,Netflix,,en,2,439
+1130,94028,RIPLEY,2024,US,Netflix,,en,2,438
+1131,64199,Sneaky Pete,2015,US,Prime Video,,en,2,435
+1132,127700,Welcome to Earth,2021,US,Disney+,,en,2,430
+1133,120452,Dan Brown's The Lost Symbol,2021,US,Peacock,,en,2,430
+1134,113985,Outer Range,2022,US,Prime Video,,en,2,430
+1135,199001,My Life with the Walter Boys,2023,US,Netflix,,en,2,428
+1136,155292,Scott Pilgrim Takes Off,2023,JP/GB/US,Netflix,,en,2,428
+1137,117303,Lessons in Chemistry,2023,US,Apple TV,,en,2,428
+1138,118642,Mr. & Mrs. Smith,2024,US,Prime Video,,en,2,426
+1139,247767,The Studio,2025,US,Apple TV,,en,2,424
+1140,81983,Paradise PD,2018,US,Netflix,,en,2,423
+1141,90257,Little Fires Everywhere,2020,US,Hulu,,en,2,422
+1142,90296,Tokyo Vice,2022,US,HBO Max; Max,,en,2,421
+1143,61986,Bloodline,2015,US,Netflix,,en,2,418
+1144,138505,Marvel Zombies,2025,US,Disney+,,en,2,418
+1145,128876,The Beatles: Get Back,2021,NZ/GB,Disney+,,en,2,417
+1146,137893,Griselda,2024,US,Netflix,,en,2,416
+1147,123192,The Crowded Room,2023,US,Apple TV,,en,2,416
+1148,73987,Lore,2017,US,Prime Video,,en,2,416
+1149,96658,Masters of the Universe: Revelation,2021,US,Netflix,,en,2,415
+1150,72792,Safe,2018,GB,Netflix,,en,2,415
+1151,279471,Malcolm in the Middle: Life's Still Unfair,2026,US,Hulu,,en,2,414
+1152,261145,The Amazing Digital Circus,2023,AU,Netflix; YouTube,,en,2,414
+1153,128095,Under the Banner of Heaven,2022,US,Hulu,,en,2,412
+1154,105797,Wizards: Tales of Arcadia,2020,US,Netflix,,en,2,406
+1155,102621,KAOS,2024,GB,Netflix,,en,2,404
+1156,87428,Why Women Kill,2019,US,CBS All Access; Paramount+,,en,2,405
+1157,91602,Modern Love,2019,US,Prime Video,,en,2,403
+1158,103992,A Teacher,2020,US,Hulu,,en,2,402
+1159,86340,Undone,2019,US,Prime Video,,en,2,401
+1160,85833,Conversations with a Killer: The Ted Bundy Tapes,2019,US,Netflix,,en,2,401
+1161,197125,Constellation,2024,DE/FR/GB,Apple TV,,en,2,396
+1162,103786,The Cuphead Show!,2022,US,Netflix,,en,2,395
+1163,124101,Hacks,2021,US,HBO Max; Max; HBO Max,,en,2,394
+1164,84503,Close Enough,2020,US,HBO Max,,en,2,393
+1165,134373,The Sex Lives of College Girls,2021,US,HBO Max; Max,,en,2,391
+1166,116989,Crime Scene: The Vanishing at the Cecil Hotel,2021,US,Netflix,,en,2,391
+1167,62320,Grace and Frankie,2015,US,Netflix,,en,2,391
+1168,219543,Creature Commandos,2024,US,Max; HBO Max,,en,2,392
+1169,203744,Sugar,2024,US,Apple TV,,en,2,386
+1170,126254,The Midnight Club,2022,US,Netflix,,en,2,386
+1171,114705,Night Stalker: The Hunt for a Serial Killer,2021,US,Netflix,,en,2,381
+1172,81532,Living with Yourself,2019,US,Netflix,,en,2,380
+1173,133727,Acapulco,2021,US,Apple TV,,en,2,379
+1174,90766,Teenage Bounty Hunters,2020,US,Netflix,,en,2,377
+1175,89233,Away,2020,US,Netflix,,en,2,377
+1176,198178,Wonder Man,2026,US,Disney+,,en,2,375
+1177,122066,The Dropout,2022,US,Hulu,,en,2,376
+1178,109939,Our Flag Means Death,2022,US,HBO Max; Max,,en,2,373
+1179,111625,Dash & Lily,2020,US,Netflix,,en,2,368
+1180,126725,Velma,2023,US,HBO Max; Max,,en,2,368
+1181,98187,The Irregulars,2021,GB,Netflix,,en,2,367
+1182,80335,Homecoming,2018,US,Prime Video,,en,2,364
+1183,87050,Hollywood,2020,US,Netflix,,en,2,362
+1184,81290,The Kominsky Method,2018,US,Netflix,,en,2,362
+1185,242054,The Residence,2025,US,Netflix,,en,2,360
+1186,218589,Those About to Die,2024,US,Peacock,,en,2,359
+1187,86686,Creepshow,2019,US,Shudder,,en,2,358
+1188,91725,The Spy,2019,BE/HU/MA/GB/US,Netflix,,en,2,357
+1189,73126,American Vandal,2017,US,Netflix,,en,2,356
+1190,69158,The Good Fight,2017,US,CBS All Access; Paramount+,,en,2,353
+1191,67487,The Tick,2016,US,Prime Video,,en,2,353
+1192,220564,The Perfect Couple,2024,US,Netflix,,en,2,352
+1193,131378,Adventure Time: Fionna and Cake,2023,US,Max; HBO Max,,en,2,352
+1194,96481,Rise of Empires: Ottoman,2020,US,Netflix,,en,2,352
+1195,53606,Love,2016,US,Netflix,,en,2,352
+1196,97539,Self Made: Inspired by the Life of Madam C.J. Walker,2020,US,Netflix,,en,2,351
+1197,81559,V Wars,2019,CA/US,Netflix,,en,2,351
+1198,111616,First Kill,2022,US,Netflix,,en,2,350
+1199,96716,Big Shot,2021,US,Disney+,,en,2,350
+1200,241609,Your Friends & Neighbors,2025,US,Apple TV,,en,2,346
+1201,135868,The Patient,2022,US,Hulu,,en,2,346
+1202,105177,Unsolved Mysteries,2020,US,Netflix,,en,2,342
+1203,213241,Lockwood & Co.,2023,GB,Netflix,,en,2,338
+1204,95215,Reservation Dogs,2021,US,Hulu,,en,2,337
+1205,240667,One Day,2024,GB/US,Netflix,,en,2,334
+1206,132750,Dead Boy Detectives,2024,US,Netflix,,en,2,334
+1207,213306,Cross,2024,US,Prime Video,,en,2,332
+1208,83050,Spinning Out,2020,US,Netflix,,en,2,331
+1209,88512,Bonding,2019,US,Netflix,,en,2,330
+1210,155421,All the Light We Cannot See,2023,US,Netflix,,en,2,329
+1211,103411,Blood & Water,2020,ZA,Netflix,,en,2,329
+1212,86550,Y: The Last Man,2021,US,Hulu,,en,2,329
+1213,157061,The Devil's Hour,2022,GB,Prime Video,,en,2,328
+1214,85702,PEN15,2019,US,Hulu,,en,2,328
+1215,90755,The I-Land,2019,US,Netflix,,en,2,324
+1216,147050,Disclaimer,2024,GB,Apple TV,,en,2,323
+1217,95249,Gossip Girl,2021,US,HBO Max,,en,2,321
+1218,87049,Firefly Lane,2021,US,Netflix,,en,2,321
+1219,77601,Wild Wild Country,2018,US,Netflix,,en,2,321
+1220,129418,Brand New Cherry Flavor,2021,US,Netflix,,en,2,320
+1221,114925,Pam & Tommy,2022,US,Hulu,,en,2,320
+1222,246246,Beauty in Black,2024,US,Netflix,,en,2,318
+1223,134297,Olaf Presents,2021,US,Disney+,,en,2,318
+1224,63314,Club de Cuervos,2015,US,Netflix,,en,2,318
+1225,217667,Eric,2024,GB,Netflix,,en,2,317
+1226,105288,Down to Earth with Zac Efron,2020,US,Netflix,,en,2,316
+1227,250504,The Beast in Me,2025,US,Netflix,,en,2,315
+1228,83247,Haunted,2018,US,Netflix,,en,2,315
+1229,255661,Young Sherlock,2026,GB/US,Prime Video,,en,2,314
+1230,229711,The Bondsman,2025,US,Prime Video,,en,2,314
+1231,78670,Impulse,2018,US,YouTube Premium,,en,2,315
+1232,114463,Zootopia+,2022,US,Disney+,,en,2,313
+1233,93736,Age of Samurai: Battle for Japan,2021,CA,Netflix,,en,2,308
+1234,199318,Bad Sisters,2022,GB,Apple TV,,en,2,306
+1235,122530,Panic,2021,US,Prime Video,,en,2,306
+1236,90870,Wu-Tang: An American Saga,2019,US,Hulu,,en,2,306
+1237,136308,Stay Close,2021,GB,Netflix,,en,2,304
+1238,100617,Transformers: War for Cybertron: Siege,2020,US,Netflix,,en,2,304
+1239,138503,Your Friendly Neighborhood Spider-Man,2025,US,Disney+,,en,2,302
+1240,134095,A Murder at the End of the World,2023,US,Hulu,,en,2,302
+1241,82744,Catch-22,2019,US,Hulu,,en,2,302
+1242,123548,Castlevania: Nocturne,2023,US,Netflix,,en,2,301
+1243,93716,The Mosquito Coast,2021,US,Apple TV,,en,2,301
+1244,89852,Trinkets,2019,US,Netflix,,en,2,299
+1245,250923,Nobody Wants This,2024,US,Netflix,,en,2,298
+1246,65493,The Ranch,2016,US,Netflix,,en,2,298
+1247,107365,Bel-Air,2022,US,Peacock,,en,2,297
+1248,76438,Everything Sucks!,2018,US,Netflix,,en,2,297
+1249,124010,How I Met Your Father,2022,US,Hulu,,en,2,296
+1250,209167,Conversations with a Killer: The Jeffrey Dahmer Tapes,2022,US,Netflix,,en,2,295
+1251,92209,Truth Seekers,2020,GB/US,Prime Video,,en,2,294
+1252,219760,The Terminal List: Dark Wolf,2025,US,Prime Video,,en,2,293
+1253,122196,The Staircase,2022,US,HBO Max,,en,2,293
+1254,93826,October Faction,2020,US,Netflix,,en,2,292
+1255,125909,Batman: Caped Crusader,2024,US,Prime Video,,en,2,289
+1256,208397,School Spirits,2023,US,Paramount+,,en,2,288
+1257,114466,Baymax!,2022,US,Disney+,,en,2,287
+1258,153657,Bosch: Legacy,2022,US,Prime Video; Amazon Freevee,,en,2,285
+1259,114068,The Offer,2022,US,Paramount+,,en,2,285
+1260,102321,Looney Tunes Cartoons,2020,US,HBO Max; Max,,en,2,285
+1261,79126,Evil Genius,2018,US,Netflix,,en,2,284
+1262,81747,Tell Me a Story,2018,US,CBS All Access,,en,2,282
+1263,224941,The Boroughs,2026,US,Netflix,,en,2,280
+1264,278624,Lucky,2026,US,Apple TV,,en,2,279
+1265,158141,Supacell,2024,GB,Netflix,,en,2,274
+1266,106754,High Score,2020,US,Netflix,,en,2,274
+1267,102904,Sweet Magnolias,2020,US,Netflix,,en,2,274
+1268,222023,Jury Duty,2023,US,Amazon Freevee,,en,2,273
+1269,226135,Arnold,2023,US,Netflix,,en,2,272
+1270,207411,Good American Family,2025,US,Hulu,,en,2,271
+1271,95594,Fast & Furious Spy Racers,2019,US,Netflix,,en,3,2206
+1272,154521,The Kardashians,2022,US,Hulu,,en,3,2136
+1273,93741,Jurassic World Camp Cretaceous,2020,US,Netflix,,en,3,1916
+1274,77606,The Boss Baby: Back in Business,2018,US,Netflix,,en,3,1774
+1275,82747,Kung Fu Panda: The Paws of Destiny,2018,US,Prime Video,,en,3,880
+1276,33765,My Little Pony: Friendship Is Magic,2010,CA/US,Hub Network; Treehouse TV; Discovery Family,,en,3,775
+1277,3022,Rugrats,1991,US,Nickelodeon,,en,3,775
+1278,2228,Pinky and the Brain,1995,US,The WB,,en,3,772
+1279,12225,Peppa Pig,2004,GB,5,,en,3,768
+1280,720,DuckTales,1987,US,Syndication,,en,3,765
+1281,132559,The Croods: Family Tree,2021,US,Hulu; Peacock,,en,3,761
+1282,2675,The Little Mermaid,1992,US,CBS,,en,3,732
+1283,4605,The Suite Life of Zack & Cody,2005,US,Disney Channel,,en,3,712
+1284,38974,Jessie,2011,US,Disney Channel,,en,3,687
+1285,130392,The D'Amelio Show,2021,US,Hulu,,en,3,686
+1286,17572,Kick Buttowski: Suburban Daredevil,2010,US,Disney XD,,en,3,675
+1287,4429,Timon and Pumbaa,1995,US,Syndication; CBS; Toon Disney,,en,3,672
+1288,2355,Lilo & Stitch: The Series,2003,US,ABC; Disney Channel; Toon Disney,,en,3,665
+1289,2224,The Daily Show,1996,US,Comedy Central,,en,3,663
+1290,5835,Goosebumps,1995,CA,FOX; YTV; Fox Kids,,en,3,654
+1291,204082,Squid Game: The Challenge,2023,GB,Netflix,,en,3,649
+1292,2913,Are You Afraid of the Dark?,1992,CA/US,Nickelodeon; YTV; Family Channel,,en,3,630
+1293,6782,Pucca,2006,CA/US,Toon Disney,,en,3,610
+1294,5687,The Smurfs,1981,US,NBC,,en,3,595
+1295,32605,The Looney Tunes Show,2011,US/DK,Cartoon Network,,en,3,587
+1296,2345,Kim Possible,2002,US,Disney Channel,,en,3,584
+1297,68073,The Loud House,2016,US,Nickelodeon,,en,3,578
+1298,1615,Chip 'n' Dale Rescue Rangers,1989,US,Disney Channel; Syndication,,en,3,569
+1299,115577,Sonic Prime,2022,US,Netflix,,en,3,553
+1300,46928,Sofia the First,2013,US,Disney Junior,,en,3,553
+1301,668,X-Men: Evolution,2000,US,The WB,,en,3,547
+1302,46922,Ben 10: Omniverse,2012,US,Cartoon Network,,en,3,545
+1303,3611,Cow and Chicken,1997,US,Cartoon Network,,en,3,539
+1304,1546,Recess,1997,US,ABC; UPN,,en,3,539
+1305,15079,The Suite Life on Deck,2008,US,Disney Channel,,en,3,537
+1306,1720,Foster's Home for Imaginary Friends,2004,US,Cartoon Network,,en,3,536
+1307,1830,Tiny Toon Adventures,1990,US,CBS; Syndication; Fox Kids,,en,3,535
+1308,346,American Dragon: Jake Long,2005,US,Disney Channel,,en,3,531
+1309,232125,I Am Groot,2022,US,Disney+,,en,3,530
+1310,1667,Saturday Night Live,1975,US,NBC,,en,3,530
+1311,2362,The Jetsons,1962,US,ABC; Syndication,,en,3,524
+1312,2022,The Batman,2004,US,The WB; The CW,,en,3,513
+1313,100412,The Baby-Sitters Club,2020,US,Netflix,,en,3,506
+1314,32910,Transformers: Prime,2010,US,Hub Network; The Hub,,en,3,487
+1315,117648,Clarkson's Farm,2021,GB,Prime Video,,en,3,474
+1316,14396,The Adventures of Super Mario Bros. 3,1990,US,NBC,,en,3,470
+1317,7869,The Penguins of Madagascar,2008,US,Nickelodeon,,en,3,470
+1318,1567,CatDog,1998,US,Nickelodeon,,en,3,464
+1319,102085,Too Hot to Handle,2020,GB,Netflix,,en,3,463
+1320,2530,Mr. Bean: The Animated Series,2002,GB,CITV; ITV1,,en,3,462
+1321,9907,Chowder,2007,US,Cartoon Network,,en,3,460
+1322,4035,Inspector Gadget,1983,US,CBS; Syndication,,en,3,456
+1323,21641,Good Luck Charlie,2010,US,Disney Channel,,en,3,454
+1324,4269,The Transformers,1984,US,Syndication,,en,3,453
+1325,931,He-Man and the Masters of the Universe,1983,US,Syndication,,en,3,448
+1326,14658,Survivor,2000,US,CBS,,en,3,447
+1327,2429,Aaahh!!! Real Monsters,1994,US,Nickelodeon,,en,3,435
+1328,45666,Sam & Cat,2013,US,Nickelodeon,,en,3,434
+1329,8392,Popeye the Sailor,1960,US,ABC,,en,3,430
+1330,63375,Bear Grylls: Escape From Hell,2013,GB,Discovery,,en,3,427
+1331,32118,Generator Rex,2010,US,Cartoon Network,,en,3,426
+1332,4606,Garfield and Friends,1988,US,CBS,,en,3,414
+1333,1835,Kenan & Kel,1996,US,Nickelodeon,,en,3,410
+1334,288,¡Mucha Lucha!,2002,MX/US,The WB,,en,3,405
+1335,3934,Mickey Mouse Clubhouse,2006,US,Disney Channel; Disney Junior,,en,3,395
+1336,4303,Superman: The Animated Series,1996,US,The WB,,en,3,392
+1337,59941,The Tonight Show Starring Jimmy Fallon,2014,US,NBC,,en,3,390
+1338,6673,The Marvelous Misadventures of Flapjack,2008,US,Cartoon Network,,en,3,389
+1339,2745,Aladdin,1994,US,CBS; Disney Channel; Syndication,,en,3,387
+1340,61018,Whose Line Is It Anyway?,1998,US,ABC; ABC Family,,en,3,380
+1341,4656,Raw,1993,US,USA Network; Spike; Netflix; The New TNN,,en,3,376
+1342,4232,Top Cat,1961,US,ABC,,en,3,371
+1343,63770,The Late Show with Stephen Colbert,2015,US,CBS,,en,3,367
+1344,39518,My Babysitter's a Vampire,2011,CA/US,Teletoon,,en,3,360
+1345,4575,Lizzie McGuire,2001,US,Disney Channel,,en,3,358
+1346,12504,SilverHawks,1986,US,Syndication,,en,3,354
+1347,79,Dora the Explorer,2000,US,Nickelodeon,,en,3,350
+1348,97441,The Healing Powers of Dude,2020,US,Netflix,,en,3,349
+1349,6005,Scooby-Doo and Scrappy-Doo,1979,US,ABC,,en,3,340
+1350,2370,Hell's Kitchen,2005,US,FOX,,en,3,340
+1351,2567,Hercules,1998,US,Syndication; ABC,,en,3,337
+1352,17463,Kid vs. Kat,2008,CA/US,YTV,,en,3,335
+1353,958,Beast Wars: Transformers,1996,CA,YTV; Syndication,,en,3,330
+1354,2009,Rocket Power,1999,US,Nickelodeon,,en,3,324
+1355,657,Rocko's Modern Life,1993,US,Nickelodeon,,en,3,324
+1356,100963,The Big Show Show,2020,US,Netflix,,en,3,317
+1357,670,Baby Looney Tunes,2002,CA/US,Cartoon Network; The WB,,en,3,317
+1358,4385,The Colbert Report,2005,US,Comedy Central,,en,3,316
+1359,21755,Pawn Stars,2009,US,History,,en,3,314
+1360,114502,Cars on the Road,2022,US,Disney+,,en,3,311
+1361,2408,The Wild Thornberrys,1998,US,Nickelodeon,,en,3,310
+1362,33213,Shake It Up,2010,US,Disney Channel,,en,3,306
+1363,2286,The Real Ghostbusters,1986,US,ABC,,en,3,302
+1364,133723,Harry Potter: Hogwarts Tournament of Houses,2021,US,Cartoon Network; TBS,,en,3,301
+1365,418,A Pup Named Scooby-Doo,1988,US,ABC,,en,3,297
+1366,40290,MasterChef,2010,US,FOX,,en,3,295
+1367,502,Sesame Street,1969,US,PBS; HBO; National Educational Television; PBS Kids; Netflix; HBO Max; Max; HBO Max,,en,3,295
+1368,8514,RuPaul's Drag Race,2009,US,MTV; Logo; VH1,,en,3,293
+1369,3902,Shaun the Sheep,2007,GB,BBC One; CBBC,,en,3,292
+1370,1554,QI,2003,GB,BBC One; BBC Four; BBC Two,,en,3,291
+1371,1220,The Graham Norton Show,2007,GB,BBC One; BBC Two,,en,3,290
+1372,136322,Dragons: The Nine Realms,2021,US,Hulu; Peacock,,en,3,286
+1373,82791,The Bureau of Magical Things,2018,AU,Eleven; 10 (Online); 10 Shake,,en,3,282
+1374,117030,We Baby Bears,2022,US,Cartoon Network,,en,3,280
+1375,1931,Disney's Adventures of the Gummi Bears,1985,US,ABC; NBC; Syndication,,en,3,280
+1376,2005,The New Adventures of Winnie the Pooh,1988,US,ABC,,en,3,279
+1377,553,Dungeons & Dragons,1983,US,CBS,,en,3,277
+1378,4551,America's Got Talent,2006,US,NBC,,en,3,275
+1379,10160,Big Brother,2000,US,CBS,,en,3,273
+1380,10821,Blue's Clues,1996,US,Nickelodeon,,en,3,272
+1381,3518,Dennis the Menace,1985,US/CA,CBS; Syndication,,en,3,272

@@ -11,6 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing
+
 # revision identifiers, used by Alembic.
 revision: str = "c3e17a2b8d40"
 down_revision: str | Sequence[str] | None = "b7d3f9a1c204"
@@ -20,7 +22,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
+    add_column_if_missing(
         "app_config",
         sa.Column("always_review", sa.Boolean(), nullable=False, server_default=sa.text("0")),
     )

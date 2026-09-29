@@ -17,10 +17,28 @@ All notable changes to Engram will be documented in this file.
 
 ### Changed
 
+- **Bigger, English-only subtitle cache.** The show list the nightly cache build
+  walks was exhausted, so the published cache had stopped growing at 524 shows. It
+  is now English-only (by original language, which catches Spanish-language shows
+  from US networks) and extended to about 1,380 shows, ordered so the shows most
+  likely to be ripped from disc are harvested first. Shows already in the cache stay
+  in it. Episode matching for newly covered shows works without a live subtitle
+  download.
 - **The dashboard now runs on React 19.** No visible change is intended; this keeps the
   frontend on a supported React line and unblocks dependency updates that already require
   it. Two unused packages (`react-popper`, `@popperjs/core`) that do not support React 19
   were removed.
+
+### Fixed
+
+- **Long-upgraded databases no longer get stuck partway through their schema
+  migrations.** On a database first created by an older release, one migration
+  tried to drop a column that Engram's startup had already removed, failed, and
+  left every later migration unapplied on every launch (logged as `Alembic
+  migration failed (non-fatal): 'is_transcoding_enabled'`). All migrations now
+  check the live schema first and skip work that is already done, so these
+  databases catch up to the current schema on the next start. A migration that
+  does fail now logs which revision is stuck and how many are blocked behind it.
 
 ## [0.37.0] - 2026-09-24
 

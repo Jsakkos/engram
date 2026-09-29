@@ -15,6 +15,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from app.migration_guards import add_column_if_missing, table_exists
+
 # revision identifiers, used by Alembic.
 revision: str = "e1f2a3b4c5d6"
 down_revision: str | Sequence[str] | None = "a863a06a3c34"
@@ -23,38 +25,40 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "show_ordering_preferences",
-        sa.Column("tmdb_id", sa.Integer(), primary_key=True),
-        sa.Column("ordering", sa.String(), nullable=False, server_default="aired"),
-        sa.Column("episode_group_id", sa.String(), nullable=True),
+    # create_all() in init_db() makes this table (from the model) before
+    # Alembic runs, so only create it on a DB that lacks it.
+    if not table_exists("show_ordering_preferences"):
+        op.create_table(
+            "show_ordering_preferences",
+            sa.Column("tmdb_id", sa.Integer(), primary_key=True),
+            sa.Column("ordering", sa.String(), nullable=False, server_default="aired"),
+            sa.Column("episode_group_id", sa.String(), nullable=True),
+            sa.Column(
+                "created_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.text("(datetime('now'))"),
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(),
+                nullable=False,
+                server_default=sa.text("(datetime('now'))"),
+            ),
+        )
+
+    add_column_if_missing(
+        "app_config",
         sa.Column(
-            "created_at",
-            sa.DateTime(),
+            "episode_ordering_preference",
+            sa.String(),
             nullable=False,
-            server_default=sa.text("(datetime('now'))"),
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(),
-            nullable=False,
-            server_default=sa.text("(datetime('now'))"),
+            server_default=sa.text("'aired'"),
         ),
     )
 
-    with op.batch_alter_table("app_config", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column(
-                "episode_ordering_preference",
-                sa.String(),
-                nullable=False,
-                server_default=sa.text("'aired'"),
-            )
-        )
-
-    with op.batch_alter_table("disc_titles", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("episode_ordering", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("episode_group_id", sa.String(), nullable=True))
+    add_column_if_missing("disc_titles", sa.Column("episode_ordering", sa.String(), nullable=True))
+    add_column_if_missing("disc_titles", sa.Column("episode_group_id", sa.String(), nullable=True))
 
 
 def downgrade() -> None:
