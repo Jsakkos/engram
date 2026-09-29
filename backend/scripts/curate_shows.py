@@ -34,12 +34,14 @@ Usage (from backend/, with TMDB_API_KEY exported and a scratch DATABASE_URL):
         --tmdb-cache <scratch dir>/curation-tmdb-cache.sqlite
 """
 
+import argparse
 import csv
 import datetime
 import io
 import json
 import sqlite3
 import sys
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,7 +53,12 @@ _backend_dir = str(Path(__file__).parent.parent)
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
 
+from build_subtitle_cache import _bootstrap_config_from_env, _ensure_db_schema
+from loguru import logger
 from purge_poisoned_coverage import DEFAULT_CUTOFF
+
+from app.matcher import tmdb_persistent_cache
+from app.matcher.tmdb_client import fetch_show_details, fetch_shows_by_vote_count
 
 ENGLISH = "en"
 
@@ -98,6 +105,12 @@ CSV_FIELDS = [
 ]
 
 _DEFAULT_CSV = Path(__file__).parent / "curated_shows.csv"
+_LIVE_TMDB_CACHE = Path("~/.engram/cache/tmdb_cache.sqlite").expanduser()
+
+
+class DiscoveryIncomplete(RuntimeError):
+    """A discover page came back empty; the candidate list would be truncated."""
+
 
 # TMDB network names that only stream. A show whose EVERY network is in this
 # set is demoted (streaming originals get disc releases less often), never
@@ -342,7 +355,12 @@ def load_published(manifest_path: Path) -> list[int]:
     shows = data.get("shows") if isinstance(data, dict) else None
     if not isinstance(shows, dict) or not shows:
         raise SystemExit(f"{manifest_path}: no shows; is this the published manifest.json?")
-    return [int(key) for key in shows if str(key).isdigit()]
+    ids = [int(key) for key in shows if str(key).isdigit()]
+    if not ids:
+        raise SystemExit(
+            f"{manifest_path}: no numeric show ids; expected a v3 (tmdb_id-keyed) manifest"
+        )
+    return ids
 
 
 def load_coverage(db_path: Path) -> dict[int, list[CoverageRow]]:
@@ -378,3 +396,136 @@ def write_csv(rows: list[dict], path: Path) -> None:
     for rank, row in enumerate(rows, 1):
         writer.writerow({**row, "rank": str(rank)})
     Path(path).write_text(buf.getvalue(), encoding="utf-8", newline="")
+
+
+def discover(pages: int, sleep: float) -> list[dict]:
+    """Walk TMDB discover by lifetime vote count, deduped, in rank order.
+
+    Fails closed: ``fetch_shows_by_vote_count`` returns ``[]`` on a network
+    failure, and a silently short walk would look like "TMDB has nothing more".
+    """
+    seen: dict[int, dict] = {}
+    for page in range(1, pages + 1):
+        results = fetch_shows_by_vote_count(page)
+        if not results:
+            raise DiscoveryIncomplete(f"TMDB discover page {page} returned no results")
+        for show in results:
+            if show.get("id") and show["id"] not in seen:
+                seen[show["id"]] = show
+        time.sleep(sleep)
+    return list(seen.values())
+
+
+def fetch_details(ids: list[int], sleep: float) -> dict[int, dict]:
+    """TMDB details for each id; a failed fetch is simply absent from the result."""
+    details: dict[int, dict] = {}
+    for tid in ids:
+        cached = tmdb_persistent_cache.is_cached(f"show_details:{tid}")
+        payload = fetch_show_details(tid)
+        if payload:
+            details[tid] = payload
+        else:
+            logger.warning(f"No TMDB details for {tid}")
+        if not cached:
+            time.sleep(sleep)
+    return details
+
+
+def render_report(
+    report: CurationReport,
+    details_by_id: dict[int, dict],
+    coverage_by_id: dict[int, list[CoverageRow]],
+    before: int,
+    after: int,
+) -> str:
+    def name(tid: int) -> str:
+        return (details_by_id.get(tid) or {}).get("name") or str(tid)
+
+    lines = [f"curated list: {after} rows (was {before})"]
+    lines.append(f"  retained from the current list: {report.retained}")
+    lines.append(f"  kept unverified (no TMDB details): {len(report.kept_unverified)}")
+    lines.append(f"  dropped, not English: {len(report.dropped_language)}")
+    for tid in report.dropped_language:
+        lang = (details_by_id.get(tid) or {}).get("original_language")
+        lines.append(f"    - {name(tid)} (tmdb {tid}, {lang})")
+    lines.append(f"  excluded on healthy-window coverage: {len(report.excluded_outcome)}")
+    for tid in report.excluded_outcome:
+        covered, total = healthy_totals(coverage_by_id.get(tid, []))
+        lines.append(f"    - {name(tid)} (tmdb {tid}, {covered}/{total})")
+    lines.append(f"  added from the published cache: {len(report.added_published)}")
+    tiers = ", ".join(f"tier {t}: {n}" for t, n in sorted(report.added_by_tier.items()))
+    lines.append(f"  added from discovery: {sum(report.added_by_tier.values())} ({tiers})")
+    lines.append(f"  skipped, no TMDB details: {len(report.skipped_no_details)}")
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Curate the subtitle-cache show list")
+    parser.add_argument(
+        "--coverage-db",
+        type=Path,
+        required=True,
+        help="READ-ONLY snapshot of the harvester's tmdb_cache.sqlite",
+    )
+    parser.add_argument(
+        "--published-manifest",
+        type=Path,
+        required=True,
+        help="manifest.json from the subtitle-cache-latest release",
+    )
+    parser.add_argument(
+        "--tmdb-cache",
+        type=Path,
+        required=True,
+        help="Scratch TMDB response cache (never the live one)",
+    )
+    parser.add_argument("--show-list", type=Path, default=_DEFAULT_CSV)
+    parser.add_argument("--output", type=Path, default=_DEFAULT_CSV)
+    parser.add_argument(
+        "--pages", type=int, default=100, help="TMDB discover pages (20 shows each) to consider"
+    )
+    parser.add_argument(
+        "--sleep", type=float, default=0.25, help="Seconds between uncached TMDB calls"
+    )
+    args = parser.parse_args(argv)
+    if args.pages <= 0:
+        parser.error("--pages must be positive")
+    if args.tmdb_cache.expanduser().resolve() == _LIVE_TMDB_CACHE.resolve():
+        parser.error("--tmdb-cache must not be the live ~/.engram/cache/tmdb_cache.sqlite")
+
+    existing = load_existing(args.show_list)
+    published = load_published(args.published_manifest)
+    coverage = load_coverage(args.coverage_db)
+
+    # Every TMDB response this run fetches lands in the scratch cache, so the
+    # harvester's cache (and the laptop's frozen backup) are never written.
+    tmdb_persistent_cache.close()
+    tmdb_persistent_cache.CACHE_DB_PATH = args.tmdb_cache.expanduser()
+
+    _ensure_db_schema()
+    _bootstrap_config_from_env()
+    from app.services.config_service import get_config_sync
+
+    if not get_config_sync().tmdb_api_key:
+        logger.error("TMDB API key not configured (export TMDB_API_KEY); nothing written")
+        return 1
+
+    try:
+        discovered = discover(args.pages, args.sleep)
+    except DiscoveryIncomplete as e:
+        logger.error(f"{e}; refusing to write a truncated list")
+        return 1
+    discovered_en = [s["id"] for s in discovered if s.get("original_language") == ENGLISH]
+
+    wanted = list(dict.fromkeys([int(r["tmdb_id"]) for r in existing] + published + discovered_en))
+    details = fetch_details(wanted, args.sleep)
+
+    rows, report = build_curated_rows(existing, published, discovered_en, details, coverage)
+    write_csv(rows, args.output)
+    print(render_report(report, details, coverage, before=len(existing), after=len(rows)))
+    print(f"  discover walk: {len(discovered)} shows, {len(discovered_en)} English")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

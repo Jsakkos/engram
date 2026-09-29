@@ -8,8 +8,11 @@ import datetime
 import json
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+import app.services.config_service as cfg_svc
 
 
 def _details(
@@ -311,6 +314,12 @@ class TestLoadPublished:
         with pytest.raises(SystemExit):
             cur.load_published(manifest)
 
+    def test_name_keyed_manifest_exits(self, cur, tmp_path):
+        manifest = tmp_path / "manifest.json"
+        manifest.write_text(json.dumps({"shows": {"Breaking Bad": {}}}), encoding="utf-8")
+        with pytest.raises(SystemExit):
+            cur.load_published(manifest)
+
 
 @pytest.mark.unit
 class TestShowListFile:
@@ -331,3 +340,124 @@ class TestShowListFile:
         # The harvester's own reader sees the same ids in the same order, with
         # no TMDB lookup (every id is numeric).
         assert bsc._read_show_list(str(out)) == [{"name": "B", "id": 2}, {"name": "A", "id": 1}]
+
+
+@pytest.fixture
+def curation_inputs(cur, tmp_path):
+    """Current list (en 10, es 20), manifest (10 + unlisted en 30), coverage
+    (40 has poor healthy coverage), and the TMDB payloads for all of them."""
+    show_list = tmp_path / "curated_shows.csv"
+    show_list.write_text(
+        "rank,tmdb_id,name,year,origin_country,networks,discdb_discs\n"
+        "1,10,Kept,2005,US,ABC,3\n"
+        "2,20,El Chapo,2017,US,Univision,0\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"shows": {"10": {}, "30": {}}}), encoding="utf-8")
+    coverage = tmp_path / "snapshot.sqlite"
+    _coverage_db(coverage, [(40, 1, _ts("2026-09-20"), 40, 1)])
+    details = {
+        10: _details(10, "Kept"),
+        20: _details(20, "El Chapo", lang="es"),
+        30: _details(30, "Published extra"),
+        40: _details(40, "Unharvestable"),
+        50: _details(50, "New drama"),
+        70: _details(70, "New kids", genres=(10762,)),
+    }
+    discover_page = [
+        {"id": 70, "original_language": "en"},
+        {"id": 60, "original_language": "fr"},
+        {"id": 40, "original_language": "en"},
+        {"id": 50, "original_language": "en"},
+    ]
+    return SimpleNamespace(
+        show_list=show_list,
+        manifest=manifest,
+        coverage=coverage,
+        details=details,
+        discover_page=discover_page,
+        tmdb_cache=tmp_path / "scratch-tmdb.sqlite",
+        output=tmp_path / "out.csv",
+    )
+
+
+def _patch_seams(cur, monkeypatch, inputs, *, discover_pages):
+    fetched: list[int] = []
+
+    def fake_details(tid):
+        fetched.append(tid)
+        return inputs.details.get(tid)
+
+    monkeypatch.setattr(cur, "_ensure_db_schema", lambda: None)
+    monkeypatch.setattr(cur, "_bootstrap_config_from_env", lambda: None)
+    monkeypatch.setattr(cfg_svc, "get_config_sync", lambda: SimpleNamespace(tmdb_api_key="k"))
+    monkeypatch.setattr(cur, "fetch_shows_by_vote_count", lambda page: discover_pages.get(page, []))
+    monkeypatch.setattr(cur, "fetch_show_details", fake_details)
+    return fetched
+
+
+def _argv(inputs, *extra):
+    return [
+        "--show-list",
+        str(inputs.show_list),
+        "--output",
+        str(inputs.output),
+        "--coverage-db",
+        str(inputs.coverage),
+        "--published-manifest",
+        str(inputs.manifest),
+        "--tmdb-cache",
+        str(inputs.tmdb_cache),
+        "--pages",
+        "1",
+        "--sleep",
+        "0",
+        *extra,
+    ]
+
+
+@pytest.mark.unit
+class TestMain:
+    def test_writes_the_ordered_english_list(self, cur, monkeypatch, curation_inputs, capsys):
+        fetched = _patch_seams(
+            cur, monkeypatch, curation_inputs, discover_pages={1: curation_inputs.discover_page}
+        )
+        assert cur.main(_argv(curation_inputs)) == 0
+
+        rows = cur.load_existing(curation_inputs.output)
+        # 10 retained; 20 dropped (Spanish); 30 added from the published cache;
+        # 40 excluded on coverage; 50 (tier 1) before 70 (tier 3); 60 is French.
+        assert [int(r["tmdb_id"]) for r in rows] == [10, 30, 50, 70]
+        assert rows[0]["discdb_discs"] == "3"
+        # A non-English discover hit is filtered on the discover payload and
+        # never costs a details call.
+        assert 60 not in fetched
+        out = capsys.readouterr().out
+        assert "El Chapo" in out
+        assert "Unharvestable" in out
+
+    def test_empty_discover_page_aborts_without_writing(self, cur, monkeypatch, curation_inputs):
+        _patch_seams(cur, monkeypatch, curation_inputs, discover_pages={})
+        assert cur.main(_argv(curation_inputs)) == 1
+        assert not curation_inputs.output.exists()
+
+    def test_refuses_the_live_tmdb_cache(self, cur, monkeypatch, curation_inputs):
+        _patch_seams(
+            cur, monkeypatch, curation_inputs, discover_pages={1: curation_inputs.discover_page}
+        )
+        live = Path("~/.engram/cache/tmdb_cache.sqlite").expanduser()
+        argv = _argv(curation_inputs)
+        argv[argv.index("--tmdb-cache") + 1] = str(live)
+        with pytest.raises(SystemExit) as exc:
+            cur.main(argv)
+        assert exc.value.code == 2
+        assert not curation_inputs.output.exists()
+
+    def test_missing_tmdb_key_exits_without_writing(self, cur, monkeypatch, curation_inputs):
+        _patch_seams(
+            cur, monkeypatch, curation_inputs, discover_pages={1: curation_inputs.discover_page}
+        )
+        monkeypatch.setattr(cfg_svc, "get_config_sync", lambda: SimpleNamespace(tmdb_api_key=None))
+        assert cur.main(_argv(curation_inputs)) == 1
+        assert not curation_inputs.output.exists()
