@@ -106,6 +106,18 @@ def psc(bsc):
     return _load_script_module("pack_subtitle_cache")
 
 
+@pytest.fixture(scope="session")
+def cur(bsc, ppc):
+    """The curate_shows.py module, loaded once per pytest session.
+
+    Depends on ``bsc`` and ``ppc`` so ``build_subtitle_cache`` and
+    ``purge_poisoned_coverage`` are already in ``sys.modules`` when the
+    script's module-level ``from ... import`` lines run (spec-loading does not
+    put ``scripts/`` on ``sys.path``).
+    """
+    return _load_script_module("curate_shows")
+
+
 _unit_engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
     connect_args={"check_same_thread": False},
