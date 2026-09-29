@@ -78,28 +78,38 @@ class TestHealthyWindow:
     def test_repaired_window_is_healthy(self, cur):
         assert cur.is_healthy(_ts("2026-09-05")) is True
 
+    def test_first_harvest_days_are_unhealthy(self, cur):
+        # 2026-05-23/24 ran at ~11% coverage: early-harvester failures.
+        assert cur.is_healthy(_ts("2026-05-24")) is False
+
+    def test_trusted_window_start_is_healthy(self, cur):
+        assert cur.is_healthy(_ts("2026-05-25")) is True
+
 
 @pytest.mark.unit
 class TestOutcomeExcluded:
     def test_low_healthy_coverage_with_enough_sample_is_excluded(self, cur):
         # The Tom and Jerry Show: 7 of 48 healthy episodes.
-        assert cur.outcome_excluded([_cov(cur, "2026-05-01", 48, 7)]) is True
+        assert cur.outcome_excluded([_cov(cur, "2026-06-01", 48, 7)]) is True
 
     def test_thin_sample_is_kept(self, cur):
-        assert cur.outcome_excluded([_cov(cur, "2026-05-01", 19, 0)]) is False
+        assert cur.outcome_excluded([_cov(cur, "2026-06-01", 19, 0)]) is False
 
     def test_exactly_the_minimum_sample_is_eligible(self, cur):
-        assert cur.outcome_excluded([_cov(cur, "2026-05-01", 20, 3)]) is True
+        assert cur.outcome_excluded([_cov(cur, "2026-06-01", 20, 3)]) is True
 
     def test_exactly_twenty_percent_is_kept(self, cur):
-        assert cur.outcome_excluded([_cov(cur, "2026-05-01", 50, 10)]) is False
+        assert cur.outcome_excluded([_cov(cur, "2026-06-01", 50, 10)]) is False
+
+    def test_zeros_from_the_first_harvest_days_are_ignored(self, cur):
+        assert cur.outcome_excluded([_cov(cur, "2026-05-23", 50, 0)]) is False
 
     def test_poisoned_window_zeros_are_ignored(self, cur):
         assert cur.outcome_excluded([_cov(cur, "2026-06-12", 200, 0)]) is False
 
     def test_poisoned_zeros_do_not_dilute_a_healthy_measurement(self, cur):
         rows = [
-            _cov(cur, "2026-05-01", 30, 29, season=1),
+            _cov(cur, "2026-06-01", 30, 29, season=1),
             _cov(cur, "2026-06-12", 200, 0, season=2),
         ]
         assert cur.outcome_excluded(rows) is False
@@ -184,7 +194,7 @@ class TestBuildCuratedRows:
     def test_outcome_excluded_retained_row_is_dropped_and_reported(self, cur):
         existing = [_existing(7842, "The Tom and Jerry Show")]
         details = {7842: _details(7842, "The Tom and Jerry Show")}
-        coverage = {7842: [_cov(cur, "2026-05-01", 48, 7)]}
+        coverage = {7842: [_cov(cur, "2026-06-01", 48, 7)]}
         rows, report = cur.build_curated_rows(existing, [], [], details, coverage)
         assert rows == []
         assert report.excluded_outcome == [7842]
@@ -271,11 +281,11 @@ class TestLoadCoverage:
     def test_reads_rows_grouped_by_show(self, cur, tmp_path):
         db = tmp_path / "snapshot.sqlite"
         _coverage_db(
-            db, [(7842, 1, _ts("2026-05-01"), 48, 7), (7842, 2, _ts("2026-09-20"), 10, 10)]
+            db, [(7842, 1, _ts("2026-06-01"), 48, 7), (7842, 2, _ts("2026-09-20"), 10, 10)]
         )
         coverage = cur.load_coverage(db)
         assert sorted(coverage[7842]) == [
-            cur.CoverageRow(1, _ts("2026-05-01"), 48, 7),
+            cur.CoverageRow(1, _ts("2026-06-01"), 48, 7),
             cur.CoverageRow(2, _ts("2026-09-20"), 10, 10),
         ]
 

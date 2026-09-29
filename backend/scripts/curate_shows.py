@@ -15,9 +15,9 @@ section 2):
 
 - Hard filter: original_language == "en". NOT origin_country: Telemundo shows
   are origin US and Spanish-language.
-- Outcome exclusion only from healthy-window measurements (before the
-  2026-06-11 quota poisoning, or after the harvester repair was complete) with
-  a sample of at least 20 episodes and coverage under 20%.
+- Outcome exclusion only from healthy-window measurements (2026-05-25 up to
+  the 2026-06-11 quota poisoning, or after the harvester repair was complete)
+  with a sample of at least 20 episodes and coverage under 20%.
 - Genre and network are an ORDERING prior, never a filter: kids, reality, talk
   and news rank last; streaming-only networks rank after broadcast/cable.
 - A show TMDB could not describe is never dropped from the current list: an
@@ -70,6 +70,13 @@ ENGLISH = "en"
 # than the purge script's DEFAULT_UNTIL (2026-09-01) on purpose: with that
 # bound, Drake & Josh (2/51, written 2026-09-01/03) would be excluded on
 # evidence the half-repaired harvester produced.
+#
+# The window also has a lower bound. The first two harvest days measured
+# 12.7% (2026-05-23) and 9.7% (2026-05-24) coverage, against 84% to 99.8% on
+# every day from 2026-05-25 through 2026-06-10. Those were early-harvester
+# failures (before the late-May provider and matcher fixes, e.g. #202), not
+# content facts, and they wrongly excluded 8 shows.
+TRUSTED_SINCE = "2026-05-25"
 POISONED_SINCE = DEFAULT_CUTOFF
 REPAIRED_SINCE = "2026-09-05"
 MIN_SAMPLE_EPISODES = 20
@@ -147,6 +154,7 @@ def _utc_ts(day: str) -> float:
     return datetime.datetime.fromisoformat(day).replace(tzinfo=datetime.UTC).timestamp()
 
 
+_TRUSTED_SINCE_TS = _utc_ts(TRUSTED_SINCE)
 _POISONED_SINCE_TS = _utc_ts(POISONED_SINCE)
 _REPAIRED_SINCE_TS = _utc_ts(REPAIRED_SINCE)
 
@@ -170,8 +178,13 @@ def is_english(details: dict) -> bool:
 
 
 def is_healthy(attempted_at: float) -> bool:
-    """True when a coverage row was written by a harvester that measured fairly."""
-    return attempted_at < _POISONED_SINCE_TS or attempted_at >= _REPAIRED_SINCE_TS
+    """True when a coverage row was written by a harvester that measured fairly.
+
+    That is 2026-05-25 up to 2026-06-11, or from the repair onward.
+    """
+    return (
+        _TRUSTED_SINCE_TS <= attempted_at < _POISONED_SINCE_TS or attempted_at >= _REPAIRED_SINCE_TS
+    )
 
 
 def healthy_totals(rows: list[CoverageRow]) -> tuple[int, int]:
