@@ -5,6 +5,9 @@ or reads ~/.engram; the `cur` fixture lives in conftest.py.
 """
 
 import datetime
+import json
+import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -242,3 +245,89 @@ class TestBuildCuratedRows:
         details = {1: _details(1), 2: _details(2)}
         rows, _ = cur.build_curated_rows(existing, [1, 2], [2, 1], details, {})
         assert _ids(rows) == [1, 2]
+
+
+def _coverage_db(path: Path, rows):
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE subtitle_coverage (tmdb_id INTEGER NOT NULL, season INTEGER NOT NULL, "
+        "attempted_at REAL NOT NULL, total_episodes INTEGER NOT NULL, "
+        "covered_episodes INTEGER NOT NULL, coverage_ratio REAL NOT NULL, "
+        "PRIMARY KEY (tmdb_id, season))"
+    )
+    conn.executemany(
+        "INSERT INTO subtitle_coverage VALUES (?, ?, ?, ?, ?, ?)",
+        [(t, s, a, tot, cov, cov / tot) for t, s, a, tot, cov in rows],
+    )
+    conn.commit()
+    conn.close()
+
+
+@pytest.mark.unit
+class TestLoadCoverage:
+    def test_reads_rows_grouped_by_show(self, cur, tmp_path):
+        db = tmp_path / "snapshot.sqlite"
+        _coverage_db(
+            db, [(7842, 1, _ts("2026-05-01"), 48, 7), (7842, 2, _ts("2026-09-20"), 10, 10)]
+        )
+        coverage = cur.load_coverage(db)
+        assert sorted(coverage[7842]) == [
+            cur.CoverageRow(1, _ts("2026-05-01"), 48, 7),
+            cur.CoverageRow(2, _ts("2026-09-20"), 10, 10),
+        ]
+
+    def test_missing_snapshot_exits_without_creating_a_file(self, cur, tmp_path):
+        db = tmp_path / "absent.sqlite"
+        with pytest.raises(SystemExit):
+            cur.load_coverage(db)
+        assert not db.exists()
+
+    def test_opens_the_snapshot_read_only(self, cur, tmp_path, monkeypatch):
+        db = tmp_path / "snapshot.sqlite"
+        _coverage_db(db, [])
+        seen = {}
+        real_connect = sqlite3.connect
+
+        def spy(target, *args, **kwargs):
+            seen["target"], seen["uri"] = target, kwargs.get("uri")
+            return real_connect(target, *args, **kwargs)
+
+        monkeypatch.setattr(cur.sqlite3, "connect", spy)
+        cur.load_coverage(db)
+        assert seen["uri"] is True
+        assert seen["target"].endswith("?mode=ro")
+
+
+@pytest.mark.unit
+class TestLoadPublished:
+    def test_returns_numeric_show_ids(self, cur, tmp_path):
+        manifest = tmp_path / "manifest.json"
+        manifest.write_text(json.dumps({"shows": {"10": {}, "20": {}}}), encoding="utf-8")
+        assert cur.load_published(manifest) == [10, 20]
+
+    def test_empty_manifest_exits(self, cur, tmp_path):
+        manifest = tmp_path / "manifest.json"
+        manifest.write_text(json.dumps({"shows": {}}), encoding="utf-8")
+        with pytest.raises(SystemExit):
+            cur.load_published(manifest)
+
+
+@pytest.mark.unit
+class TestShowListFile:
+    def test_non_numeric_tmdb_id_in_the_current_list_exits(self, cur, tmp_path):
+        csv_path = tmp_path / "curated_shows.csv"
+        csv_path.write_text("rank,tmdb_id,name\n1,,Mystery Show\n", encoding="utf-8")
+        with pytest.raises(SystemExit):
+            cur.load_existing(csv_path)
+
+    def test_written_list_round_trips_through_the_build_script(self, cur, bsc, tmp_path):
+        rows = [cur._row(_details(2, "B"), tier=0), cur._row(_details(1, "A"), tier=1)]
+        out = tmp_path / "curated_shows.csv"
+        cur.write_csv(rows, out)
+
+        written = cur.load_existing(out)
+        assert [r["rank"] for r in written] == ["1", "2"]
+        assert list(written[0].keys()) == cur.CSV_FIELDS
+        # The harvester's own reader sees the same ids in the same order, with
+        # no TMDB lookup (every id is numeric).
+        assert bsc._read_show_list(str(out)) == [{"name": "B", "id": 2}, {"name": "A", "id": 1}]

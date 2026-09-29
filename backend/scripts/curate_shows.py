@@ -34,7 +34,11 @@ Usage (from backend/, with TMDB_API_KEY exported and a scratch DATABASE_URL):
         --tmdb-cache <scratch dir>/curation-tmdb-cache.sqlite
 """
 
+import csv
 import datetime
+import io
+import json
+import sqlite3
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -92,6 +96,8 @@ CSV_FIELDS = [
     "tier",
     "vote_count",
 ]
+
+_DEFAULT_CSV = Path(__file__).parent / "curated_shows.csv"
 
 # TMDB network names that only stream. A show whose EVERY network is in this
 # set is demoted (streaming originals get disc releases less often), never
@@ -314,3 +320,61 @@ def build_curated_rows(
     candidates.sort(key=lambda c: (c[0], c[1]))
     rows.extend(row for _, _, row in candidates)
     return rows, report
+
+
+def load_existing(path: Path) -> list[dict]:
+    """Read the current list. Every row must carry a numeric tmdb_id.
+
+    A name-only row would need a fuzzy TMDB lookup to curate; stop and let a
+    human resolve it rather than guess.
+    """
+    text = Path(path).read_text(encoding="utf-8-sig")
+    rows = list(csv.DictReader(io.StringIO(text)))
+    bad = [r.get("name") or "?" for r in rows if not (r.get("tmdb_id") or "").strip().isdigit()]
+    if bad:
+        raise SystemExit(f"{path}: rows without a numeric tmdb_id: {bad}")
+    return rows
+
+
+def load_published(manifest_path: Path) -> list[int]:
+    """Show ids in the published cache's manifest.json (v3 keys are tmdb ids)."""
+    data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    shows = data.get("shows") if isinstance(data, dict) else None
+    if not isinstance(shows, dict) or not shows:
+        raise SystemExit(f"{manifest_path}: no shows; is this the published manifest.json?")
+    return [int(key) for key in shows if str(key).isdigit()]
+
+
+def load_coverage(db_path: Path) -> dict[int, list[CoverageRow]]:
+    """Read ``subtitle_coverage`` from a snapshot, strictly read-only.
+
+    ``mode=ro`` means a wrong path fails instead of creating an empty DB, and
+    nothing here can write to the harvester's record.
+    """
+    db_path = Path(db_path)
+    if not db_path.exists():
+        raise SystemExit(f"coverage snapshot not found: {db_path}")
+    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        fetched = conn.execute(
+            "SELECT tmdb_id, season, attempted_at, total_episodes, covered_episodes "
+            "FROM subtitle_coverage"
+        ).fetchall()
+    finally:
+        conn.close()
+    coverage: dict[int, list[CoverageRow]] = {}
+    for tmdb_id, season, attempted_at, total, covered in fetched:
+        coverage.setdefault(int(tmdb_id), []).append(
+            CoverageRow(int(season), float(attempted_at), int(total), int(covered))
+        )
+    return coverage
+
+
+def write_csv(rows: list[dict], path: Path) -> None:
+    """Write the list with ``rank`` = harvest position (1..N), LF line endings."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS, lineterminator="\n")
+    writer.writeheader()
+    for rank, row in enumerate(rows, 1):
+        writer.writerow({**row, "rank": str(rank)})
+    Path(path).write_text(buf.getvalue(), encoding="utf-8", newline="")
