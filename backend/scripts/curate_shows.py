@@ -62,6 +62,52 @@ REPAIRED_SINCE = "2026-09-05"
 MIN_SAMPLE_EPISODES = 20
 MAX_EXCLUDED_RATIO = 0.20
 
+# Harvest-order tiers. Lower harvests first. TIER_RETAINED is the current list
+# (nearly all complete on disk, so it costs little quota) plus published
+# English shows missing from it.
+TIER_RETAINED = 0
+TIER_BROADCAST = 1
+TIER_STREAMING_ONLY = 2
+TIER_LAST = 3
+
+# TMDB genre ids ranked last. Animation (16) is deliberately absent: Archer,
+# Rick and Morty, South Park and Futurama are commonly ripped from disc.
+GENRE_KIDS = 10762
+GENRE_NEWS = 10763
+GENRE_REALITY = 10764
+GENRE_TALK = 10767
+LAST_TIER_GENRES = frozenset({GENRE_KIDS, GENRE_NEWS, GENRE_REALITY, GENRE_TALK})
+
+# TMDB network names that only stream. A show whose EVERY network is in this
+# set is demoted (streaming originals get disc releases less often), never
+# dropped. Names as TMDB spells them, observed in the 2026-09-26 discover walk.
+STREAMING_NETWORKS = frozenset(
+    {
+        "Amazon",
+        "Amazon Freevee",
+        "AMC+",
+        "Apple TV",
+        "Apple TV+",
+        "BritBox",
+        "CBS All Access",
+        "Crunchyroll",
+        "Disney+",
+        "Freevee",
+        "HBO Max",
+        "Hulu",
+        "Max",
+        "Netflix",
+        "Paramount+",
+        "Peacock",
+        "Prime Video",
+        "Shudder",
+        "The Roku Channel",
+        "Tubi",
+        "YouTube",
+        "YouTube Premium",
+    }
+)
+
 
 def _utc_ts(day: str) -> float:
     return datetime.datetime.fromisoformat(day).replace(tzinfo=datetime.UTC).timestamp()
@@ -113,3 +159,14 @@ def outcome_excluded(rows: list[CoverageRow]) -> bool:
     if total < MIN_SAMPLE_EPISODES:
         return False
     return covered / total < MAX_EXCLUDED_RATIO
+
+
+def priority_tier(details: dict) -> int:
+    """Harvest tier for a newly added show (an ordering prior, never a filter)."""
+    genres = {g.get("id") for g in details.get("genres") or []}
+    if genres & LAST_TIER_GENRES:
+        return TIER_LAST
+    networks = [n.get("name", "") for n in details.get("networks") or []]
+    if networks and all(n in STREAMING_NETWORKS for n in networks):
+        return TIER_STREAMING_ONLY
+    return TIER_BROADCAST

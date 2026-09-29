@@ -100,3 +100,38 @@ class TestOutcomeExcluded:
 
     def test_no_measurement_is_kept(self, cur):
         assert cur.outcome_excluded([]) is False
+
+
+@pytest.mark.unit
+class TestPriorityTier:
+    def test_adult_animation_on_cable_is_not_demoted(self, cur):
+        archer = _details(10283, "Archer", genres=(16, 35), networks=("FX", "FXX"))
+        assert cur.priority_tier(archer) == cur.TIER_BROADCAST
+
+    def test_rick_and_morty_is_not_demoted(self, cur):
+        rm = _details(
+            60625, "Rick and Morty", genres=(16, 35, 10765, 10759), networks=("Adult Swim",)
+        )
+        assert cur.priority_tier(rm) == cur.TIER_BROADCAST
+
+    @pytest.mark.parametrize("genre", [10762, 10764, 10767, 10763])
+    def test_kids_reality_talk_and_news_rank_last(self, cur, genre):
+        assert cur.priority_tier(_details(1, genres=(genre,))) == cur.TIER_LAST
+
+    def test_streaming_only_show_is_tier_two(self, cur):
+        assert cur.priority_tier(_details(1, networks=("Netflix",))) == cur.TIER_STREAMING_ONLY
+
+    def test_apple_tv_network_name_counts_as_streaming(self, cur):
+        # TMDB names the network "Apple TV", not "Apple TV+".
+        assert cur.priority_tier(_details(1, networks=("Apple TV",))) == cur.TIER_STREAMING_ONLY
+
+    def test_streaming_plus_broadcast_is_not_demoted(self, cur):
+        details = _details(1, networks=("Netflix", "ABC"))
+        assert cur.priority_tier(details) == cur.TIER_BROADCAST
+
+    def test_genre_outranks_network(self, cur):
+        kids_on_netflix = _details(1, genres=(10762,), networks=("Netflix",))
+        assert cur.priority_tier(kids_on_netflix) == cur.TIER_LAST
+
+    def test_unknown_networks_are_not_demoted(self, cur):
+        assert cur.priority_tier(_details(1, networks=())) == cur.TIER_BROADCAST
