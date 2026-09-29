@@ -34,8 +34,10 @@ Usage (from backend/, with TMDB_API_KEY exported and a scratch DATABASE_URL):
         --tmdb-cache <scratch dir>/curation-tmdb-cache.sqlite
 """
 
+import datetime
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 # Idempotent path insert so ``app.*`` imports whether run as
 # ``python scripts/curate_shows.py`` or loaded in a test.
@@ -43,7 +45,39 @@ _backend_dir = str(Path(__file__).parent.parent)
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
 
+from purge_poisoned_coverage import DEFAULT_CUTOFF
+
 ENGLISH = "en"
+
+# Outcome evidence is trusted only outside the poisoned era. It starts where
+# the purge script's window starts (the 2026-06-11 quota collapse). It ends
+# when the harvester repair was COMPLETE: #636 (a scraper outage is
+# unmeasurable, not zero) merged 2026-09-04 06:13 UTC, so rows written before
+# the next UTC midnight may still record an outage as a zero. This is later
+# than the purge script's DEFAULT_UNTIL (2026-09-01) on purpose: with that
+# bound, Drake & Josh (2/51, written 2026-09-01/03) would be excluded on
+# evidence the half-repaired harvester produced.
+POISONED_SINCE = DEFAULT_CUTOFF
+REPAIRED_SINCE = "2026-09-05"
+MIN_SAMPLE_EPISODES = 20
+MAX_EXCLUDED_RATIO = 0.20
+
+
+def _utc_ts(day: str) -> float:
+    return datetime.datetime.fromisoformat(day).replace(tzinfo=datetime.UTC).timestamp()
+
+
+_POISONED_SINCE_TS = _utc_ts(POISONED_SINCE)
+_REPAIRED_SINCE_TS = _utc_ts(REPAIRED_SINCE)
+
+
+class CoverageRow(NamedTuple):
+    """One ``subtitle_coverage`` row (a season's harvest outcome)."""
+
+    season: int
+    attempted_at: float
+    total_episodes: int
+    covered_episodes: int
 
 
 def is_english(details: dict) -> bool:
@@ -53,3 +87,29 @@ def is_english(details: dict) -> bool:
     real constraint. ``origin_country`` is deliberately ignored.
     """
     return (details.get("original_language") or "") == ENGLISH
+
+
+def is_healthy(attempted_at: float) -> bool:
+    """True when a coverage row was written by a harvester that measured fairly."""
+    return attempted_at < _POISONED_SINCE_TS or attempted_at >= _REPAIRED_SINCE_TS
+
+
+def healthy_totals(rows: list[CoverageRow]) -> tuple[int, int]:
+    """Return ``(covered, total)`` episodes across the healthy rows only."""
+    healthy = [r for r in rows if is_healthy(r.attempted_at)]
+    return (
+        sum(r.covered_episodes for r in healthy),
+        sum(r.total_episodes for r in healthy),
+    )
+
+
+def outcome_excluded(rows: list[CoverageRow]) -> bool:
+    """True when healthy evidence says the providers do not carry this show.
+
+    Needs at least MIN_SAMPLE_EPISODES healthy episodes; a thin or absent
+    sample keeps the show so the repaired harvester can measure it.
+    """
+    covered, total = healthy_totals(rows)
+    if total < MIN_SAMPLE_EPISODES:
+        return False
+    return covered / total < MAX_EXCLUDED_RATIO
