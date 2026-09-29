@@ -134,14 +134,32 @@ the night's download budget runs out, so row order is harvest priority.
   disk; a dropped row only stops further harvest spend on that show.
 
 Run it on the laptop against a read-only snapshot of the server's coverage DB, then
-commit the CSV through a PR. It calls TMDB only, never OpenSubtitles:
+commit the CSV through a PR. It calls TMDB only, never OpenSubtitles.
+
+First take a consistent, read-only snapshot of the server's coverage DB and fetch the published manifest (Git Bash; `SCRATCH` is any local scratch directory):
 
 ```bash
-# Snapshot + manifest: see docs/superpowers/plans/2026-09-26-subtitle-cache-english-curation.md, Task 7
-DATABASE_URL=sqlite+aiosqlite:///./engram-curation.db uv run python scripts/curate_shows.py \
-  --coverage-db <snapshot>.sqlite --published-manifest manifest.json \
-  --tmdb-cache <scratch>/curation-tmdb-cache.sqlite
+ssh jsakkos@192.168.1.122 'python3 - <<"EOF"
+import os, sqlite3
+src = sqlite3.connect("file:" + os.path.expanduser("~/.engram/cache/tmdb_cache.sqlite") + "?mode=ro", uri=True)
+dst = sqlite3.connect("/tmp/engram-coverage-snapshot.sqlite")
+src.backup(dst)
+dst.close(); src.close()
+EOF'
+scp jsakkos@192.168.1.122:/tmp/engram-coverage-snapshot.sqlite "$SCRATCH/server-tmdb-cache.sqlite"
+ssh jsakkos@192.168.1.122 'rm -f /tmp/engram-coverage-snapshot.sqlite'
+gh release download subtitle-cache-latest --repo Jsakkos/engram --pattern manifest.json --dir "$SCRATCH" --clobber
 ```
+
+Then run the curation:
+
+```bash
+DATABASE_URL=sqlite+aiosqlite:///./engram-curation.db uv run python scripts/curate_shows.py \
+  --coverage-db "$SCRATCH/server-tmdb-cache.sqlite" --published-manifest "$SCRATCH/manifest.json" \
+  --tmdb-cache "$SCRATCH/curation-tmdb-cache.sqlite"
+```
+
+`TMDB_API_KEY` must be exported in your shell; the scratch `DATABASE_URL` keeps the bootstrapped key out of `engram.db`. Delete `engram-curation.db` afterwards.
 
 Then roll it out with "Updating the show list" in `subtitle-cache-server.md`.
 
