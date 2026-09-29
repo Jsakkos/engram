@@ -115,6 +115,36 @@ When a target id dir already exists (e.g. a show that was re-harvested from scra
 the switch), the two are **merged**: episodes are unioned and, on a filename collision,
 the larger SRT is kept. The migration is idempotent — a second run finds nothing to move.
 
+## Curating the show list
+
+`scripts/curated_shows.csv` is the list the harvester walks, **top to bottom**, until
+the night's download budget runs out, so row order is harvest priority.
+`scripts/curate_shows.py` regenerates it:
+
+- **English only**, by TMDB `original_language`. Never `origin_country`: Telemundo
+  shows are origin US and Spanish-language.
+- **Outcome exclusion** only on healthy-window coverage (2026-05-25 up to 2026-06-11, or
+  from 2026-09-05 when the harvester repair was complete), with at least 20 episodes
+  measured and under 20% covered. Anything thinner stays and gets measured.
+- **Order:** the current list first (mostly complete on disk), then published English
+  shows missing from it, then new shows by tier: broadcast/cable, streaming-only,
+  then kids/reality/talk/news. Genre is a priority, never a filter, so adult
+  animation (Archer, South Park) stays in the body of the list.
+- **Dropping a row never shrinks the published cache.** The packer ships everything on
+  disk; a dropped row only stops further harvest spend on that show.
+
+Run it on the laptop against a read-only snapshot of the server's coverage DB, then
+commit the CSV through a PR. It calls TMDB only, never OpenSubtitles:
+
+```bash
+# Snapshot + manifest: see docs/superpowers/plans/2026-09-26-subtitle-cache-english-curation.md, Task 7
+DATABASE_URL=sqlite+aiosqlite:///./engram-curation.db uv run python scripts/curate_shows.py \
+  --coverage-db <snapshot>.sqlite --published-manifest manifest.json \
+  --tmdb-cache <scratch>/curation-tmdb-cache.sqlite
+```
+
+Then roll it out with "Updating the show list" in `subtitle-cache-server.md`.
+
 ## Cache format versioning
 
 The published tarball includes a [`manifest.json`](https://github.com/Jsakkos/engram/blob/main/backend/scripts/build_subtitle_cache.py) with `cache_format_version` (a string defined in `backend/app/matcher/vectorizer_config.py` — currently `"2"`, which stores uint16 hashed counts and applies TF-IDF at load time; `"1"` shipped pre-computed float64 TF-IDF rows). The backend reads this on download and rejects incompatible caches, falling back to scraping. The check happens in two places:

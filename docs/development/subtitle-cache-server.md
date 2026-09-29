@@ -198,6 +198,38 @@ systemctl --user list-timers engram-subtitle-cache.timer
 Expected: a `NEXT` column showing tomorrow at roughly 02:00 UTC, plus the
 timer's randomized delay.
 
+## Updating the show list
+
+The server's checkout is **not** auto-updated: the timer reads
+`~/engram/backend/scripts/curated_shows.csv` from whatever commit is checked out. After a
+curated-list PR merges, update it by hand, between runs (the timer fires at 02:00 UTC
+plus up to 15 minutes; its harvest and pack take about 90 minutes).
+
+```bash
+ssh jsakkos@192.168.1.122
+systemctl --user is-active engram-subtitle-cache.service   # expect: inactive
+cd ~/engram && git fetch origin && git checkout main && git pull --ff-only
+cd backend && uv sync --no-install-project
+```
+
+The packer resolves show dirs through TMDB with the key already stored in the server's
+`backend/engram.db` (every harvest bootstraps it from the EnvironmentFile), so no secrets
+need sourcing. Dry pack and guard, holding the harvest lock so nothing can overlap (the packer
+rebuilds `~/.engram/cache/precomputed`, which the harvest also writes):
+
+```bash
+mkdir -p ~/.engram/curation-dry
+flock -n ~/.engram/harvest/.harvest.lock \
+  uv run python scripts/pack_subtitle_cache.py --output ~/.engram/curation-dry/engram-subtitle-cache.tar.gz
+uv run python scripts/publish_guard.py --candidate ~/.engram/curation-dry/manifest.json \
+  --cache-tag subtitle-cache-latest --repo Jsakkos/engram
+echo "guard exit: $?"   # expect 0; the dry artifact is NOT uploaded
+rm -rf ~/.engram/curation-dry
+```
+
+The next nightly run then logs `Loaded <N> shows` with the new count. With new work
+on the list, a budget halt (`harvest.sh` exit 10) is the expected, healthy outcome.
+
 ## Monitoring
 
 | Question | Command |
