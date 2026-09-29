@@ -36,6 +36,8 @@ Usage (from backend/, with TMDB_API_KEY exported and a scratch DATABASE_URL):
 
 import datetime
 import sys
+from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
@@ -77,6 +79,19 @@ GENRE_NEWS = 10763
 GENRE_REALITY = 10764
 GENRE_TALK = 10767
 LAST_TIER_GENRES = frozenset({GENRE_KIDS, GENRE_NEWS, GENRE_REALITY, GENRE_TALK})
+
+CSV_FIELDS = [
+    "rank",
+    "tmdb_id",
+    "name",
+    "year",
+    "origin_country",
+    "networks",
+    "discdb_discs",
+    "original_language",
+    "tier",
+    "vote_count",
+]
 
 # TMDB network names that only stream. A show whose EVERY network is in this
 # set is demoted (streaming originals get disc releases less often), never
@@ -170,3 +185,132 @@ def priority_tier(details: dict) -> int:
     if networks and all(n in STREAMING_NETWORKS for n in networks):
         return TIER_STREAMING_ONLY
     return TIER_BROADCAST
+
+
+@dataclass
+class CurationReport:
+    """What changed, by tmdb_id, for the run summary and the PR description."""
+
+    retained: int = 0
+    kept_unverified: list[int] = field(default_factory=list)
+    dropped_language: list[int] = field(default_factory=list)
+    excluded_outcome: list[int] = field(default_factory=list)
+    added_published: list[int] = field(default_factory=list)
+    added_by_tier: Counter = field(default_factory=Counter)
+    skipped_no_details: list[int] = field(default_factory=list)
+
+
+def _row(details: dict, *, tier: int, discdb_discs: str = "") -> dict:
+    """A CSV row from a TMDB details payload. ``rank`` is filled at write time."""
+    return {
+        "rank": "",
+        "tmdb_id": str(details["id"]),
+        "name": details.get("name") or str(details["id"]),
+        "year": (details.get("first_air_date") or "")[:4],
+        "origin_country": "/".join(details.get("origin_country") or []),
+        "networks": "; ".join(n.get("name", "") for n in details.get("networks") or []),
+        "discdb_discs": discdb_discs,
+        "original_language": details.get("original_language") or "",
+        "tier": str(tier),
+        "vote_count": str(details.get("vote_count") or 0),
+    }
+
+
+def _verbatim_row(existing_row: dict) -> dict:
+    """Carry a current-list row forward unchanged (TMDB could not describe it)."""
+    row = {key: (existing_row.get(key) or "") for key in CSV_FIELDS}
+    row["tier"] = str(TIER_RETAINED)
+    return row
+
+
+def _exclusion(tid: int, details: dict, coverage_by_id: dict) -> str | None:
+    """``"language"``, ``"outcome"``, or None when the show belongs on the list."""
+    if not is_english(details):
+        return "language"
+    if outcome_excluded(coverage_by_id.get(tid, [])):
+        return "outcome"
+    return None
+
+
+def build_curated_rows(
+    existing: list[dict],
+    published_ids: list[int],
+    discovered_ids: list[int],
+    details_by_id: dict[int, dict],
+    coverage_by_id: dict[int, list[CoverageRow]],
+) -> tuple[list[dict], CurationReport]:
+    """Assemble the new list in harvest order.
+
+    1. Current rows, in their current order, minus non-English and
+       outcome-excluded shows. A row TMDB could not describe is kept verbatim.
+    2. Published shows missing from the list (English, not excluded), most
+       voted first. Tier 0: they are mostly complete on disk.
+    3. Discovered candidates, by tier, then by discovery (vote-count) order.
+
+    A tmdb_id appears once, at its first position.
+    """
+    report = CurationReport()
+    rows: list[dict] = []
+    seen: set[int] = set()
+
+    for existing_row in existing:
+        tid = int(existing_row["tmdb_id"])
+        if tid in seen:
+            continue
+        seen.add(tid)
+        details = details_by_id.get(tid)
+        if details is None:
+            report.kept_unverified.append(tid)
+            rows.append(_verbatim_row(existing_row))
+            continue
+        reason = _exclusion(tid, details, coverage_by_id)
+        if reason == "language":
+            report.dropped_language.append(tid)
+        elif reason == "outcome":
+            report.excluded_outcome.append(tid)
+        else:
+            report.retained += 1
+            rows.append(
+                _row(
+                    details,
+                    tier=TIER_RETAINED,
+                    discdb_discs=existing_row.get("discdb_discs") or "",
+                )
+            )
+
+    published_new = [tid for tid in published_ids if tid not in seen]
+    seen.update(published_new)
+    report.skipped_no_details.extend(tid for tid in published_new if tid not in details_by_id)
+    described = [tid for tid in published_new if tid in details_by_id]
+    described.sort(key=lambda tid: -(details_by_id[tid].get("vote_count") or 0))
+    for tid in described:
+        reason = _exclusion(tid, details_by_id[tid], coverage_by_id)
+        if reason == "outcome":
+            report.excluded_outcome.append(tid)
+        if reason is not None:
+            # A published non-English show was never on the list; not a drop.
+            continue
+        report.added_published.append(tid)
+        rows.append(_row(details_by_id[tid], tier=TIER_RETAINED))
+
+    candidates: list[tuple[int, int, dict]] = []
+    for order, tid in enumerate(discovered_ids):
+        if tid in seen:
+            continue
+        seen.add(tid)
+        details = details_by_id.get(tid)
+        if details is None:
+            report.skipped_no_details.append(tid)
+            continue
+        reason = _exclusion(tid, details, coverage_by_id)
+        if reason == "outcome":
+            report.excluded_outcome.append(tid)
+        if reason is not None:
+            continue
+        tier = priority_tier(details)
+        report.added_by_tier[tier] += 1
+        candidates.append((tier, order, _row(details, tier=tier)))
+
+    candidates.sort(key=lambda c: (c[0], c[1]))
+    rows.extend(row for _, _, row in candidates)
+    return rows, report
