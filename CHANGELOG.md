@@ -31,6 +31,13 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **Enabling GPU acceleration no longer looks like it silently resets.** The settings
+  panel had a separate NVIDIA EULA checkbox that read as "turn CUDA on", but ticking it
+  saved nothing and started no download. The "Download & enable" button is now the only
+  control. The panel and the dashboard badge also tell "enabled, restart to apply" and
+  "enabled, but the CUDA libraries failed to load" apart from "not enabled", where before
+  all three offered "Enable" again. The backend now logs when a download starts, so a
+  log shows whether it ever began. (#694)
 - **Long-upgraded databases no longer get stuck partway through their schema
   migrations.** On a database first created by an older release, one migration
   tried to drop a column that Engram's startup had already removed, failed, and

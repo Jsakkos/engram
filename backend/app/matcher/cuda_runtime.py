@@ -441,10 +441,17 @@ def start_background_download(on_done=None) -> bool:
     global _download_thread
     with _state_lock:
         if _download_state["state"] in ("downloading", "installing"):
+            logger.info("CUDA runtime download already in progress; not starting another")
             return False
         _download_state.update(
             {"state": "downloading", "downloaded": 0, "total": download_size_bytes(), "error": None}
         )
+    # Without this line a log could not tell "never clicked" from "started" (#694): a
+    # successful start was silent, and only a failure or completion was logged.
+    logger.info(
+        f"Starting CUDA runtime download ({download_size_bytes() / 1e9:.1f} GB) "
+        f"-> {cuda_cache_dir()}"
+    )
 
     def _run():
         def _progress(done: int, total: int) -> None:

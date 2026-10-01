@@ -38,11 +38,24 @@ GPU_WORKER_CAP = 4
 # badge, and the model loader from disagreeing — they all read detect_asr_device().
 _asr_device_override: str | None = None
 
+# Why startup stayed on CPU although GPU acceleration was enabled, or None when it was not
+# enabled at startup (or the GPU came up). Lets /api/asr-status tell "enabled but the libs
+# failed to load" apart from "not enabled", which otherwise look identical (#694).
+#   "runtime_missing"  - flag on, but no complete CUDA runtime on disk
+#   "register_failed"  - runtime on disk, but its libraries could not be loaded
+_gpu_fallback_reason: str | None = None
 
-def set_asr_device(device: str | None) -> None:
+
+def set_asr_device(device: str | None, *, gpu_fallback_reason: str | None = None) -> None:
     """Pin the effective ASR device for the rest of the process (``None`` re-enables probing)."""
-    global _asr_device_override
+    global _asr_device_override, _gpu_fallback_reason
     _asr_device_override = device
+    _gpu_fallback_reason = gpu_fallback_reason
+
+
+def gpu_fallback_reason() -> str | None:
+    """Why an enabled GPU fell back to CPU at startup (see ``_gpu_fallback_reason``)."""
+    return _gpu_fallback_reason
 
 
 def gpu_detected() -> bool:

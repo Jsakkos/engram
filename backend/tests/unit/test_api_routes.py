@@ -610,6 +610,28 @@ class TestAsrStatusEndpoint:
         assert "max_concurrent_matches" in body
         assert "model" in body
 
+    async def test_asr_status_reports_enabled_gpu_that_fell_back_to_cpu(self, client):
+        """An enabled flag whose libs failed at startup is its own state, not "enable" (#694)."""
+        from unittest.mock import patch
+
+        from app.matcher import asr_models
+
+        await _seed_config(enable_gpu_acceleration=True)
+        asr_models.set_asr_device("cpu", gpu_fallback_reason="register_failed")
+        try:
+            with (
+                patch("app.matcher.asr_models.gpu_detected", return_value=True),
+                patch("app.matcher.cuda_runtime.is_supported_platform", return_value=True),
+                patch("app.matcher.cuda_runtime.is_cuda_runtime_installed", return_value=True),
+            ):
+                resp = await client.get("/api/asr-status")
+        finally:
+            asr_models.set_asr_device(None)
+        body = resp.json()
+        assert body["gpu_enabled"] is True
+        assert body["gpu_fallback_reason"] == "register_failed"
+        assert body["gpu_state"] == "enabled_not_active"
+
 
 # ---------------------------------------------------------------------------
 # Manual Subtitle Import
