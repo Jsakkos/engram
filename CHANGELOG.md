@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-10-01
+
+_Highlights: a bigger English-only subtitle cache (about 1,380 shows), one-click GPU acceleration, the dashboard on React 19, and a fix for databases stuck partway through schema migrations._
+
 ### Removed
 
 - **Unused frontend dependencies.** 39 packages left over from the original UI
