@@ -16,6 +16,10 @@ export type GpuState =
   | "active"
   | "available_not_enabled"
   | "available_not_installed"
+  // Enabled since this backend started; the libraries are in place, only a restart is missing.
+  | "restart_pending"
+  // Enabled, but startup could not load the GPU and fell back to CPU (see gpu_fallback_reason).
+  | "enabled_not_active"
   | "downloading"
   | "installing"
   | "error"
@@ -34,6 +38,7 @@ export type AsrStatus = {
   gpu_runtime_installed: boolean;
   gpu_download_size_bytes: number;
   gpu_download: GpuDownload;
+  gpu_fallback_reason?: "runtime_missing" | "register_failed" | null;
   gpu_state: GpuState;
 };
 

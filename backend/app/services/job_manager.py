@@ -376,18 +376,26 @@ class JobManager:
             resolve_asr_runtime,
             set_asr_device,
         )
-        from app.matcher.cuda_runtime import register_cuda_runtime
+        from app.matcher.cuda_runtime import is_cuda_runtime_installed, register_cuda_runtime
 
         asr_device = "cpu"
+        gpu_fallback = None
         if config.enable_gpu_acceleration and gpu_detected():
             if register_cuda_runtime():
                 asr_device = "cuda"
+            elif is_cuda_runtime_installed():
+                gpu_fallback = "register_failed"
+                logger.warning(
+                    "GPU acceleration is enabled and the CUDA runtime is installed, but its "
+                    "libraries could not be loaded; falling back to CPU."
+                )
             else:
+                gpu_fallback = "runtime_missing"
                 logger.warning(
                     "GPU acceleration is enabled but the CUDA runtime libraries are not "
                     "installed; falling back to CPU. Re-enable GPU in Settings to download them."
                 )
-        set_asr_device(asr_device)
+        set_asr_device(asr_device, gpu_fallback_reason=gpu_fallback)
 
         # Initialize matching concurrency limiter from REAL ASR capacity, so the
         # dashboard's MATCHING count can't exceed what can actually be transcribing.

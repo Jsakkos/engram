@@ -5024,7 +5024,15 @@ async def get_update_status():
     return update_checker.get_status()
 
 
-def _gpu_state(*, device: str, detected: bool, installed: bool, downloading: dict) -> str:
+def _gpu_state(
+    *,
+    device: str,
+    detected: bool,
+    installed: bool,
+    downloading: dict,
+    enabled: bool = False,
+    fallback_reason: str | None = None,
+) -> str:
     """Collapse the GPU situation into one badge state for the dashboard/settings UI."""
     from app.matcher.cuda_runtime import is_supported_platform
 
@@ -5035,10 +5043,22 @@ def _gpu_state(*, device: str, detected: bool, installed: bool, downloading: dic
         return "active"
     if not is_supported_platform():
         return "unsupported_os"  # macOS / non-NVIDIA arch — CTranslate2 has no GPU path
-    if detected:
-        # NVIDIA GPU present but not running on it: either not enabled or libs not downloaded.
-        return "available_not_installed" if not installed else "available_not_enabled"
-    return "unavailable"  # supported OS but no NVIDIA GPU
+    if not detected:
+        return "unavailable"  # supported OS but no NVIDIA GPU
+    if enabled:
+        # The reason is pinned at startup, so "runtime_missing" goes stale once the user
+        # downloads the libraries in-session: by then only a restart is missing.
+        if fallback_reason == "runtime_missing" and installed:
+            return "restart_pending"
+        # Startup tried the GPU and fell back: say so, rather than offering "Enable" again
+        # for a setting that is already on (#694).
+        if fallback_reason is not None:
+            return "enabled_not_active"
+        # Enabled since startup with the libraries in place: only a restart is missing.
+        if installed:
+            return "restart_pending"
+    # NVIDIA GPU present but not running on it: either not enabled or libs not downloaded.
+    return "available_not_installed" if not installed else "available_not_enabled"
 
 
 @router.get("/asr-status")
@@ -5049,7 +5069,12 @@ async def get_asr_status():
     can't claim CUDA while silently running on CPU. The ``gpu_*`` fields drive the opt-in
     download toggle in settings.
     """
-    from app.matcher.asr_models import detect_asr_device, gpu_detected, resolve_asr_runtime
+    from app.matcher.asr_models import (
+        detect_asr_device,
+        gpu_detected,
+        gpu_fallback_reason,
+        resolve_asr_runtime,
+    )
     from app.matcher.cuda_runtime import (
         download_size_bytes,
         get_download_state,
@@ -5063,6 +5088,7 @@ async def get_asr_status():
     detected = gpu_detected()
     installed = is_cuda_runtime_installed()
     download = get_download_state()
+    fallback = gpu_fallback_reason() if device != "cuda" else None
     return {
         "device": device,
         "compute_type": runtime.compute_type,
@@ -5076,8 +5102,14 @@ async def get_asr_status():
         "gpu_runtime_installed": installed,
         "gpu_download_size_bytes": download_size_bytes(),
         "gpu_download": download,
+        "gpu_fallback_reason": fallback,
         "gpu_state": _gpu_state(
-            device=device, detected=detected, installed=installed, downloading=download
+            device=device,
+            detected=detected,
+            installed=installed,
+            downloading=download,
+            enabled=config.enable_gpu_acceleration,
+            fallback_reason=fallback,
         ),
     }
 
@@ -5093,6 +5125,7 @@ async def _finish_gpu_enable(success: bool, error: str | None) -> None:
         # the UI must still learn the download finished.
         try:
             await update_db_config(enable_gpu_acceleration=True)
+            logger.info("GPU acceleration enabled after CUDA runtime download; restart to apply")
         except Exception:
             logger.error("Failed to persist enable_gpu_acceleration flag", exc_info=True)
     await event_broadcaster.broadcast_gpu_status(get_download_state())
@@ -5117,18 +5150,22 @@ async def enable_gpu_acceleration():
     from app.services.config_service import update_config as update_db_config
     from app.services.job_manager import event_broadcaster
 
+    logger.info("GPU acceleration enable requested")
     if not is_supported_platform():
+        logger.warning("GPU enable rejected: platform has no CUDA runtime asset")
         raise HTTPException(
             status_code=400,
             detail="GPU acceleration requires an NVIDIA GPU on Windows or Linux "
             "(CTranslate2 has no GPU path on macOS).",
         )
     if not gpu_detected():
+        logger.warning("GPU enable rejected: no NVIDIA GPU visible to CTranslate2")
         raise HTTPException(status_code=400, detail="No NVIDIA GPU detected on this machine.")
 
     # Already have the libraries (downloaded earlier, or dev `uv sync -E gpu`): just arm it.
     if is_cuda_runtime_installed():
         await update_db_config(enable_gpu_acceleration=True)
+        logger.info("GPU acceleration enabled (CUDA runtime already installed); restart to apply")
         return {"status": "ready", "restart_required": True, "gpu_download": get_download_state()}
 
     def _on_done(success: bool, error: str | None) -> None:
