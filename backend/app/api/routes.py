@@ -5046,6 +5046,10 @@ def _gpu_state(
     if not detected:
         return "unavailable"  # supported OS but no NVIDIA GPU
     if enabled:
+        # The reason is pinned at startup, so "runtime_missing" goes stale once the user
+        # downloads the libraries in-session: by then only a restart is missing.
+        if fallback_reason == "runtime_missing" and installed:
+            return "restart_pending"
         # Startup tried the GPU and fell back: say so, rather than offering "Enable" again
         # for a setting that is already on (#694).
         if fallback_reason is not None:

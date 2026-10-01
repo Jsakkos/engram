@@ -77,6 +77,12 @@ def test_enabled_but_libs_missing_at_startup():
     assert _enabled_state("cpu", True, False, fallback="runtime_missing") == "enabled_not_active"
 
 
+def test_missing_runtime_downloaded_in_session_becomes_restart_pending():
+    # Startup pinned "runtime_missing"; the user then re-downloads from the panel. Once the
+    # libs are on disk the stale reason must not keep reporting a failure.
+    assert _enabled_state("cpu", True, True, fallback="runtime_missing") == "restart_pending"
+
+
 def test_enabled_without_libs_and_no_startup_attempt_offers_download():
     # Flag on but libs gone mid-run: the only useful action is the download.
     assert _enabled_state("cpu", True, False) == "available_not_installed"
