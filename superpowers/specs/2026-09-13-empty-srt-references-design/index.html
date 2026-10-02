@@ -1,0 +1,1910 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-09-13-empty-srt-references-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Empty subtitle references and 3-in-1 conjoined tracks - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#empty-subtitle-references-and-3-in-1-conjoined-tracks" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Empty subtitle references and 3-in-1 conjoined tracks
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root-causes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root causes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Root causes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-the-srt-parser-silently-drops-valid-looking-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The SRT parser silently drops valid-looking files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-manual-import-produces-the-doubled-shape-on-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Manual import produces the doubled shape on Windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-validation-and-matching-accept-a-degenerate-corpus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Validation and matching accept a degenerate corpus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-3-in-1-tracks-cannot-be-confirmed-at-default-depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 3-in-1 tracks cannot be confirmed at default depth
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-line-stream-srt-parser-one-implementation-both-readers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A. Line-stream SRT parser (one implementation, both readers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-manual-import-writes-bytes-exactly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B. Manual import writes bytes exactly
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-validity-means-has-cues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C. Validity means "has cues"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d-unusable-reference-guard-in-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D. Unusable-reference guard in matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e-confirmable-3-in-1-tracks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E. Confirmable 3-in-1 tracks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invariants-preserved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invariants preserved
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#follow-up-pr-2-combined-filenames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-up: PR 2 (combined filenames)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-facing-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-facing notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="empty-subtitle-references-and-3-in-1-conjoined-tracks">Empty subtitle references and 3-in-1 conjoined tracks</h1>
+<p><strong>Status:</strong> approved design, not yet implemented
+<strong>Scope:</strong> bug-fix PR 1 of 2. PR 2 (combined <code>S01E01-E03</code> filenames) is a separate spec that
+builds on the approach in #614; see "Follow-up: PR 2" below.</p>
+<h2 id="problem">Problem</h2>
+<p>A user ripped a Dexter's Laboratory season 1 DVD (13 tracks, each ~22 min holding three
+~7 min TMDB segments). Every track matched <code>S01E01</code> with confidence 0.86 to 1.0 and parked in
+review with "runtime suggests about 2 episodes joined together, but the audio match could not
+confirm it (single_episode)". A Looney Tunes set (also 3-in-1) behaved the same way.</p>
+<p>Evidence from the diagnostics bundle (job 28, v0.35.1, Windows 10, frozen build):</p>
+<ul>
+<li>37 reference SRTs were found for season 1, but the TF-IDF corpus log shows
+  <code>S01E01 (6289 chars)</code> and <strong>0 chars for all 36 others</strong>.</li>
+<li>Every chunk on every track therefore voted for the only non-empty reference:
+  <code>runs: [{code: S01E01, first_start: 90, last_start: 1215, votes: 10}]</code>.</li>
+<li><code>select_chunk_vote</code> treats a lone scoring candidate as a clear win (runner-up score 0.0), so
+  the confidence calibrated to 1.0 on a wrong answer.</li>
+<li>The subtitle step finished in 5 seconds: the broken files were reused from
+  <code>~/.engram/cache/data/4229</code>, because <code>is_valid_srt_file</code> only checks for <code>--&gt;</code> in the header.</li>
+<li>The runtime hint reported ~2 conjoined episodes because <code>_conjoined_episode_count</code> returns the
+  smallest <code>n</code> that fits: 7+7=14 min, with the -5/+10 window, already admits a 22 min track.</li>
+</ul>
+<h2 id="root-causes">Root causes</h2>
+<h3 id="1-the-srt-parser-silently-drops-valid-looking-files">1. The SRT parser silently drops valid-looking files</h3>
+<p><code>SubtitleReader.extract_subtitle_chunk</code> (in both <code>app/matcher/episode_identification.py</code> and
+<code>app/matcher/srt_utils.py</code>) splits on <code>"\n\n"</code> and requires the timestamp on <code>lines[1]</code> of each
+block. Reproduced on Windows against the real reader:</p>
+<table>
+<thead>
+<tr>
+<th>File shape</th>
+<th><code>is_valid_srt_file</code></th>
+<th><code>get_full_text</code> chars</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Clean LF</td>
+<td>True</td>
+<td>44</td>
+</tr>
+<tr>
+<td>CRLF</td>
+<td>True</td>
+<td>44</td>
+</tr>
+<tr>
+<td>Whitespace-only separator lines</td>
+<td>True</td>
+<td>72</td>
+</tr>
+<tr>
+<td><code>\r\r\n</code> line doubling</td>
+<td>True</td>
+<td><strong>0</strong></td>
+</tr>
+<tr>
+<td>CRLF content written through a Windows text-mode write</td>
+<td>True</td>
+<td><strong>0</strong></td>
+</tr>
+<tr>
+<td>No cue index lines (timestamp is <code>lines[0]</code>)</td>
+<td>True</td>
+<td><strong>0</strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>\r\r\n</code> reads back through universal newlines as a blank line after every line, so every block
+fragments into sub-3-line pieces and is skipped. No exception is raised, so nothing is logged.</p>
+<h3 id="2-manual-import-produces-the-doubled-shape-on-windows">2. Manual import produces the doubled shape on Windows</h3>
+<p><code>app/matcher/manual_subtitle_import.py</code> <code>commit_files</code> writes
+<code>dest_path.write_text(f.content, encoding="utf-8")</code> without <code>newline=""</code>. Uploaded text that keeps
+CRLF becomes <code>\r\r\n</code> on disk on Windows. Addic7ed and TVsubtitles clients use <code>write_bytes</code> and
+are not affected by this writer bug. The bundle cannot show which route produced this user's files;
+the parser fix covers every route regardless.</p>
+<h3 id="3-validation-and-matching-accept-a-degenerate-corpus">3. Validation and matching accept a degenerate corpus</h3>
+<ul>
+<li><code>is_valid_srt_file</code> / <code>is_valid_srt_content</code> sniff for <code>--&gt;</code> only, so a file that yields zero
+  cues is cached and reused forever.</li>
+<li><code>TfidfMatcher.prepare</code> fits on empty strings without complaint, and no floor exists on the number
+  of usable references before a match is accepted.</li>
+</ul>
+<h3 id="4-3-in-1-tracks-cannot-be-confirmed-at-default-depth">4. 3-in-1 tracks cannot be confirmed at default depth</h3>
+<p><code>decompose_vote_runs</code> rejects with <code>insufficient_scan_depth</code> when
+<code>total_scan_points &lt;= MIN_SCAN_POINTS_PER_RUN * len(runs) + 1</code>. For three runs that is <code>10 &lt;= 10</code>
+at the default 10 scan points, so a 3-in-1 track is never confirmed even with a healthy corpus.
+The module docstring already notes that lattice level 19 supports three runs. #622 shipped scoped
+to 2-in-1 content.</p>
+<h2 id="design">Design</h2>
+<h3 id="a-line-stream-srt-parser-one-implementation-both-readers">A. Line-stream SRT parser (one implementation, both readers)</h3>
+<p>Replace the <code>"\n\n"</code> split and the <code>lines[1]</code> requirement with a block parser that tolerates the
+damaged layouts:</p>
+<ul>
+<li>Normalize <code>\r\n</code> and lone <code>\r</code> to <code>\n</code>, strip a leading BOM, and strip each line.</li>
+<li>Measure the file's intra-cue gap: for each valid timing line followed by text (not a bare
+  number, not another timestamp-like <code>--&gt;</code> line), count the blank lines between them. Take the
+  most common count, ties to the larger (0 normal, 1 doubled, 2 tripled). A run of blank lines
+  longer than that gap separates cues. The majority decides so one odd cue, header, or trailer
+  cannot flip the whole file; ties go wide because a too-narrow gap empties every cue, while a
+  too-wide gap still splits cues on their timing lines and only lets a timing-less stray line join
+  the cue before it. (Two earlier rules failed code review: a global "no two adjacent non-blank
+  lines" flag collapsed a doubled file that had one single-spaced header or tripled endings, and
+  the minimum gap let one single-spaced cue empty a doubled file. A pure "ignore blank lines" parse
+  was also rejected: it would merge a trailing timing-less junk block into the last real cue, and
+  the watermark filter would then drop that whole cue.)</li>
+<li>Within a block, the first line matching the timing pattern
+  (<code>H:M:S[,.]mmm --&gt; H:M:S[,.]mmm</code> with 1 to 3 digits per field, because real cached files
+  write timings such as <code>00:00:0,616</code>, <code>446:12:46,016</code>, and <code>00:100:02,227</code>; the pre-branch
+  parser read their dialogue, and dropping the cue would make a readable file invalid; spaces
+  around the arrow optional) opens a cue; lines
+  before it (the index, or stray text) are ignored and lines after it are the cue's text. A block
+  with no timing line is ignored, as today.</li>
+<li>A further timing line inside the same block (a missing blank separator) opens another cue, and a
+  purely numeric line directly before it is dropped as that cue's index.</li>
+<li>A line that starts like a timestamp and contains <code>--&gt;</code> but does not match the timing pattern
+  drops that cue only. Dialogue that merely contains <code>--&gt;</code> is kept as text.</li>
+</ul>
+<p>Expose the parse as one function that yields <code>(start, end, text)</code> cues. Rebuild both
+<code>extract_subtitle_chunk</code> implementations and <code>SubtitleReader.get_duration</code> on it, so the two
+reader copies cannot drift again. The watermark filter (<code>_is_watermark_block</code>) keeps its current
+call site and semantics.</p>
+<p>Known trade-off: only in a block that is missing its blank separator, a dialogue line consisting
+of just a number, directly before the next timing line, is taken as that cue's index. It loses one
+line of text, never a cue.</p>
+<p>Further limitations accepted in code review, each confined to a minority of cues in an unusual
+layout:</p>
+<ul>
+<li>In a normally spaced file, a blank line inside a cue's text truncates that cue, and a blank line
+  between a cue's timing line and its text empties that cue.</li>
+<li>In a doubled file, a trailer written with single line endings directly after the last cue joins
+  that cue's text.</li>
+<li>When most cues in a file are single-spaced, a doubled minority of cues lose their text.</li>
+<li>A gap tie in a normally spaced file resolves wide, so a timing-less junk line between cues can
+  join the cue before it.</li>
+<li>In a file without index lines whose gap resolves to 1 or more, a cue whose last line is a bare
+  number loses that line.</li>
+<li>A cue with an absurd end time (for example <code>00:00:02,000 --&gt; 446:12:46,016</code>, a tvsubtitles defect in
+  Malcolm in the Middle S02) keeps that end time. Only per-window text extraction and the reported
+  reference duration see it. Neither affects disc matching: the matcher compares against
+  full-episode text, and no score reads the reference duration (<code>MatchCoverage.episode_coverage</code>
+  is unused). The only per-window reader is <code>MultiSegmentMatcher</code>, reached from
+  <code>app/matcher/core/engine.py</code> (imported by nothing) and from <code>testing_service.match_episodes</code>,
+  which only the manual <code>/api/test/match</code> endpoint calls; neither the disc pipeline nor the
+  frontend uses that endpoint. Capping cue spans was considered and rejected for that reason.</li>
+<li>A subtitle whose cues are only bracketed sound effects (Primal: <code>[fly buzzing]</code>, <code>[roars]</code>) stays
+  valid even though the matcher's cleaning strips brackets and it contributes no text. It is a
+  genuine subtitle of a dialogue-free show; rejecting it would delete and re-download the identical
+  file on every pass, spending provider quota for nothing. The matcher drops it as an empty
+  reference instead.</li>
+</ul>
+<h3 id="b-manual-import-writes-bytes-exactly">B. Manual import writes bytes exactly</h3>
+<p><code>commit_files</code> writes with <code>newline=""</code> (equivalently <code>write_bytes(f.content.encode("utf-8"))</code>), so
+line endings round-trip unchanged on every OS.</p>
+<h3 id="c-validity-means-has-cues">C. Validity means "has cues"</h3>
+<p><code>is_valid_srt_file</code> and <code>is_valid_srt_content</code> keep the existing size, HTML, and <code>--&gt;</code> checks, and
+additionally require the parser from A to yield at least one cue with non-empty text. Effects:</p>
+<ul>
+<li>Cache reuse sites in <code>testing_service.py</code> (existing-file checks) reject a zero-cue file, so the
+  next download pass replaces it instead of reusing it.</li>
+<li>The provider scheduler rejects a zero-cue download.</li>
+<li>Manual import rejects a zero-cue upload with "not a valid SRT".</li>
+</ul>
+<p>Because the parser from A now reads <code>\r\r\n</code> and no-index files correctly, existing cached copies
+of those shapes become valid and usable without a re-download. Only files with genuinely no
+parseable cues are rejected.</p>
+<p>Files that start with a UTF-16 byte-order mark are decoded leniently (<code>decode_utf16_bom</code> in
+<code>srt_utils.py</code>) by the validator and by both <code>read_file_with_fallback</code> readers alike. tvsubtitles
+appends a single-byte ASCII trailer to some UTF-16 subtitles, leaving an odd byte count; a strict
+decode made the matcher fall back to latin-1 and read no dialogue while the validator, decoding
+leniently, accepted the file. Code review found 16 real cached references in that state (Malcolm in
+the Middle S02, I Dream of Jeannie, MacGyver, Criminal Minds, and others). One shared decoder keeps
+the validator's verdict and the matcher's view of a file from diverging again.</p>
+<p>A cue carrying only a watermark or ad does not count: validity requires a cue whose raw text is not
+a watermark (<code>has_dialogue_cues</code>, sharing <code>is_watermark_block</code> with the matcher's reader). A scan of
+the real cache found stubs the matcher could use none of, such as Malcolm in the Middle S02E08/23/25
+(two <code>Downloaded From www.AllSubs.org</code> cues) and How I Met Your Mother S08E05 (348 cues repeating a
+download URL). Rejecting them deletes the stub so the next download pass can fetch the real file.
+The rule deliberately checks raw text, not text after the matcher's cleaning: see the dialogue-free
+subtitle limitation below.</p>
+<h3 id="d-unusable-reference-guard-in-matching">D. Unusable-reference guard in matching</h3>
+<p>In <code>TfidfMatcher.prepare</code>, drop references whose full text is empty, and log one WARNING per
+season summarizing <code>usable/total</code> with the dropped episode codes (not one line per file).</p>
+<p>Add a floor, <code>MIN_USABLE_REFERENCES = 2</code>. When fewer usable references remain for the season,
+<code>identify_episode</code> returns no match with a reason code, and the matching coordinator parks the
+title in REVIEW with a message stating the reference subtitles for the season could not be read.
+The new error code must be added to <code>_NON_REMATCHABLE_REVIEW_ERRORS</code> so review escalation does not
+overwrite <code>match_details</code> (see the review-escalation wipe bug).</p>
+<p>The precomputed-vector path (<code>load_precomputed</code>) has no empty-text concept of its own, but it gets
+the same floor: both cache builders (<code>build_subtitle_cache.py</code>, <code>pack_subtitle_cache.py</code>) drop
+references that read as empty, so a season built from damaged subtitles with the old parser can ship
+as a single row that wins every vote. The floor counts the season's rows after augmentation, and the
+reported total is the row count. The <code>_augment_with_downloaded_srts</code> path must skip empty SRTs the
+same way. The published cache should be rebuilt with the new parser once this ships.</p>
+<p>Real-cache check (2,346 show/season groups in the scraped cache): the floor fires for 14 seasons,
+and in every one the season has exactly one cached reference, which is readable (usable 1/1). No
+season with many references is left below the floor once the parser fixes land; the 8 seasons that
+still carry unusable files (watermark stubs, blank-cue files, Primal's sound-effect subtitles) keep
+at least 2 usable references. The review message therefore distinguishes the two causes: when every
+offered reference was readable it says the season has too few reference subtitles to tell episodes
+apart; only when some were dropped does it say the subtitles could not be read.</p>
+<p>Dropping empty references changes the TF-IDF inverse document frequencies for the references that
+remain, so their cosine scores shift slightly (ranks unchanged). That is the intended correction:
+empty documents were distorting the weighting.</p>
+<h3 id="e-confirmable-3-in-1-tracks">E. Confirmable 3-in-1 tracks</h3>
+<ul>
+<li><strong>Scan depth.</strong> When <code>_conjoined_episode_count</code> returns a hint (any <code>n &gt;= 2</code>), run the ASR scan
+  for that title at <code>snap_to_lattice_level(19)</code> instead of the default 10. 19 points admit a
+  confident verdict for up to three runs (<code>19 &gt; 3*3+1</code>) and nest with the 10-point lattice, so the
+  first 10 transcripts are reused from the transcript cache.</li>
+<li><strong>Hint accuracy: dropped during planning.</strong> Picking the closest-total <code>n</code> would break
+  <code>test_smallest_n_wins_when_windows_overlap</code>, which pins a deliberate choice (overlapping windows
+  return the smaller <code>n</code>; the vote runs correct it). Because the deeper scan above applies to any
+  hint <code>n &gt;= 2</code>, the hint count no longer affects detection. It only appears in the
+  unconfirmed-review message, and a confirmed verdict reports its own run count. The
+  smallest-<code>n</code> rule stays.</li>
+</ul>
+<p>No change to <code>MIN_SCAN_POINTS_PER_RUN</code>, the territory rule, or <code>MAX_CONJOINED_EPISODES</code>.</p>
+<h2 id="invariants-preserved">Invariants preserved</h2>
+<ul>
+<li><code>matched_episode</code> stays a single canonical aired code.</li>
+<li>Conjoined tracks still never enqueue fingerprint contributions.</li>
+<li>A multi-episode verdict still routes to REVIEW; this PR does not name combined files.</li>
+</ul>
+<h2 id="testing">Testing</h2>
+<p>Unit (<code>tests/unit/</code>):</p>
+<ul>
+<li>Parser: clean LF, CRLF, <code>\r\r\n</code>, doubled after a text-mode read, no index lines, whitespace
+  separators, BOM, malformed timing line in one cue, missing blank separator, text before the first
+  cue, timing-less trailing block. Assert identical cue lists for the clean and damaged variants of
+  the same subtitle.</li>
+<li>Parity: <code>episode_identification.SubtitleReader</code> and <code>srt_utils.SubtitleReader</code> return identical
+  results for every fixture without watermark blocks (only the matcher's reader filters them).</li>
+<li><code>get_duration</code> on the damaged variants.</li>
+<li><code>is_valid_srt_file</code> / <code>is_valid_srt_content</code>: zero-cue file rejected; <code>\r\r\n</code> and no-index files
+  accepted.</li>
+<li>Manual import on Windows-style CRLF content: bytes on disk equal the input bytes.</li>
+<li><code>TfidfMatcher.prepare</code> drops empty references and logs the summary.</li>
+<li>Guard: a season with one usable reference yields no match and the new review error code; the code
+  is in <code>_NON_REMATCHABLE_REVIEW_ERRORS</code>.</li>
+<li><code>_conjoined_episode_count</code>: unchanged; existing tests stay green.</li>
+<li>Scan depth: a hinted title requests 19 points; an unhinted title still requests 10.</li>
+<li><code>decompose_vote_runs</code>: three contiguous balanced runs over 19 points confirm.</li>
+</ul>
+<p>Regression fixture: a synthetic three-segment corpus with 36 of 37 references in <code>\r\r\n</code> shape,
+asserting the pre-fix symptom (all votes to the one clean reference) is gone.</p>
+<h2 id="out-of-scope">Out of scope</h2>
+<ul>
+<li>Combined filenames and storage of multiple codes per title (PR 2, building on #614).</li>
+<li>Segment-level fingerprint contributions for conjoined tracks.</li>
+<li>TheTVDB as a metadata source.</li>
+<li>Changing <code>select_chunk_vote</code>'s lone-candidate behaviour directly; guard D handles the degenerate
+  case at the corpus level, where the cause lives.</li>
+</ul>
+<h2 id="follow-up-pr-2-combined-filenames">Follow-up: PR 2 (combined filenames)</h2>
+<p>Community PR #614 (@raiju, <code>split/multi-episode</code>) implements combined-track naming. It does not
+touch any file this PR changes (no matcher or subtitle code), so PR 1 ships independently. PR 2
+adopts #614's design rather than the sibling-column idea floated earlier:</p>
+<ul>
+<li><strong>Representation.</strong> A combined track stores the widened canonical code in <code>matched_episode</code>
+  (<code>S01E01-E03</code> for a contiguous run, <code>S01E01E03</code> for a gapped set). Every reader goes through
+  one anchored parser, <code>app/core/episode_codes.py</code>. This supersedes this spec's
+  "matched_episode stays a single canonical aired code" invariant for PR 2 only; the fingerprint
+  key stays single-episode because combined tracks never contribute.</li>
+<li><strong>Taken from #614, credited <code>(thanks @raiju!)</code>:</strong> <code>episode_codes.py</code> and its tests; the
+  organizer range splice after the rendered episode token; the per-part DVD projection with the
+  cross-season fallback to aired numbering; the reader sweep (<code>_same_episode_code</code> overlap,
+  <code>_normalize_episode_code</code>, DiscDB ingest and export <code>"17-18"</code> form, Discord summary,
+  contribution correction, disc contribution queue, history amend picker); the deliberate
+  non-parse in <code>bootstrap_library</code>.</li>
+<li><strong>Added on top of #614:</strong></li>
+<li>A confirmed <code>MultiEpisodeVerdict</code> (from #624) pre-fills the title's assignment with
+    <code>format_episode_code(season, parts)</code> in playback order, still parked in REVIEW for
+    confirmation, and the "cannot name a combined file yet" message is replaced.</li>
+<li>Collision checks in <code>TitleList.tsx</code> and <code>ReviewQueue.tsx</code> test each part via
+    <code>episodeParts(selection)</code>, matching <code>Inspector.tsx</code> (open finding from the #614 bot review).</li>
+<li>One fingerprint-contribution guard for combined tracks instead of the two that a naive
+    merge with #624 produces.</li>
+<li>Rebased onto current main, without #611's already-merged commits.</li>
+<li><strong>Deferred to separate changes:</strong> #614's searchable episode picker, span control and its
+  setting/migration, disc name in the review header, and neighbouring-season assignment.</li>
+</ul>
+<h2 id="user-facing-notes">User-facing notes</h2>
+<p>CHANGELOG <code>[Unreleased]</code> under Fixed: subtitle files with doubled line breaks or missing cue numbers
+were read as empty, which could match every track on a disc to the same episode; cartoon discs with
+three segments per track are now recognized as combined.</p>
+<p>Workaround before release: deleting <code>~/.engram/cache/data/&lt;tmdb_id&gt;</code> forces a fresh download, which
+helps only if the source serves well-formed files.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
