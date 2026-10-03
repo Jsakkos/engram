@@ -13,6 +13,8 @@ import av
 import numpy as np
 import pytest
 import soundfile as sf
+from loguru import logger
+from packaging.version import Version
 
 from app.matcher.asr_models import FasterWhisperModel
 
@@ -60,7 +62,9 @@ class TestPreprocessAudio:
 
     def test_writes_no_temp_file(self, tmp_path, monkeypatch):
         # The old path wrote a preprocessed WAV to the system temp dir for
-        # faster-whisper to re-decode; nothing should touch disk now.
+        # faster-whisper to re-decode; nothing should touch disk now. Patching the
+        # attribute on the soundfile module object catches any `sf.write`, whichever
+        # module imported it (verified: this fails against the pre-#709 code).
         wav = _write_tone(tmp_path / "chunk.wav")
         writes = []
         monkeypatch.setattr(sf, "write", lambda *a, **k: writes.append(a))
@@ -88,16 +92,23 @@ class TestTranscribeHandsOffArray:
         bogus.write_bytes(b"definitely not a wav file")
         model = FasterWhisperModel(device="cpu")
         model._model = _RecordingWhisper()
+        records = []
+        sink_id = logger.add(records.append, level="ERROR", format="{message}")
 
-        result = model.transcribe(bogus)
+        try:
+            result = model.transcribe(bogus)
+        finally:
+            logger.remove(sink_id)
 
         assert result["text"] == ""
         assert model._model.audio is None
+        # The traceback must reach the log (and so the diagnostics bundle), not stderr.
+        assert any(m.record["exception"] is not None for m in records)
 
 
 @pytest.mark.unit
 @pytest.mark.xfail(
-    int(av.__version__.split(".")[0]) >= 19,
+    Version(av.__version__).major >= 19,
     reason=(
         "faster-whisper 1.2.1 passes av.open(metadata_errors=...), removed in PyAV 19 "
         "(#709). Engram no longer calls decode_audio; if this XPASSes, upstream fixed it "

@@ -11,7 +11,7 @@ All notable changes to Engram will be documented in this file.
   not open files with, so every transcription chunk failed and every TV disc fell
   back to manual review. Engram now decodes the audio itself and hands the
   recognizer the samples directly, so matching works again regardless of that
-  library's version. The Docker image was not affected. (#709)
+  library's version. The Docker image was not affected. (#709, #735)
 
 ## [0.38.0] - 2026-10-01
 

@@ -457,12 +457,11 @@ class FasterWhisperModel(ASRModel):
             }
 
         except Exception as e:
-            logger.error(
+            # opt(exception=) puts the traceback in the job-tagged log; print_exc()
+            # only reached stderr, which the diagnostics bundle never sees.
+            logger.opt(exception=e).error(
                 f"Faster Whisper transcription failed for {audio_path}: {type(e).__name__}: {e}"
             )
-            import traceback
-
-            traceback.print_exc()
             # Return empty result instead of raising to allow fallback
             return {"text": "", "raw_text": "", "segments": [], "language": "en"}
 
