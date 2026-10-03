@@ -594,7 +594,7 @@ class TestTfidfMatcherStaleness:
 
 @pytest.mark.unit
 class TestUniqueChunkPaths:
-    """Chunk + preprocessed tempfile paths must be unique per source file.
+    """Chunk tempfile paths must be unique per source file.
 
     Two matcher threads (running under max_concurrent_matches >= 2) on the
     same disc samples chunks at the same offsets. If both threads write to
@@ -602,8 +602,10 @@ class TestUniqueChunkPaths:
     file mid-PyAV-decode -> av.error.InvalidDataError, OR the second reader
     silently picks up the first writer's audio (wrong audio, wrong match).
 
-    These tests pin down the property: chunk and preprocessed paths must
-    differ when the source MKV differs, even at identical (start, duration).
+    These tests pin down the property: chunk paths must differ when the
+    source MKV differs, even at identical (start, duration). (The Whisper
+    preprocessor no longer writes a temp file; it hands faster-whisper an
+    in-memory array, see test_asr_audio_input.py.)
     """
 
     def _make_matcher(self, tmp_path):
@@ -630,17 +632,6 @@ class TestUniqueChunkPaths:
         path_a = matcher._chunk_path("/some/dir/title_t00.mkv", 1473, 30)
         path_b = matcher._chunk_path("/some/dir/title_t00.mkv", 1473, 30)
         assert path_a == path_b
-
-    def test_preprocessed_path_differs_per_source(self, tmp_path):
-        # The Whisper preprocessor writes to a temp dir whose filename used to
-        # be derived only from the input file's stem. Two source chunks with
-        # the same stem (different parent dirs) would collide there.
-        from app.matcher.asr_models import FasterWhisperModel
-
-        model = FasterWhisperModel.__new__(FasterWhisperModel)
-        a = model._preprocessed_path_for("/job_A/whisper_chunks/chunk_1473_30.wav")
-        b = model._preprocessed_path_for("/job_B/whisper_chunks/chunk_1473_30.wav")
-        assert a != b
 
 
 @pytest.mark.unit
