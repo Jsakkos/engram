@@ -6,8 +6,6 @@ supporting OpenAI Whisper models via faster-whisper for efficient inference.
 """
 
 import abc
-import hashlib
-import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +14,6 @@ import ctranslate2
 import librosa
 import numpy as np
 import psutil
-import soundfile as sf
 from loguru import logger
 from rapidfuzz import fuzz
 
@@ -353,52 +350,39 @@ class FasterWhisperModel(ASRModel):
             logger.error(f"Failed to load Faster Whisper model {self.model_name}: {e}")
             raise
 
-    @staticmethod
-    def _preprocessed_path_for(audio_path: str | Path) -> Path:
-        """Hash resolved source path into the filename so concurrent threads don't collide."""
-        temp_dir = Path(tempfile.gettempdir()) / "whisper_preprocessed"
-        resolved = str(Path(audio_path).resolve())
-        src_hash = hashlib.sha1(resolved.encode("utf-8")).hexdigest()[:16]
-        return temp_dir / f"preprocessed_{src_hash}_{Path(audio_path).stem}.wav"
-
-    def _preprocess_audio(self, audio_path: str | Path) -> str:
+    def _preprocess_audio(self, audio_path: str | Path) -> np.ndarray:
         """
-        Preprocess audio for Whisper model requirements.
+        Load audio as the 16kHz mono float32 array faster-whisper expects.
+
+        The array is handed to faster-whisper directly. Given a path instead, it
+        decodes with its own ``decode_audio``, which passes ``metadata_errors`` to
+        ``av.open``; PyAV 19 removed that keyword and every chunk failed (#709).
 
         Args:
             audio_path: Path to input audio file
 
         Returns:
-            Path to preprocessed audio file (or original if no preprocessing needed)
+            Peak-normalized 16kHz mono float32 samples
+
+        Raises:
+            Exception: If the file cannot be decoded (``transcribe`` handles it)
         """
-        try:
-            # Load audio with librosa
-            audio, original_sr = librosa.load(str(audio_path), sr=None)
+        # Target sample rate for Whisper models (16kHz)
+        target_sr = 16000
 
-            # Target sample rate for Whisper models (16kHz)
-            target_sr = 16000
+        audio, original_sr = librosa.load(str(audio_path), sr=None, mono=True)
 
-            # Resample if necessary
-            if original_sr != target_sr:
-                audio = librosa.resample(audio, orig_sr=original_sr, target_sr=target_sr)
-                logger.debug(f"Resampled audio from {original_sr}Hz to {target_sr}Hz")
+        # Resample if necessary
+        if original_sr != target_sr:
+            audio = librosa.resample(audio, orig_sr=original_sr, target_sr=target_sr)
+            logger.debug(f"Resampled audio from {original_sr}Hz to {target_sr}Hz")
 
-            # Normalize audio to [-1, 1] range
-            if np.max(np.abs(audio)) > 0:
-                audio = audio / np.max(np.abs(audio))
+        # Normalize audio to [-1, 1] range
+        peak = np.max(np.abs(audio)) if audio.size else 0.0
+        if peak > 0:
+            audio = audio / peak
 
-            temp_audio_path = self._preprocessed_path_for(audio_path)
-            temp_audio_path.parent.mkdir(exist_ok=True)
-
-            # Save preprocessed audio
-            sf.write(str(temp_audio_path), audio, target_sr)
-
-            logger.debug(f"Preprocessed audio saved to {temp_audio_path}")
-            return str(temp_audio_path)
-
-        except Exception as e:
-            logger.warning(f"Audio preprocessing failed, using original: {e}")
-            return str(audio_path)
+        return audio.astype(np.float32, copy=False)
 
     def _clean_transcription_text(self, text: str) -> str:
         """
@@ -428,16 +412,15 @@ class FasterWhisperModel(ASRModel):
         if not self.is_loaded:
             self.load()
 
-        preprocessed_audio = None
         try:
             logger.debug(f"Starting Faster Whisper transcription for {audio_path}")
 
-            # Preprocess audio
-            preprocessed_audio = self._preprocess_audio(audio_path)
+            # Decode here and pass samples, never the path (see _preprocess_audio)
+            audio = self._preprocess_audio(audio_path)
 
             # Transcribe with faster-whisper
             segments, info = self._model.transcribe(
-                preprocessed_audio,
+                audio,
                 language="en",  # Force English for TV episode matching
                 beam_size=5,
                 best_of=5,
@@ -474,21 +457,13 @@ class FasterWhisperModel(ASRModel):
             }
 
         except Exception as e:
-            logger.error(
+            # opt(exception=) puts the traceback in the job-tagged log; print_exc()
+            # only reached stderr, which the diagnostics bundle never sees.
+            logger.opt(exception=e).error(
                 f"Faster Whisper transcription failed for {audio_path}: {type(e).__name__}: {e}"
             )
-            import traceback
-
-            traceback.print_exc()
             # Return empty result instead of raising to allow fallback
             return {"text": "", "raw_text": "", "segments": [], "language": "en"}
-        finally:
-            # Clean up preprocessed audio file
-            if preprocessed_audio and preprocessed_audio != str(audio_path):
-                try:
-                    Path(preprocessed_audio).unlink(missing_ok=True)
-                except Exception as e:
-                    logger.debug(f"Failed to clean up preprocessed audio: {e}")
 
 
 def model_output_key(model_config: dict) -> str:

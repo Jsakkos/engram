@@ -4,6 +4,15 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Episode matching on the standalone builds.** Every v0.38.0 download (Windows,
+  macOS and Linux) shipped a newer audio library that the speech recognizer could
+  not open files with, so every transcription chunk failed and every TV disc fell
+  back to manual review. Engram now decodes the audio itself and hands the
+  recognizer the samples directly, so matching works again regardless of that
+  library's version. The Docker image was not affected. (#709, #735)
+
 ## [0.38.0] - 2026-10-01
 
 _Highlights: a bigger English-only subtitle cache (about 1,380 shows), one-click GPU acceleration, the dashboard on React 19, and a fix for databases stuck partway through schema migrations._
