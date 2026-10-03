@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.38.1] - 2026-10-03
+
+_Highlights: episode matching works again on the Windows, macOS and Linux downloads, which in v0.38.0 sent every TV disc to manual review._
+
 ### Fixed
 
 - **Episode matching on the standalone builds.** Every v0.38.0 download (Windows,
