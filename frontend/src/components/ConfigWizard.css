@@ -1,318 +1,295 @@
-/* ConfigWizard — Synapse v2 brand chrome.
- *
- * Colors source from theme.css's --color-sv-* custom properties so the
- * wizard stays in lockstep with the rest of the app. The atmospheric
- * effects (scanlines, vignette) are NOT re-applied here — the global
- * <SvAtmosphere> already paints them at the app root, and the handoff
- * explicitly warns: "Resist over-glow… do not over-apply on every panel."
- */
-
-/* Full-viewport backdrop */
 .wizard-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 1rem;
+position: fixed;
+inset: 0;
+background: rgba(0, 0, 0, 0.85);
+backdrop-filter: blur(4px);
+display: flex;
+align-items: center;
+justify-content: center;
+z-index: 1000;
+padding: 1rem;
 }
 
-/* Scrollable content area inside the wizard */
 .wizard-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 2rem;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(94, 234, 212, 0.4) transparent;
+flex: 1;
+overflow-y: auto;
+padding: 2rem;
+scrollbar-width: thin;
+scrollbar-color: rgba(94, 234, 212, 0.4) transparent;
 }
 
 .wizard-body::-webkit-scrollbar {
-    width: 4px;
+width: 4px;
 }
 
 .wizard-body::-webkit-scrollbar-track {
-    background: transparent;
+background: transparent;
 }
 
 .wizard-body::-webkit-scrollbar-thumb {
-    background: rgba(94, 234, 212, 0.4);
-    /* sharp corners */
+background: rgba(94, 234, 212, 0.4);
 }
 
 .wizard-modal {
-    width: 100%;
-    max-width: 1040px;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    /* Match SvPanel chrome: subtle gradient + 1px line, sharp 90° corners. */
-    background: linear-gradient(180deg, rgba(18, 24, 39, 0.92), rgba(10, 14, 24, 0.96));
-    border: 1px solid var(--color-sv-line-hi);
-    box-shadow: 0 0 24px rgba(94, 234, 212, 0.14);
-    position: relative;
-    overflow: hidden;
+width: 100%;
+max-width: 1040px;
+max-height: 90vh;
+display: flex;
+flex-direction: column;
+background: linear-gradient(180deg, rgba(18, 24, 39, 0.92), rgba(10, 14, 24, 0.96));
+border: 1px solid var(--color-sv-line-hi);
+box-shadow: 0 0 24px rgba(94, 234, 212, 0.14);
+position: relative;
+overflow: hidden;
 }
 
-/* Modal Header */
 .modal-header {
-    padding: 1.25rem 1.75rem;
-    background: rgba(94, 234, 212, 0.04);
-    border-bottom: 1px solid var(--color-sv-line);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: relative;
-    z-index: 2;
+padding: 1.25rem 1.75rem;
+background: rgba(94, 234, 212, 0.04);
+border-bottom: 1px solid var(--color-sv-line);
+display: flex;
+justify-content: space-between;
+align-items: center;
+position: relative;
+z-index: 2;
 }
 
 .modal-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--color-sv-cyan-hi);
-    text-transform: uppercase;
-    letter-spacing: 0.22em;
-    font-family: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
-    text-shadow: 0 0 12px rgba(94, 234, 212, 0.5);
-    margin: 0;
+font-size: 1.25rem;
+font-weight: 700;
+color: var(--color-sv-cyan-hi);
+text-transform: uppercase;
+letter-spacing: 0.22em;
+font-family: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+text-shadow: 0 0 12px rgba(94, 234, 212, 0.5);
+margin: 0;
 }
 
 .modal-close {
-    background: transparent;
-    border: 1px solid rgba(255, 61, 127, 0.45);
-    color: var(--color-sv-magenta);
-    font-size: 1.5rem;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
-    font-family: Arial, sans-serif;
-    line-height: 1;
-    padding: 0;
+background: transparent;
+border: 1px solid rgba(255, 61, 127, 0.45);
+color: var(--color-sv-magenta);
+font-size: 1.5rem;
+width: 32px;
+height: 32px;
+display: flex;
+align-items: center;
+justify-content: center;
+cursor: pointer;
+transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
+font-family: Arial, sans-serif;
+line-height: 1;
+padding: 0;
 }
 
 .modal-close:hover {
-    background: rgba(255, 61, 127, 0.10);
-    border-color: var(--color-sv-magenta);
-    box-shadow: 0 0 12px rgba(255, 61, 127, 0.45);
+background: rgba(255, 61, 127, 0.10);
+border-color: var(--color-sv-magenta);
+box-shadow: 0 0 12px rgba(255, 61, 127, 0.45);
 }
 
-/* Progress Steps */
 .wizard-progress {
-    display: flex;
-    justify-content: center;
-    gap: 2rem;
-    padding: 1.5rem;
-    background: rgba(94, 234, 212, 0.05);
-    border-bottom: 2px solid rgba(94, 234, 212, 0.3);
-    position: relative;
-    z-index: 2;
+display: flex;
+justify-content: center;
+gap: 2rem;
+padding: 1.5rem;
+background: rgba(94, 234, 212, 0.05);
+border-bottom: 2px solid rgba(94, 234, 212, 0.3);
+position: relative;
+z-index: 2;
 }
 
 .progress-step {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    opacity: 0.4;
-    transition: all 0.3s ease;
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 0.5rem;
+opacity: 0.4;
+transition: all 0.3s ease;
 }
 
 .progress-step.active,
 .progress-step.completed {
-    opacity: 1;
+opacity: 1;
 }
 
 .step-number {
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    /* sharp 90° corners — synapse v2 */
-    background: #0a0e18;
-    border: 2px solid rgba(94, 234, 212, 0.5);
-    font-size: 0.875rem;
-    font-weight: 700;
-    color: #4a5369;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    transition: all 0.3s ease;
+width: 36px;
+height: 36px;
+display: flex;
+align-items: center;
+justify-content: center;
+background: #0a0e18;
+border: 2px solid rgba(94, 234, 212, 0.5);
+font-size: 0.875rem;
+font-weight: 700;
+color: #4a5369;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+transition: all 0.3s ease;
 }
 
 .progress-step.active .step-number {
-    background: rgba(94, 234, 212, 0.2);
-    border-color: #5eead4;
-    color: #5eead4;
-    box-shadow: 0 0 15px rgba(94, 234, 212, 0.5);
-    text-shadow: 0 0 10px rgba(94, 234, 212, 0.8);
+background: rgba(94, 234, 212, 0.2);
+border-color: #5eead4;
+color: #5eead4;
+box-shadow: 0 0 15px rgba(94, 234, 212, 0.5);
+text-shadow: 0 0 10px rgba(94, 234, 212, 0.8);
 }
 
 .progress-step.completed .step-number {
-    background: rgba(134, 239, 172, 0.2);
-    border-color: #86efac;
-    color: #86efac;
-    box-shadow: 0 0 15px rgba(134, 239, 172, 0.5);
+background: rgba(134, 239, 172, 0.2);
+border-color: #86efac;
+color: #86efac;
+box-shadow: 0 0 15px rgba(134, 239, 172, 0.5);
 }
 
 .step-label {
-    font-size: 0.7rem;
-    color: #4a5369;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-weight: 700;
+font-size: 0.7rem;
+color: #4a5369;
+text-transform: uppercase;
+letter-spacing: 1px;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-weight: 700;
 }
 
 .progress-step.active .step-label {
-    color: #5eead4;
-    text-shadow: 0 0 10px rgba(94, 234, 212, 0.5);
+color: #5eead4;
+text-shadow: 0 0 10px rgba(94, 234, 212, 0.5);
 }
 
 .progress-step.completed .step-label {
-    color: #86efac;
+color: #86efac;
 }
 
-/* ── Settings mode: section sidebar (M1) ─────────────────────────────
-   Opened from the gear, the wizard drops the linear stepper for a
-   jump-anywhere section list. The content pane (.wizard-body) sits beside
-   the nav and scrolls independently. Cyan is brand chrome here — magenta
-   stays reserved for the primary Save action per the handoff. */
 .settings-main {
-    flex: 1;
-    display: flex;
-    min-height: 0;
-    position: relative;
-    z-index: 2;
+flex: 1;
+display: flex;
+min-height: 0;
+position: relative;
+z-index: 2;
 }
 
 .settings-nav {
-    flex: 0 0 220px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 1.25rem 0.75rem;
-    background: rgba(94, 234, 212, 0.04);
-    border-right: 1px solid var(--color-sv-line);
-    overflow-y: auto;
+flex: 0 0 220px;
+display: flex;
+flex-direction: column;
+gap: 2px;
+padding: 1.25rem 0.75rem;
+background: rgba(94, 234, 212, 0.04);
+border-right: 1px solid var(--color-sv-line);
+overflow-y: auto;
 }
 
 .settings-nav-item {
-    text-align: left;
-    padding: 0.6rem 0.85rem;
-    background: transparent;
-    border: 1px solid transparent;
-    /* sharp 90° corners — synapse v2 */
-    color: var(--color-sv-ink-dim);
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    cursor: pointer;
-    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+text-align: left;
+padding: 0.6rem 0.85rem;
+background: transparent;
+border: 1px solid transparent;
+color: var(--color-sv-ink-dim);
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.72rem;
+font-weight: 700;
+text-transform: uppercase;
+letter-spacing: 0.12em;
+cursor: pointer;
+transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
 
 .settings-nav-item:hover {
-    color: var(--color-sv-cyan);
-    border-color: var(--color-sv-line-mid);
+color: var(--color-sv-cyan);
+border-color: var(--color-sv-line-mid);
 }
 
 .settings-nav-item.active {
-    color: var(--color-sv-cyan-hi);
-    background: rgba(94, 234, 212, 0.10);
-    border-color: var(--color-sv-line-hi);
-    /* left active bar */
-    box-shadow: inset 2px 0 0 var(--color-sv-cyan);
+color: var(--color-sv-cyan-hi);
+background: rgba(94, 234, 212, 0.10);
+border-color: var(--color-sv-line-hi);
+box-shadow: inset 2px 0 0 var(--color-sv-cyan);
 }
 
-/* Brief cyan flash when a deep-link scrolls a control into view (M2). */
 .settings-anchor-flash {
-    animation: settingsAnchorFlash 1.6s ease-out;
+animation: settingsAnchorFlash 1.6s ease-out;
 }
 
 @keyframes settingsAnchorFlash {
-    0% {
-        box-shadow: 0 0 0 1px var(--color-sv-cyan), 0 0 14px rgba(94, 234, 212, 0.55);
-    }
-    100% {
-        box-shadow: 0 0 0 1px transparent, 0 0 0 transparent;
-    }
+0% {
+box-shadow: 0 0 0 1px var(--color-sv-cyan), 0 0 14px rgba(94, 234, 212, 0.55);
+}
+
+```
+100% {
+    box-shadow: 0 0 0 1px transparent, 0 0 0 transparent;
+}
+```
+
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .settings-anchor-flash {
-        animation: none;
-    }
+.settings-anchor-flash {
+animation: none;
+}
 }
 
-/* Stack the section nav above the content on narrow viewports so it doesn't
-   crush the form. (Broader responsive work is review finding M4.) */
 @media (max-width: 640px) {
-    .settings-main {
-        flex-direction: column;
-    }
-
-    .settings-nav {
-        flex: 0 0 auto;
-        flex-direction: row;
-        overflow-x: auto;
-        border-right: none;
-        border-bottom: 1px solid var(--color-sv-line);
-    }
-
-    .settings-nav-item.active {
-        box-shadow: inset 0 -2px 0 var(--color-sv-cyan);
-    }
+.settings-main {
+flex-direction: column;
 }
 
-/* Wizard Step Content */
+```
+.settings-nav {
+    flex: 0 0 auto;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--color-sv-line);
+}
+
+.settings-nav-item.active {
+    box-shadow: inset 0 -2px 0 var(--color-sv-cyan);
+}
+```
+
+}
+
 .wizard-step {
-    padding: 2rem;
-    position: relative;
-    z-index: 2;
-    min-height: 400px;
+padding: 2rem;
+position: relative;
+z-index: 2;
+min-height: 400px;
 }
 
 .step-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin-bottom: 0.75rem;
-    color: #5eead4;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    text-shadow: 0 0 15px rgba(94, 234, 212, 0.6);
+font-size: 1.5rem;
+font-weight: 700;
+margin-bottom: 0.75rem;
+color: #5eead4;
+text-transform: uppercase;
+letter-spacing: 2px;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+text-shadow: 0 0 15px rgba(94, 234, 212, 0.6);
 }
 
 .step-description {
-    color: #8893a8;
-    margin-bottom: 2rem;
-    line-height: 1.6;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.9rem;
+color: #8893a8;
+margin-bottom: 2rem;
+line-height: 1.6;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.9rem;
 }
 
-/* Form Groups */
 .form-group {
-    margin-bottom: 1.5rem;
+margin-bottom: 1.5rem;
 }
 
-/* Labels are CYAN-DIM uppercase mono — magenta is reserved for active
- * state and primary CTA per the brand handoff. */
 .form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    color: var(--color-sv-ink-dim);
-    font-weight: 600;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+display: block;
+margin-bottom: 0.5rem;
+color: var(--color-sv-ink-dim);
+font-weight: 600;
+font-size: 0.78rem;
+text-transform: uppercase;
+letter-spacing: 0.18em;
+font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .form-group input[type="text"],
@@ -320,965 +297,933 @@
 .form-group input[type="number"],
 .form-group input[type="url"],
 .form-group textarea {
-    width: 100%;
-    padding: 0.65rem 0.75rem;
-    background: rgba(94, 234, 212, 0.04);
-    border: 1px solid var(--color-sv-line-mid);
-    color: var(--color-sv-ink);
-    font-size: 0.88rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
+width: 100%;
+padding: 0.65rem 0.75rem;
+background: rgba(94, 234, 212, 0.04);
+border: 1px solid var(--color-sv-line-mid);
+color: var(--color-sv-ink);
+font-size: 0.88rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .form-group textarea {
-    resize: vertical;
+resize: vertical;
 }
 
 .form-group input:focus,
 .form-group textarea:focus {
-    outline: none;
-    border-color: var(--color-sv-cyan);
-    box-shadow: 0 0 12px rgba(94, 234, 212, 0.25);
-    background: rgba(94, 234, 212, 0.08);
+outline: none;
+border-color: var(--color-sv-cyan);
+box-shadow: 0 0 12px rgba(94, 234, 212, 0.25);
+background: rgba(94, 234, 212, 0.08);
 }
 
 .form-group input::placeholder,
 .form-group textarea::placeholder {
-    color: var(--color-sv-ink-ghost);
+color: var(--color-sv-ink-ghost);
 }
 
-/* ─── EngramSelect (Radix UI custom dropdown) ─────────────────────────── */
 .sv-select-trigger {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.65rem 0.75rem;
-    background: rgba(94, 234, 212, 0.04);
-    border: 1px solid var(--color-sv-line-mid);
-    color: var(--color-sv-ink);
-    font-size: 0.88rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    cursor: pointer;
-    transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
+width: 100%;
+display: flex;
+align-items: center;
+justify-content: space-between;
+padding: 0.65rem 0.75rem;
+background: rgba(94, 234, 212, 0.04);
+border: 1px solid var(--color-sv-line-mid);
+color: var(--color-sv-ink);
+font-size: 0.88rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+cursor: pointer;
+transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .sv-select-trigger:hover {
-    background: rgba(94, 234, 212, 0.07);
-    border-color: rgba(94, 234, 212, 0.38);
+background: rgba(94, 234, 212, 0.07);
+border-color: rgba(94, 234, 212, 0.38);
 }
 
 .sv-select-trigger[data-state="open"],
 .sv-select-trigger:focus-visible {
-    outline: none;
-    border-color: var(--color-sv-cyan);
-    box-shadow: 0 0 12px rgba(94, 234, 212, 0.25);
-    background: rgba(94, 234, 212, 0.08);
+outline: none;
+border-color: var(--color-sv-cyan);
+box-shadow: 0 0 12px rgba(94, 234, 212, 0.25);
+background: rgba(94, 234, 212, 0.08);
 }
 
 .sv-select-trigger[data-disabled] {
-    opacity: 0.45;
-    cursor: not-allowed;
+opacity: 0.45;
+cursor: not-allowed;
 }
 
 .sv-select-icon {
-    color: var(--color-sv-cyan);
-    flex-shrink: 0;
-    margin-left: 8px;
-    transition: transform 160ms ease-out;
-    display: flex;
-    align-items: center;
+color: var(--color-sv-cyan);
+flex-shrink: 0;
+margin-left: 8px;
+transition: transform 160ms ease-out;
+display: flex;
+align-items: center;
 }
 
 .sv-select-trigger[data-state="open"] .sv-select-icon {
-    transform: rotate(180deg);
+transform: rotate(180deg);
 }
 
 .sv-select-content {
-    background: var(--color-sv-bg1);
-    border: 1px solid var(--color-sv-line-hi);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(94, 234, 212, 0.08);
-    padding: 4px 0;
-    z-index: 9999;
-    min-width: var(--radix-select-trigger-width);
-    max-height: var(--radix-select-content-available-height);
+background: var(--color-sv-bg1);
+border: 1px solid var(--color-sv-line-hi);
+box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(94, 234, 212, 0.08);
+padding: 4px 0;
+z-index: 9999;
+min-width: var(--radix-select-trigger-width);
+max-height: var(--radix-select-content-available-height);
 }
 
 .sv-select-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-    padding: 7px 28px 7px 10px;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.84rem;
-    color: var(--color-sv-ink);
-    cursor: pointer;
-    border-left: 2px solid transparent;
-    outline: none;
-    user-select: none;
-    transition: background 80ms ease-out, border-color 80ms ease-out, color 80ms ease-out;
+position: relative;
+display: flex;
+align-items: center;
+padding: 7px 28px 7px 10px;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.84rem;
+color: var(--color-sv-ink);
+cursor: pointer;
+border-left: 2px solid transparent;
+outline: none;
+user-select: none;
+transition: background 80ms ease-out, border-color 80ms ease-out, color 80ms ease-out;
 }
 
 .sv-select-item[data-highlighted] {
-    background: rgba(94, 234, 212, 0.09);
-    border-left-color: var(--color-sv-cyan);
-    color: var(--color-sv-cyan-hi);
+background: rgba(94, 234, 212, 0.09);
+border-left-color: var(--color-sv-cyan);
+color: var(--color-sv-cyan-hi);
 }
 
 .sv-select-item[data-state="checked"] {
-    color: var(--color-sv-cyan);
-    border-left-color: var(--color-sv-cyan);
+color: var(--color-sv-cyan);
+border-left-color: var(--color-sv-cyan);
 }
 
 .sv-select-indicator {
-    position: absolute;
-    right: 10px;
-    color: var(--color-sv-cyan);
-    font-size: 10px;
-    line-height: 1;
+position: absolute;
+right: 10px;
+color: var(--color-sv-cyan);
+font-size: 10px;
+line-height: 1;
 }
 
 .sv-select-scroll-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 20px;
-    color: var(--color-sv-cyan);
-    font-size: 10px;
-    cursor: default;
-    background: var(--color-sv-bg1);
-    border-top: 1px solid var(--color-sv-line);
-    border-bottom: 1px solid var(--color-sv-line);
+display: flex;
+align-items: center;
+justify-content: center;
+height: 20px;
+color: var(--color-sv-cyan);
+font-size: 10px;
+cursor: default;
+background: var(--color-sv-bg1);
+border-top: 1px solid var(--color-sv-line);
+border-bottom: 1px solid var(--color-sv-line);
 }
 
 .form-hint {
-    display: block;
-    margin-top: 0.45rem;
-    font-size: 0.72rem;
-    color: var(--color-sv-ink-faint);
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    letter-spacing: 0.02em;
+display: block;
+margin-top: 0.45rem;
+font-size: 0.72rem;
+color: var(--color-sv-ink-faint);
+font-family: "JetBrains Mono", ui-monospace, monospace;
+letter-spacing: 0.02em;
 }
 
-/* Checkbox */
 .checkbox-group {
-    margin-top: 1rem;
+margin-top: 1rem;
 }
 
 .checkbox-label {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    cursor: pointer;
-    padding: 0.75rem;
-    background: rgba(255, 61, 127, 0.05);
-    border: 1px solid rgba(255, 61, 127, 0.2);
-    transition: all 0.3s ease;
+display: flex;
+align-items: flex-start;
+gap: 0.75rem;
+cursor: pointer;
+padding: 0.75rem;
+background: rgba(255, 61, 127, 0.05);
+border: 1px solid rgba(255, 61, 127, 0.2);
+transition: all 0.3s ease;
 }
 
-/* #725: `.form-group label` uppercases and tracks every label, which also hit the
-   description text inside checkbox rows. Neutralise that on the row itself; the
-   title (<strong>) re-applies the label style, the hint stays normal-case body text. */
 .form-group label.checkbox-label {
-    display: flex;
-    margin-bottom: 0;
-    color: inherit;
-    font-weight: 400;
-    font-size: 0.9rem;
-    text-transform: none;
-    letter-spacing: normal;
+display: flex;
+margin-bottom: 0;
+color: inherit;
+font-weight: 400;
+font-size: 0.9rem;
+text-transform: none;
+letter-spacing: normal;
 }
 
 .checkbox-text > strong {
-    color: var(--color-sv-ink-dim);
-    font-weight: 600;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
+color: var(--color-sv-ink-dim);
+font-weight: 600;
+font-size: 0.78rem;
+text-transform: uppercase;
+letter-spacing: 0.18em;
 }
 
 .checkbox-label:hover {
-    background: rgba(255, 61, 127, 0.1);
-    border-color: rgba(255, 61, 127, 0.4);
+background: rgba(255, 61, 127, 0.1);
+border-color: rgba(255, 61, 127, 0.4);
 }
 
-/* An ordinary preference toggle. The tinted treatment above reads as a callout —
-   right for a privacy opt-in, wrong for a setting that simply has an on and an
-   off, which should sit as quietly as the fields around it. */
 .checkbox-label.checkbox-plain {
-    background: transparent;
-    border: 1px solid var(--color-sv-line);
+background: transparent;
+border: 1px solid var(--color-sv-line);
 }
 
 .checkbox-label.checkbox-plain:hover {
-    background: rgba(94, 234, 212, 0.04);
-    border-color: var(--color-sv-line-hi);
+background: rgba(94, 234, 212, 0.04);
+border-color: var(--color-sv-line-hi);
 }
 
 .checkbox-label.checkbox-plain input[type="checkbox"] {
-    accent-color: var(--color-sv-cyan);
+accent-color: var(--color-sv-cyan);
 }
 
 .checkbox-label input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    margin-top: 0.25rem;
-    cursor: pointer;
-    accent-color: #ff3d7f;
+width: 18px;
+height: 18px;
+margin-top: 0.25rem;
+cursor: pointer;
+accent-color: #ff3d7f;
 }
 
 .checkbox-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    color: #e6ecf5;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+display: flex;
+flex-direction: column;
+gap: 0.25rem;
+color: #e6ecf5;
+font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .checkbox-hint {
-    font-size: 0.875rem;
-    line-height: 1.5;
-    color: #8893a8;
-    font-weight: 400;
-    text-transform: none;
-    letter-spacing: normal;
+font-size: 0.875rem;
+line-height: 1.5;
+color: #8893a8;
+font-weight: 400;
+text-transform: none;
+letter-spacing: normal;
 }
 
-/* LAN Address Panel */
 .lan-address-panel {
-    margin-top: 0.75rem;
-    padding: 1rem;
-    background: rgba(94, 234, 212, 0.05);
-    border: 1px solid rgba(94, 234, 212, 0.3);
+margin-top: 0.75rem;
+padding: 1rem;
+background: rgba(94, 234, 212, 0.05);
+border: 1px solid rgba(94, 234, 212, 0.3);
 }
 
 .lan-status-live {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-    color: #5eead4;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    margin-bottom: 0.75rem;
+display: flex;
+align-items: center;
+gap: 0.5rem;
+font-size: 0.8rem;
+color: #5eead4;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+margin-bottom: 0.75rem;
 }
 
 .lan-status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #5eead4;
-    box-shadow: 0 0 6px #5eead4;
-    flex-shrink: 0;
+width: 8px;
+height: 8px;
+border-radius: 50%;
+background: #5eead4;
+box-shadow: 0 0 6px #5eead4;
+flex-shrink: 0;
 }
 
 .lan-restart-notice {
-    font-size: 0.8rem;
-    color: #f59e0b;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    margin-bottom: 0.75rem;
+font-size: 0.8rem;
+color: #f59e0b;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+margin-bottom: 0.75rem;
 }
 
 .lan-url-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
+display: flex;
+align-items: center;
+gap: 0.5rem;
+margin-bottom: 0.5rem;
 }
 
 .lan-url {
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.85rem;
-    color: #e6ecf5;
-    background: rgba(0, 0, 0, 0.4);
-    padding: 0.3rem 0.5rem;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.85rem;
+color: #e6ecf5;
+background: rgba(0, 0, 0, 0.4);
+padding: 0.3rem 0.5rem;
+flex: 1;
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
 }
 
 .lan-copy-btn {
-    padding: 0.3rem 0.75rem;
-    background: rgba(94, 234, 212, 0.1);
-    border: 1px solid rgba(94, 234, 212, 0.4);
-    color: #5eead4;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
+padding: 0.3rem 0.75rem;
+background: rgba(94, 234, 212, 0.1);
+border: 1px solid rgba(94, 234, 212, 0.4);
+color: #5eead4;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.75rem;
+cursor: pointer;
+transition: all 0.2s ease;
+flex-shrink: 0;
 }
 
 .lan-copy-btn:hover {
-    background: rgba(94, 234, 212, 0.2);
-    border-color: rgba(94, 234, 212, 0.7);
+background: rgba(94, 234, 212, 0.2);
+border-color: rgba(94, 234, 212, 0.7);
 }
 
 .lan-qr {
-    margin-top: 0.75rem;
-    display: flex;
-    justify-content: center;
-    padding: 0.5rem;
-    background: #fff;
-    width: fit-content;
+margin-top: 0.75rem;
+display: flex;
+justify-content: center;
+padding: 0.5rem;
+background: #fff;
+width: fit-content;
 }
 
 .lan-qr-pending {
-    opacity: 0.5;
+opacity: 0.5;
 }
 
 .lan-loading {
-    font-size: 0.8rem;
-    color: var(--color-sv-ink-faint, #8893a8);
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.8rem;
+color: var(--color-sv-ink-faint, #8893a8);
+font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
-/* Config Summary */
 .config-summary {
-    margin-top: 2rem;
-    padding: 1.5rem;
-    background: rgba(94, 234, 212, 0.05);
-    border: 2px solid rgba(94, 234, 212, 0.3);
-    box-shadow: 0 0 15px rgba(94, 234, 212, 0.2);
+margin-top: 2rem;
+padding: 1.5rem;
+background: rgba(94, 234, 212, 0.05);
+border: 2px solid rgba(94, 234, 212, 0.3);
+box-shadow: 0 0 15px rgba(94, 234, 212, 0.2);
 }
 
 .config-summary h4 {
-    font-size: 0.9rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-    color: #ff3d7f;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.9rem;
+font-weight: 700;
+margin-bottom: 1rem;
+color: #ff3d7f;
+text-transform: uppercase;
+letter-spacing: 1.5px;
+font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .config-summary dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.75rem 1.5rem;
-    font-size: 0.85rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+display: grid;
+grid-template-columns: auto 1fr;
+gap: 0.75rem 1.5rem;
+font-size: 0.85rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .config-summary dt {
-    color: #4a5369;
-    font-weight: 600;
+color: #4a5369;
+font-weight: 600;
 }
 
 .config-summary dd {
-    color: #5eead4;
-    font-weight: 500;
-    word-break: break-all;
+color: #5eead4;
+font-weight: 500;
+word-break: break-all;
 }
 
-/* Wizard Loading */
 .wizard-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 400px;
-    gap: 1rem;
-    color: #5eead4;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+height: 400px;
+gap: 1rem;
+color: #5eead4;
+font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .wizard-loading .spinner-mini {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(94, 234, 212, 0.2);
-    border-top-color: #5eead4;
-    /* sharp 90° corners — synapse v2 */
-    animation: spin 1s linear infinite;
+width: 32px;
+height: 32px;
+border: 3px solid rgba(94, 234, 212, 0.2);
+border-top-color: #5eead4;
+animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+to {
+transform: rotate(360deg);
+}
 }
 
-/* Validation Status */
 .validation-success {
-    color: #86efac;
-    font-size: 0.8rem;
-    margin-top: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-weight: 600;
+color: #86efac;
+font-size: 0.8rem;
+margin-top: 0.5rem;
+display: flex;
+align-items: center;
+gap: 0.5rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-weight: 600;
 }
 
 .validation-success::before {
-    content: '✓';
-    color: #86efac;
+content: '✓';
+color: #86efac;
 }
 
 .validation-error {
-    color: #ff5555;
-    font-size: 0.8rem;
-    margin-top: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-weight: 600;
+color: #ff5555;
+font-size: 0.8rem;
+margin-top: 0.5rem;
+display: flex;
+align-items: center;
+gap: 0.5rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-weight: 600;
 }
 
 .validation-error::before {
-    content: '✗';
-    color: #ff5555;
+content: '✗';
+color: #ff5555;
 }
 
-/* Tool Detection Status Cards */
 .tool-detection-section {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+display: flex;
+flex-direction: column;
+gap: 1rem;
 }
 
 .tool-status-card {
-    padding: 1rem 1.25rem;
-    border: 2px solid;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+padding: 1rem 1.25rem;
+border: 2px solid;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
 }
 
 .tool-status-card.tool-detecting {
-    border-color: rgba(94, 234, 212, 0.3);
-    background: rgba(94, 234, 212, 0.03);
+border-color: rgba(94, 234, 212, 0.3);
+background: rgba(94, 234, 212, 0.03);
 }
 
 .tool-status-card.tool-found {
-    border-color: rgba(134, 239, 172, 0.5);
-    background: rgba(134, 239, 172, 0.05);
+border-color: rgba(134, 239, 172, 0.5);
+background: rgba(134, 239, 172, 0.05);
 }
 
 .tool-status-card.tool-not-found {
-    border-color: rgba(252, 211, 77, 0.5);
-    background: rgba(252, 211, 77, 0.05);
+border-color: rgba(252, 211, 77, 0.5);
+background: rgba(252, 211, 77, 0.05);
 }
 
 .tool-status-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+display: flex;
+align-items: center;
+gap: 0.75rem;
 }
 
 .tool-status-header .spinner-mini {
-    width: 18px;
-    height: 18px;
-    border: 2px solid rgba(94, 234, 212, 0.2);
-    border-top-color: #5eead4;
-    /* sharp 90° corners — synapse v2 */
-    animation: spin 1s linear infinite;
-    flex-shrink: 0;
+width: 18px;
+height: 18px;
+border: 2px solid rgba(94, 234, 212, 0.2);
+border-top-color: #5eead4;
+animation: spin 1s linear infinite;
+flex-shrink: 0;
 }
 
 .tool-status-icon {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7rem;
-    font-weight: 900;
-    letter-spacing: 0;
-    flex-shrink: 0;
+width: 28px;
+height: 28px;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 0.7rem;
+font-weight: 900;
+letter-spacing: 0;
+flex-shrink: 0;
 }
 
 .tool-status-icon.found {
-    color: #86efac;
-    border: 2px solid #86efac;
-    box-shadow: 0 0 8px rgba(134, 239, 172, 0.4);
+color: #86efac;
+border: 2px solid #86efac;
+box-shadow: 0 0 8px rgba(134, 239, 172, 0.4);
 }
 
 .tool-status-icon.not-found {
-    color: #fcd34d;
-    border: 2px solid #fcd34d;
-    box-shadow: 0 0 8px rgba(252, 211, 77, 0.4);
+color: #fcd34d;
+border: 2px solid #fcd34d;
+box-shadow: 0 0 8px rgba(252, 211, 77, 0.4);
 }
 
 .tool-name {
-    font-weight: 700;
-    font-size: 0.95rem;
-    color: #e6ecf5;
+font-weight: 700;
+font-size: 0.95rem;
+color: #e6ecf5;
 }
 
 .tool-version {
-    font-size: 0.8rem;
-    color: #86efac;
-    margin-left: auto;
+font-size: 0.8rem;
+color: #86efac;
+margin-left: auto;
 }
 
 .tool-path {
-    font-size: 0.75rem;
-    color: #4a5369;
-    padding-left: 2.75rem;
-    word-break: break-all;
+font-size: 0.75rem;
+color: #4a5369;
+padding-left: 2.75rem;
+word-break: break-all;
 }
 
 .tool-status-text {
-    font-size: 0.8rem;
-    color: #8893a8;
-    padding-left: 2.75rem;
-    line-height: 1.5;
+font-size: 0.8rem;
+color: #8893a8;
+padding-left: 2.75rem;
+line-height: 1.5;
 }
 
 .tool-status-text a {
-    color: #5eead4;
-    text-decoration: none;
+color: #5eead4;
+text-decoration: none;
 }
 
 .tool-status-text a:hover {
-    text-decoration: underline;
+text-decoration: underline;
 }
 
 .tool-install-hint {
-    font-size: 0.75rem;
-    color: #4a5369;
-    padding-left: 2.75rem;
+font-size: 0.75rem;
+color: #4a5369;
+padding-left: 2.75rem;
 }
 
 .tool-install-hint code {
-    color: #ff3d7f;
-    background: rgba(255, 61, 127, 0.1);
-    padding: 0.15rem 0.4rem;
+color: #ff3d7f;
+background: rgba(255, 61, 127, 0.1);
+padding: 0.15rem 0.4rem;
 }
 
 .tool-override-toggle {
-    align-self: flex-start;
-    margin-left: 2.75rem;
-    padding: 0.25rem 0.75rem;
-    font-size: 0.7rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #4a5369;
-    background: none;
-    border: 1px solid rgba(94, 234, 212, 0.3);
-    cursor: pointer;
-    transition: all 0.3s ease;
+align-self: flex-start;
+margin-left: 2.75rem;
+padding: 0.25rem 0.75rem;
+font-size: 0.7rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-weight: 600;
+text-transform: uppercase;
+letter-spacing: 0.5px;
+color: #4a5369;
+background: none;
+border: 1px solid rgba(94, 234, 212, 0.3);
+cursor: pointer;
+transition: all 0.3s ease;
 }
 
 .tool-override-toggle:hover {
-    color: #5eead4;
-    border-color: rgba(94, 234, 212, 0.5);
+color: #5eead4;
+border-color: rgba(94, 234, 212, 0.5);
 }
 
 .tool-override-input {
-    padding-left: 2.75rem;
+padding-left: 2.75rem;
 }
 
 .tool-override-input input {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    background: rgba(94, 234, 212, 0.05);
-    border: 2px solid rgba(94, 234, 212, 0.3);
-    color: #e6ecf5;
-    font-size: 0.85rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    transition: all 0.3s ease;
+width: 100%;
+padding: 0.5rem 0.75rem;
+background: rgba(94, 234, 212, 0.05);
+border: 2px solid rgba(94, 234, 212, 0.3);
+color: #e6ecf5;
+font-size: 0.85rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+transition: all 0.3s ease;
 }
 
 .tool-override-input input:focus {
-    outline: none;
-    border-color: #5eead4;
-    box-shadow: 0 0 10px rgba(94, 234, 212, 0.3);
+outline: none;
+border-color: #5eead4;
+box-shadow: 0 0 10px rgba(94, 234, 212, 0.3);
 }
 
 .tool-override-input input::placeholder {
-    color: #2a3147;
+color: #2a3147;
 }
 
 .tool-rescan-btn {
-    align-self: flex-start;
-    padding: 0.35rem 1rem;
-    font-size: 0.75rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #5eead4;
-    background: none;
-    border: 1px solid rgba(94, 234, 212, 0.4);
-    cursor: pointer;
-    transition: all 0.3s ease;
+align-self: flex-start;
+padding: 0.35rem 1rem;
+font-size: 0.75rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-weight: 700;
+text-transform: uppercase;
+letter-spacing: 1px;
+color: #5eead4;
+background: none;
+border: 1px solid rgba(94, 234, 212, 0.4);
+cursor: pointer;
+transition: all 0.3s ease;
 }
 
 .tool-rescan-btn:not(:disabled):hover {
-    background: rgba(94, 234, 212, 0.1);
-    box-shadow: 0 0 10px rgba(94, 234, 212, 0.3);
+background: rgba(94, 234, 212, 0.1);
+box-shadow: 0 0 10px rgba(94, 234, 212, 0.3);
 }
 
 .tool-rescan-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+opacity: 0.4;
+cursor: not-allowed;
 }
 
-/* #725: inline action buttons (Test Token, Enable GPU acceleration, ...) used to be
-   styled only inside .wizard-actions, so elsewhere they rendered as bare text.
-   Base button chrome lives here; the footer rules below only add layout tweaks. */
 .wizard-body .btn-primary,
 .wizard-body .btn-secondary {
-    padding: 0.45rem 1rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-weight: 700;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    border: 1px solid;
-    background: var(--color-sv-bg0);
-    cursor: pointer;
-    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
+padding: 0.45rem 1rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-weight: 700;
+font-size: 0.78rem;
+text-transform: uppercase;
+letter-spacing: 0.16em;
+border: 1px solid;
+background: var(--color-sv-bg0);
+cursor: pointer;
+transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .wizard-body .btn-secondary {
-    color: var(--color-sv-ink-dim);
-    border-color: var(--color-sv-line);
+color: var(--color-sv-ink-dim);
+border-color: var(--color-sv-line);
 }
 
 .wizard-body .btn-secondary:not(:disabled):hover {
-    color: var(--color-sv-cyan);
-    border-color: var(--color-sv-cyan);
+color: var(--color-sv-cyan);
+border-color: var(--color-sv-cyan);
 }
 
 .wizard-body .btn-primary {
-    color: var(--color-sv-magenta);
-    border-color: var(--color-sv-magenta);
+color: var(--color-sv-magenta);
+border-color: var(--color-sv-magenta);
 }
 
 .wizard-body .btn-primary:not(:disabled):hover {
-    background: rgba(255, 61, 127, 0.10);
+background: rgba(255, 61, 127, 0.10);
 }
 
 .wizard-body .btn-primary:disabled,
 .wizard-body .btn-secondary:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
+opacity: 0.3;
+cursor: not-allowed;
 }
 
-/* Wizard Actions — tinted-cyan footer chrome, magenta primary CTA. */
 .wizard-actions {
-    padding: 1.25rem 1.75rem;
-    background: rgba(94, 234, 212, 0.03);
-    border-top: 1px solid var(--color-sv-line);
-    display: flex;
-    justify-content: space-between;
-    position: relative;
-    z-index: 2;
+padding: 1.25rem 1.75rem;
+background: rgba(94, 234, 212, 0.03);
+border-top: 1px solid var(--color-sv-line);
+display: flex;
+justify-content: space-between;
+position: relative;
+z-index: 2;
 }
 
 .wizard-actions button {
-    padding: 0.7rem 1.6rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-weight: 700;
-    font-size: 0.82rem;
-    text-transform: uppercase;
-    letter-spacing: 0.20em;
-    border: 1px solid;
-    background: var(--color-sv-bg0);
-    cursor: pointer;
-    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
+padding: 0.7rem 1.6rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-weight: 700;
+font-size: 0.82rem;
+text-transform: uppercase;
+letter-spacing: 0.20em;
+border: 1px solid;
+background: var(--color-sv-bg0);
+cursor: pointer;
+transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .wizard-actions button:not(:disabled):hover {
-    box-shadow: 0 0 14px currentColor;
+box-shadow: 0 0 14px currentColor;
 }
 
 .wizard-actions button:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
+opacity: 0.3;
+cursor: not-allowed;
 }
 
 .wizard-actions .btn-secondary {
-    color: var(--color-sv-ink-dim);
-    border-color: var(--color-sv-line);
+color: var(--color-sv-ink-dim);
+border-color: var(--color-sv-line);
 }
 
 .wizard-actions .btn-secondary:not(:disabled):hover {
-    color: var(--color-sv-cyan);
-    border-color: var(--color-sv-cyan);
+color: var(--color-sv-cyan);
+border-color: var(--color-sv-cyan);
 }
 
-/* Primary CTA stays magenta — "magenta is action" per the handoff.
-   margin-left:auto pins it to the right even on step 1, where the Back
-   button isn't rendered and space-between would slide it to the left. */
 .wizard-actions .btn-primary {
-    color: var(--color-sv-magenta);
-    border-color: var(--color-sv-magenta);
-    margin-left: auto;
+color: var(--color-sv-magenta);
+border-color: var(--color-sv-magenta);
+margin-left: auto;
 }
 
 .wizard-actions .btn-primary:not(:disabled):hover {
-    background: rgba(255, 61, 127, 0.10);
+background: rgba(255, 61, 127, 0.10);
 }
 
-/* ── Collapsible setting groups (Synapse v2) ─────────────────────────
-   Native <details>/<summary>: open/closed state lives in the DOM, so it
-   survives React re-renders and is keyboard-accessible for free. */
 .wizard-group {
-    border: 1px solid var(--color-sv-line-mid);
-    background: rgba(94, 234, 212, 0.02);
-    margin-bottom: 0.85rem;
+border: 1px solid var(--color-sv-line-mid);
+background: rgba(94, 234, 212, 0.02);
+margin-bottom: 0.85rem;
 }
 
 .wizard-group > summary {
-    list-style: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0.85rem 1rem;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--color-sv-cyan-hi);
-    user-select: none;
-    transition: background 120ms ease-out;
+list-style: none;
+cursor: pointer;
+display: flex;
+align-items: center;
+gap: 0.7rem;
+padding: 0.85rem 1rem;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.8rem;
+font-weight: 700;
+letter-spacing: 0.16em;
+text-transform: uppercase;
+color: var(--color-sv-cyan-hi);
+user-select: none;
+transition: background 120ms ease-out;
 }
 
 .wizard-group > summary::-webkit-details-marker {
-    display: none;
+display: none;
 }
 
 .wizard-group > summary:hover {
-    background: rgba(94, 234, 212, 0.05);
+background: rgba(94, 234, 212, 0.05);
 }
 
 .wizard-group-chevron {
-    color: var(--color-sv-cyan);
-    transition: transform 150ms ease;
-    display: inline-block;
+color: var(--color-sv-cyan);
+transition: transform 150ms ease;
+display: inline-block;
 }
 
 .wizard-group[open] > summary {
-    border-bottom: 1px solid var(--color-sv-line);
-    background: rgba(94, 234, 212, 0.05);
+border-bottom: 1px solid var(--color-sv-line);
+background: rgba(94, 234, 212, 0.05);
 }
 
 .wizard-group[open] > summary .wizard-group-chevron {
-    transform: rotate(90deg);
+transform: rotate(90deg);
 }
 
 .wizard-group-sub {
-    margin-left: auto;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    text-transform: none;
-    color: var(--color-sv-ink-faint);
-    font-size: 0.72rem;
+margin-left: auto;
+font-weight: 500;
+letter-spacing: 0.04em;
+text-transform: none;
+color: var(--color-sv-ink-faint);
+font-size: 0.72rem;
 }
 
 .wizard-group-body {
-    padding: 1.1rem;
+padding: 1.1rem;
 }
 
 .wizard-group-body > .form-group:last-child,
 .wizard-group-body > .checkbox-group:last-child {
-    margin-bottom: 0;
+margin-bottom: 0;
 }
 
-/* ── Two-column field grid (used inside dense groups) ──────────────── */
 .wizard-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0 1.5rem;
-    align-items: start;
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 0 1.5rem;
+align-items: start;
 }
 
 @media (max-width: 720px) {
-    .wizard-grid {
-        grid-template-columns: 1fr;
-    }
+.wizard-grid {
+grid-template-columns: 1fr;
+}
 }
 
-/* ── Anonymous-ID / disclosure panel (Data Sharing) ────────────────── */
 .id-panel {
-    padding: 1rem;
-    margin-bottom: 1.1rem;
-    border: 1px solid var(--color-sv-line-mid);
-    background: rgba(94, 234, 212, 0.04);
+padding: 1rem;
+margin-bottom: 1.1rem;
+border: 1px solid var(--color-sv-line-mid);
+background: rgba(94, 234, 212, 0.04);
 }
 
 .id-panel-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 1rem;
+flex-wrap: wrap;
 }
 
 .id-panel-label {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: var(--color-sv-ink-dim);
-    margin-bottom: 0.4rem;
+font-size: 0.68rem;
+text-transform: uppercase;
+letter-spacing: 0.16em;
+color: var(--color-sv-ink-dim);
+margin-bottom: 0.4rem;
 }
 
 .id-panel-value {
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.82rem;
-    color: var(--color-sv-cyan);
-    word-break: break-all;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.82rem;
+color: var(--color-sv-cyan);
+word-break: break-all;
 }
 
 .id-panel-actions {
-    margin-top: 0.9rem;
-    display: flex;
-    gap: 0.6rem;
-    flex-wrap: wrap;
+margin-top: 0.9rem;
+display: flex;
+gap: 0.6rem;
+flex-wrap: wrap;
 }
 
-/* ── Disclosure status badge ───────────────────────────────────────── */
 .contrib-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 9px;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    border: 1px solid;
-    white-space: nowrap;
+display: inline-flex;
+align-items: center;
+gap: 6px;
+padding: 3px 9px;
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 10px;
+font-weight: 700;
+letter-spacing: 0.12em;
+text-transform: uppercase;
+border: 1px solid;
+white-space: nowrap;
 }
 
 .contrib-badge .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-    box-shadow: 0 0 8px currentColor;
+width: 6px;
+height: 6px;
+border-radius: 50%;
+background: currentColor;
+box-shadow: 0 0 8px currentColor;
 }
 
 .contrib-badge--amber {
-    color: var(--color-sv-amber);
-    border-color: rgba(252, 211, 77, 0.5);
-    background: rgba(252, 211, 77, 0.08);
+color: var(--color-sv-amber);
+border-color: rgba(252, 211, 77, 0.5);
+background: rgba(252, 211, 77, 0.08);
 }
 
 .contrib-badge--green {
-    color: var(--color-sv-green);
-    border-color: rgba(134, 239, 172, 0.5);
-    background: rgba(134, 239, 172, 0.08);
+color: var(--color-sv-green);
+border-color: rgba(134, 239, 172, 0.5);
+background: rgba(134, 239, 172, 0.08);
 }
 
-/* ── #243: first-run TMDB gate warning ─────────────────────────────── */
 .tmdb-gate-warning {
-    margin-top: 1rem;
-    padding: 0.85rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    border: 1px solid rgba(252, 211, 77, 0.45);
-    background: rgba(252, 211, 77, 0.08);
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.8rem;
-    color: var(--color-sv-ink-dim);
-    line-height: 1.55;
+margin-top: 1rem;
+padding: 0.85rem 1rem;
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
+border: 1px solid rgba(252, 211, 77, 0.45);
+background: rgba(252, 211, 77, 0.08);
+font-family: "JetBrains Mono", ui-monospace, monospace;
+font-size: 0.8rem;
+color: var(--color-sv-ink-dim);
+line-height: 1.55;
 }
 
 .tmdb-gate-warning strong {
-    color: var(--color-sv-amber);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.78rem;
+color: var(--color-sv-amber);
+text-transform: uppercase;
+letter-spacing: 0.08em;
+font-size: 0.78rem;
 }
 
-/* Path check status — the live "will this folder actually work?" line under a
-   library/staging field. Colour carries the verdict at a glance: an offline
-   share is a warning (the path may be right, just not mounted right now), while
-   an unwritable or malformed path is an error. */
 .path-status {
-    display: block;
+display: block;
 }
 
 .path-status-checking {
-    color: var(--color-sv-ink-faint);
+color: var(--color-sv-ink-faint);
 }
 
 .path-status-ok {
-    color: var(--color-sv-cyan);
+color: var(--color-sv-cyan);
 }
 
 .path-status-warn {
-    color: var(--color-sv-yellow);
+color: var(--color-sv-yellow);
 }
 
 .path-status-error {
-    color: var(--color-sv-red);
+color: var(--color-sv-red);
 }
 
-/* #711: discard-unsaved-changes prompt. Sits above .wizard-overlay (z-index 1000). */
 .wizard-confirm-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 1100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
-    background: rgba(5, 7, 12, 0.7);
+position: fixed;
+inset: 0;
+z-index: 1100;
+display: flex;
+align-items: center;
+justify-content: center;
+padding: 1rem;
+background: rgba(5, 7, 12, 0.7);
 }
 
 .wizard-confirm {
-    width: 100%;
-    max-width: 360px;
-    padding: 1.5rem;
-    background: var(--color-sv-bg0);
-    border: 1px solid var(--color-sv-line-mid);
-    box-shadow: 0 0 24px rgba(94, 234, 212, 0.12);
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+width: 100%;
+max-width: 360px;
+padding: 1.5rem;
+background: var(--color-sv-bg0);
+border: 1px solid var(--color-sv-line-mid);
+box-shadow: 0 0 24px rgba(94, 234, 212, 0.12);
+font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
 .wizard-confirm h3 {
-    margin: 0 0 0.75rem;
-    color: var(--color-sv-cyan);
-    font-size: 0.85rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
+margin: 0 0 0.75rem;
+color: var(--color-sv-cyan);
+font-size: 0.85rem;
+font-weight: 700;
+text-transform: uppercase;
+letter-spacing: 0.2em;
 }
 
 .wizard-confirm p {
-    margin: 0 0 1.25rem;
-    color: var(--color-sv-ink-dim);
-    font-size: 0.8rem;
-    line-height: 1.6;
+margin: 0 0 1.25rem;
+color: var(--color-sv-ink-dim);
+font-size: 0.8rem;
+line-height: 1.6;
 }
 
 .wizard-confirm-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
+display: flex;
+justify-content: flex-end;
+gap: 0.5rem;
 }
 
 .wizard-confirm-actions .btn-primary,
 .wizard-confirm-actions .btn-secondary {
-    padding: 0.45rem 1rem;
-    font-family: inherit;
-    font-weight: 700;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    border: 1px solid;
-    background: var(--color-sv-bg0);
-    cursor: pointer;
+padding: 0.45rem 1rem;
+font-family: inherit;
+font-weight: 700;
+font-size: 0.78rem;
+text-transform: uppercase;
+letter-spacing: 0.16em;
+border: 1px solid;
+background: var(--color-sv-bg0);
+cursor: pointer;
 }
 
 .wizard-confirm-actions .btn-secondary {
-    color: var(--color-sv-ink-dim);
-    border-color: var(--color-sv-line);
+color: var(--color-sv-ink-dim);
+border-color: var(--color-sv-line);
 }
 
 .wizard-confirm-actions .btn-primary {
-    color: var(--color-sv-magenta);
-    border-color: var(--color-sv-magenta);
+color: var(--color-sv-magenta);
+border-color: var(--color-sv-magenta);
 }
