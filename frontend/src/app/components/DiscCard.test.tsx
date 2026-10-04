@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DiscCard, type DiscData } from './DiscCard';
+import { DiscCard, type DiscData, type Track } from './DiscCard';
 
 /** Minimal valid review_needed disc; override only what a test cares about. */
 function makeDisc(overrides: Partial<DiscData> = {}): DiscData {
@@ -479,5 +479,80 @@ describe('DiscCard: disc backup outcome', () => {
     expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
     rerender(<DiscCard disc={makeDisc({ backupStatus: 'completed' })} />);
     expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
+  });
+});
+
+describe('DiscCard — ripping track counters (#717)', () => {
+  function makeTrack(id: number, state: Track['state']): Track {
+    return { id: String(id), title: `Title ${id}`, duration: '0:22:00', state, progress: 0 };
+  }
+
+  function makeRippingDisc(states: Track['state'][]): DiscData {
+    return makeDisc({
+      state: 'ripping',
+      needsReview: false,
+      progress: 93,
+      tracks: states.map((state, i) => makeTrack(i + 1, state)),
+    });
+  }
+
+  const statValue = (label: string) => screen.getByText(label).closest('div') as HTMLElement;
+
+  it('shows separate RIPPED and MATCHED counters instead of a single TRACKS stat', () => {
+    render(<DiscCard disc={makeRippingDisc(['queued', 'pending'])} />);
+
+    expect(statValue('RIPPED')).toBeInTheDocument();
+    expect(statValue('MATCHED')).toBeInTheDocument();
+    expect(screen.queryByText('TRACKS')).not.toBeInTheDocument();
+  });
+
+  it('counts already ripped tracks as ripped even though none are matched yet (6/8 vs 0/8)', () => {
+    render(
+      <DiscCard
+        disc={makeRippingDisc([
+          'queued', 'queued', 'queued', 'queued', 'queued', 'queued', 'ripping', 'pending',
+        ])}
+      />,
+    );
+
+    expect(statValue('RIPPED')).toHaveTextContent('6/8');
+    expect(statValue('MATCHED')).toHaveTextContent('0/8');
+  });
+
+  it('counts matched and completed tracks in both counters', () => {
+    render(
+      <DiscCard disc={makeRippingDisc(['matched', 'completed', 'matching', 'review', 'ripping', 'pending'])} />,
+    );
+
+    expect(statValue('RIPPED')).toHaveTextContent('4/6');
+    expect(statValue('MATCHED')).toHaveTextContent('2/6');
+  });
+
+  it('excludes skipped tracks from the totals', () => {
+    render(<DiscCard disc={makeRippingDisc(['queued', 'queued', 'skipped', 'skipped', 'pending'])} />);
+
+    expect(statValue('RIPPED')).toHaveTextContent('2/3');
+    expect(statValue('MATCHED')).toHaveTextContent('0/3');
+  });
+
+  it('does not count failed tracks as ripped', () => {
+    render(<DiscCard disc={makeRippingDisc(['queued', 'failed', 'pending'])} />);
+
+    expect(statValue('RIPPED')).toHaveTextContent('1/3');
+  });
+
+  it('keeps the matching-phase MATCHED counter unchanged', () => {
+    render(
+      <DiscCard
+        disc={makeDisc({
+          state: 'matching',
+          needsReview: false,
+          tracks: [makeTrack(1, 'matched'), makeTrack(2, 'matching'), makeTrack(3, 'queued')],
+        })}
+      />,
+    );
+
+    expect(statValue('MATCHED')).toHaveTextContent('1/3');
+    expect(screen.queryByText('RIPPED')).not.toBeInTheDocument();
   });
 });
