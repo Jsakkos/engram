@@ -304,6 +304,7 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
 
     // Error info (from WebSocket error_message or match_details.reason for FAILED titles)
     errorMessage: title.error_message || extractErrorReason(title) || undefined,
+    autoSkipReason: extractAutoSkipReason(title, trackState),
   };
 }
 
@@ -325,11 +326,21 @@ interface MatchDetails {
   episode?: string;
   reason?: string;
   method?: string;       // e.g. "full_transcription" for the whole-file fallback
+  auto_skipped?: boolean; // skipped pre-rip as too short to be an episode
 }
 
 function extractErrorReason(title: DiscTitle): string | null {
   if (title.state !== 'failed' || !title.match_details) return null;
   return parseMatchDetails(title).reason || null;
+}
+
+/** The backend's reason for skipping a too-short track before the rip. Gated on
+ *  the SKIPPED state: an un-skip broadcast carries no match_details, so the
+ *  merged title keeps the stale flag after the track returns to PENDING. */
+function extractAutoSkipReason(title: DiscTitle, trackState: TrackState): string | undefined {
+  if (trackState !== 'skipped') return undefined;
+  const details = parseMatchDetails(title);
+  return details.auto_skipped ? details.reason || 'Too short to be an episode' : undefined;
 }
 
 function extractMatchCandidates(title: DiscTitle): MatchCandidate[] | undefined {

@@ -17,6 +17,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.disc_source import DiscSource
+from app.core.episode_runtime import find_short_titles
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError, title_index_from_filename
 from app.core.fingerprint_disc_classifier import (
     identify_disc_via_network,
@@ -370,6 +371,88 @@ class IdentificationCoordinator:
         config = await get_config()
         return next_state_after_identify(config, drive_id)
 
+    async def _skip_short_titles_before_rip(
+        self, job: DiscJob, session, job_id: int, trust_identity: bool
+    ) -> None:
+        """Mark tracks too short to be episodes SKIPPED before the rip starts.
+
+        Only for ``extras_policy == "skip"``: a user who keeps or reviews extras
+        needs them ripped. The tracks land in exactly the state a manual "skip
+        the rip" produces, so the card shows them and the existing un-skip works
+        while the disc is still in the drive. Anything this lets through is still
+        caught by the post-rip extras check in matching.
+
+        TMDB runtimes are used only when ``trust_identity``; for a same-name twin
+        or an uncorroborated identity they could be the wrong show's, and the
+        filter falls back to the disc's own evidence.
+        """
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        if config.extras_policy != "skip" or job.content_type != ContentType.TV:
+            return
+
+        runtimes: list[int] = []
+        wants_tmdb = bool(trust_identity and job.tmdb_id and job.detected_season)
+        if wants_tmdb:
+            from app.matcher.tmdb_client import fetch_season_episode_runtimes
+
+            # lru_cached, and keyed on the job's FINAL identity: classification
+            # fetched runtimes for the label's identity, which a disc-network or
+            # DiscDB override may since have replaced. No try here: the fetch
+            # already catches and logs its network errors (with exc_info) and
+            # returns [], which drops the filter to its stricter disc-only rule.
+            runtimes = await asyncio.to_thread(
+                fetch_season_episode_runtimes, str(job.tmdb_id), job.detected_season
+            )
+
+        db_titles = (
+            (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+            .scalars()
+            .all()
+        )
+        # Play All rows (and anything else already decided) are not candidates.
+        decided = {
+            t.title_index
+            for t in db_titles
+            if t.state != TitleState.PENDING or not t.is_selected or t.is_extra
+        }
+        short = find_short_titles(
+            [(t.title_index, t.duration_seconds or 0) for t in db_titles],
+            runtimes,
+            exclude=decided,
+        )
+        if not short:
+            return
+
+        reasons = {s.index: s.reason for s in short}
+        skipped: list[DiscTitle] = []
+        for dt in db_titles:
+            if dt.title_index in reasons:
+                dt.state = TitleState.SKIPPED
+                dt.is_selected = False
+                dt.match_details = json.dumps(
+                    {"reason": reasons[dt.title_index], "skipped": True, "auto_skipped": True}
+                )
+                session.add(dt)
+                skipped.append(dt)
+        await session.commit()
+        if runtimes:
+            evidence = "TMDB + disc"
+        elif wants_tmdb:
+            evidence = "disc only, TMDB runtimes unavailable"
+        else:
+            evidence = "disc only, no trusted TMDB show and season"
+        logger.info(
+            f"Job {job_id}: auto-skipped {len(skipped)} short track(s) before rip "
+            f"(extras policy 'skip', {evidence}): "
+            + "; ".join(f"title {dt.title_index}: {reasons[dt.title_index]}" for dt in skipped)
+        )
+        for dt in skipped:
+            await ws_manager.broadcast_title_update(
+                job_id, dt.id, TitleState.SKIPPED.value, match_details=dt.match_details
+            )
+
     async def _hand_off_after_identify(self, job_id: int, state: JobState) -> None:
         """Run the phase chosen by :func:`next_state_after_identify`.
 
@@ -690,6 +773,16 @@ class IdentificationCoordinator:
                         job, session, job_id, kind="name", reason=reason
                     )
                     return
+
+                # Before any branch below can hand the disc to the ripper. Gates
+                # A and B returned above: with no usable identity they rip
+                # permissively by design.
+                await self._skip_short_titles_before_rip(
+                    job,
+                    session,
+                    job_id,
+                    trust_identity=not _collision and not analysis.identity_unconfirmed,
+                )
 
                 # Start subtitle download for ALL TV content — except when identity is
                 # ambiguous (same-name collision) or a no-year twin needs disambiguation.

@@ -300,3 +300,35 @@ describe('transformJobToDiscData — subtitle enrichment for terminal states', (
     expect(disc.subtitle).not.toContain('E01');
   });
 });
+
+describe('transformJobToDiscData: auto-skipped short tracks', () => {
+  const AUTO = JSON.stringify({
+    reason: 'Short track (6m): under the 38m TMDB episode runtime',
+    skipped: true,
+    auto_skipped: true,
+  });
+
+  it('surfaces the backend reason on an auto-skipped track', () => {
+    const disc = transformJobToDiscData(makeJob({ state: 'ripping' }), [
+      makeTitle('skipped', 1, { match_details: AUTO }),
+    ]);
+    expect(disc.tracks?.[0].autoSkipReason).toBe(
+      'Short track (6m): under the 38m TMDB episode runtime',
+    );
+  });
+
+  it('leaves a manual skip unmarked', () => {
+    const manual = JSON.stringify({ reason: 'Skipped by user', skipped: true });
+    const disc = transformJobToDiscData(makeJob({ state: 'ripping' }), [
+      makeTitle('skipped', 1, { match_details: manual }),
+    ]);
+    expect(disc.tracks?.[0].autoSkipReason).toBeUndefined();
+  });
+
+  it('clears once un-skipped, even though the stale match_details survives the WS merge', () => {
+    const disc = transformJobToDiscData(makeJob({ state: 'ripping' }), [
+      makeTitle('pending', 1, { match_details: AUTO }),
+    ]);
+    expect(disc.tracks?.[0].autoSkipReason).toBeUndefined();
+  });
+});

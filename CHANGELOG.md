@@ -4,6 +4,18 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **"Skip extras" now skips short TV tracks before ripping.** With the extras
+  policy set to *Skip*, bonus featurettes on a TV disc were ripped and only
+  discarded afterwards, so skipping them meant watching the dashboard and
+  pressing SKIP on each one before the rip reached it. Engram now skips tracks
+  that are clearly too short to be episodes before the rip starts. It compares
+  each track with the season's TMDB episode runtimes and with the disc's own
+  episode-length tracks, and skips only when both agree, so there is no fixed
+  minute cutoff for short-episode shows to trip over. Skipped tracks stay on the
+  card with the reason, and UN-SKIP puts any of them back in the rip queue.
+
 ## [0.38.1] - 2026-10-03
 
 _Highlights: episode matching works again on the Windows, macOS and Linux downloads, which in v0.38.0 sent every TV disc to manual review._
