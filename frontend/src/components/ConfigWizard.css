@@ -476,6 +476,27 @@
     transition: all 0.3s ease;
 }
 
+/* #725: `.form-group label` uppercases and tracks every label, which also hit the
+   description text inside checkbox rows. Neutralise that on the row itself; the
+   title (<strong>) re-applies the label style, the hint stays normal-case body text. */
+.form-group label.checkbox-label {
+    display: flex;
+    margin-bottom: 0;
+    color: inherit;
+    font-weight: 400;
+    font-size: 0.9rem;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.checkbox-text > strong {
+    color: var(--color-sv-ink-dim);
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+}
+
 .checkbox-label:hover {
     background: rgba(255, 61, 127, 0.1);
     border-color: rgba(255, 61, 127, 0.4);
@@ -516,7 +537,11 @@
 
 .checkbox-hint {
     font-size: 0.875rem;
+    line-height: 1.5;
     color: #8893a8;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 /* LAN Address Panel */
@@ -893,6 +918,48 @@
     cursor: not-allowed;
 }
 
+/* #725: inline action buttons (Test Token, Enable GPU acceleration, ...) used to be
+   styled only inside .wizard-actions, so elsewhere they rendered as bare text.
+   Base button chrome lives here; the footer rules below only add layout tweaks. */
+.wizard-body .btn-primary,
+.wizard-body .btn-secondary {
+    padding: 0.45rem 1rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-weight: 700;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    border: 1px solid;
+    background: var(--color-sv-bg0);
+    cursor: pointer;
+    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.wizard-body .btn-secondary {
+    color: var(--color-sv-ink-dim);
+    border-color: var(--color-sv-line);
+}
+
+.wizard-body .btn-secondary:not(:disabled):hover {
+    color: var(--color-sv-cyan);
+    border-color: var(--color-sv-cyan);
+}
+
+.wizard-body .btn-primary {
+    color: var(--color-sv-magenta);
+    border-color: var(--color-sv-magenta);
+}
+
+.wizard-body .btn-primary:not(:disabled):hover {
+    background: rgba(255, 61, 127, 0.10);
+}
+
+.wizard-body .btn-primary:disabled,
+.wizard-body .btn-secondary:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
 /* Wizard Actions — tinted-cyan footer chrome, magenta primary CTA. */
 .wizard-actions {
     padding: 1.25rem 1.75rem;
@@ -1147,4 +1214,71 @@
 
 .path-status-error {
     color: var(--color-sv-red);
+}
+
+/* #711: discard-unsaved-changes prompt. Sits above .wizard-overlay (z-index 1000). */
+.wizard-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(5, 7, 12, 0.7);
+}
+
+.wizard-confirm {
+    width: 100%;
+    max-width: 360px;
+    padding: 1.5rem;
+    background: var(--color-sv-bg0);
+    border: 1px solid var(--color-sv-line-mid);
+    box-shadow: 0 0 24px rgba(94, 234, 212, 0.12);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.wizard-confirm h3 {
+    margin: 0 0 0.75rem;
+    color: var(--color-sv-cyan);
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+}
+
+.wizard-confirm p {
+    margin: 0 0 1.25rem;
+    color: var(--color-sv-ink-dim);
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+
+.wizard-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.wizard-confirm-actions .btn-primary,
+.wizard-confirm-actions .btn-secondary {
+    padding: 0.45rem 1rem;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    border: 1px solid;
+    background: var(--color-sv-bg0);
+    cursor: pointer;
+}
+
+.wizard-confirm-actions .btn-secondary {
+    color: var(--color-sv-ink-dim);
+    border-color: var(--color-sv-line);
+}
+
+.wizard-confirm-actions .btn-primary {
+    color: var(--color-sv-magenta);
+    border-color: var(--color-sv-magenta);
 }
