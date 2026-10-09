@@ -741,3 +741,56 @@ class TestSuggestEpisodeViaLLM:
             file_path=tmp_path / "x.mkv", series_name="Test", season=1
         )
         assert details is None
+
+
+def _canonical_cp_hit():
+    return {
+        "season": 1,
+        "episode": 3,
+        "confidence": 0.95,
+        "tier": "canonical",
+        "match_details": {"match_source": "chromaprint"},
+    }
+
+
+@pytest.mark.unit
+class TestChromaprintPrepassNamespace:
+    """Fingerprint packs are keyed by TMDB numbering; a TVDB job must not use them."""
+
+    def _curator(self, tmp_path, monkeypatch):
+        curator = EpisodeCurator()
+        curator._matcher = Mock()
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
+        calls = []
+
+        async def fake_prepass(**k):
+            calls.append(k)
+            return _canonical_cp_hit()
+
+        monkeypatch.setattr(curator, "_chromaprint_prepass", fake_prepass)
+        asr = MatchResult(tmp_path / "ep.mkv", "S01E05", None, 0.8, False, {"src": "asr"})
+
+        async def fake_asr(*a, **k):
+            return asr
+
+        monkeypatch.setattr(curator, "_run_asr_identify", fake_asr)
+        return curator, calls, asr
+
+    @pytest.mark.asyncio
+    async def test_tmdb_job_accepts_canonical_chromaprint_hit(self, tmp_path, monkeypatch):
+        curator, calls, _asr = self._curator(tmp_path, monkeypatch)
+        result = await curator.match_single_file(tmp_path / "ep.mkv", "Show", 1)
+        assert calls
+        assert result.episode_code == "S01E03"
+        assert result.match_details.get("chromaprint_accepted") is True
+
+    @pytest.mark.asyncio
+    async def test_tvdb_job_skips_chromaprint_prepass(self, tmp_path, monkeypatch):
+        from app.core.episode_namespace import NAMESPACE_TVDB, namespace_context
+
+        curator, calls, asr = self._curator(tmp_path, monkeypatch)
+        with namespace_context(NAMESPACE_TVDB):
+            result = await curator.match_single_file(tmp_path / "ep.mkv", "Show", 1)
+        assert calls == []
+        assert result is asr
+        assert "chromaprint_vs_asr_conflict" not in (result.match_details or {})

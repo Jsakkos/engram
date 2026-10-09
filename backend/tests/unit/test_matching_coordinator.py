@@ -304,7 +304,10 @@ class TestDownloadSubtitlesMessaging:
         monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
         monkeypatch.setattr(
             "app.matcher.testing_service.download_subtitles",
-            lambda show, season, tmdb_id=None: {"episodes": episodes, "show_name": show},
+            lambda show, season, tmdb_id=None, use_precomputed=True: {
+                "episodes": episodes,
+                "show_name": show,
+            },
         )
 
     async def test_no_subtitles_sets_actionable_show_specific_message(self, monkeypatch):
@@ -336,7 +339,7 @@ class TestDownloadSubtitlesMessaging:
         monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
         monkeypatch.setattr(
             "app.matcher.testing_service.download_subtitles",
-            lambda show, season, tmdb_id=None: {
+            lambda show, season, tmdb_id=None, use_precomputed=True: {
                 "episodes": [{"status": "not_found"}],
                 "show_name": show,
                 "os_error": "Download limit reached",
@@ -384,7 +387,7 @@ class TestDownloadSubtitlesMessaging:
 
         monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
 
-        def _raise(show, season, tmdb_id=None):
+        def _raise(show, season, tmdb_id=None, use_precomputed=True):
             raise ValueError(f"No episodes found for {show} Season {season} on TMDB")
 
         monkeypatch.setattr("app.matcher.testing_service.download_subtitles", _raise)
@@ -617,7 +620,7 @@ class TestDownloadSubtitlesAllSeasons:
         monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
         monkeypatch.setattr(
             "app.matcher.testing_service.download_subtitles",
-            lambda show, season, tmdb_id=None: {
+            lambda show, season, tmdb_id=None, use_precomputed=True: {
                 "episodes": per_season.get(season, []),
                 "show_name": show,
             },
@@ -680,7 +683,7 @@ class TestDownloadSubtitlesAllSeasons:
         errors = {1: None, 2: "daily download quota exhausted"}
         monkeypatch.setattr(
             "app.matcher.testing_service.download_subtitles",
-            lambda show, season, tmdb_id=None: {
+            lambda show, season, tmdb_id=None, use_precomputed=True: {
                 "episodes": [{"status": "not_found"}],
                 "show_name": show,
                 "os_error": errors[season],
@@ -723,7 +726,7 @@ class TestDownloadSubtitlesAllSeasons:
 
         monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
 
-        def fake_download(show, season, tmdb_id=None):
+        def fake_download(show, season, tmdb_id=None, use_precomputed=True):
             seen.append((season, tmdb_id))
             return {"episodes": [{"status": "downloaded"}], "show_name": show}
 

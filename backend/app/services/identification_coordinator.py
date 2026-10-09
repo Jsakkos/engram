@@ -395,6 +395,15 @@ class IdentificationCoordinator:
         runtimes: list[int] = []
         wants_tmdb = bool(trust_identity and job.tmdb_id and job.detected_season)
         if wants_tmdb:
+            from app.models.show_ordering import ShowOrderingPreference
+
+            # A show on TheTVDB numbering: TMDB's runtimes describe a different
+            # episode split (Justice League's one 72-minute TMDB pilot is three
+            # 25-minute discs tracks), so they cannot say what is too short here.
+            pref = await session.get(ShowOrderingPreference, job.tmdb_id)
+            if pref is not None and pref.ordering == "tvdb":
+                wants_tmdb = False
+        if wants_tmdb:
             from app.matcher.tmdb_client import fetch_season_episode_runtimes
 
             # lru_cached, and keyed on the job's FINAL identity: classification

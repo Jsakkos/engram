@@ -212,7 +212,10 @@ def migrate_cache(
     norm_map = {_normalize(k): v for k, v in curated_map.items()}
     tally = Tally()
 
-    for show_dir in sorted(d for d in data_dir.iterdir() if d.is_dir()):
+    # "@tvdb" dirs hold TheTVDB-numbered references; never migrated.
+    for show_dir in sorted(
+        d for d in data_dir.iterdir() if d.is_dir() and not d.name.endswith("@tvdb")
+    ):
         name = show_dir.name
         tid, cls = resolve_dir(
             name, curated_map, norm_map, treat_as_name=treat_as_name, fetch_id_fn=fetch_id_fn

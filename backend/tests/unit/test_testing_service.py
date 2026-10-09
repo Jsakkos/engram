@@ -59,6 +59,16 @@ def _stub_extra_providers():
 class TestDownloadSubtitles:
     """Tests for subtitle download orchestration."""
 
+    @patch("app.matcher.testing_service._season_episode_count", return_value=0)
+    @patch("app.matcher.testing_service.fetch_show_id")
+    def test_no_episodes_message_names_tvdb_under_tvdb_namespace(self, mock_show_id, _count):
+        from app.core.episode_namespace import namespace_context
+
+        mock_show_id.return_value = "123"
+        with namespace_context("tvdb"):
+            with pytest.raises(ValueError, match="on TheTVDB"):
+                download_subtitles("Test Show", 1)
+
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")
@@ -749,3 +759,32 @@ class TestGetOsClientQuota:
         assert result is client
         assert testing_service._OS.failed is False
         client.user_info.assert_called_once()
+
+
+@pytest.mark.unit
+class TestSeasonEpisodeTitles:
+    """OpenSubtitles results are validated against the season's titles; under
+    TheTVDB numbering those must come from the TheTVDB roster, or E25/E26 are
+    rejected as out of range."""
+
+    def test_titles_come_from_tvdb_roster_under_tvdb_namespace(self):
+        from app.core.episode_namespace import namespace_context
+
+        roster = [{"episode_number": n, "name": f"TVDB {n}"} for n in range(1, 27)]
+        with (
+            patch("app.services.config_service.get_config_sync", return_value=Mock()),
+            patch("app.matcher.tvdb_client.resolve_api_key", return_value="k"),
+            patch("app.matcher.tmdb_client.fetch_tvdb_id", return_value=999),
+            patch("app.matcher.tvdb_client.fetch_season_roster", return_value=roster),
+            patch.object(testing_service, "fetch_season_episodes") as tmdb_eps,
+            namespace_context("tvdb"),
+        ):
+            titles = testing_service._season_episode_titles("1618", 1, "tok")
+        tmdb_eps.assert_not_called()
+        assert len(titles) == 26
+        assert titles[26] == "TVDB 26"
+
+    def test_titles_come_from_tmdb_by_default(self):
+        eps = [{"episode_number": 1, "name": "Pilot"}, {"episode_number": None, "name": "x"}]
+        with patch.object(testing_service, "fetch_season_episodes", return_value=eps):
+            assert testing_service._season_episode_titles("1618", 1, "tok") == {1: "Pilot"}

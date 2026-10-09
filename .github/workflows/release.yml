@@ -68,6 +68,8 @@ jobs:
 
       - name: Build executable
         working-directory: backend
+        env:
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
         run: uv run pyinstaller engram.spec
 
       - name: Smoke test built executable
@@ -214,6 +216,8 @@ jobs:
 
       - name: Build executable
         working-directory: backend
+        env:
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
         run: uv run pyinstaller engram.spec
 
       - name: Verify binary architecture
@@ -310,6 +314,8 @@ jobs:
 
       - name: Build executable
         working-directory: backend
+        env:
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
         run: uv run pyinstaller engram.spec
 
       - name: Verify binary architecture
@@ -398,6 +404,7 @@ jobs:
         working-directory: backend
         env:
           HEADLESS_BUILD: "1"
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
         run: uv run pyinstaller engram.spec
 
       - name: Verify binary architecture
@@ -481,6 +488,7 @@ jobs:
         working-directory: backend
         env:
           HEADLESS_BUILD: "1"
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
         run: uv run pyinstaller engram.spec
 
       - name: Verify binary architecture
@@ -573,6 +581,8 @@ jobs:
 
       - name: Build executable
         working-directory: backend
+        env:
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
         run: uv run pyinstaller engram.spec
 
       - name: Verify binary architecture

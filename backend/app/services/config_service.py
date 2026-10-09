@@ -210,6 +210,7 @@ async def update_config(**kwargs) -> AppConfig:
         sensitive_fields = {
             "makemkv_key",
             "tmdb_api_key",
+            "tvdb_api_key",
             "ai_api_key",
             "opensubtitles_api_key",
             "opensubtitles_password",
@@ -248,6 +249,14 @@ async def update_config(**kwargs) -> AppConfig:
             from app.matcher.tmdb_client import clear_caches
 
             clear_caches()
+
+        # A new TheTVDB key must not keep using a token minted with the old one.
+        if (kwargs.get("tvdb_api_key") or "").strip():
+            from app.matcher import tvdb_client
+
+            with tvdb_client._token_lock:
+                tvdb_client._token_state.token = None
+                tvdb_client._token_state.key = None
 
         # Bridge a changed MakeMKV key into MakeMKV's own settings.conf so
         # makemkvcon picks it up — Engram's config DB and MakeMKV's settings

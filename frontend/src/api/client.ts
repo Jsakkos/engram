@@ -151,6 +151,46 @@ export async function setShowOrdering(tmdbId: number, ordering: string): Promise
 }
 
 /**
+ * Re-throw an {@link ApiError} as a plain Error carrying the backend's
+ * `{"detail": "..."}` sentence, so a caller can show `e.message` verbatim
+ * instead of the raw "Request failed (503 ...): {json}" form.
+ */
+async function withDetail(call: Promise<void>): Promise<void> {
+  let failure: ApiError;
+  try {
+    await call;
+    return;
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e;
+    failure = e;
+  }
+  let detail: string | null = null;
+  try {
+    const parsed = JSON.parse(failure.body);
+    if (typeof parsed?.detail === 'string' && parsed.detail.trim()) detail = parsed.detail.trim();
+  } catch {
+    // Not JSON: fall through to the status-based message.
+  }
+  throw new Error(detail ?? `Request failed (${failure.status}).`);
+}
+
+/** Switch a job between TMDB and TheTVDB numbering; the backend re-downloads and re-matches. */
+export async function setEpisodeNamespace(jobId: number, namespace: 'tmdb' | 'tvdb'): Promise<void> {
+  return withDetail(
+    apiFetchVoid(`/api/jobs/${jobId}/episode-namespace`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ namespace }),
+    }),
+  );
+}
+
+/** Stop suggesting TheTVDB numbering for a show. */
+export async function dismissTvdbSuggestion(tmdbId: number): Promise<void> {
+  return withDetail(apiFetchVoid(`/api/shows/${tmdbId}/tvdb-suggestion/dismiss`, { method: 'POST' }));
+}
+
+/**
  * Re-run matching for a single title. Used for both the single-title "re-match"
  * action and the bulk re-match over a multiselect, so both go through the shared
  * {@link apiFetchVoid} wrapper instead of raw fetch.

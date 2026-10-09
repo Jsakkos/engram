@@ -43,6 +43,7 @@ from app.core.security import (
 )
 from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
+from app.matcher import tvdb_client
 from app.matcher.coverage_tracker import get_cache_status
 from app.matcher.episode_identification import reference_coverage
 from app.matcher.manual_subtitle_import import (
@@ -52,7 +53,7 @@ from app.matcher.manual_subtitle_import import (
     classify_files,
     commit_files,
 )
-from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
+from app.matcher.tmdb_client import get_number_of_seasons
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle
 from app.services.identity_prompts import BLOCKING_KINDS
@@ -218,6 +219,11 @@ class JobDetailResponse(BaseModel):
     # Why classification ran without TMDB (key absent/rejected); None when TMDB
     # participated normally (#243).
     tmdb_degraded_reason: str | None = None
+    # TheTVDB episode namespace (spec 2026-10-08): which numbering the job
+    # matched in, why it fell back (if it did), and any recorded divergence.
+    episode_namespace: str = "tmdb"
+    episode_namespace_note: str | None = None
+    tvdb_divergence_json: str | None = None
     # Classification
     classification_source: str = "heuristic"
     classification_confidence: float = 0.0
@@ -276,6 +282,10 @@ class ConfigResponse(BaseModel):
     # so the dashboard health banner reads this boolean instead of sniffing the
     # masked value (#243).
     tmdb_configured: bool
+    tvdb_api_key: str  # "***" if an override is stored
+    # True when SOME TheTVDB key is usable (override or built-in), so the UI
+    # can say "built in" without exposing whether one is baked in.
+    tvdb_configured: bool
     max_concurrent_matches: int
     enable_gpu_acceleration: bool
     # Background pre-transcription (transcript cache prewarmer)
@@ -381,6 +391,7 @@ class ConfigUpdate(BaseModel):
     library_movies_path: str | None = None
     library_tv_path: str | None = None
     tmdb_api_key: str | None = None
+    tvdb_api_key: str | None = None
     max_concurrent_matches: int | None = None
     enable_gpu_acceleration: bool | None = None
     # Background pre-transcription (transcript cache prewarmer)
@@ -782,6 +793,14 @@ class SeasonRosterResponse(BaseModel):
     ordering_diverges: bool = False
     current_ordering: str = "aired"
     ordering_options: list[OrderingOption] = []
+    # TheTVDB episode namespace (spec 2026-10-08). episode_source is the
+    # numbering the roster (and the job's matching) uses, "tmdb" or "tvdb", and
+    # drives the attribution link; tvdb_suggestion (the stored divergence:
+    # {"season", "tmdb", "tvdb"} episode counts) drives the "numbered
+    # differently" notice; namespace_note explains a fallback to TMDB.
+    episode_source: str = "tmdb"
+    tvdb_suggestion: dict | None = None
+    namespace_note: str | None = None
 
 
 @router.get("/jobs/{job_id}/season-roster", response_model=SeasonRosterResponse)
@@ -827,21 +846,31 @@ async def get_season_roster(
         )
 
     season_num = effective_season
+    # Imported here (not at module level) so tests can patch season_episodes.
+    from app.core.episode_namespace import NAMESPACE_TVDB, namespace_context, season_episodes
     from app.services.config_service import get_config
 
     config = await get_config()
-    # fetch_season_episodes does a synchronous requests.get; run it off the
-    # event loop so a slow TMDB call doesn't stall other requests / WS pushes.
-    episodes_raw = await asyncio.to_thread(
-        fetch_season_episodes, str(job.tmdb_id), season_num, config.tmdb_api_key
-    )
+    namespace = job.episode_namespace or "tmdb"
+    # The roster comes from the job's numbering: TheTVDB for a TVDB job, TMDB
+    # otherwise. The fetch is a synchronous HTTP call; run it off the event loop
+    # so a slow lookup doesn't stall other requests / WS pushes. to_thread copies
+    # the context, so the bound namespace reaches the worker thread.
+    with namespace_context(namespace):
+        episodes_raw = await asyncio.to_thread(
+            season_episodes, str(job.tmdb_id), season_num, config.tmdb_api_key
+        )
     if not episodes_raw:
+        # A TVDB job never falls back to TMDB numbering, so name the real source.
+        source_name = "TheTVDB" if namespace == NAMESPACE_TVDB else "TMDB"
         return SeasonRosterResponse(
             available=False,
             season_number=season_num,
             show_id=job.tmdb_id,
             season_count=season_count,
-            reason="Could not load season episodes from TMDB",
+            reason=f"Could not load season episodes from {source_name}",
+            episode_source=namespace,
+            namespace_note=job.episode_namespace_note,
         )
 
     # Map this season's matched episodes → the title ids claiming them.
@@ -870,14 +899,16 @@ async def get_season_roster(
     cache_dir = Path(config.subtitles_cache_path).expanduser()
     episode_numbers = [ep["episode_number"] for ep in episodes_raw]
     try:
-        coverage = await asyncio.to_thread(
-            reference_coverage,
-            cache_dir,
-            job.tmdb_id,
-            job.detected_title or "",
-            season_num,
-            episode_numbers,
-        )
+        # Bound so the scan reads the namespace's own reference folder.
+        with namespace_context(namespace):
+            coverage = await asyncio.to_thread(
+                reference_coverage,
+                cache_dir,
+                job.tmdb_id,
+                job.detected_title or "",
+                season_num,
+                episode_numbers,
+            )
     except Exception as e:  # noqa: BLE001 — coverage is decoration, not load-bearing
         logger.debug(
             "Reference-coverage scan failed for show %s S%s: %s",
@@ -928,6 +959,48 @@ async def get_season_roster(
         current_ordering,
     )
 
+    # TheTVDB is offered beside the TMDB orderings once Engram knows TVDB
+    # numbers this season differently, while the job already uses it, or while
+    # the show prefers it (a job that fell back to TMDB during a TheTVDB outage
+    # keeps the option, so the selector never shows a current value that has no
+    # matching option).
+    if namespace == NAMESPACE_TVDB or job.tvdb_divergence_json or current_ordering == "tvdb":
+        if not any(o.get("ordering") == "tvdb" for o in ordering_data["options"]):
+            ordering_data["options"].append(
+                {
+                    "ordering": "tvdb",
+                    "label": "TheTVDB",
+                    "tmdb_type": 0,
+                    "diverges": True,
+                    "projection": {},
+                }
+            )
+        ordering_data["available"] = True
+        ordering_data["diverges"] = True
+        if namespace == NAMESPACE_TVDB:
+            ordering_data["current"] = "tvdb"
+            # The TMDB options' projections were computed from TMDB episode
+            # groups over TheTVDB roster pairs, which is meaningless. Keep the
+            # options (so the user can switch back) but without a projection.
+            for option in ordering_data["options"]:
+                if option.get("ordering") != "tvdb":
+                    option["projection"] = {}
+                    option["diverges"] = False
+
+    from app.models.show_ordering import ShowOrderingPreference
+
+    pref = await session.get(ShowOrderingPreference, job.tmdb_id)
+    tvdb_suggestion = None
+    if (
+        namespace != NAMESPACE_TVDB
+        and job.tvdb_divergence_json
+        and not (pref and pref.tvdb_suggestion_dismissed)
+    ):
+        try:
+            tvdb_suggestion = json.loads(job.tvdb_divergence_json)
+        except (json.JSONDecodeError, TypeError):
+            tvdb_suggestion = None
+
     return SeasonRosterResponse(
         available=True,
         season_number=season_num,
@@ -938,6 +1011,9 @@ async def get_season_roster(
         ordering_diverges=ordering_data["diverges"],
         current_ordering=ordering_data["current"],
         ordering_options=[OrderingOption(**o) for o in ordering_data["options"]],
+        episode_source=namespace,
+        tvdb_suggestion=tvdb_suggestion,
+        namespace_note=job.episode_namespace_note,
     )
 
 
@@ -1019,13 +1095,18 @@ async def preview_manual_subtitles(
     config = await get_config()
     cache_dir = Path(config.subtitles_cache_path).expanduser()
 
-    results = await asyncio.to_thread(
-        classify_files,
-        cache_dir,
-        job.tmdb_id,
-        job.detected_title,
-        [PreviewInputFile(filename=f.filename, content=f.content) for f in request.files],
-    )
+    from app.core.episode_namespace import namespace_context
+
+    # Classified against the job's numbering, so a TVDB job's upload is checked
+    # against (and later filed into) its TVDB-numbered reference folder.
+    with namespace_context(job.episode_namespace):
+        results = await asyncio.to_thread(
+            classify_files,
+            cache_dir,
+            job.tmdb_id,
+            job.detected_title,
+            [PreviewInputFile(filename=f.filename, content=f.content) for f in request.files],
+        )
     return ManualSubtitlePreviewResponse(
         results=[
             ManualSubtitlePreviewResult(
@@ -1057,18 +1138,22 @@ async def commit_manual_subtitles(
     config = await get_config()
     cache_dir = Path(config.subtitles_cache_path).expanduser()
 
-    outcomes = await asyncio.to_thread(
-        commit_files,
-        cache_dir,
-        job.tmdb_id,
-        job.detected_title,
-        [
-            CommitInputFile(
-                filename=f.filename, season=f.season, episode=f.episode, content=f.content
-            )
-            for f in request.files
-        ],
-    )
+    from app.core.episode_namespace import namespace_context
+
+    # Filed in the job's numbering (see preview_manual_subtitles).
+    with namespace_context(job.episode_namespace):
+        outcomes = await asyncio.to_thread(
+            commit_files,
+            cache_dir,
+            job.tmdb_id,
+            job.detected_title,
+            [
+                CommitInputFile(
+                    filename=f.filename, season=f.season, episode=f.episode, content=f.content
+                )
+                for f in request.files
+            ],
+        )
     return ManualSubtitleCommitResponse(
         outcomes=[
             ManualSubtitleCommitOutcome(
@@ -1118,6 +1203,9 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "identity_prompt_json": job.identity_prompt_json,
         "conflict_status": job.conflict_status,
         "tmdb_degraded_reason": job.tmdb_degraded_reason,
+        "episode_namespace": job.episode_namespace or "tmdb",
+        "episode_namespace_note": job.episode_namespace_note,
+        "tvdb_divergence_json": job.tvdb_divergence_json,
         "classification_source": job.classification_source,
         "classification_confidence": job.classification_confidence,
         "tmdb_id": job.tmdb_id,
@@ -1679,6 +1767,8 @@ async def get_config() -> ConfigResponse:
         library_tv_path=config.library_tv_path,
         tmdb_api_key="***" if config.tmdb_api_key else "",  # Redacted
         tmdb_configured=bool(config.tmdb_api_key),
+        tvdb_api_key="***" if config.tvdb_api_key else "",  # Redacted
+        tvdb_configured=bool(tvdb_client.resolve_api_key(config)),
         max_concurrent_matches=config.max_concurrent_matches,
         enable_gpu_acceleration=config.enable_gpu_acceleration,
         # Background pre-transcription (transcript cache prewarmer)
@@ -4637,7 +4727,8 @@ async def get_show_ordering(
         "tmdb_id": tmdb_id,
         "ordering": effective,
         "episode_group_id": group_id,
-        "source": "show" if pref else "default",
+        "source": "show" if (pref and pref.ordering) else "default",
+        "tvdb_suggestion_dismissed": bool(pref and pref.tvdb_suggestion_dismissed),
     }
 
 
@@ -4659,6 +4750,8 @@ async def set_show_ordering(
     from app.models.show_ordering import ShowOrderingPreference
     from app.services.config_service import get_config
 
+    # "tvdb" is deliberately rejected here: switching to TheTVDB goes through the
+    # dedicated job endpoint (it must re-match the job), not a bare preference write.
     if request.ordering not in episode_ordering.ALLOWED_ORDERINGS:
         raise HTTPException(
             status_code=422,
@@ -4685,6 +4778,69 @@ async def set_show_ordering(
     await session.commit()
 
     return {"tmdb_id": tmdb_id, "ordering": request.ordering, "episode_group_id": group_id}
+
+
+class EpisodeNamespaceRequest(BaseModel):
+    """Switch a job between TMDB and TheTVDB numbering (spec 2026-10-08)."""
+
+    namespace: Literal["tmdb", "tvdb"]
+
+
+@router.post("/jobs/{job_id}/episode-namespace")
+async def set_job_episode_namespace(
+    request: EpisodeNamespaceRequest,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Switch numbering, re-download references in it, and re-match. No re-rip.
+
+    Only allowed in review: the re-match resets every title to QUEUED, which
+    would strand a finished job's history rows, race in-flight TMDB matches
+    while MATCHING, and race finalization while ORGANIZING.
+
+    The show's preference moves with the job, so later discs start in the
+    chosen numbering. Already-organized files are never renamed.
+    """
+    from app.services import episode_namespace_service as svc
+    from app.services.job_manager import job_manager
+
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode numbering can only be changed while the disc is in review.",
+        )
+
+    # The job is read through the request session (get_session, via
+    # get_job_or_404), never a module-level async_session: unit tests redirect
+    # only the former to the test database. The switch changes neither the
+    # show, the season nor the TMDB id, so the values read here stay current.
+    # Snapshot them and release the connection before the TheTVDB round trips.
+    job_id = job.id
+    show_name, season, tmdb_id = job.detected_title, job.detected_season, job.tmdb_id
+    await session.close()
+    try:
+        await svc.switch_job_namespace(job_id, request.namespace)
+    except svc.TvdbUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail="TheTVDB is unavailable right now; numbering was not changed.",
+        ) from None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    job_manager.forget_episode_runtimes(job_id)
+    await job_manager._matching.restart_subtitle_download(job_id, show_name, season, tmdb_id)
+    await job_manager.rerun_matching(job_id)
+    return {"job_id": job_id, "episode_namespace": request.namespace}
+
+
+@router.post("/shows/{tmdb_id}/tvdb-suggestion/dismiss")
+async def dismiss_tvdb_suggestion(tmdb_id: int) -> dict:
+    """Stop suggesting TheTVDB numbering for this show."""
+    from app.services import episode_namespace_service as svc
+
+    await svc.dismiss_tvdb_suggestion(tmdb_id)
+    return {"tmdb_id": tmdb_id, "tvdb_suggestion_dismissed": True}
 
 
 @dataclass(frozen=True)
@@ -4767,31 +4923,36 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     if not file_path:
         return LLMMatchOutcome.failed("transcription_failed")
 
-    transcript = await asyncio.to_thread(episode_curator._matcher.transcribe_full, file_path)
-    if not transcript:
-        return LLMMatchOutcome.failed("transcription_failed")
+    from app.core.episode_namespace import namespace_context
 
-    try:
-        suggestion = await match_episode_via_llm(
-            transcript=transcript,
-            show_name=job.detected_title,
-            season=job.detected_season,
-            tmdb_show_id=str(tmdb_show_id),
-            ai_provider=config.ai_provider,
-            ai_api_key=config.ai_api_key,
-            ai_model=getattr(config, "ai_model", "") or None,
-            ai_local_base_url=getattr(config, "ai_local_base_url", "") or "",
-            tmdb_api_key=config.tmdb_api_key,
-            raise_on_error=True,
-        )
-    except AIProviderError as e:
-        logger.warning(
-            "LLM match: provider error for title %s -> llm_error (%s)",
-            sanitize_log_value(title.id),
-            e.code,
-            exc_info=True,
-        )
-        return LLMMatchOutcome.failed("llm_error", detail=e.code, message=str(e))
+    # The candidate episode list comes from season_episodes, so binding the job's
+    # namespace offers (and answers in) TVDB numbering for a TVDB job.
+    with namespace_context(job.episode_namespace):
+        transcript = await asyncio.to_thread(episode_curator._matcher.transcribe_full, file_path)
+        if not transcript:
+            return LLMMatchOutcome.failed("transcription_failed")
+
+        try:
+            suggestion = await match_episode_via_llm(
+                transcript=transcript,
+                show_name=job.detected_title,
+                season=job.detected_season,
+                tmdb_show_id=str(tmdb_show_id),
+                ai_provider=config.ai_provider,
+                ai_api_key=config.ai_api_key,
+                ai_model=getattr(config, "ai_model", "") or None,
+                ai_local_base_url=getattr(config, "ai_local_base_url", "") or "",
+                tmdb_api_key=config.tmdb_api_key,
+                raise_on_error=True,
+            )
+        except AIProviderError as e:
+            logger.warning(
+                "LLM match: provider error for title %s -> llm_error (%s)",
+                sanitize_log_value(title.id),
+                e.code,
+                exc_info=True,
+            )
+            return LLMMatchOutcome.failed("llm_error", detail=e.code, message=str(e))
 
     if not suggestion:
         return LLMMatchOutcome.failed("no_match")

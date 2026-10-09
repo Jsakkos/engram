@@ -151,6 +151,13 @@ def load_precomputed_manifest(cache_dir) -> dict | None:
     "no cache" so callers fall back to subtitle scraping. Shared by the matcher's
     load path and the download-skip check so both agree on what counts as valid.
     """
+    # The published pack is TMDB-numbered; a TheTVDB-numbered job must never
+    # read it (spec 2026-10-08). Every precomputed read goes through here.
+    from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
+
+    if current_namespace() == NAMESPACE_TVDB:
+        return None
+
     from app.matcher.vectorizer_config import (
         CACHE_FORMAT_VERSION,
         vectorizer_config_hash,
@@ -1330,6 +1337,13 @@ class EpisodeMatcher:
         A missing, unreadable, or version/config-mismatched manifest is treated as
         "no cache" -- the caller falls back to subtitle scraping.
         """
+        # Guard before the instance cache: the singleton matcher caches the
+        # TMDB-numbered manifest across jobs, and a TVDB job must not see it.
+        from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
+
+        if current_namespace() == NAMESPACE_TVDB:
+            return None
+
         if self._precomputed_manifest is not None:
             return self._precomputed_manifest or None
 
@@ -1507,19 +1521,23 @@ class EpisodeMatcher:
 
     def get_reference_files(self, season_number):
         """Get reference subtitle files with caching."""
-        cache_key = (self.show_name, season_number)
-        logger.debug(f"Reference cache key: {cache_key}")
-
-        if cache_key in self.reference_files_cache:
-            logger.debug("Returning cached reference files")
-            return self.reference_files_cache[cache_key]
-
         # Keyed by tmdb_id (fallback: sanitized name) so two same-named shows
         # never read each other's downloaded subtitles. Same key the downloader
         # and scrapers write under, given the same expected id.
         reference_dir = (
             self.cache_dir / "data" / corpus_dir_name(self.expected_tmdb_id, self.show_name)
         )
+        # Cache by the resolved directory, not the show name: the matcher is a
+        # process-wide singleton, and a TVDB-numbered job resolves to the
+        # "@tvdb" folder. A name key would hand it the TMDB-numbered paths an
+        # earlier job (or the same job before a namespace switch) cached.
+        cache_key = (str(reference_dir), season_number)
+        logger.debug(f"Reference cache key: {cache_key}")
+
+        if cache_key in self.reference_files_cache:
+            logger.debug("Returning cached reference files")
+            return self.reference_files_cache[cache_key]
+
         patterns = [
             f"S{season_number:02d}E",
             f"S{season_number}E",
