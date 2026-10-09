@@ -148,3 +148,46 @@ def test_translation_helpers():
     cw2 = json.dumps({"S01E04": "S01E02", "S01E05": "S01E03"})
     assert ns.to_tmdb_code("tvdb", cw2, "S01E04-E05") == "S01E02-E03"
     assert ns.to_tmdb_code("tvdb", cw2, "S01E03-E04") is None
+
+
+def test_season_episodes_tmdb_by_default(monkeypatch):
+    monkeypatch.setattr(
+        "app.matcher.tmdb_client.fetch_season_episodes",
+        lambda show, season, key: [{"episode_number": 1, "name": "TMDB"}],
+    )
+    assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TMDB"
+
+
+def test_season_episodes_tvdb_in_context(monkeypatch):
+    monkeypatch.setattr("app.matcher.tmdb_client.fetch_tvdb_id", lambda show, key: 76290)
+    monkeypatch.setattr(
+        "app.matcher.tvdb_client.fetch_season_roster",
+        lambda tvdb_id, season, api_key: [{"episode_number": 1, "name": "TVDB"}],
+    )
+    monkeypatch.setattr("app.matcher.tvdb_client.resolve_api_key", lambda cfg: "k")
+    monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: type("C", (), {})())
+    with ns.namespace_context("tvdb"):
+        assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TVDB"
+
+
+def test_season_episodes_tvdb_falls_back_to_tmdb(monkeypatch):
+    monkeypatch.setattr("app.matcher.tmdb_client.fetch_tvdb_id", lambda show, key: 76290)
+    monkeypatch.setattr(
+        "app.matcher.tvdb_client.fetch_season_roster", lambda tvdb_id, season, api_key: None
+    )
+    monkeypatch.setattr("app.matcher.tvdb_client.resolve_api_key", lambda cfg: "k")
+    monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: type("C", (), {})())
+    monkeypatch.setattr(
+        "app.matcher.tmdb_client.fetch_season_episodes",
+        lambda show, season, key: [{"episode_number": 1, "name": "TMDB"}],
+    )
+    with ns.namespace_context("tvdb"):
+        assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TMDB"
+
+
+def test_season_runtimes_and_count(monkeypatch):
+    monkeypatch.setattr(
+        ns, "season_episodes", lambda show, season, key: [{"runtime": 24}, {"runtime": 0}]
+    )
+    assert ns.season_runtimes("1618", 1, "tok") == [24, 0]
+    assert ns.season_episode_count("1618", 1, "tok") == 2

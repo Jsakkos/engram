@@ -246,3 +246,33 @@ def from_tmdb_code(
         return None
     inverse = {tm: tv for tv, tm in json.loads(crosswalk_json).items()}
     return _translate(code, inverse)
+
+
+def season_episodes(tmdb_show_id: str, season: int, tmdb_api_key: str) -> list[dict]:
+    """The season roster in the CURRENT namespace (sync; call off the event loop).
+
+    TVDB when bound and reachable; otherwise TMDB, so a TVDB outage degrades
+    to today's behavior instead of an empty roster. Imports stay inside the
+    function so tests can patch the client modules by dotted path.
+    """
+    from app.matcher import tmdb_client
+
+    if current_namespace() == NAMESPACE_TVDB:
+        from app.matcher import tvdb_client
+        from app.services.config_service import get_config_sync
+
+        key = tvdb_client.resolve_api_key(get_config_sync())
+        tvdb_id = tmdb_client.fetch_tvdb_id(str(tmdb_show_id), tmdb_api_key)
+        if key and tvdb_id:
+            roster = tvdb_client.fetch_season_roster(tvdb_id, season, api_key=key)
+            if roster:
+                return roster
+    return tmdb_client.fetch_season_episodes(str(tmdb_show_id), season, tmdb_api_key)
+
+
+def season_runtimes(tmdb_show_id: str, season: int, tmdb_api_key: str) -> list[int]:
+    return [int(e.get("runtime") or 0) for e in season_episodes(tmdb_show_id, season, tmdb_api_key)]
+
+
+def season_episode_count(tmdb_show_id: str, season: int, tmdb_api_key: str) -> int:
+    return len(season_episodes(tmdb_show_id, season, tmdb_api_key))
