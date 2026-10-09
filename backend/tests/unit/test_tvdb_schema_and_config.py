@@ -141,3 +141,85 @@ class TestTvdbTokenResetOnBlank:
         finally:
             tvdb_client._token_state.token = None
             tvdb_client._token_state.key = None
+
+
+# ---------------------------------------------------------------------------
+# Frozen-build reconciler (frozen builds skip Alembic)
+# ---------------------------------------------------------------------------
+
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+
+@pytest.fixture
+async def legacy_engine():
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    yield engine
+    await engine.dispose()
+
+
+async def test_add_missing_columns_backfills_tvdb_columns(legacy_engine):
+    import app.database as db_mod
+
+    original_engine = db_mod.engine
+    db_mod.engine = legacy_engine
+    try:
+        async with legacy_engine.begin() as conn:
+            await conn.execute(
+                text("CREATE TABLE disc_jobs (id INTEGER PRIMARY KEY, drive_id TEXT)")
+            )
+            await conn.execute(text("INSERT INTO disc_jobs (drive_id) VALUES ('E:')"))
+            await conn.execute(
+                text("CREATE TABLE show_ordering_preferences (tmdb_id INTEGER PRIMARY KEY)")
+            )
+            await conn.execute(
+                text("INSERT INTO show_ordering_preferences (tmdb_id) VALUES (1618)")
+            )
+            await conn.execute(text("CREATE TABLE app_config (id INTEGER PRIMARY KEY)"))
+            await conn.execute(text("INSERT INTO app_config (id) VALUES (1)"))
+
+        await db_mod._add_missing_columns()
+
+        async with legacy_engine.connect() as conn:
+            job = (
+                await conn.execute(
+                    text(
+                        "SELECT episode_namespace, tvdb_divergence_json, "
+                        "episode_namespace_note, episode_crosswalk_json FROM disc_jobs"
+                    )
+                )
+            ).fetchone()
+            pref = (
+                await conn.execute(
+                    text("SELECT tvdb_id, tvdb_suggestion_dismissed FROM show_ordering_preferences")
+                )
+            ).fetchone()
+            cfg = (await conn.execute(text("SELECT tvdb_api_key FROM app_config"))).fetchone()
+        assert job[0] == "tmdb"
+        assert job[1] is None and job[3] is None
+        assert job[2] in (None, "")
+        assert pref[0] is None
+        assert pref[1] == 0
+        assert cfg[0] == ""
+    finally:
+        db_mod.engine = original_engine
+
+
+# ---------------------------------------------------------------------------
+# Cache scripts ignore TheTVDB-numbered reference dirs
+# ---------------------------------------------------------------------------
+
+
+def test_pack_discover_shows_ignores_tvdb_dirs(psc, tmp_path):
+    for name in ("123", "123@tvdb"):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "Show - S01E01.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\nhi\n")
+    shows = psc._discover_shows(tmp_path)
+    assert "123" in shows
+    assert "123@tvdb" not in shows

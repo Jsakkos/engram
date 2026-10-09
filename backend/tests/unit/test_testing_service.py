@@ -59,6 +59,16 @@ def _stub_extra_providers():
 class TestDownloadSubtitles:
     """Tests for subtitle download orchestration."""
 
+    @patch("app.matcher.testing_service._season_episode_count", return_value=0)
+    @patch("app.matcher.testing_service.fetch_show_id")
+    def test_no_episodes_message_names_tvdb_under_tvdb_namespace(self, mock_show_id, _count):
+        from app.core.episode_namespace import namespace_context
+
+        mock_show_id.return_value = "123"
+        with namespace_context("tvdb"):
+            with pytest.raises(ValueError, match="on TheTVDB"):
+                download_subtitles("Test Show", 1)
+
     @patch("app.matcher.testing_service.Addic7edClient")
     @patch("app.matcher.testing_service.fetch_show_details")
     @patch("app.matcher.testing_service.fetch_season_details")

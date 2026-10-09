@@ -17,7 +17,7 @@ from pathlib import Path
 from loguru import logger
 
 from app import __version__
-from app.core.episode_namespace import season_episode_count
+from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace, season_episode_count
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call, os_download_temp_name
@@ -727,7 +727,8 @@ def download_subtitles(
 
     episode_count = _season_episode_count(show_id, season)
     if episode_count == 0:
-        raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on TMDB")
+        source = "TheTVDB" if current_namespace() == NAMESPACE_TVDB else "TMDB"
+        raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on {source}")
 
     # Cache DIR is keyed by tmdb_id (fallback: sanitized canonical name) so two
     # same-named shows (e.g. Frasier 1993 #3452 vs the 2023 revival #195241) never

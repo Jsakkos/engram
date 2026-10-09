@@ -121,7 +121,7 @@ async def match_episode_via_llm(
     episodes = season_episodes(tmdb_show_id, season, tmdb_api_key)
     if not episodes:
         logger.warning(
-            "LLM matcher: no TMDB synopses for show_id=%s season=%s",
+            "LLM matcher: no episode synopses for show_id=%s season=%s",
             sanitize_log_value(tmdb_show_id),
             safe_season,
         )
