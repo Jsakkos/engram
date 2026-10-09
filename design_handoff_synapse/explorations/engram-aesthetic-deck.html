@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Engram-aesthetic deck mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg0: #05070c;
+  --bg1: #0a0e18;
+  --bg2: #121827;
+  --bg3: #1a2234;
+  --ink: #e6ecf5;
+  --ink-dim: #8893a8;
+  --ink-faint: #4a5369;
+  --ink-ghost: #2a3147;
+  --cyan: #5eead4;
+  --cyan-hi: #9ff8e8;
+  --cyan-dim: #2dd4bf;
+  --magenta: #ff3d7f;
+  --magenta-hi: #ff7aa5;
+  --green: #86efac;
+  --green-dim: #4ade80;
+  --amber: #fcd34d;
+  --line: rgba(94, 234, 212, 0.14);
+  --line-mid: rgba(94, 234, 212, 0.24);
+  --line-hi: rgba(94, 234, 212, 0.42);
+  --line-magenta-mid: rgba(255, 61, 127, 0.32);
+  --line-magenta-hi: rgba(255, 61, 127, 0.55);
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --sans: "Chakra Petch", "Space Grotesk", sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg0);
+  color: var(--ink);
+  font-family: var(--sans);
+  padding: 32px 24px;
+}
+h1 {
+  font-family: var(--sans);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--cyan-hi);
+  margin: 0 0 6px 0;
+  text-shadow: 0 0 12px rgba(94, 234, 212, 0.4);
+}
+.sub {
+  color: var(--ink-dim);
+  font-size: 13px;
+  margin-bottom: 28px;
+}
+.section-label {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 32px; align-items: flex-start; }
+
+/* SvPanel-equivalent: 1px border, sharp corners, L-bracket ticks */
+.sv-panel {
+  position: relative;
+  border: 1px solid var(--line-mid);
+  background: linear-gradient(180deg, rgba(18,24,39,0.75), rgba(10,14,24,0.85));
+  padding: 16px;
+  font-family: var(--mono);
+  box-shadow: 0 0 24px rgba(94,234,212,0.13), inset 0 0 32px rgba(94,234,212,0.03);
+}
+.sv-panel.cyan { border-color: var(--line-hi); box-shadow: 0 0 28px rgba(94,234,212,0.22), inset 0 0 32px rgba(94,234,212,0.04); }
+.sv-panel.magenta { border-color: var(--line-magenta-hi); box-shadow: 0 0 28px rgba(255,61,127,0.22), inset 0 0 32px rgba(255,61,127,0.04); }
+
+/* Corner ticks (L-brackets) */
+.corner { position: absolute; width: 8px; height: 8px; pointer-events: none; }
+.corner.tl { top: -1px; left: -1px; border-top: 1.5px solid var(--line-hi); border-left: 1.5px solid var(--line-hi); }
+.corner.tr { top: -1px; right: -1px; border-top: 1.5px solid var(--line-hi); border-right: 1.5px solid var(--line-hi); }
+.corner.bl { bottom: -1px; left: -1px; border-bottom: 1.5px solid var(--line-hi); border-left: 1.5px solid var(--line-hi); }
+.corner.br { bottom: -1px; right: -1px; border-bottom: 1.5px solid var(--line-hi); border-right: 1.5px solid var(--line-hi); }
+.sv-panel.magenta .corner { border-color: var(--line-magenta-hi); }
+
+/* Deck wrapper — three offset cards stacked behind a top card */
+.deck-frame { position: relative; width: 420px; height: 240px; }
+.deck-back-3 { position: absolute; top: 18px; left: 18px; width: 380px; height: 200px; border: 1px solid var(--line); background: var(--bg1); }
+.deck-back-2 { position: absolute; top: 12px; left: 12px; width: 380px; height: 200px; border: 1px solid var(--line-mid); background: var(--bg1); }
+.deck-back-1 { position: absolute; top: 6px; left: 6px; width: 380px; height: 200px; border: 1px solid var(--line-mid); background: var(--bg1); }
+.deck-frame.magenta .deck-back-3,
+.deck-frame.magenta .deck-back-2,
+.deck-frame.magenta .deck-back-1 { border-color: var(--line-magenta-mid); }
+
+.deck-top { position: absolute; top: 0; left: 0; width: 380px; height: 200px; padding: 14px; }
+.deck-top-content { position: relative; height: 100%; }
+
+/* Poster background (gradient stand-in for actual TMDB poster) */
+.poster-bg-fam {
+  position: absolute; inset: -14px;
+  background:
+    radial-gradient(circle at 30% 35%, rgba(255,140,80,0.55), transparent 55%),
+    radial-gradient(circle at 70% 70%, rgba(40,90,180,0.65), transparent 60%),
+    linear-gradient(135deg, #2a1810 0%, #0d2138 100%);
+}
+.poster-bg-incp {
+  position: absolute; inset: -14px;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(80,60,140,0.5), transparent 50%),
+    radial-gradient(circle at 50% 80%, rgba(20,30,50,0.9), transparent 60%),
+    linear-gradient(180deg, #1c0a2c 0%, #050a18 100%);
+}
+.poster-dim { position: absolute; inset: -14px; background: linear-gradient(180deg, rgba(5,7,12,0.4) 0%, rgba(5,7,12,0.85) 100%); }
+
+/* Header row */
+.deck-head { display: flex; justify-content: space-between; align-items: flex-start; }
+.title-block .title {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--cyan-hi);
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.85);
+  line-height: 1.2;
+}
+.deck-frame.magenta .title-block .title { color: var(--magenta-hi); }
+.title-block .meta {
+  font-family: var(--mono);
+  color: var(--ink-dim);
+  font-size: 11px;
+  margin-top: 3px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.85);
+}
+
+/* Pill badges (SvBadge-style) — sharp corners, 1px border, uppercase mono */
+.pill {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  background: rgba(5,7,12,0.6);
+}
+.pill.cyan { color: var(--cyan); }
+.pill.magenta { color: var(--magenta); }
+.pill.amber { color: var(--amber); }
+.pill.green { color: var(--green); }
+.pill-row { display: flex; gap: 6px; }
+
+/* Stat grid */
+.stats { margin-top: 14px; display: grid; grid-template-columns: auto 1fr; column-gap: 14px; row-gap: 4px; font-family: var(--mono); font-size: 11px; }
+.stats .k { color: var(--ink-faint); letter-spacing: 0.08em; text-transform: uppercase; font-size: 10px; }
+.stats .v { color: var(--ink); text-align: right; text-shadow: 0 1px 3px rgba(0,0,0,0.85); }
+.stats .v.green { color: var(--green); }
+
+/* Action button row (SvActionButton-style) */
+.actions { position: absolute; bottom: 0; left: 0; right: 0; display: flex; gap: 6px; }
+.btn {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 6px 8px;
+  border: 1px solid currentColor;
+  background: rgba(5,7,12,0.7);
+  text-align: center;
+  cursor: pointer;
+  transition: all 120ms;
+}
+.btn.cyan { color: var(--cyan); }
+.btn.cyan:hover { color: var(--cyan-hi); background: rgba(94,234,212,0.08); box-shadow: 0 0 12px rgba(94,234,212,0.4); }
+.btn.magenta { color: var(--magenta); }
+.btn.magenta:hover { color: var(--magenta-hi); background: rgba(255,61,127,0.08); box-shadow: 0 0 12px rgba(255,61,127,0.4); }
+.btn.neutral { color: var(--ink-faint); border-color: var(--line); }
+.btn.neutral:hover { color: var(--ink-dim); border-color: var(--line-mid); }
+
+/* Page-level info chrome */
+.note {
+  margin-top: 8px;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+<h1>Engram-aesthetic deck (Synapse v2 tokens)</h1>
+<div class="sub">JetBrains Mono / Chakra Petch · sharp 90° corners · L-bracket corner ticks · gradient panel surface · cyan #5eead4 (TV) / magenta #ff3d7f (Movie) · green #86efac for status. Verify this looks right alongside your real DiscCard.</div>
+
+<div class="section-label">Cyan deck — TV release (4 discs)</div>
+<div class="row">
+  <div class="deck-frame">
+    <div class="deck-back-3"></div>
+    <div class="deck-back-2"></div>
+    <div class="deck-back-1"></div>
+    <div class="sv-panel cyan deck-top" style="overflow:hidden">
+      <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+      <div class="poster-bg-fam"></div>
+      <div class="poster-dim"></div>
+      <div class="deck-top-content">
+        <div class="deck-head">
+          <div class="title-block">
+            <div class="title">For All Mankind</div>
+            <div class="meta">Season 1 · 2019 · Blu-ray</div>
+          </div>
+          <div class="pill-row">
+            <span class="pill cyan">TV</span>
+            <span class="pill amber">Deck 4</span>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="k">UPC</div><div class="v">043996634404</div>
+          <div class="k">TMDB</div><div class="v">87567</div>
+          <div class="k">Episodes</div><div class="v">10 / 10 matched</div>
+          <div class="k">Runtime</div><div class="v">9h 52m</div>
+          <div class="k">Status</div><div class="v green">4 EXPORTED · 0 SUBMITTED</div>
+        </div>
+        <div class="actions">
+          <button class="btn cyan">⚲ Submit Group</button>
+          <button class="btn magenta">⌃ Enhance</button>
+          <button class="btn neutral">⤢ Fan Out</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="deck-frame magenta">
+    <div class="deck-back-3"></div>
+    <div class="deck-back-2"></div>
+    <div class="deck-back-1"></div>
+    <div class="sv-panel magenta deck-top" style="overflow:hidden">
+      <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+      <div class="poster-bg-incp"></div>
+      <div class="poster-dim"></div>
+      <div class="deck-top-content">
+        <div class="deck-head">
+          <div class="title-block">
+            <div class="title">Inception</div>
+            <div class="meta">2010 · Blu-ray</div>
+          </div>
+          <div class="pill-row">
+            <span class="pill magenta">Movie</span>
+            <span class="pill amber">Deck 1</span>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="k">UPC</div><div class="v">883929141197</div>
+          <div class="k">TMDB</div><div class="v">27205</div>
+          <div class="k">Title</div><div class="v">Inception (2010)</div>
+          <div class="k">Runtime</div><div class="v">2h 28m</div>
+          <div class="k">Status</div><div class="v green">1 EXPORTED · 0 SUBMITTED</div>
+        </div>
+        <div class="actions">
+          <button class="btn cyan">⚲ Submit</button>
+          <button class="btn magenta">⌃ Enhance</button>
+          <button class="btn neutral">⤢ Detail</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">L-bracket corner ticks · sharp 1px borders · gradient panel surface · poster art comes through `usePosterImage` (already implemented for DiscCard)</div>
+</body>
+</html>
