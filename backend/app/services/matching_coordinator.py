@@ -2530,6 +2530,11 @@ class MatchingCoordinator:
 
             from app.matcher.testing_service import download_subtitles
 
+            # Same binding as download_subtitles: the job's stored namespace
+            # picks the reference folder, and TVDB-numbered references must
+            # never be served from the TMDB-numbered precomputed pack.
+            namespace = await self._job_namespace(job_id)
+
             canonical_name: str | None = None
             os_error: str | None = None
             downloaded_total = 0
@@ -2537,9 +2542,14 @@ class MatchingCoordinator:
             episode_total = 0
             for season in seasons:
                 try:
-                    result = await asyncio.to_thread(
-                        download_subtitles, show_name, season, tmdb_id=tmdb_id
-                    )
+                    with namespace_context(namespace):
+                        result = await asyncio.to_thread(
+                            download_subtitles,
+                            show_name,
+                            season,
+                            tmdb_id=tmdb_id,
+                            use_precomputed=namespace != "tvdb",
+                        )
                 except Exception as e:  # noqa: BLE001 — one season failing must not abort the rest
                     logger.warning(f"Subtitle download failed for {show_name} S{season}: {e}")
                     continue
@@ -2621,7 +2631,11 @@ class MatchingCoordinator:
 
             # Never raises and manages its own short sessions; it is awaited
             # outside any session block because it makes network calls.
-            namespace = await decide_job_namespace(job_id)
+            await decide_job_namespace(job_id)
+            # Bind the STORED namespace, not decide's return value: matching
+            # reads the column (_job_namespace), so download and matching agree
+            # on the reference folder even when the decision did not persist.
+            namespace = await self._job_namespace(job_id)
 
             async with async_session() as session:
                 await session.execute(

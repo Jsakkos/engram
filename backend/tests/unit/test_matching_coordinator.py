@@ -726,7 +726,7 @@ class TestDownloadSubtitlesAllSeasons:
 
         monkeypatch.setattr(ws_manager, "broadcast_subtitle_event", _noop)
 
-        def fake_download(show, season, tmdb_id=None):
+        def fake_download(show, season, tmdb_id=None, use_precomputed=True):
             seen.append((season, tmdb_id))
             return {"episodes": [{"status": "downloaded"}], "show_name": show}
 

@@ -12,11 +12,12 @@ import json
 from datetime import UTC, datetime
 
 from loguru import logger
+from sqlalchemy import update
 
 from app.core import episode_namespace as ns
 from app.database import async_session
 from app.matcher import tmdb_client, tvdb_client
-from app.models.disc_job import ContentType, DiscJob
+from app.models.disc_job import ContentType, DiscJob, DiscTitle
 from app.models.show_ordering import ShowOrderingPreference
 
 TVDB_UNAVAILABLE_NOTE = "TheTVDB unavailable; matched with TMDB numbering"
@@ -165,6 +166,12 @@ async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
         job.episode_namespace_note = None
         pref.updated_at = datetime.now(UTC)
         job.updated_at = datetime.now(UTC)
+        # A title's discdb_match_details holds a code in the OLD numbering. The
+        # in-memory DiscDB mappings stay TMDB-raw and are re-translated on the
+        # re-match, so drop the stale per-title copies with the switch.
+        await session.execute(
+            update(DiscTitle).where(DiscTitle.job_id == job_id).values(discdb_match_details=None)
+        )
         await session.commit()
         await session.refresh(job)
         return job

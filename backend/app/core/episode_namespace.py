@@ -267,9 +267,14 @@ def from_tmdb_code(
 def season_episodes(tmdb_show_id: str, season: int, tmdb_api_key: str) -> list[dict]:
     """The season roster in the CURRENT namespace (sync; call off the event loop).
 
-    TVDB when bound and reachable; otherwise TMDB, so a TVDB outage degrades
-    to today's behavior instead of an empty roster. Imports stay inside the
-    function so tests can patch the client modules by dotted path.
+    Under TMDB: the TMDB roster. Under TVDB: the TheTVDB roster, or ``[]`` (with
+    a warning) when it cannot be fetched. There is deliberately NO fallback to
+    TMDB there: a TVDB job only exists when its roster was fetched at decision
+    time (and the roster is cached for 7 days), so an empty result means a
+    mid-job outage. Falling back would silently mix TMDB numbers into a TVDB job
+    (LLM candidates, runtimes, download count); failing visibly is better.
+    Imports stay inside the function so tests can patch the client modules by
+    dotted path.
     """
     from app.matcher import tmdb_client
 
@@ -279,13 +284,27 @@ def season_episodes(tmdb_show_id: str, season: int, tmdb_api_key: str) -> list[d
 
         try:
             key = tvdb_client.resolve_api_key(get_config_sync())
-            tvdb_id = tmdb_client.fetch_tvdb_id(str(tmdb_show_id), tmdb_api_key) if key else None
-            if key and tvdb_id:
-                roster = tvdb_client.fetch_season_roster(tvdb_id, season, api_key=key)
-                if roster:
-                    return roster
-        except Exception as e:  # noqa: BLE001 - any TVDB-side miss degrades to TMDB
-            logger.warning(f"TheTVDB roster unavailable, using TMDB: {e}")
+            if not key:
+                logger.warning("TheTVDB roster unavailable for a TVDB job: no TheTVDB API key")
+                return []
+            tvdb_id = tmdb_client.fetch_tvdb_id(str(tmdb_show_id), tmdb_api_key)
+            if not tvdb_id:
+                logger.warning(
+                    f"TheTVDB roster unavailable for a TVDB job: no TheTVDB id for "
+                    f"TMDB show {tmdb_show_id}"
+                )
+                return []
+            roster = tvdb_client.fetch_season_roster(tvdb_id, season, api_key=key)
+            if not roster:
+                logger.warning(
+                    f"TheTVDB returned no roster for show {tvdb_id} season {season}; "
+                    "not falling back to TMDB numbering"
+                )
+                return []
+            return roster
+        except Exception as e:  # noqa: BLE001 - any TVDB-side miss yields an empty roster
+            logger.warning(f"TheTVDB roster unavailable for a TVDB job: {e}")
+            return []
     return tmdb_client.fetch_season_episodes(str(tmdb_show_id), season, tmdb_api_key)
 
 

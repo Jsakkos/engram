@@ -1521,19 +1521,23 @@ class EpisodeMatcher:
 
     def get_reference_files(self, season_number):
         """Get reference subtitle files with caching."""
-        cache_key = (self.show_name, season_number)
-        logger.debug(f"Reference cache key: {cache_key}")
-
-        if cache_key in self.reference_files_cache:
-            logger.debug("Returning cached reference files")
-            return self.reference_files_cache[cache_key]
-
         # Keyed by tmdb_id (fallback: sanitized name) so two same-named shows
         # never read each other's downloaded subtitles. Same key the downloader
         # and scrapers write under, given the same expected id.
         reference_dir = (
             self.cache_dir / "data" / corpus_dir_name(self.expected_tmdb_id, self.show_name)
         )
+        # Cache by the resolved directory, not the show name: the matcher is a
+        # process-wide singleton, and a TVDB-numbered job resolves to the
+        # "@tvdb" folder. A name key would hand it the TMDB-numbered paths an
+        # earlier job (or the same job before a namespace switch) cached.
+        cache_key = (str(reference_dir), season_number)
+        logger.debug(f"Reference cache key: {cache_key}")
+
+        if cache_key in self.reference_files_cache:
+            logger.debug("Returning cached reference files")
+            return self.reference_files_cache[cache_key]
+
         patterns = [
             f"S{season_number:02d}E",
             f"S{season_number}E",

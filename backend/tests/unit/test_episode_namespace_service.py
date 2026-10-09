@@ -3,9 +3,10 @@
 import json
 
 import pytest
+from sqlmodel import select
 
 from app.models.app_config import AppConfig
-from app.models.disc_job import ContentType, DiscJob
+from app.models.disc_job import ContentType, DiscJob, DiscTitle
 from app.models.show_ordering import ShowOrderingPreference
 from app.services import episode_namespace_service as svc
 from tests.unit.conftest import _unit_session_factory
@@ -136,6 +137,54 @@ class TestSwitchAndDismiss:
         async with _unit_session_factory() as s:
             pref = await s.get(ShowOrderingPreference, 1618)
         assert pref.ordering == ""  # falls back to the global default
+
+    async def test_switch_clears_discdb_match_details_of_the_job_only(self, stubs):
+        """Those details hold codes in the old numbering; a re-match rebuilds them."""
+        job_id = await _job()
+        other_id = await _job()
+        details = json.dumps({"source": "discdb", "matched_episode": "S01E02"})
+        async with _unit_session_factory() as s:
+            s.add(
+                DiscTitle(
+                    job_id=job_id,
+                    title_index=0,
+                    duration_seconds=1300,
+                    discdb_match_details=details,
+                )
+            )
+            s.add(
+                DiscTitle(
+                    job_id=job_id,
+                    title_index=1,
+                    duration_seconds=1300,
+                    discdb_match_details=details,
+                )
+            )
+            s.add(
+                DiscTitle(
+                    job_id=other_id,
+                    title_index=0,
+                    duration_seconds=1300,
+                    discdb_match_details=details,
+                )
+            )
+            await s.commit()
+
+        await svc.switch_job_namespace(job_id, "tvdb")
+
+        async with _unit_session_factory() as s:
+            mine = (
+                (await s.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+                .scalars()
+                .all()
+            )
+            other = (
+                (await s.execute(select(DiscTitle).where(DiscTitle.job_id == other_id)))
+                .scalars()
+                .all()
+            )
+        assert [t.discdb_match_details for t in mine] == [None, None]
+        assert [t.discdb_match_details for t in other] == [details]
 
     async def test_dismiss_does_not_override_global_ordering(self, stubs):
         await svc.dismiss_tvdb_suggestion(1618)

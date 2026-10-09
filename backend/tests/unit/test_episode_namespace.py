@@ -170,7 +170,7 @@ def test_season_episodes_tvdb_in_context(monkeypatch):
         assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TVDB"
 
 
-def test_season_episodes_tvdb_falls_back_to_tmdb(monkeypatch):
+def test_season_episodes_tvdb_outage_returns_empty_not_tmdb(monkeypatch):
     monkeypatch.setattr("app.matcher.tmdb_client.fetch_tvdb_id", lambda show, key: 76290)
     monkeypatch.setattr(
         "app.matcher.tvdb_client.fetch_season_roster", lambda tvdb_id, season, api_key: None
@@ -179,10 +179,10 @@ def test_season_episodes_tvdb_falls_back_to_tmdb(monkeypatch):
     monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: type("C", (), {})())
     monkeypatch.setattr(
         "app.matcher.tmdb_client.fetch_season_episodes",
-        lambda show, season, key: [{"episode_number": 1, "name": "TMDB"}],
+        lambda show, season, key: pytest.fail("a TVDB job must never get the TMDB roster"),
     )
     with ns.namespace_context("tvdb"):
-        assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TMDB"
+        assert ns.season_episodes("1618", 1, "tok") == []
 
 
 def test_season_runtimes_and_count(monkeypatch):
@@ -199,7 +199,7 @@ def test_corrupt_crosswalk_translates_to_none(corrupt):
     assert ns.from_tmdb_code("tvdb", corrupt, "S01E02") is None
 
 
-def test_season_episodes_tvdb_without_key_skips_id_lookup(monkeypatch):
+def test_season_episodes_tvdb_without_key_returns_empty_without_lookups(monkeypatch):
     monkeypatch.setattr("app.matcher.tvdb_client.resolve_api_key", lambda cfg: "")
     monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: type("C", (), {})())
     monkeypatch.setattr(
@@ -208,23 +208,35 @@ def test_season_episodes_tvdb_without_key_skips_id_lookup(monkeypatch):
     )
     monkeypatch.setattr(
         "app.matcher.tmdb_client.fetch_season_episodes",
-        lambda show, season, key: [{"episode_number": 1, "name": "TMDB"}],
+        lambda show, season, key: pytest.fail("a TVDB job must never get the TMDB roster"),
     )
     with ns.namespace_context("tvdb"):
-        assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TMDB"
+        assert ns.season_episodes("1618", 1, "tok") == []
 
 
-def test_season_episodes_config_error_falls_back_to_tmdb(monkeypatch):
+def test_season_episodes_tvdb_without_tvdb_id_returns_empty(monkeypatch):
+    monkeypatch.setattr("app.matcher.tvdb_client.resolve_api_key", lambda cfg: "k")
+    monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: type("C", (), {})())
+    monkeypatch.setattr("app.matcher.tmdb_client.fetch_tvdb_id", lambda show, key: None)
+    monkeypatch.setattr(
+        "app.matcher.tmdb_client.fetch_season_episodes",
+        lambda show, season, key: pytest.fail("a TVDB job must never get the TMDB roster"),
+    )
+    with ns.namespace_context("tvdb"):
+        assert ns.season_episodes("1618", 1, "tok") == []
+
+
+def test_season_episodes_tvdb_config_error_returns_empty_not_tmdb(monkeypatch):
     def broken():
         raise RuntimeError("config db unavailable")
 
     monkeypatch.setattr("app.services.config_service.get_config_sync", broken)
     monkeypatch.setattr(
         "app.matcher.tmdb_client.fetch_season_episodes",
-        lambda show, season, key: [{"episode_number": 1, "name": "TMDB"}],
+        lambda show, season, key: pytest.fail("a TVDB job must never get the TMDB roster"),
     )
     with ns.namespace_context("tvdb"):
-        assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TMDB"
+        assert ns.season_episodes("1618", 1, "tok") == []
 
 
 def test_namespace_context_resets_when_body_raises():

@@ -9,6 +9,7 @@ visible to re-matches within the same process.
 
 import pytest
 
+from app.core.episode_namespace import NAMESPACE_TVDB, namespace_context
 from app.matcher.episode_identification import EpisodeMatcher
 from app.matcher.subtitle_utils import corpus_dir_name
 
@@ -54,4 +55,26 @@ class TestEmptyReferenceCacheNotPoisoned:
 
         first = m.get_reference_files(1)
         assert len(first) == 1
-        assert m.reference_files_cache[("Eureka", 1)] == first
+        ref_dir = tmp_path / "data" / corpus_dir_name(4620, "Eureka")
+        assert m.reference_files_cache[(str(ref_dir), 1)] == first
+
+
+@pytest.mark.unit
+class TestReferenceCacheNamespaceIsolation:
+    def test_tvdb_job_does_not_get_cached_tmdb_references(self, tmp_path):
+        """A TMDB-populated cache entry must not answer a TVDB-bound lookup."""
+        m = _matcher(tmp_path)
+        _add_reference(tmp_path, "Eureka - S01E01.srt")
+        with namespace_context(NAMESPACE_TVDB):
+            _add_reference(tmp_path, "Eureka - S01E02.srt")
+
+        tmdb_files = m.get_reference_files(1)
+        assert [f.parent.name for f in tmdb_files] == ["4620"]
+
+        with namespace_context(NAMESPACE_TVDB):
+            tvdb_files = m.get_reference_files(1)
+        assert [f.name for f in tvdb_files] == ["Eureka - S01E02.srt"]
+        assert [f.parent.name for f in tvdb_files] == ["4620@tvdb"]
+
+        # And switching back still serves the TMDB set.
+        assert m.get_reference_files(1) == tmdb_files
