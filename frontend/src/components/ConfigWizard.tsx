@@ -1216,8 +1216,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             TheTVDB <span style={{fontWeight: 400, fontSize: '0.85rem', opacity: 0.7}}>(Optional)</span>
                         </h4>
                         <p className="step-description" style={{marginTop: 0}}>
-                            Used for shows whose discs follow TheTVDB's episode numbering. A key is built in;
-                            only enter one to override it.{' '}
+                            Used for shows whose discs follow TheTVDB's episode numbering.{' '}
+                            {tvdbConfigured
+                                ? 'Only enter a key to override the one in use.'
+                                : 'No TheTVDB key is configured. Release builds include one; Docker and source installs can set the TVDB_API_KEY environment variable or enter a key here.'}{' '}
                             <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">Episode data: TheTVDB</a>
                         </p>
                         <div className="form-group">
@@ -1230,7 +1232,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 type="password"
                                 value={config.tvdbApiKey}
                                 onChange={(e) => handleInputChange('tvdbApiKey', e.target.value)}
-                                placeholder={savedKeys.tvdb ? 'Enter new key to replace existing' : 'Leave blank to use the built-in key'}
+                                placeholder={
+                                    savedKeys.tvdb
+                                        ? 'Enter new key to replace existing'
+                                        : tvdbConfigured
+                                          ? 'Leave blank to use the built-in key'
+                                          : 'Enter your TheTVDB API key'
+                                }
                             />
                             {tvdbConfigured && !savedKeys.tvdb && (
                                 <span className="form-hint">Built-in key in use.</span>

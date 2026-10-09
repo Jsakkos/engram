@@ -590,3 +590,22 @@ describe('ConfigWizard: disc backup before ripping', () => {
         expect(body.backup_path).toBe('/mnt/backups');
     });
 });
+
+describe('ConfigWizard: TheTVDB key copy', () => {
+    it('says the built-in key is in use only when a key is configured', async () => {
+        mockApi({ tvdb_configured: true });
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="metadata" />);
+        expect(await screen.findByText('Built-in key in use.')).toBeInTheDocument();
+        expect(screen.queryByText(/No TheTVDB key is configured/)).not.toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Episode data: TheTVDB' })).toBeInTheDocument();
+    });
+
+    it('explains how to add a key when none is configured', async () => {
+        mockApi({ tvdb_configured: false });
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="metadata" />);
+        expect(await screen.findByText(/No TheTVDB key is configured/)).toBeInTheDocument();
+        expect(screen.getByText(/TVDB_API_KEY/)).toBeInTheDocument();
+        expect(screen.queryByText(/A key is built in/)).not.toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Episode data: TheTVDB' })).toBeInTheDocument();
+    });
+});
