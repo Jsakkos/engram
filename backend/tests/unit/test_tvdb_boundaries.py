@@ -331,3 +331,70 @@ class TestOutbound:
         code = _tvdb_safe_code(job, t.matched_episode)
         assert _derive_title_type(t, ContentType.TV, None, code) is None
         assert _derive_title_type(t, ContentType.TV, None, "S01E02") == "Episode"
+
+    def test_direct_derive_title_type_defaults_to_matched_episode(self):
+        t = SimpleNamespace(
+            is_extra=False, matched_episode="S01E01", title_index=0, is_selected=True
+        )
+        assert _derive_title_type(t, ContentType.TV, None) == "Episode"
+
+
+@pytest.mark.unit
+class TestPerTrackContribution:
+    def test_tvdb_code_translated(self):
+        from app.services.matching_coordinator import _contribution_season_episode
+
+        assert _contribution_season_episode(_outbound_job(), "S01E04") == (1, 2)
+
+    def test_unmapped_tvdb_code_is_skipped(self):
+        from app.services.matching_coordinator import _contribution_season_episode
+
+        assert _contribution_season_episode(_outbound_job(), "S01E01") is None
+
+    def test_tmdb_job_unchanged(self):
+        from app.services.matching_coordinator import _contribution_season_episode
+
+        assert _contribution_season_episode(_outbound_job("tmdb"), "S01E04") == (1, 4)
+
+
+async def test_corrected_episode_recontribution_translates_to_tmdb():
+    from sqlmodel import select
+
+    from app.matcher.chromaprint_extractor import ChromaprintResult
+    from app.models.fingerprint import FingerprintContribution
+    from app.services.contribution_correction import ContributionCorrectionService, NewTarget
+
+    blob = ChromaprintResult(
+        hashes=[1, 2, 3, 4], duration_seconds=10.0, fpcalc_version="t"
+    ).to_blob()
+    pseud = "00000000-0000-4000-8000-000000000000"
+    for code, expected in (("S01E04", [2]), ("S01E01", [])):
+        job_id = await _job("tvdb")
+        async with _unit_session_factory() as s:
+            job = await s.get(DiscJob, job_id)
+            title = DiscTitle(
+                job_id=job_id, title_index=0, duration_seconds=600, chromaprint_blob=blob
+            )
+            s.add(title)
+            await s.commit()
+            await ContributionCorrectionService().correct_title_contribution(
+                s,
+                title,
+                NewTarget(kind="episode", episode_code=code),
+                job=job,
+                enable_contributions=True,
+                pseudonym=pseud,
+            )
+            await s.commit()
+            rows = (
+                (
+                    await s.execute(
+                        select(FingerprintContribution).where(
+                            FingerprintContribution.title_id == title.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert [r.episode for r in rows] == expected

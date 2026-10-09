@@ -46,11 +46,14 @@ def _tvdb_safe_code(job: DiscJob, code: str | None) -> str | None:
     return to_tmdb_code(job.episode_namespace, job.episode_crosswalk_json, code)
 
 
+_UNSET = object()
+
+
 def _derive_title_type(
     title: DiscTitle,
     content_type: ContentType,
     discdb_mappings: list[dict] | None,
-    episode_code: str | None = None,
+    episode_code: str | None | object = _UNSET,
 ) -> str | None:
     """Derive the title type for export.
 
@@ -58,6 +61,8 @@ def _derive_title_type(
     ``episode_code`` is the TMDB-numbered code (see ``_tvdb_safe_code``), not the raw
     ``matched_episode``, so an untranslatable TheTVDB title is not typed "Episode".
     """
+    if episode_code is _UNSET:
+        episode_code = title.matched_episode
     # Check DiscDB mappings first
     if discdb_mappings:
         for mapping in discdb_mappings:
@@ -162,6 +167,7 @@ def generate_export(
         "identification": {
             "tmdb_id": job.tmdb_id,
             "detected_title": job.detected_title,
+            # Exported as-is for TheTVDB-numbered jobs: a season, not an episode code.
             "detected_season": job.detected_season,
             "classification_source": job.classification_source,
             "classification_confidence": job.classification_confidence,

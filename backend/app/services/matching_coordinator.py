@@ -352,6 +352,23 @@ def _is_multi_episode_result(match_details: dict | None) -> bool:
     return bool(isinstance(verdict, dict) and verdict.get("is_multi_episode"))
 
 
+def _contribution_season_episode(job, matched_episode: str | None) -> tuple[int, int] | None:
+    """(season, episode) in TMDB numbering for a fingerprint contribution, or None.
+
+    The network is TMDB-keyed, so a TheTVDB-numbered job's code is translated through
+    its persisted crosswalk first; None means no 1:1 TMDB equivalent (skip).
+    """
+    from app.core.episode_namespace import to_tmdb_code
+
+    code = to_tmdb_code(
+        getattr(job, "episode_namespace", None),
+        getattr(job, "episode_crosswalk_json", None),
+        matched_episode,
+    )
+    parsed = parse_episode_code(code) if code else None
+    return (parsed[0], parsed[1][0]) if parsed else None
+
+
 def _may_contribute_fingerprint(
     matched_episode: str | None, conjoined_hint: int | None, match_details: dict | None
 ) -> bool:
@@ -1898,9 +1915,9 @@ class MatchingCoordinator:
 
                             _cfg = await _get_config()
                             if _cfg.contribution_pseudonym:
-                                _parsed = parse_episode_code(title.matched_episode)
-                                season_num = _parsed[0] if _parsed else None
-                                episode_num = _parsed[1][0] if _parsed else None
+                                _se = _contribution_season_episode(job, title.matched_episode)
+                                season_num = _se[0] if _se else None
+                                episode_num = _se[1] if _se else None
                                 disc_hash = None
                                 if getattr(job, "content_hash", None):
                                     try:
@@ -1913,7 +1930,14 @@ class MatchingCoordinator:
                                         tmdb_id_val = int(job.tmdb_id)
                                     except (TypeError, ValueError):
                                         tmdb_id_val = 0
-                                if tmdb_id_val == 0:
+                                if _se is None:
+                                    # TheTVDB-numbered code with no 1:1 TMDB equivalent
+                                    # (or unparseable): the network is TMDB-keyed.
+                                    logger.debug(
+                                        f"Skipping contribution for title {title.id}: "
+                                        "episode code has no TMDB equivalent"
+                                    )
+                                elif tmdb_id_val == 0:
                                     # Skip enqueue rather than poison Phase 2 with
                                     # un-attributable contributions. The chromaprint
                                     # is still stored on DiscTitle for diagnostic use.
