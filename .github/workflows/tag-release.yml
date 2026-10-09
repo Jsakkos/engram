@@ -19,7 +19,7 @@ jobs:
     # Squash-merge of a release PR produces "chore: release v0.x.y (#NNN)"
     if: "contains(github.event.head_commit.message, 'chore: release v')"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Extract version from pyproject.toml
         id: version
