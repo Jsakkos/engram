@@ -6,7 +6,7 @@ readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "alembic>=1.18.5",
+    "alembic>=1.20.0",
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.27.0",
     "sqlmodel>=0.0.14",
@@ -56,9 +56,9 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
-    "pytest-mock>=3.15.1",
-    "ruff>=0.16.8",
-    "hypothesis>=6.168.3",
+    "pytest-mock>=3.16.0",
+    "ruff>=0.16.10",
+    "hypothesis>=6.168.5",
 ]
 
 [tool.ruff]
