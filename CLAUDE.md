@@ -235,8 +235,12 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
   24 vs 26). Under `tvdb`, `matched_episode`, references, the review roster and filenames
   are TVDB-numbered. The namespace is decided in `MatchingCoordinator.download_subtitles`;
   the STORED value rides in a ContextVar (`app/core/episode_namespace.py`), bound there and
-  in `download_subtitles_all_seasons`, `match_single_file`, and the roster, manual-subtitle
-  and LLM routes. Chokepoints: `corpus_dir_name` (`@tvdb` suffix), `load_precomputed_manifest`
+  in `download_subtitles_all_seasons`, the match path, and the roster, manual-subtitle
+  and LLM routes. The match path binds AFTER the subtitle-ready wait
+  (`_run_match_single_file`), not at task entry: imports and `rerun_matching` dispatch
+  matches before the decision commits, so binding earlier would match in a stale
+  namespace. A tvdb job is never projected through a TMDB episode group
+  (`_ordering_for_title` returns "tvdb"). Chokepoints: `corpus_dir_name` (`@tvdb` suffix), `load_precomputed_manifest`
   and `EpisodeMatcher._load_precomputed_manifest` (hidden under tvdb); the matcher's
   reference-file cache is keyed by the resolved reference dir; the chromaprint prepass is
   skipped. Under tvdb `season_episodes` never falls back to TMDB (returns `[]`, so an outage

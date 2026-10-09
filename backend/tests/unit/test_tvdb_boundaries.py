@@ -3,6 +3,7 @@
 import asyncio
 import json
 from collections import defaultdict
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -141,11 +142,44 @@ async def test_match_single_file_binds_the_job_namespace():
     coord = _bare_coordinator()
     seen = {}
 
-    async def fake_run(*a, **k):
+    async def fake_body(*a, **k):
         seen["ns"] = current_namespace()
 
-    coord._run_match_single_file = fake_run
-    await coord.match_single_file(job_id, 1, None)
+    coord._match_after_subtitle_wait = fake_body
+    await coord.match_single_file(job_id, 1, Path("t1.mkv"))
+    assert seen["ns"] == "tvdb"
+    assert current_namespace() == "tmdb"
+
+
+@pytest.mark.unit
+async def test_match_binds_the_namespace_decided_during_the_subtitle_wait():
+    """Imports and rerun_matching dispatch matches before decide_job_namespace
+    commits: the match must bind the value stored when the wait ends, not the
+    one stored when the task started."""
+    from app.core.episode_namespace import current_namespace
+
+    job_id = await _job("tmdb", crosswalk=None)
+    coord = _bare_coordinator()
+    coord._subtitle_ready[job_id] = asyncio.Event()
+    seen = {}
+
+    async def fake_body(*a, **k):
+        seen["ns"] = current_namespace()
+
+    coord._match_after_subtitle_wait = fake_body
+    task = asyncio.create_task(coord.match_single_file(job_id, 1, Path("t1.mkv")))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert "ns" not in seen  # still waiting on subtitles
+
+    async with _unit_session_factory() as s:
+        job = await s.get(DiscJob, job_id)
+        job.episode_namespace = "tvdb"
+        s.add(job)
+        await s.commit()
+    coord._subtitle_ready[job_id].set()
+    await asyncio.wait_for(task, timeout=5)
+
     assert seen["ns"] == "tvdb"
     assert current_namespace() == "tmdb"
 
@@ -398,3 +432,48 @@ async def test_corrected_episode_recontribution_translates_to_tmdb():
                 .all()
             )
             assert [r.episode for r in rows] == expected
+
+
+@pytest.mark.unit
+class TestRematchDiscdbFallback:
+    """``rematch_single_title`` rebuilds a DiscDB code from the in-memory TMDB
+    mappings when the stored details carry none; it must land in the job's
+    numbering like ``try_discdb_assignment`` does."""
+
+    async def _title(self, job_id: int) -> int:
+        async with _unit_session_factory() as s:
+            title = DiscTitle(
+                job_id=job_id,
+                title_index=3,
+                duration_seconds=1300,
+                discdb_match_details=json.dumps({"source": "discdb"}),
+            )
+            s.add(title)
+            await s.commit()
+            return title.id
+
+    async def test_fallback_code_translated_into_tvdb_numbering(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.matching_coordinator.ws_manager.broadcast_title_update", _noop
+        )
+        job_id = await _tvdb_job()
+        title_id = await self._title(job_id)
+        coord = _bare_coordinator()
+        coord._discdb_mappings = {job_id: [_mapping(3, 1, 2)]}  # TMDB S01E02
+        await coord.rematch_single_title(job_id, title_id, source_preference="discdb")
+        async with _unit_session_factory() as s:
+            title = await s.get(DiscTitle, title_id)
+        assert title.matched_episode == "S01E04"
+
+    async def test_untranslatable_fallback_code_is_skipped(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.matching_coordinator.ws_manager.broadcast_title_update", _noop
+        )
+        job_id = await _tvdb_job()
+        title_id = await self._title(job_id)
+        coord = _bare_coordinator()
+        coord._discdb_mappings = {job_id: [_mapping(3, 1, 1)]}  # TMDB S01E01: no 1:1 TVDB code
+        await coord.rematch_single_title(job_id, title_id, source_preference="discdb")
+        async with _unit_session_factory() as s:
+            title = await s.get(DiscTitle, title_id)
+        assert title.matched_episode is None

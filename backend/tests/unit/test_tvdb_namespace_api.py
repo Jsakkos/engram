@@ -105,7 +105,9 @@ class TestSwitchEndpoint:
         from app.services.job_manager import job_manager
 
         monkeypatch.setattr(job_manager._matching, "restart_subtitle_download", fake_restart)
-        monkeypatch.setattr(job_manager._matching, "forget_episode_runtimes", lambda jid: None)
+        monkeypatch.setattr(
+            job_manager, "forget_episode_runtimes", lambda jid: calls.append(("forget",))
+        )
         monkeypatch.setattr(job_manager, "rerun_matching", fake_rerun)
 
         resp = await client.post(
@@ -116,6 +118,7 @@ class TestSwitchEndpoint:
         assert resp.json() == {"job_id": job_id, "episode_namespace": "tvdb"}
         assert calls == [
             ("switch", "tvdb"),
+            ("forget",),
             ("restart", "Justice League", 1, 1618),
             ("rerun",),
         ]
@@ -190,7 +193,7 @@ class TestSwitchEndpoint:
 
         monkeypatch.setattr(svc, "_rosters", fake_rosters)
         monkeypatch.setattr(job_manager._matching, "restart_subtitle_download", noop)
-        monkeypatch.setattr(job_manager._matching, "forget_episode_runtimes", lambda jid: None)
+        monkeypatch.setattr(job_manager, "forget_episode_runtimes", lambda jid: None)
         monkeypatch.setattr(job_manager, "rerun_matching", noop)
 
         job_id = await _job(tvdb_divergence_json=json.dumps(_DIVERGENCE))
@@ -302,6 +305,42 @@ class TestRosterNamespace:
         assert body["ordering_available"] is True
         # The roster was fetched under the job's namespace.
         assert roster_stubs["namespaces"] == ["tvdb"]
+
+    async def test_tvdb_job_blanks_tmdb_projections(self, client, roster_stubs, monkeypatch):
+        """TMDB groups projected over TheTVDB roster pairs are meaningless: the
+        options stay (so the user can switch back) but carry no projection."""
+        monkeypatch.setattr(
+            "app.core.episode_ordering.build_ordering_options",
+            lambda *a, **k: {
+                "available": True,
+                "diverges": True,
+                "current": "aired",
+                "options": [
+                    {
+                        "ordering": "aired",
+                        "label": "Aired Order",
+                        "tmdb_type": 1,
+                        "diverges": False,
+                        "projection": {"S01E01": "S01E01"},
+                    },
+                    {
+                        "ordering": "dvd",
+                        "label": "DVD Order",
+                        "tmdb_type": 3,
+                        "diverges": True,
+                        "projection": {"S01E01": "S01E05"},
+                    },
+                ],
+            },
+        )
+        await _show_pref(ordering="tvdb")
+        job_id = await _job(episode_namespace="tvdb")
+        body = (await client.get(f"/api/jobs/{job_id}/season-roster")).json()
+        options = {o["ordering"]: o for o in body["ordering_options"]}
+        assert set(options) == {"aired", "dvd", "tvdb"}
+        for name in ("aired", "dvd"):
+            assert options[name]["projection"] == {}
+            assert options[name]["diverges"] is False
 
     async def test_tvdb_pref_with_tmdb_fallback_still_offers_tvdb(self, client, roster_stubs):
         await _show_pref(ordering="tvdb")

@@ -65,6 +65,19 @@ async def decide_job_namespace(job_id: int) -> str:
             tmdb_id, season = job.tmdb_id, job.detected_season
             pref = await session.get(ShowOrderingPreference, tmdb_id)
             known_tvdb_id = pref.tvdb_id if pref else None
+            if (
+                pref is not None
+                and pref.ordering != ns.NAMESPACE_TVDB
+                and pref.tvdb_suggestion_dismissed
+            ):
+                # The show does not use TheTVDB and the user declined the
+                # suggestion, so nothing a TheTVDB round-trip finds would be
+                # shown: skip it. The incoherence repair below needs no network.
+                if job.episode_namespace == ns.NAMESPACE_TVDB:
+                    job.episode_namespace = ns.NAMESPACE_TMDB
+                    job.episode_crosswalk_json = None
+                    await session.commit()
+                return job.episode_namespace or ns.NAMESPACE_TMDB
 
         # No session is open across the TMDB/TheTVDB round-trips.
         config = await get_config()
@@ -161,6 +174,9 @@ async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
         else:
             if pref.ordering == ns.NAMESPACE_TVDB:
                 pref.ordering = ""
+            # An explicit revert declines TheTVDB: without this the re-download
+            # re-detects the divergence and the suggestion reappears at once.
+            pref.tvdb_suggestion_dismissed = True
             job.episode_namespace = ns.NAMESPACE_TMDB
             job.episode_crosswalk_json = None
         job.episode_namespace_note = None

@@ -138,6 +138,47 @@ class TestSwitchAndDismiss:
             pref = await s.get(ShowOrderingPreference, 1618)
         assert pref.ordering == ""  # falls back to the global default
 
+    async def test_revert_to_tmdb_dismisses_the_suggestion(self, stubs):
+        """The re-download after a revert re-detects the divergence; without the
+        dismissal the suggestion would reappear straight away."""
+        job_id = await _job()
+        await svc.switch_job_namespace(job_id, "tvdb")
+        await svc.switch_job_namespace(job_id, "tmdb")
+        async with _unit_session_factory() as s:
+            pref = await s.get(ShowOrderingPreference, 1618)
+        assert pref.tvdb_suggestion_dismissed is True
+
+    async def test_decide_skips_tvdb_when_dismissed_and_not_preferred(self, stubs, monkeypatch):
+        async with _unit_session_factory() as s:
+            s.add(
+                ShowOrderingPreference(tmdb_id=1618, ordering="dvd", tvdb_suggestion_dismissed=True)
+            )
+            await s.commit()
+
+        fetched = []
+
+        async def recording_rosters(*a, **k):
+            # decide_job_namespace swallows exceptions, so record rather than raise.
+            fetched.append(a)
+            return None, None, None
+
+        monkeypatch.setattr(svc, "_rosters", recording_rosters)
+        job_id = await _job()
+        assert await svc.decide_job_namespace(job_id) == "tmdb"
+        assert fetched == [], "no TheTVDB round-trip when no suggestion can be shown"
+        assert (await _get(job_id)).episode_namespace == "tmdb"
+
+    async def test_decide_still_fetches_when_dismissed_but_tvdb_preferred(self, stubs):
+        async with _unit_session_factory() as s:
+            s.add(
+                ShowOrderingPreference(
+                    tmdb_id=1618, ordering="tvdb", tvdb_id=76290, tvdb_suggestion_dismissed=True
+                )
+            )
+            await s.commit()
+        job_id = await _job()
+        assert await svc.decide_job_namespace(job_id) == "tvdb"
+
     async def test_switch_clears_discdb_match_details_of_the_job_only(self, stubs):
         """Those details hold codes in the old numbering; a re-match rebuilds them."""
         job_id = await _job()

@@ -979,6 +979,13 @@ async def get_season_roster(
         ordering_data["diverges"] = True
         if namespace == NAMESPACE_TVDB:
             ordering_data["current"] = "tvdb"
+            # The TMDB options' projections were computed from TMDB episode
+            # groups over TheTVDB roster pairs, which is meaningless. Keep the
+            # options (so the user can switch back) but without a projection.
+            for option in ordering_data["options"]:
+                if option.get("ordering") != "tvdb":
+                    option["projection"] = {}
+                    option["diverges"] = False
 
     from app.models.show_ordering import ShowOrderingPreference
 
@@ -4821,7 +4828,7 @@ async def set_job_episode_namespace(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
 
-    job_manager._matching.forget_episode_runtimes(job_id)
+    job_manager.forget_episode_runtimes(job_id)
     await job_manager._matching.restart_subtitle_download(job_id, show_name, season, tmdb_id)
     await job_manager.rerun_matching(job_id)
     return {"job_id": job_id, "episode_namespace": request.namespace}

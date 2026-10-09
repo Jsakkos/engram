@@ -55,7 +55,13 @@ def _ordering_for_title(match_details, ordering: str, namespace: str | None = No
     Degrading to "aired" keeps the matcher's own number in the filename. That
     number is at least the one the review page showed, which is the property the
     user actually relies on; projecting it would be precise about the wrong thing.
+
+    A TVDB-numbered job is never projected: its codes are TheTVDB coordinates,
+    which a TMDB episode group cannot resolve, even if the show preference has
+    since changed to "dvd" or "aired".
     """
+    if namespace == "tvdb":
+        return "tvdb"
     if ordering == "tvdb" and namespace is not None and namespace != "tvdb":
         # The show prefers TheTVDB numbering but this job fell back to TMDB numbering
         # (TheTVDB outage), so the files are TMDB-numbered: do not label them "tvdb".

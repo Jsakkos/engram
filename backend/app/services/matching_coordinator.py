@@ -986,7 +986,15 @@ class MatchingCoordinator:
                     for m in mappings:
                         if m.index == title.title_index and m.season and m.episode:
                             _eps = getattr(m, "episodes", None) or [m.episode]
-                            title.matched_episode = format_episode_code(m.season, _eps)
+                            # The mappings are TMDB-numbered; translate into the
+                            # job's numbering, and skip a code with no 1:1 match.
+                            _code = from_tmdb_code(
+                                job.episode_namespace,
+                                job.episode_crosswalk_json,
+                                format_episode_code(m.season, _eps),
+                            )
+                            if _code is not None:
+                                title.matched_episode = _code
                             break
                 if is_multi_episode(title.matched_episode):
                     # Same rule as try_discdb_assignment: a combined code escapes
@@ -1072,9 +1080,12 @@ class MatchingCoordinator:
 
         ``advisory`` (manual per-track re-match) holds the result in REVIEW for
         confirmation instead of auto-organizing — see ``rematch_single_title``.
+
+        The episode namespace is bound later, in ``_run_match_single_file``
+        after the subtitle-ready wait, because imports and ``rerun_matching``
+        dispatch matches before ``decide_job_namespace`` has committed.
         """
-        namespace = await self._job_namespace(job_id)
-        with job_log_context(job_id), namespace_context(namespace):
+        with job_log_context(job_id):
             await self._run_match_single_file(
                 job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
             )
@@ -1207,6 +1218,27 @@ class MatchingCoordinator:
                     f"[MATCH] Title {title_id} (Job {job_id}): error waiting for subtitles: {e}"
                 )
 
+        # Bind the namespace only now: the subtitle download decides it
+        # (decide_job_namespace) before setting the ready event, and a match
+        # dispatched earlier (imports, rerun_matching) must see that decision.
+        # On a timeout this binds whatever is stored. Nothing above reads
+        # references, runtimes or rosters.
+        namespace = await self._job_namespace(job_id)
+        with namespace_context(namespace):
+            await self._match_after_subtitle_wait(
+                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
+            )
+
+    async def _match_after_subtitle_wait(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+        advisory: bool = False,
+    ) -> None:
+        """Everything after the subtitle wait, run under the job's namespace."""
         # 2. Check subtitle status from database - BLOCK matching if failed
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
