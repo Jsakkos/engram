@@ -37,6 +37,22 @@ describe('OrderingSelector', () => {
         await userEvent.click(screen.getByRole('button', { name: /TheTVDB/ }));
         expect(onChange).not.toHaveBeenCalled();
     });
+
+    it('fires onChange for the current ordering when it is marked reselectable', async () => {
+        // Fallback state: aired is "current" but the show still prefers TheTVDB,
+        // so re-clicking Aired must be able to clear that preference.
+        const onChange = vi.fn();
+        render(<OrderingSelector options={[AIRED, TVDB]} current="aired" reselectable="aired" onChange={onChange} />);
+        await userEvent.click(screen.getByRole('button', { name: /Aired/ }));
+        expect(onChange).toHaveBeenCalledWith('aired');
+    });
+
+    it('does not fire for other same-value clicks when another option is reselectable', async () => {
+        const onChange = vi.fn();
+        render(<OrderingSelector options={[AIRED, DVD]} current="dvd" reselectable="aired" onChange={onChange} />);
+        await userEvent.click(screen.getByRole('button', { name: /DVD/ }));
+        expect(onChange).not.toHaveBeenCalled();
+    });
 });
 
 describe('effectiveOrdering', () => {

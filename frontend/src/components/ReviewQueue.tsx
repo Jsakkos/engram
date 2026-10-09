@@ -226,7 +226,17 @@ function ReviewQueue() {
                 // review), the show preference must not have moved either.
                 if (!job) return;
                 await setEpisodeNamespace(job.id, 'tmdb');
-                await setShowOrdering(roster.show_id, ordering);
+                // The switch already reset the show preference to the global
+                // default, which is what "aired" means. Only a DVD pick needs a
+                // follow-up write, and its failure is non-fatal: re-matching has
+                // started, so the page must still hand off.
+                if (ordering !== 'aired') {
+                    try {
+                        await setShowOrdering(roster.show_id, ordering);
+                    } catch (e) {
+                        console.error('Failed to set show ordering after namespace switch', e);
+                    }
+                }
                 navigate('/');
                 return;
             }
@@ -1083,6 +1093,11 @@ function ReviewQueue() {
                             options={roster.ordering_options}
                             current={effectiveOrdering(roster)}
                             onChange={handleOrderingChange}
+                            reselectable={
+                                roster.current_ordering === 'tvdb' && roster.episode_source !== 'tvdb'
+                                    ? 'aired'
+                                    : undefined
+                            }
                         />
                     </div>
                 )}

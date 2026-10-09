@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, amendTitle } from "../api/client";
 import { AmendTitleModal } from "./HistoryPage/AmendTitleModal";
 import { parseEpisodeCode } from "./ReviewQueue/coverage";
+import { TvdbAttribution } from "./ReviewQueue/TvdbAttribution";
 import {
   CheckCircle2,
   XCircle,
@@ -641,7 +642,12 @@ function JobDetailPanel({
                     <KvRow label="Review reason" value={detail.review_reason} valueColor={sv.amber} alignTop />
                   )}
                   {detail.episode_namespace === "tvdb" && (
-                    <KvRow label="Episode numbering" value="TheTVDB" />
+                    <>
+                      <KvRow label="Episode numbering" value="TheTVDB" />
+                      <div style={{ marginTop: 4 }}>
+                        <TvdbAttribution />
+                      </div>
+                    </>
                   )}
                   {detail.episode_namespace_note && (
                     <KvRow label="Numbering" value={detail.episode_namespace_note} valueColor={sv.amber} alignTop />

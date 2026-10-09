@@ -14,15 +14,18 @@ export function OrderingSelector({
     options,
     current,
     onChange,
+    reselectable,
 }: {
     options: OrderingOption[];
     current: string;
     onChange: (ordering: string) => void | Promise<void>;
+    /** An ordering that fires onChange even when it is already `current`. */
+    reselectable?: string;
 }) {
     const [busy, setBusy] = useState(false);
 
     const handle = async (next: string) => {
-        if (next === current || busy) return;
+        if ((next === current && next !== reselectable) || busy) return;
         setBusy(true);
         try {
             await onChange(next);
