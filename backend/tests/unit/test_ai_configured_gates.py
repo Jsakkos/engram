@@ -129,7 +129,7 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
         )
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=synopses,
             ),
             patch("app.core.ai_client.httpx.AsyncClient", return_value=client),
@@ -192,7 +192,7 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
                 return_value="/staging/t7.mkv",
             ),
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=synopses,
             ),
             patch("app.core.ai_client.httpx.AsyncClient", return_value=client),

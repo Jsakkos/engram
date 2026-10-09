@@ -13,9 +13,9 @@ import logging
 from dataclasses import dataclass
 
 from app.core.ai_client import DEFAULT_MODELS, complete_json
+from app.core.episode_namespace import season_episodes
 from app.core.security import sanitize_log_value
 from app.matcher.episode_identification import _clean_subtitle_text
-from app.matcher.tmdb_client import fetch_season_episodes
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,9 @@ async def match_episode_via_llm(
         )
         return None
 
-    episodes = fetch_season_episodes(tmdb_show_id, season, tmdb_api_key)
+    # The roster in the bound namespace, so the episode number the LLM picks is
+    # in the job's own numbering (TheTVDB for a tvdb job).
+    episodes = season_episodes(tmdb_show_id, season, tmdb_api_key)
     if not episodes:
         logger.warning(
             "LLM matcher: no TMDB synopses for show_id=%s season=%s",

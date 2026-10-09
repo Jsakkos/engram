@@ -22,6 +22,7 @@ from app.core.episode_codes import (
     is_multi_episode,
     parse_episode_code,
 )
+from app.core.episode_namespace import from_tmdb_code, namespace_context
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
@@ -686,6 +687,17 @@ class MatchingCoordinator:
         if task is not None and not task.done():
             task.cancel()
 
+    async def _job_namespace(self, job_id: int) -> str:
+        """The job's episode namespace. Read fresh each time (one PK lookup) so
+        a switch from the review page is seen without cache invalidation."""
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            return (job.episode_namespace if job else None) or "tmdb"
+
+    def forget_episode_runtimes(self, job_id: int) -> None:
+        """Drop the cached runtimes after a namespace switch (24 vs 26 episodes)."""
+        self._episode_runtimes.pop(job_id, None)
+
     def get_discdb_mappings(self, job_id: int) -> list:
         """Get DiscDB mappings for a job."""
         return self._discdb_mappings.get(job_id, [])
@@ -796,6 +808,20 @@ class MatchingCoordinator:
         # mappings persisted before `episodes` existed working off `episode`.
         _eps = getattr(mapping, "episodes", None) or [mapping.episode]
         episode_code = format_episode_code(mapping.season, _eps)
+        # DiscDB and the disc network publish TMDB numbering. A TheTVDB job
+        # takes the hint only when it maps 1:1; otherwise the matcher decides.
+        job = await session.get(DiscJob, job_id)
+        if job is not None and (job.episode_namespace or "tmdb") != "tmdb":
+            translated = from_tmdb_code(
+                job.episode_namespace, job.episode_crosswalk_json, episode_code
+            )
+            if translated is None:
+                logger.info(
+                    f"Job {job_id}: dropping {origin} hint {episode_code} for title "
+                    f"{title.title_index}; it has no 1:1 TheTVDB equivalent"
+                )
+                return False
+            episode_code = translated
         logger.info(
             f"Job {job_id}: {origin} applying disc-order fallback mapping for title "
             f"{title.title_index}: {episode_code} ({mapping.episode_title!r})"
@@ -1030,7 +1056,8 @@ class MatchingCoordinator:
         ``advisory`` (manual per-track re-match) holds the result in REVIEW for
         confirmation instead of auto-organizing — see ``rematch_single_title``.
         """
-        with job_log_context(job_id):
+        namespace = await self._job_namespace(job_id)
+        with job_log_context(job_id), namespace_context(namespace):
             await self._run_match_single_file(
                 job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
             )
@@ -1407,9 +1434,25 @@ class MatchingCoordinator:
             else:
                 show_id = await asyncio.to_thread(fetch_show_id, detected_title)
             if show_id:
-                runtimes = await asyncio.to_thread(
-                    fetch_season_episode_runtimes, show_id, detected_season
+                from app.core.episode_namespace import (
+                    NAMESPACE_TVDB,
+                    current_namespace,
+                    season_runtimes,
                 )
+
+                if current_namespace() == NAMESPACE_TVDB:
+                    from app.services.config_service import get_config
+
+                    # get_config opens and releases its own short session, so
+                    # no pooled connection is held across the roster fetch.
+                    cfg = await get_config()
+                    runtimes = await asyncio.to_thread(
+                        season_runtimes, show_id, detected_season, cfg.tmdb_api_key
+                    )
+                else:
+                    runtimes = await asyncio.to_thread(
+                        fetch_season_episode_runtimes, show_id, detected_season
+                    )
             else:
                 runtimes = []
             self._episode_runtimes[job_id] = runtimes
@@ -2574,6 +2617,12 @@ class MatchingCoordinator:
         from sqlalchemy import update
 
         try:
+            from app.services.episode_namespace_service import decide_job_namespace
+
+            # Never raises and manages its own short sessions; it is awaited
+            # outside any session block because it makes network calls.
+            namespace = await decide_job_namespace(job_id)
+
             async with async_session() as session:
                 await session.execute(
                     update(DiscJob)
@@ -2587,7 +2636,16 @@ class MatchingCoordinator:
 
             from app.matcher.testing_service import download_subtitles
 
-            result = await asyncio.to_thread(download_subtitles, show_name, season, tmdb_id=tmdb_id)
+            # asyncio.to_thread copies this context, so the matcher's cache paths
+            # and precomputed reads see the namespace (episode_namespace.py).
+            with namespace_context(namespace):
+                result = await asyncio.to_thread(
+                    download_subtitles,
+                    show_name,
+                    season,
+                    tmdb_id=tmdb_id,
+                    use_precomputed=namespace != "tvdb",
+                )
 
             episodes = result["episodes"]
             # The precomputed vector cache covered the whole season, so no SRTs
