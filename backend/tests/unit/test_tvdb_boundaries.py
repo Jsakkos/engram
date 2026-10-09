@@ -7,7 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.discdb_exporter import _derive_title_type, _tvdb_safe_code
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, TitleState
+from app.services.disc_contribution_queue import _derive_assignment
 from app.services.matching_coordinator import MatchingCoordinator
 from tests.unit.conftest import _unit_session_factory
 
@@ -288,3 +290,44 @@ class TestEpisodeRuntimesNamespace:
         coord._episode_runtimes[9] = [22]
         coord.forget_episode_runtimes(9)
         assert 9 not in coord._episode_runtimes
+
+
+def _outbound_job(ns="tvdb"):
+    return DiscJob(
+        drive_id="E:",
+        volume_label="JL",
+        content_type=ContentType.TV,
+        tmdb_id=1618,
+        episode_namespace=ns,
+        episode_crosswalk_json=CROSSWALK if ns == "tvdb" else None,
+    )
+
+
+def _title(code):
+    return SimpleNamespace(is_extra=False, matched_episode=code, state=None)
+
+
+@pytest.mark.unit
+class TestOutbound:
+    def test_contribution_translates_to_tmdb(self):
+        assert _derive_assignment(_outbound_job(), _title("S01E04")) == ("episode", 1, 2)
+
+    def test_contribution_omits_split_parts(self):
+        assert _derive_assignment(_outbound_job(), _title("S01E02"))[0] == "discarded"
+
+    def test_tmdb_job_unchanged(self):
+        assert _derive_assignment(_outbound_job("tmdb"), _title("S01E02")) == ("episode", 1, 2)
+
+    def test_export_code_translated_or_none(self):
+        assert _tvdb_safe_code(_outbound_job(), "S01E05") == "S01E03"
+        assert _tvdb_safe_code(_outbound_job(), "S01E01") is None
+        assert _tvdb_safe_code(_outbound_job("tmdb"), "S01E01") == "S01E01"
+
+    def test_untranslatable_title_is_not_typed_episode(self):
+        job = _outbound_job()
+        t = SimpleNamespace(
+            is_extra=False, matched_episode="S01E01", title_index=0, is_selected=True
+        )
+        code = _tvdb_safe_code(job, t.matched_episode)
+        assert _derive_title_type(t, ContentType.TV, None, code) is None
+        assert _derive_title_type(t, ContentType.TV, None, "S01E02") == "Episode"
