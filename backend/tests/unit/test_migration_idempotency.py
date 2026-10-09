@@ -195,7 +195,7 @@ class TestSelfHealFailureReporting:
         stuck = getattr(excinfo.value, db_mod._STUCK_REVISION_ATTR)
         assert f"revision {DROP_REV} failed" in stuck
         assert f"stays at {BEFORE_DROP_REV}" in stuck
-        assert "24 pending revision(s)" in stuck
+        assert "25 pending revision(s)" in stuck
 
     def test_stuck_revision_logged_once_as_error_with_traceback(self, alembic_db, monkeypatch):
         import app.database as db_mod
@@ -213,5 +213,5 @@ class TestSelfHealFailureReporting:
         msg, kwargs = errors[0]
         assert kwargs.get("exc_info") is True
         assert f"revision {DROP_REV} failed" in msg
-        assert "24 pending revision(s)" in msg
+        assert "25 pending revision(s)" in msg
         assert _current_rev(engine) == BEFORE_DROP_REV

@@ -158,6 +158,21 @@ class DiscJob(SQLModel, table=True):
     # on the job card so degraded heuristic-only results name their cause (#243).
     # None when TMDB participated normally.
     tmdb_degraded_reason: str | None = None
+    # Which episode numbering this job's matched_episode codes, references and
+    # filenames use (TheTVDB spec 2026-10-08). "tmdb" is the canonical default;
+    # "tvdb" means TheTVDB official order. server_default so rows that predate
+    # the column read "tmdb", not NULL.
+    episode_namespace: str = Field(
+        default="tmdb", sa_column_kwargs={"server_default": text("'tmdb'")}
+    )
+    # JSON {"season", "tmdb", "tvdb"} when TheTVDB numbers this season
+    # differently; drives the review-page suggestion. None = no divergence known.
+    tvdb_divergence_json: str | None = None
+    # Prose shown on review/history when a TVDB job had to fall back to TMDB.
+    episode_namespace_note: str | None = None
+    # JSON {"S01E04": "S01E02", ...}: TVDB code -> TMDB code, 1:1 pairs only.
+    # Persisted so contribution/export translate without a network call.
+    episode_crosswalk_json: str | None = None
 
     # Title information (JSON stored as string for simplicity)
     titles_json: str | None = None  # List of titles with durations
