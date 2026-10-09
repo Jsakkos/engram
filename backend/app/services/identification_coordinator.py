@@ -393,18 +393,18 @@ class IdentificationCoordinator:
             return
 
         runtimes: list[int] = []
-        if trust_identity and job.tmdb_id and job.detected_season:
+        wants_tmdb = bool(trust_identity and job.tmdb_id and job.detected_season)
+        if wants_tmdb:
             from app.matcher.tmdb_client import fetch_season_episode_runtimes
 
             # lru_cached, and keyed on the job's FINAL identity: classification
             # fetched runtimes for the label's identity, which a disc-network or
-            # DiscDB override may since have replaced.
-            try:
-                runtimes = await asyncio.to_thread(
-                    fetch_season_episode_runtimes, str(job.tmdb_id), job.detected_season
-                )
-            except Exception as e:  # best-effort, like the classification fetch
-                logger.warning(f"Job {job_id}: short-title runtime fetch failed: {e}")
+            # DiscDB override may since have replaced. No try here: the fetch
+            # already catches and logs its network errors (with exc_info) and
+            # returns [], which drops the filter to its stricter disc-only rule.
+            runtimes = await asyncio.to_thread(
+                fetch_season_episode_runtimes, str(job.tmdb_id), job.detected_season
+            )
 
         db_titles = (
             (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
@@ -437,9 +437,15 @@ class IdentificationCoordinator:
                 session.add(dt)
                 skipped.append(dt)
         await session.commit()
+        if runtimes:
+            evidence = "TMDB + disc"
+        elif wants_tmdb:
+            evidence = "disc only, TMDB runtimes unavailable"
+        else:
+            evidence = "disc only, no trusted TMDB show and season"
         logger.info(
             f"Job {job_id}: auto-skipped {len(skipped)} short track(s) before rip "
-            f"(extras policy 'skip', {'TMDB + disc' if runtimes else 'disc only'}): "
+            f"(extras policy 'skip', {evidence}): "
             + "; ".join(f"title {dt.title_index}: {reasons[dt.title_index]}" for dt in skipped)
         )
         for dt in skipped:
@@ -730,16 +736,6 @@ class IdentificationCoordinator:
                 # words-merged guard below.
                 _collision = _amb or _noyear
 
-                # Before any branch below can hand the disc to the ripper. Gates
-                # A and B returned above: with no usable identity they rip
-                # permissively by design.
-                await self._skip_short_titles_before_rip(
-                    job,
-                    session,
-                    job_id,
-                    trust_identity=not _collision and not analysis.identity_unconfirmed,
-                )
-
                 # Gate B (walk-away B2): TV show detected but TMDB lookup failed —
                 # the name cannot be trusted for episode matching, so rip first with
                 # a non-blocking name prompt instead of parking. Subtitle prefetch is
@@ -777,6 +773,16 @@ class IdentificationCoordinator:
                         job, session, job_id, kind="name", reason=reason
                     )
                     return
+
+                # Before any branch below can hand the disc to the ripper. Gates
+                # A and B returned above: with no usable identity they rip
+                # permissively by design.
+                await self._skip_short_titles_before_rip(
+                    job,
+                    session,
+                    job_id,
+                    trust_identity=not _collision and not analysis.identity_unconfirmed,
+                )
 
                 # Start subtitle download for ALL TV content — except when identity is
                 # ambiguous (same-name collision) or a no-year twin needs disambiguation.

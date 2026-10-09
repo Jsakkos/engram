@@ -98,6 +98,26 @@ class TestOneSignal:
         assert _skipped(find_short_titles(disc, [0, 0, 0])) == {3}
 
 
+class TestDriftingDurations:
+    """Greedy grouping against a running mean can chain upward-drifting tracks
+    (20, 21, 22, 23, 24 min) or split them at an arbitrary point. Either way no
+    episode-length track may be skipped; only the real outlier is."""
+
+    def test_drift_with_tmdb(self):
+        disc = _disc(20, 21, 22, 23, 24, 3)
+        assert _skipped(find_short_titles(disc, [22, 22, 22, 22, 22])) == {5}
+
+    def test_drift_disc_only(self):
+        disc = _disc(20, 21, 22, 23, 24, 3)
+        assert _skipped(find_short_titles(disc, None)) == {5}
+
+    def test_drift_split_group_never_skips_its_tail(self):
+        """The 24-minute track lands outside the chained group but is far above
+        half of it, so a split boundary cannot turn into a skip."""
+        disc = _disc(20, 21, 22, 23, 24)
+        assert find_short_titles(disc, None) == []
+
+
 class TestNoAction:
     def test_too_few_titles(self):
         assert find_short_titles(_disc(40, 5), [40]) == []

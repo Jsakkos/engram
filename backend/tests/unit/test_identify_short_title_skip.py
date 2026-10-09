@@ -121,6 +121,18 @@ class TestShortTitleSkip:
         assert [t.title_index for t in skipped] == [3, 4]
         assert "TMDB" not in json.loads(skipped[0].match_details)["reason"]
 
+    async def test_gate_b_tmdb_lookup_failed_rips_everything(self, short_env):
+        """Gate B (TV detected, TMDB lookup failed): the name is untrusted and the
+        disc rips first with a name prompt, so nothing is auto-skipped."""
+        job_id, coord, _ = await _identify_tv(tmdb_id=None)
+
+        job = await _reload_job(job_id)
+        assert json.loads(job.identity_prompt_json)["kind"] == "name"
+        coord._run_ripping.assert_awaited_once_with(job_id)
+        titles = await _job_titles(job_id)
+        assert all(t.state == TitleState.PENDING and t.is_selected for t in titles)
+        short_env.runtimes.assert_not_called()
+
     async def test_auto_skipped_track_can_be_unskipped(self, short_env, monkeypatch):
         """The manual un-skip path accepts an auto-skipped track unchanged."""
         job_id, _, _ = await _identify_tv()
