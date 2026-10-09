@@ -191,3 +191,44 @@ def test_season_runtimes_and_count(monkeypatch):
     )
     assert ns.season_runtimes("1618", 1, "tok") == [24, 0]
     assert ns.season_episode_count("1618", 1, "tok") == 2
+
+
+@pytest.mark.parametrize("corrupt", ["{bad", "[]", '"S01E04"', "null"])
+def test_corrupt_crosswalk_translates_to_none(corrupt):
+    assert ns.to_tmdb_code("tvdb", corrupt, "S01E04") is None
+    assert ns.from_tmdb_code("tvdb", corrupt, "S01E02") is None
+
+
+def test_season_episodes_tvdb_without_key_skips_id_lookup(monkeypatch):
+    monkeypatch.setattr("app.matcher.tvdb_client.resolve_api_key", lambda cfg: "")
+    monkeypatch.setattr("app.services.config_service.get_config_sync", lambda: type("C", (), {})())
+    monkeypatch.setattr(
+        "app.matcher.tmdb_client.fetch_tvdb_id",
+        lambda show, key: pytest.fail("looked up a TVDB id without a TVDB key"),
+    )
+    monkeypatch.setattr(
+        "app.matcher.tmdb_client.fetch_season_episodes",
+        lambda show, season, key: [{"episode_number": 1, "name": "TMDB"}],
+    )
+    with ns.namespace_context("tvdb"):
+        assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TMDB"
+
+
+def test_season_episodes_config_error_falls_back_to_tmdb(monkeypatch):
+    def broken():
+        raise RuntimeError("config db unavailable")
+
+    monkeypatch.setattr("app.services.config_service.get_config_sync", broken)
+    monkeypatch.setattr(
+        "app.matcher.tmdb_client.fetch_season_episodes",
+        lambda show, season, key: [{"episode_number": 1, "name": "TMDB"}],
+    )
+    with ns.namespace_context("tvdb"):
+        assert ns.season_episodes("1618", 1, "tok")[0]["name"] == "TMDB"
+
+
+def test_namespace_context_resets_when_body_raises():
+    with pytest.raises(RuntimeError):
+        with ns.namespace_context("tvdb"):
+            raise RuntimeError("boom")
+    assert ns.current_namespace() == "tmdb"

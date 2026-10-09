@@ -23,6 +23,8 @@ from collections import Counter
 from contextvars import ContextVar
 from dataclasses import dataclass
 
+from loguru import logger
+
 from app.core.episode_codes import format_episode_code, parse_episode_code
 
 NAMESPACE_TMDB = "tmdb"
@@ -227,13 +229,27 @@ def _translate(code: str | None, mapping: dict[str, str]) -> str | None:
     return format_episode_code(out_season, out)
 
 
+def _load_crosswalk(crosswalk_json: str | None) -> dict[str, str] | None:
+    """Parse a persisted crosswalk; None when absent or corrupt.
+
+    Callers (contribution, export, matching) treat None as "not translatable",
+    so a damaged column omits a title instead of crashing the job.
+    """
+    if not crosswalk_json:
+        return None
+    try:
+        mapping = json.loads(crosswalk_json)
+    except (TypeError, ValueError):
+        return None
+    return mapping if isinstance(mapping, dict) else None
+
+
 def to_tmdb_code(namespace: str | None, crosswalk_json: str | None, code: str | None) -> str | None:
     """A stored code as the TMDB code it denotes, or None when not 1:1."""
     if (namespace or NAMESPACE_TMDB) == NAMESPACE_TMDB:
         return code
-    if not crosswalk_json:
-        return None
-    return _translate(code, json.loads(crosswalk_json))
+    mapping = _load_crosswalk(crosswalk_json)
+    return _translate(code, mapping) if mapping is not None else None
 
 
 def from_tmdb_code(
@@ -242,10 +258,10 @@ def from_tmdb_code(
     """A TMDB code (e.g. a DiscDB hint) in the job's namespace, or None when not 1:1."""
     if (namespace or NAMESPACE_TMDB) == NAMESPACE_TMDB:
         return code
-    if not crosswalk_json:
+    mapping = _load_crosswalk(crosswalk_json)
+    if mapping is None:
         return None
-    inverse = {tm: tv for tv, tm in json.loads(crosswalk_json).items()}
-    return _translate(code, inverse)
+    return _translate(code, {tm: tv for tv, tm in mapping.items()})
 
 
 def season_episodes(tmdb_show_id: str, season: int, tmdb_api_key: str) -> list[dict]:
@@ -261,12 +277,15 @@ def season_episodes(tmdb_show_id: str, season: int, tmdb_api_key: str) -> list[d
         from app.matcher import tvdb_client
         from app.services.config_service import get_config_sync
 
-        key = tvdb_client.resolve_api_key(get_config_sync())
-        tvdb_id = tmdb_client.fetch_tvdb_id(str(tmdb_show_id), tmdb_api_key)
-        if key and tvdb_id:
-            roster = tvdb_client.fetch_season_roster(tvdb_id, season, api_key=key)
-            if roster:
-                return roster
+        try:
+            key = tvdb_client.resolve_api_key(get_config_sync())
+            tvdb_id = tmdb_client.fetch_tvdb_id(str(tmdb_show_id), tmdb_api_key) if key else None
+            if key and tvdb_id:
+                roster = tvdb_client.fetch_season_roster(tvdb_id, season, api_key=key)
+                if roster:
+                    return roster
+        except Exception as e:  # noqa: BLE001 - any TVDB-side miss degrades to TMDB
+            logger.warning(f"TheTVDB roster unavailable, using TMDB: {e}")
     return tmdb_client.fetch_season_episodes(str(tmdb_show_id), season, tmdb_api_key)
 
 
