@@ -59,7 +59,7 @@ export interface RosterEpisode {
 
 /** One selectable output ordering for a show (#200). */
 export interface OrderingOption {
-    ordering: string; // "aired" | "dvd" (v1 scope)
+    ordering: string; // "aired" | "dvd" | "tvdb"
     label: string; // human label (e.g. "DVD Order")
     tmdb_type: number;
     /** Whether this ordering renumbers any episode matched on this disc. */
@@ -82,6 +82,12 @@ export interface SeasonRoster {
     ordering_options?: OrderingOption[];
     /** Total seasons for the show — populated while the season picker is in play (#370). */
     season_count?: number | null;
+    /** Which catalogue the roster came from; "tvdb" requires the attribution link. */
+    episode_source?: 'tmdb' | 'tvdb';
+    /** Set when TheTVDB numbers this season differently and the user has not dismissed it. */
+    tvdb_suggestion?: { season: number; tmdb: number; tvdb: number } | null;
+    /** Prose fallback note, e.g. "TheTVDB unavailable; matched with TMDB numbering". */
+    namespace_note?: string | null;
 }
 
 export type { DiscTitle };

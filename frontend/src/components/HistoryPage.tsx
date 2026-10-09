@@ -116,6 +116,10 @@ interface JobDetail {
   backup_path?: string | null;
   backup_status?: string | null;
   backup_status_reason?: string | null;
+  // TheTVDB episode namespace (spec 2026-10-08). The note is backend prose
+  // (e.g. a fallback to TMDB numbering) and is rendered verbatim.
+  episode_namespace?: string;
+  episode_namespace_note?: string | null;
   titles: JobDetailTitle[];
 }
 
@@ -635,6 +639,12 @@ function JobDetailPanel({
                   )}
                   {detail.review_reason && (
                     <KvRow label="Review reason" value={detail.review_reason} valueColor={sv.amber} alignTop />
+                  )}
+                  {detail.episode_namespace === "tvdb" && (
+                    <KvRow label="Episode numbering" value="TheTVDB" />
+                  )}
+                  {detail.episode_namespace_note && (
+                    <KvRow label="Numbering" value={detail.episode_namespace_note} valueColor={sv.amber} alignTop />
                   )}
                 </div>
               </SvPanel>

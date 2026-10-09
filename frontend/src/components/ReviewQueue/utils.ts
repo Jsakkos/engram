@@ -114,3 +114,20 @@ export function buildInitialSelections(titles: DiscTitle[]): {
     }
     return { episodes, actions };
 }
+
+/**
+ * The ordering the selector should treat as active for THIS job.
+ *
+ * `current_ordering` is the show's preference, but a job can fall back to TMDB
+ * numbering (TheTVDB unavailable when it matched). In that case the job is
+ * really on the canonical aired numbering, so report "aired": selecting
+ * TheTVDB is then a real move (a retry of the switch), not a no-op.
+ */
+export function effectiveOrdering(roster: {
+    current_ordering?: string;
+    episode_source?: 'tmdb' | 'tvdb';
+}): string {
+    if (roster.episode_source === 'tvdb') return 'tvdb';
+    const current = roster.current_ordering ?? 'aired';
+    return current === 'tvdb' ? 'aired' : current;
+}

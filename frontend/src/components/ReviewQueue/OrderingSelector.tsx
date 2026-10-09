@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { sv } from '../../app/components/synapse';
+import { TvdbAttribution } from './TvdbAttribution';
 import type { OrderingOption } from './types';
 
 /**
@@ -88,10 +89,13 @@ export function OrderingSelector({
                 })}
             </div>
             <span style={{ fontFamily: sv.sans, fontSize: 10, color: sv.inkDim }}>
-                {activeDiverges
-                    ? 'Files use this ordering; matching & history stay canonical.'
-                    : 'Aired order — matches the canonical numbering.'}
+                {current === 'tvdb'
+                    ? 'Matching and files use TheTVDB numbering for this show.'
+                    : activeDiverges
+                      ? 'Files use this ordering; matching & history stay canonical.'
+                      : 'Aired order: matches the canonical numbering.'}
             </span>
+            {options.some((o) => o.ordering === 'tvdb') && <TvdbAttribution />}
         </div>
     );
 }

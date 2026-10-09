@@ -189,6 +189,7 @@ interface ConfigData {
     opensubtitlesApiKey: string;
     opensubtitlesUsername: string;
     opensubtitlesPassword: string;
+    tvdbApiKey: string;
     allowLanAccess: boolean;
     discordWebhookUrl: string;
     discordTemplateCompleted: string;
@@ -283,6 +284,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         opensubtitlesApiKey: '',
         opensubtitlesUsername: '',
         opensubtitlesPassword: '',
+        tvdbApiKey: '',
         allowLanAccess: false,
         discordWebhookUrl: '',
         discordTemplateCompleted: '',
@@ -304,7 +306,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
-    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, ai: boolean, discord: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, ai: false, discord: false});
+    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, tvdb: boolean, ai: boolean, discord: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, tvdb: false, ai: false, discord: false});
+    // Whether some TheTVDB key is usable (a stored override or the built-in one).
+    const [tvdbConfigured, setTvdbConfigured] = useState(false);
     // 'error' ("couldn't check") is deliberately distinct from 'invalid' ("token
     // rejected"): conflating them sent users hunting for a token problem that may
     // not exist (#243). 'error' never counts as validated, but the gate still
@@ -393,9 +397,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     makemkv: data.makemkv_key === '***',
                     tmdb: data.tmdb_api_key === '***',
                     opensubtitles: data.opensubtitles_api_key === '***',
+                    tvdb: data.tvdb_api_key === '***',
                     ai: data.ai_api_key === '***',
                     discord: data.discord_webhook_url === '***',
                 });
+                setTvdbConfigured(data.tvdb_configured === true);
                 // Note: API keys are redacted as "***" for security
                 setConfig({
                     stagingPath: data.staging_path || '',
@@ -448,6 +454,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     opensubtitlesApiKey: data.opensubtitles_api_key === '***' ? '' : (data.opensubtitles_api_key || ''),
                     opensubtitlesUsername: data.opensubtitles_username || '',
                     opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
+                    tvdbApiKey: data.tvdb_api_key === '***' ? '' : (data.tvdb_api_key || ''),
                     allowLanAccess: data.allow_lan_access ?? false,
                     discordWebhookUrl: data.discord_webhook_url === '***' ? '' : (data.discord_webhook_url || ''),
                     discordTemplateCompleted: data.discord_template_completed || '',
@@ -674,6 +681,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     ...optional('opensubtitles_api_key', config.opensubtitlesApiKey),
                     opensubtitles_username: config.opensubtitlesUsername,
                     ...optional('opensubtitles_password', config.opensubtitlesPassword),
+                    ...optional('tvdb_api_key', config.tvdbApiKey),
                     allow_lan_access: config.allowLanAccess,
                     ...optional('discord_webhook_url', config.discordWebhookUrl),
                     discord_template_completed: config.discordTemplateCompleted,
@@ -1202,6 +1210,31 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             <span className="form-hint">
                                 Free accounts get 5 subtitle downloads/day. Used only for TV episode matching; skipped if not configured.
                             </span>
+                        </div>
+
+                        <h4 style={{marginTop: '1.5rem', marginBottom: '0.25rem', fontSize: '1rem', fontWeight: 600}}>
+                            TheTVDB <span style={{fontWeight: 400, fontSize: '0.85rem', opacity: 0.7}}>(Optional)</span>
+                        </h4>
+                        <p className="step-description" style={{marginTop: 0}}>
+                            Used for shows whose discs follow TheTVDB's episode numbering. A key is built in;
+                            only enter one to override it.{' '}
+                            <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">Episode data: TheTVDB</a>
+                        </p>
+                        <div className="form-group">
+                            <label htmlFor="tvdbApiKey">
+                                API Key override
+                                <SavedKeyBadge saved={savedKeys.tvdb} text="Key saved" />
+                            </label>
+                            <input
+                                id="tvdbApiKey"
+                                type="password"
+                                value={config.tvdbApiKey}
+                                onChange={(e) => handleInputChange('tvdbApiKey', e.target.value)}
+                                placeholder={savedKeys.tvdb ? 'Enter new key to replace existing' : 'Leave blank to use the built-in key'}
+                            />
+                            {tvdbConfigured && !savedKeys.tvdb && (
+                                <span className="form-hint">Built-in key in use.</span>
+                            )}
                         </div>
                     </div>
                 );
