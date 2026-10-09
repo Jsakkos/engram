@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- TheTVDB episode numbering for shows whose discs follow it. When TheTVDB numbers a season differently from TMDB (Justice League's three-part pilot is one TMDB episode), the review page offers to switch the show; Engram then re-downloads subtitles and re-matches in TheTVDB numbering, without re-ripping, and files episodes under TheTVDB's numbers.
+
 ## [0.38.1] - 2026-10-03
 
 _Highlights: episode matching works again on the Windows, macOS and Linux downloads, which in v0.38.0 sent every TV disc to manual review._
