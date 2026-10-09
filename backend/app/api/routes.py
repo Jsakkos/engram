@@ -4637,7 +4637,8 @@ async def get_show_ordering(
         "tmdb_id": tmdb_id,
         "ordering": effective,
         "episode_group_id": group_id,
-        "source": "show" if pref else "default",
+        "source": "show" if (pref and pref.ordering) else "default",
+        "tvdb_suggestion_dismissed": bool(pref and pref.tvdb_suggestion_dismissed),
     }
 
 
@@ -4659,6 +4660,8 @@ async def set_show_ordering(
     from app.models.show_ordering import ShowOrderingPreference
     from app.services.config_service import get_config
 
+    # "tvdb" is deliberately rejected here: switching to TheTVDB goes through the
+    # dedicated job endpoint (it must re-match the job), not a bare preference write.
     if request.ordering not in episode_ordering.ALLOWED_ORDERINGS:
         raise HTTPException(
             status_code=422,
