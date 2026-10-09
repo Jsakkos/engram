@@ -22,6 +22,12 @@ from app.core.episode_codes import (
     is_multi_episode,
     parse_episode_code,
 )
+from app.core.episode_runtime import (
+    EPISODE_DURATION_OVER_TOLERANCE_MIN,
+    EPISODE_DURATION_UNDER_TOLERANCE_MIN,
+    conjoined_episode_count,
+    duration_matches_episode_runtime,
+)
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
@@ -47,73 +53,11 @@ logger = logging.getLogger(__name__)
 STRICT_SCAN_POINTS = 37
 STRICT_MIN_VOTES = 4
 
-# Duration pre-filter tolerances (minutes). DVD/Blu-ray episode tracks run LONGER
-# than TMDB's nominal runtime: the physical track includes the "previously on"
-# recap, full end credits, and "next time" preview that the broadcast-slot runtime
-# figure omits. So the accept window is asymmetric — tight below an episode runtime,
-# lenient above it — mirroring analyst.py's movie tolerances. A symmetric window
-# centered on TMDB's underestimate wrongly rejected the season's longest real
-# episodes (Gilmore Girls S01E09 "Rory's Dance": disc 49.8min vs TMDB 44min) and
-# dumped them to Extras un-transcribed (bug report job 41).
-EPISODE_DURATION_UNDER_TOLERANCE_MIN = 5
-EPISODE_DURATION_OVER_TOLERANCE_MIN = 10
-
-
-def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int]) -> bool:
-    """True if a track's duration is plausibly an episode for this season.
-
-    Asymmetric window: a track may fall up to ``UNDER`` minutes short of an episode
-    runtime or run up to ``OVER`` minutes past it (DVD recap + credits padding).
-    """
-    return any(
-        (rt - EPISODE_DURATION_UNDER_TOLERANCE_MIN)
-        <= title_minutes
-        <= (rt + EPISODE_DURATION_OVER_TOLERANCE_MIN)
-        for rt in runtimes
-    )
-
-
-# Cartoon and anthology discs put several short segments in one physical track:
-# TMDB catalogues each ~11-minute segment as its own episode, so a 23-minute track
-# matches no SINGLE runtime and was filed as an extra un-transcribed (issue #622).
-# The cap is set by evidence density, not taste: the positional vote runs that
-# actually decide the count need ~2 votes per run plus a seam, and the default scan
-# is 10 points, so 3 is the most a default scan can resolve. It also sits far below
-# the 80-minute Play All floor (analyst_movie_min_duration), and Play All titles are
-# deselected pre-rip anyway (identification_coordinator), so they never arrive here.
-MAX_CONJOINED_EPISODES = 3
-
-
-def _conjoined_episode_count(title_minutes: float, runtimes: list[int]) -> int | None:
-    """Smallest ``n`` in 2..MAX for which the track looks like n conjoined episodes.
-
-    Tests the duration against the sum of each run of ``n`` CONSECUTIVE runtimes,
-    since a conjoined track holds adjacent segments, reusing the same asymmetric
-    padding window as the single-episode gate (the recap/credits padding applies
-    once to the whole track, not once per segment).
-
-    This is an ADMISSION hint, not a verdict: windows for adjacent ``n`` can overlap,
-    and the authoritative count comes from the positional vote runs in
-    ``app.matcher.multi_episode``. Returns None when the track is not plausibly a
-    small concatenation, i.e. it is a genuine extra.
-
-    Callers must test ``_duration_matches_episode_runtime`` first; a track that is a
-    plain single episode is never reported here.
-    """
-    if not runtimes:
-        return None
-    for n in range(2, MAX_CONJOINED_EPISODES + 1):
-        if n > len(runtimes):
-            break
-        for i in range(len(runtimes) - n + 1):
-            total = sum(runtimes[i : i + n])
-            if (
-                (total - EPISODE_DURATION_UNDER_TOLERANCE_MIN)
-                <= title_minutes
-                <= (total + EPISODE_DURATION_OVER_TOLERANCE_MIN)
-            ):
-                return n
-    return None
+# The episode-runtime windows (and why they are asymmetric) live in
+# app.core.episode_runtime, shared with the pre-rip short-title filter so a track
+# that filter keeps is judged by the same windows here.
+_duration_matches_episode_runtime = duration_matches_episode_runtime
+_conjoined_episode_count = conjoined_episode_count
 
 
 # Scan depth for a track the runtime pre-filter admitted as conjoined. A confident
