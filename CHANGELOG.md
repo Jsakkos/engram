@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-09
+
+_Highlights: "Skip extras" now skips short TV tracks before ripping instead of after._
+
 ### Changed
 
 - **"Skip extras" now skips short TV tracks before ripping.** With the extras
