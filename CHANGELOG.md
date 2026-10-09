@@ -7,6 +7,21 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - TheTVDB episode numbering for shows whose discs follow it. When TheTVDB numbers a season differently from TMDB (Justice League's three-part pilot is one TMDB episode), the review page offers to switch the show; Engram then re-downloads subtitles and re-matches in TheTVDB numbering, without re-ripping, and files episodes under TheTVDB's numbers. Release builds include a TheTVDB key; Docker and source installs set `TVDB_API_KEY` or enter a key in Settings.
+## [0.39.0] - 2026-10-09
+
+_Highlights: "Skip extras" now skips short TV tracks before ripping instead of after._
+
+### Changed
+
+- **"Skip extras" now skips short TV tracks before ripping.** With the extras
+  policy set to *Skip*, bonus featurettes on a TV disc were ripped and only
+  discarded afterwards, so skipping them meant watching the dashboard and
+  pressing SKIP on each one before the rip reached it. Engram now skips tracks
+  that are clearly too short to be episodes before the rip starts. It compares
+  each track with the season's TMDB episode runtimes and with the disc's own
+  episode-length tracks, and skips only when both agree, so there is no fixed
+  minute cutoff for short-episode shows to trip over. Skipped tracks stay on the
+  card with the reason, and UN-SKIP puts any of them back in the rip queue.
 
 ## [0.38.1] - 2026-10-03
 

@@ -1957,7 +1957,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 onValueChange={(v) => handleInputChange('extrasPolicy', v)}
                                 options={[
                                     { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
-                                    { value: 'skip', label: 'Skip extras (discard after ripping)' },
+                                    { value: 'skip', label: 'Skip extras (don\'t rip short tracks, discard any others)' },
                                     { value: 'ask', label: 'Ask me (show in Review Queue)' },
                                 ]}
                             />

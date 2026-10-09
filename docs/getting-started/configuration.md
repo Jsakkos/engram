@@ -229,6 +229,22 @@ Controls how bonus content (behind-the-scenes, deleted scenes, etc.) is handled 
 |-------|-------------|---------|
 | `extras_policy` | How to handle extras (`"keep"`, `"skip"`, `"ask"`) | `"keep"` |
 
+With `"skip"`, TV tracks that are clearly too short to be episodes are skipped
+**before ripping**, so they never take up rip time. A track is skipped only when
+every available signal agrees it is short:
+
+- **TMDB:** it runs more than 5 minutes under the season's shortest episode runtime.
+- **The disc itself:** it is under half the length of the disc's main group of
+  similar-length tracks (under 40% when TMDB runtimes are unavailable).
+
+There is no fixed minute cutoff, so shows with short episodes (11-minute cartoons)
+are not affected. Skipped tracks stay on the dashboard card with the reason, and
+**UN-SKIP** puts one back in the rip queue as long as it has not been ripped yet.
+Anything that slips through is still caught after ripping, when its length is checked
+against the episode runtimes and it is discarded as an extra.
+
+With `"keep"` or `"ask"`, every track is ripped so extras can be filed or reviewed.
+
 ### Import Watch Folder
 
 Engram can auto-ingest pre-ripped MKV files dropped into a watched folder. See the
