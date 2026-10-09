@@ -108,3 +108,37 @@ def test_no_key_returns_none_without_network(monkeypatch):
 def test_invalid_series_id_rejected(monkeypatch):
     monkeypatch.setattr(tvdb_client.requests, "post", lambda *a, **k: pytest.fail("network used"))
     assert tvdb_client.fetch_season_roster("1/../x", 1, api_key="k") is None
+
+
+from app.matcher import tmdb_client  # noqa: E402
+
+
+def test_fetch_tvdb_id_from_external_ids(monkeypatch):
+    monkeypatch.setattr(tmdb_client.tmdb_persistent_cache, "get", lambda k: None)
+    monkeypatch.setattr(tmdb_client.tmdb_persistent_cache, "put", lambda k, v, ttl: None)
+    seen = {}
+
+    def fake_get_json(url, api_key, query_params=None):
+        seen["url"] = url
+        return {"id": 1618, "tvdb_id": 76290}
+
+    monkeypatch.setattr(tmdb_client, "_tmdb_get_json", fake_get_json)
+    assert tmdb_client.fetch_tvdb_id("1618", "tok") == 76290
+    assert seen["url"].endswith("/tv/1618/external_ids")
+
+
+def test_fetch_tvdb_id_none_when_absent_or_bad_id(monkeypatch):
+    monkeypatch.setattr(tmdb_client.tmdb_persistent_cache, "get", lambda k: None)
+    monkeypatch.setattr(tmdb_client.tmdb_persistent_cache, "put", lambda k, v, ttl: None)
+    monkeypatch.setattr(tmdb_client, "_tmdb_get_json", lambda *a, **k: {"tvdb_id": None})
+    assert tmdb_client.fetch_tvdb_id("1618", "tok") is None
+    assert tmdb_client.fetch_tvdb_id("16/18", "tok") is None
+    assert tmdb_client.fetch_tvdb_id("1618", "") is None
+
+
+def test_fetch_season_episodes_includes_air_date(monkeypatch):
+    payload = json.loads((FIX / "justice_league_s1_tmdb.json").read_text("utf-8"))
+    monkeypatch.setattr(tmdb_client, "_tmdb_get_json", lambda *a, **k: payload)
+    eps = tmdb_client.fetch_season_episodes("1618", 1, "tok")
+    assert len(eps) == 24
+    assert eps[0]["air_date"]

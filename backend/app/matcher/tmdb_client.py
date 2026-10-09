@@ -895,6 +895,7 @@ def fetch_season_episodes(show_id: str, season_number: int, api_key: str) -> lis
             "name": ep.get("name") or "",
             "runtime": ep.get("runtime") or 0,
             "overview": ep.get("overview") or "",
+            "air_date": ep.get("air_date") or "",
         }
         for ep in season_data.get("episodes", [])
         if ep.get("episode_number") is not None
@@ -976,6 +977,29 @@ def fetch_episode_group(group_id: str, api_key: str) -> dict | None:
         return None
     tmdb_persistent_cache.put(persistent_key, data, tmdb_persistent_cache.TTL_EPISODE_GROUP)
     return data
+
+
+def fetch_tvdb_id(show_id: str, api_key: str) -> int | None:
+    """TheTVDB series id for a TMDB show, via /tv/{id}/external_ids.
+
+    Lets the episode namespace link a show to TheTVDB without a fuzzy name
+    search. Positive results are cached with the show-id TTL; a show TMDB has
+    no TVDB link for returns None (and is not cached, so a later TMDB edit is
+    picked up).
+    """
+    if not api_key or not str(show_id).isdigit():
+        return None
+    show_id_int = int(show_id)
+    persistent_key = f"tvdb_id:{show_id_int}"
+    cached = tmdb_persistent_cache.get(persistent_key)
+    if cached is not None:
+        return int(cached)
+    data = _tmdb_get_json(f"https://api.themoviedb.org/3/tv/{show_id_int}/external_ids", api_key)
+    tvdb_id = (data or {}).get("tvdb_id")
+    if not tvdb_id:
+        return None
+    tmdb_persistent_cache.put(persistent_key, int(tvdb_id), tmdb_persistent_cache.TTL_SHOW_ID)
+    return int(tvdb_id)
 
 
 @retry_network_operation(max_retries=3, base_delay=1.0)
