@@ -61,32 +61,59 @@ async def decide_job_namespace(job_id: int) -> str:
             current = job.episode_namespace or ns.NAMESPACE_TMDB
             if job.content_type != ContentType.TV or not job.tmdb_id or job.detected_season is None:
                 return current
-            config = await get_config()
-            pref = await session.get(ShowOrderingPreference, job.tmdb_id)
-            tvdb_id, tmdb_eps, tvdb_eps = await _rosters(
-                job.tmdb_id, job.detected_season, config, pref.tvdb_id if pref else None
-            )
+            tmdb_id, season = job.tmdb_id, job.detected_season
+            pref = await session.get(ShowOrderingPreference, tmdb_id)
+            known_tvdb_id = pref.tvdb_id if pref else None
+
+        # No session is open across the TMDB/TheTVDB round-trips.
+        config = await get_config()
+        tvdb_id, tmdb_eps, tvdb_eps = await _rosters(tmdb_id, season, config, known_tvdb_id)
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if (
+                job is None
+                or job.content_type != ContentType.TV
+                or job.tmdb_id != tmdb_id
+                or job.detected_season != season
+            ):
+                # Identity changed while we were fetching: do nothing.
+                return (job.episode_namespace if job else None) or ns.NAMESPACE_TMDB
+            pref = await session.get(ShowOrderingPreference, tmdb_id)
             if pref is not None and tvdb_id and pref.tvdb_id != tvdb_id:
                 pref.tvdb_id = tvdb_id
 
             if pref is not None and pref.ordering == ns.NAMESPACE_TVDB:
                 if tvdb_eps and tmdb_eps:
                     job.episode_namespace = ns.NAMESPACE_TVDB
-                    job.episode_crosswalk_json = _crosswalk_json(
-                        job.detected_season, tmdb_eps, tvdb_eps
-                    )
+                    job.episode_crosswalk_json = _crosswalk_json(season, tmdb_eps, tvdb_eps)
                     job.episode_namespace_note = None
                 else:
+                    # Intended: the user explicitly chose TVDB, so say why it isn't used.
                     job.episode_namespace = ns.NAMESPACE_TMDB
+                    job.episode_crosswalk_json = None
                     job.episode_namespace_note = TVDB_UNAVAILABLE_NOTE
-            elif tmdb_eps and tvdb_eps:
-                div = ns.detect_divergence(job.detected_season, tmdb_eps, tvdb_eps)
-                job.tvdb_divergence_json = div.to_json() if div else None
+            else:
+                if job.episode_namespace == ns.NAMESPACE_TVDB:
+                    # Incoherent: the job says tvdb but the show no longer prefers it.
+                    job.episode_namespace = ns.NAMESPACE_TMDB
+                    job.episode_crosswalk_json = None
+                if tmdb_eps and tvdb_eps:
+                    div = ns.detect_divergence(season, tmdb_eps, tvdb_eps)
+                    job.tvdb_divergence_json = div.to_json() if div else None
             await session.commit()
             return job.episode_namespace or ns.NAMESPACE_TMDB
     except Exception as e:  # noqa: BLE001 - the namespace decision must never fail a job
         logger.warning(f"Episode-namespace decision failed for job {job_id}: {e}", exc_info=True)
         return ns.NAMESPACE_TMDB
+
+
+def _validate_tv_job(job: DiscJob | None) -> DiscJob:
+    if job is None or job.content_type != ContentType.TV or not job.tmdb_id:
+        raise ValueError("not an identified TV job")
+    if job.detected_season is None:
+        raise ValueError("the job's season is not known yet")
+    return job
 
 
 async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
@@ -101,29 +128,35 @@ async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
     if namespace not in ns.NAMESPACES:
         raise ValueError(f"namespace must be one of {sorted(ns.NAMESPACES)}")
     async with async_session() as session:
-        job = await session.get(DiscJob, job_id)
-        if job is None or job.content_type != ContentType.TV or not job.tmdb_id:
-            raise ValueError("not an identified TV job")
-        if job.detected_season is None:
-            raise ValueError("the job's season is not known yet")
-        pref = await session.get(ShowOrderingPreference, job.tmdb_id)
+        job = _validate_tv_job(await session.get(DiscJob, job_id))
+        tmdb_id, season = job.tmdb_id, job.detected_season
+        pref = await session.get(ShowOrderingPreference, tmdb_id)
+        known_tvdb_id = pref.tvdb_id if pref else None
+
+    tvdb_id = tmdb_eps = tvdb_eps = None
+    if namespace == ns.NAMESPACE_TVDB:
+        # No session is open here, and nothing is written if TheTVDB is down.
+        config = await get_config()
+        tvdb_id, tmdb_eps, tvdb_eps = await _rosters(tmdb_id, season, config, known_tvdb_id)
+        if not (tvdb_id and tmdb_eps and tvdb_eps):
+            raise TvdbUnavailableError("TheTVDB did not return this season")
+
+    async with async_session() as session:
+        job = _validate_tv_job(await session.get(DiscJob, job_id))
+        if job.tmdb_id != tmdb_id or job.detected_season != season:
+            raise ValueError("the job's identity changed; try again")
+        pref = await session.get(ShowOrderingPreference, tmdb_id)
         if pref is None:
-            pref = ShowOrderingPreference(tmdb_id=job.tmdb_id, ordering="")
+            pref = ShowOrderingPreference(tmdb_id=tmdb_id, ordering="")
             session.add(pref)
 
         if namespace == ns.NAMESPACE_TVDB:
-            config = await get_config()
-            tvdb_id, tmdb_eps, tvdb_eps = await _rosters(
-                job.tmdb_id, job.detected_season, config, pref.tvdb_id
-            )
-            if not (tvdb_id and tmdb_eps and tvdb_eps):
-                await session.rollback()
-                raise TvdbUnavailableError("TheTVDB did not return this season")
             pref.tvdb_id = tvdb_id
             pref.ordering = ns.NAMESPACE_TVDB
             pref.episode_group_id = None
             job.episode_namespace = ns.NAMESPACE_TVDB
-            job.episode_crosswalk_json = _crosswalk_json(job.detected_season, tmdb_eps, tvdb_eps)
+            job.episode_crosswalk_json = _crosswalk_json(season, tmdb_eps, tvdb_eps)
+            job.tvdb_divergence_json = None  # the suggestion is accepted
         else:
             if pref.ordering == ns.NAMESPACE_TVDB:
                 pref.ordering = ""
