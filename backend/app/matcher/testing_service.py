@@ -37,6 +37,7 @@ from app.matcher.subtitle_utils import (
 )
 from app.matcher.tmdb_client import (
     fetch_season_details,
+    fetch_season_episodes,
     fetch_show_details,
     fetch_show_id,
 )
@@ -653,12 +654,14 @@ def _season_episode_count(show_id: str, season: int) -> int:
 def _season_episode_titles(show_id: str, season: int, tmdb_api_key: str) -> dict[int, str]:
     """Episode number -> title for the season in the current namespace, the
     ground truth OpenSubtitles metadata is validated against (TheTVDB's roster
-    for a TVDB job, so its E25/E26 are not rejected as out of range)."""
-    return {
-        e["episode_number"]: e["name"]
-        for e in season_episodes(show_id, season, tmdb_api_key)
-        if e.get("episode_number") is not None
-    }
+    for a TVDB job, so its E25/E26 are not rejected as out of range). The TMDB
+    path calls this module's ``fetch_season_episodes`` directly, as it always
+    has, so existing patches of that name keep working."""
+    if current_namespace() == NAMESPACE_TVDB:
+        episodes = season_episodes(show_id, season, tmdb_api_key)
+    else:
+        episodes = fetch_season_episodes(show_id, season, tmdb_api_key)
+    return {e["episode_number"]: e["name"] for e in episodes if e.get("episode_number") is not None}
 
 
 def download_subtitles(

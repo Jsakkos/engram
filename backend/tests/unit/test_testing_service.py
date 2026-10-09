@@ -776,7 +776,7 @@ class TestSeasonEpisodeTitles:
             patch("app.matcher.tvdb_client.resolve_api_key", return_value="k"),
             patch("app.matcher.tmdb_client.fetch_tvdb_id", return_value=999),
             patch("app.matcher.tvdb_client.fetch_season_roster", return_value=roster),
-            patch("app.matcher.tmdb_client.fetch_season_episodes") as tmdb_eps,
+            patch.object(testing_service, "fetch_season_episodes") as tmdb_eps,
             namespace_context("tvdb"),
         ):
             titles = testing_service._season_episode_titles("1618", 1, "tok")
@@ -786,5 +786,5 @@ class TestSeasonEpisodeTitles:
 
     def test_titles_come_from_tmdb_by_default(self):
         eps = [{"episode_number": 1, "name": "Pilot"}, {"episode_number": None, "name": "x"}]
-        with patch("app.matcher.tmdb_client.fetch_season_episodes", return_value=eps):
+        with patch.object(testing_service, "fetch_season_episodes", return_value=eps):
             assert testing_service._season_episode_titles("1618", 1, "tok") == {1: "Pilot"}
