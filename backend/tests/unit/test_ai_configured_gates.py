@@ -170,7 +170,9 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
             ai_local_base_url=_LOCAL_BASE_URL,
             tmdb_api_key="t",
         )
-        job = SimpleNamespace(id=1, detected_title="The Expanse", detected_season=1)
+        job = SimpleNamespace(
+            id=1, detected_title="The Expanse", detected_season=1, episode_namespace="tmdb"
+        )
         title = SimpleNamespace(id=7)
         synopses = [{"episode_number": 2, "name": "Cargo", "overview": "A heist."}]
         client = _mock_transport(

@@ -120,7 +120,7 @@ class TestSeasonRoster:
         t_d = await _seed_title(job.id, 3, "S03E05")  # duplicate of E05
         await _seed_title(job.id, 4, None)  # unmatched
 
-        with patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES):
+        with patch("app.matcher.tmdb_client.fetch_season_episodes", return_value=_FAKE_EPISODES):
             response = await client.get(f"/api/jobs/{job.id}/season-roster")
 
         assert response.status_code == 200
@@ -162,7 +162,7 @@ class TestSeasonRoster:
             "S03E06": "precomputed",
         }
         with (
-            patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES),
+            patch("app.matcher.tmdb_client.fetch_season_episodes", return_value=_FAKE_EPISODES),
             patch("app.api.routes.reference_coverage", return_value=fake_cov) as mock_cov,
         ):
             response = await client.get(f"/api/jobs/{job.id}/season-roster")
@@ -188,7 +188,7 @@ class TestSeasonRoster:
         await _seed_title(job.id, 0, "S03E01")
 
         with (
-            patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES),
+            patch("app.matcher.tmdb_client.fetch_season_episodes", return_value=_FAKE_EPISODES),
             patch("app.api.routes.reference_coverage", side_effect=RuntimeError("cache boom")),
         ):
             response = await client.get(f"/api/jobs/{job.id}/season-roster")
@@ -252,7 +252,7 @@ class TestSeasonRoster:
             return _FAKE_EPISODES
 
         with (
-            patch("app.api.routes.fetch_season_episodes", side_effect=fake_fetch),
+            patch("app.matcher.tmdb_client.fetch_season_episodes", side_effect=fake_fetch),
             patch("app.api.routes.get_number_of_seasons", return_value=5),
         ):
             response = await client.get(f"/api/jobs/{job.id}/season-roster?season=2")
@@ -272,7 +272,7 @@ class TestSeasonRoster:
         job = await _seed_tv_job()
         await _seed_title(job.id, 0, "S03E01")
 
-        with patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES):
+        with patch("app.matcher.tmdb_client.fetch_season_episodes", return_value=_FAKE_EPISODES):
             response = await client.get(f"/api/jobs/{job.id}/season-roster")
 
         data = response.json()
@@ -310,7 +310,7 @@ class TestSeasonRoster:
             },
         )
 
-        with patch("app.api.routes.fetch_season_episodes", return_value=_FAKE_EPISODES):
+        with patch("app.matcher.tmdb_client.fetch_season_episodes", return_value=_FAKE_EPISODES):
             response = await client.get(f"/api/jobs/{job.id}/season-roster")
 
         data = response.json()
