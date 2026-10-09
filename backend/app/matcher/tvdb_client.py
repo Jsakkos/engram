@@ -117,12 +117,22 @@ def fetch_season_roster(tvdb_id, season: int, *, api_key: str) -> list[dict] | N
     """
     if not api_key:
         return None
-    if not str(tvdb_id).isdigit():
+    # int() rather than str.isdigit(): isdigit() accepts "²", which int() rejects.
+    try:
+        series = int(str(tvdb_id))
+    except ValueError:
+        series = -1
+    if series < 0:
         logger.warning(f"Invalid TheTVDB series id: {tvdb_id!r}")
         return None
-    series = int(tvdb_id)
     cache_key = f"tvdb_roster:{series}:{season}"
-    cached = tmdb_persistent_cache.get(cache_key)
+    # The cache is an optimisation: a locked or corrupt cache DB must not turn
+    # into "no TVDB data" (read) or discard a roster we already fetched (write).
+    try:
+        cached = tmdb_persistent_cache.get(cache_key)
+    except Exception as e:  # noqa: BLE001 - see comment above
+        logger.warning(f"TheTVDB roster cache read failed: {e}")
+        cached = None
     if cached is not None:
         return cached
 
@@ -144,7 +154,12 @@ def fetch_season_roster(tvdb_id, season: int, *, api_key: str) -> list[dict] | N
                     break
             roster.sort(key=lambda e: e["episode_number"])
             if roster:
-                tmdb_persistent_cache.put(cache_key, roster, tmdb_persistent_cache.TTL_TVDB_ROSTER)
+                try:
+                    tmdb_persistent_cache.put(
+                        cache_key, roster, tmdb_persistent_cache.TTL_TVDB_ROSTER
+                    )
+                except Exception as e:  # noqa: BLE001 - see the cache-read comment
+                    logger.warning(f"TheTVDB roster cache write failed: {e}")
             return roster or None
         except _NonRetryable as e:
             logger.warning(f"TheTVDB roster fetch failed for {series} S{season}: {e}")

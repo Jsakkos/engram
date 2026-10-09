@@ -213,9 +213,36 @@ def test_no_key_returns_none_without_network(monkeypatch):
     assert tvdb_client.fetch_season_roster(76290, 1, api_key="") is None
 
 
-def test_invalid_series_id_rejected(monkeypatch):
+@pytest.mark.parametrize("bad_id", ["1/../x", "²", "-5", None])
+def test_invalid_series_id_rejected(monkeypatch, bad_id):
     monkeypatch.setattr(tvdb_client.requests, "post", lambda *a, **k: pytest.fail("network used"))
-    assert tvdb_client.fetch_season_roster("1/../x", 1, api_key="k") is None
+    assert tvdb_client.fetch_season_roster(bad_id, 1, api_key="k") is None
+
+
+def test_cache_read_failure_falls_through_to_network(monkeypatch):
+    import sqlite3
+
+    def locked(key):
+        raise sqlite3.OperationalError("database is locked")
+
+    fixture = _jl_tvdb()
+    _install(monkeypatch, gets=[_Resp(200, fixture["response"])])
+    monkeypatch.setattr(tvdb_client.tmdb_persistent_cache, "get", locked)
+    roster = tvdb_client.fetch_season_roster(fixture["tvdb_id"], 1, api_key="k")
+    assert roster is not None and len(roster) == 26
+
+
+def test_cache_write_failure_keeps_the_fetched_roster(monkeypatch):
+    import sqlite3
+
+    def broken(key, value, ttl):
+        raise sqlite3.DatabaseError("disk image is malformed")
+
+    fixture = _jl_tvdb()
+    _install(monkeypatch, gets=[_Resp(200, fixture["response"])])
+    monkeypatch.setattr(tvdb_client.tmdb_persistent_cache, "put", broken)
+    roster = tvdb_client.fetch_season_roster(fixture["tvdb_id"], 1, api_key="k")
+    assert roster is not None and len(roster) == 26
 
 
 def test_fetch_tvdb_id_from_external_ids(monkeypatch):
