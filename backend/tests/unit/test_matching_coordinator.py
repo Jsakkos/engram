@@ -15,13 +15,13 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from app.api.websocket import manager as ws_manager
+from app.core.episode_runtime import MAX_CONJOINED_EPISODES
 from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import (
     CONJOINED_SCAN_POINTS,
-    MAX_CONJOINED_EPISODES,
     MULTI_EPISODE_ERROR_CODE,
     FileWaitResult,
     MatchingCoordinator,

@@ -57,6 +57,10 @@ export interface Track {
   chapterCount?: number;
 
   errorMessage?: string;
+  /** Set when the backend skipped this track before the rip for being too short
+   *  to be an episode (extras policy "skip"); the backend's reason, verbatim.
+   *  Only populated while the track is SKIPPED, so it clears on un-skip. */
+  autoSkipReason?: string;
 }
 
 export interface DiscData {
