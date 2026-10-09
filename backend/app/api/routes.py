@@ -4779,19 +4779,17 @@ class EpisodeNamespaceRequest(BaseModel):
     namespace: Literal["tmdb", "tvdb"]
 
 
-# While the disc is still being read, re-matching would race the rip: titles are
-# still landing and matching is dispatched per title as each one finishes.
-_NAMESPACE_SWITCH_BLOCKED_STATES = frozenset(
-    {JobState.IDENTIFYING, JobState.BACKING_UP, JobState.RIPPING}
-)
-
-
 @router.post("/jobs/{job_id}/episode-namespace")
 async def set_job_episode_namespace(
     request: EpisodeNamespaceRequest,
     job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Switch numbering, re-download references in it, and re-match. No re-rip.
+
+    Only allowed in review: the re-match resets every title to QUEUED, which
+    would strand a finished job's history rows, race in-flight TMDB matches
+    while MATCHING, and race finalization while ORGANIZING.
 
     The show's preference moves with the job, so later discs start in the
     chosen numbering. Already-organized files are never renamed.
@@ -4799,21 +4797,20 @@ async def set_job_episode_namespace(
     from app.services import episode_namespace_service as svc
     from app.services.job_manager import job_manager
 
-    if job.state in _NAMESPACE_SWITCH_BLOCKED_STATES:
+    if job.state != JobState.REVIEW_NEEDED:
         raise HTTPException(
             status_code=409,
-            detail=(
-                "Cannot change episode numbering while the disc is being read "
-                f"(state: {job.state.value}); try again once the rip has finished."
-            ),
+            detail="Episode numbering can only be changed while the disc is in review.",
         )
 
     # The job is read through the request session (get_session, via
     # get_job_or_404), never a module-level async_session: unit tests redirect
     # only the former to the test database. The switch changes neither the
     # show, the season nor the TMDB id, so the values read here stay current.
+    # Snapshot them and release the connection before the TheTVDB round trips.
     job_id = job.id
     show_name, season, tmdb_id = job.detected_title, job.detected_season, job.tmdb_id
+    await session.close()
     try:
         await svc.switch_job_namespace(job_id, request.namespace)
     except svc.TvdbUnavailableError:

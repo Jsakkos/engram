@@ -151,21 +151,107 @@ class TestSwitchEndpoint:
         resp = await client.post("/api/jobs/99999/episode-namespace", json={"namespace": "tvdb"})
         assert resp.status_code == 404
 
-    @pytest.mark.parametrize("state", [JobState.IDENTIFYING, JobState.RIPPING, JobState.BACKING_UP])
-    async def test_refused_while_disc_is_in_flight(self, client, monkeypatch, state):
+    @pytest.mark.parametrize("state", [s for s in JobState if s != JobState.REVIEW_NEEDED])
+    async def test_refused_outside_review(self, client, monkeypatch, state):
         from app.services import episode_namespace_service as svc
 
         job_id = await _job(state=state)
 
         async def must_not_switch(jid, namespace):
-            raise AssertionError("switch must not run mid-disc")
+            raise AssertionError("switch must only run in review")
 
         monkeypatch.setattr(svc, "switch_job_namespace", must_not_switch)
         resp = await client.post(
             f"/api/jobs/{job_id}/episode-namespace", json={"namespace": "tvdb"}
         )
         assert resp.status_code == 409
-        assert "rip" in resp.json()["detail"].lower()
+        assert resp.json()["detail"] == (
+            "Episode numbering can only be changed while the disc is in review."
+        )
+
+    async def test_real_service_persists_namespace_crosswalk_and_preference(
+        self, client, monkeypatch
+    ):
+        from app.services import episode_namespace_service as svc
+        from app.services.job_manager import job_manager
+
+        tmdb_eps = [{"episode_number": 1, "name": "Secret Origins"}] + [
+            {"episode_number": i, "name": f"Ep {i}"} for i in range(2, 25)
+        ]
+        tvdb_eps = [{"episode_number": i, "name": f"Secret Origins ({i})"} for i in (1, 2, 3)] + [
+            {"episode_number": i, "name": f"Ep {i - 2}"} for i in range(4, 27)
+        ]
+
+        async def fake_rosters(tmdb_id, season, config, tvdb_id):
+            return 76320, tmdb_eps, tvdb_eps
+
+        async def noop(*a, **k):
+            return None
+
+        monkeypatch.setattr(svc, "_rosters", fake_rosters)
+        monkeypatch.setattr(job_manager._matching, "restart_subtitle_download", noop)
+        monkeypatch.setattr(job_manager._matching, "forget_episode_runtimes", lambda jid: None)
+        monkeypatch.setattr(job_manager, "rerun_matching", noop)
+
+        job_id = await _job(tvdb_divergence_json=json.dumps(_DIVERGENCE))
+        resp = await client.post(
+            f"/api/jobs/{job_id}/episode-namespace", json={"namespace": "tvdb"}
+        )
+        assert resp.status_code == 200
+
+        async with _unit_session_factory() as s:
+            job = await s.get(DiscJob, job_id)
+            pref = await s.get(ShowOrderingPreference, 1618)
+        assert job.episode_namespace == "tvdb"
+        assert json.loads(job.episode_crosswalk_json)["S01E04"] == "S01E02"
+        assert job.tvdb_divergence_json is None
+        assert pref.ordering == "tvdb"
+        assert pref.tvdb_id == 76320
+
+
+@pytest.mark.unit
+async def test_llm_match_runs_under_the_job_namespace(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.api import routes
+    from app.core.curator import curator
+    from app.core.episode_namespace import current_namespace
+
+    seen = []
+
+    async def fake_match(**kwargs):
+        seen.append(current_namespace())
+        return None
+
+    cfg = SimpleNamespace(
+        ai_episode_matching_enabled=True,
+        ai_provider="anthropic",
+        ai_api_key="k",
+        ai_model="",
+        ai_local_base_url="",
+        tmdb_api_key="t",
+    )
+    matcher = MagicMock()
+    matcher.transcribe_full.return_value = "some transcript"
+    monkeypatch.setattr("app.services.config_service.get_config", AsyncMock(return_value=cfg))
+    monkeypatch.setattr("app.core.ai_client.ai_is_configured", lambda *a: True)
+    monkeypatch.setattr(curator, "_ensure_initialized", lambda *a, **k: True)
+    monkeypatch.setattr(curator, "_matcher", matcher)
+    monkeypatch.setattr("app.matcher.tmdb_client.fetch_show_id", lambda name: 1618)
+    monkeypatch.setattr("app.services.ripping_helpers.find_staging_file", lambda j, t: tmp_path)
+    monkeypatch.setattr("app.matcher.llm_episode_matcher.match_episode_via_llm", fake_match)
+
+    job = DiscJob(
+        drive_id="E:",
+        volume_label="JL",
+        detected_title="Justice League",
+        detected_season=1,
+        episode_namespace="tvdb",
+    )
+    outcome = await routes._run_llm_match_for_title(title=SimpleNamespace(id=1), job=job)
+    assert outcome.reason == "no_match"
+    assert seen == ["tvdb"]
 
 
 @pytest.mark.unit

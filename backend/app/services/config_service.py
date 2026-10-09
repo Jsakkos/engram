@@ -251,11 +251,12 @@ async def update_config(**kwargs) -> AppConfig:
             clear_caches()
 
         # A new TheTVDB key must not keep using a token minted with the old one.
-        if "tvdb_api_key" in kwargs:
+        if (kwargs.get("tvdb_api_key") or "").strip():
             from app.matcher import tvdb_client
 
-            tvdb_client._token_state.token = None
-            tvdb_client._token_state.key = None
+            with tvdb_client._token_lock:
+                tvdb_client._token_state.token = None
+                tvdb_client._token_state.key = None
 
         # Bridge a changed MakeMKV key into MakeMKV's own settings.conf so
         # makemkvcon picks it up — Engram's config DB and MakeMKV's settings

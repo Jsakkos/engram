@@ -119,3 +119,25 @@ class TestTvdbConfigApi:
         finally:
             tvdb_client._token_state.token = None
             tvdb_client._token_state.key = None
+
+
+@pytest.mark.unit
+class TestTvdbTokenResetOnBlank:
+    async def test_blank_key_update_keeps_cached_token(self):
+        from app.matcher import tvdb_client
+        from app.services.config_service import update_config
+        from tests.unit.conftest import _unit_session_factory
+
+        async with _unit_session_factory() as session:
+            session.add(AppConfig(staging_path="/tmp", tvdb_api_key="stored"))
+            await session.commit()
+
+        tvdb_client._token_state.token = "tok"
+        tvdb_client._token_state.key = "stored"
+        try:
+            await update_config(tvdb_api_key="  ")
+            assert tvdb_client._token_state.token == "tok"
+            assert tvdb_client._token_state.key == "stored"
+        finally:
+            tvdb_client._token_state.token = None
+            tvdb_client._token_state.key = None
