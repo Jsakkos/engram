@@ -998,8 +998,12 @@ def fetch_tvdb_id(show_id: str, api_key: str) -> int | None:
     tvdb_id = (data or {}).get("tvdb_id")
     if not tvdb_id:
         return None
-    tmdb_persistent_cache.put(persistent_key, int(tvdb_id), tmdb_persistent_cache.TTL_SHOW_ID)
-    return int(tvdb_id)
+    try:
+        tvdb_id = int(tvdb_id)
+    except (TypeError, ValueError):
+        return None
+    tmdb_persistent_cache.put(persistent_key, tvdb_id, tmdb_persistent_cache.TTL_SHOW_ID)
+    return tvdb_id
 
 
 @retry_network_operation(max_retries=3, base_delay=1.0)
