@@ -255,7 +255,8 @@ def main() -> int:
             return 1
         show_dirs = [target_dir]
     else:
-        show_dirs = sorted(d for d in data_dir.iterdir() if d.is_dir())
+        # "@tvdb" dirs hold TheTVDB-numbered local references; never part of the corpus.
+        show_dirs = sorted(d for d in data_dir.iterdir() if d.is_dir() and "@" not in d.name)
 
     tally = Tally()
     mode = "DRY RUN" if args.dry_run else "APPLY"

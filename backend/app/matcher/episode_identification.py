@@ -151,6 +151,13 @@ def load_precomputed_manifest(cache_dir) -> dict | None:
     "no cache" so callers fall back to subtitle scraping. Shared by the matcher's
     load path and the download-skip check so both agree on what counts as valid.
     """
+    # The published pack is TMDB-numbered; a TheTVDB-numbered job must never
+    # read it (spec 2026-10-08). Every precomputed read goes through here.
+    from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
+
+    if current_namespace() == NAMESPACE_TVDB:
+        return None
+
     from app.matcher.vectorizer_config import (
         CACHE_FORMAT_VERSION,
         vectorizer_config_hash,
@@ -1330,6 +1337,13 @@ class EpisodeMatcher:
         A missing, unreadable, or version/config-mismatched manifest is treated as
         "no cache" -- the caller falls back to subtitle scraping.
         """
+        # Guard before the instance cache: the singleton matcher caches the
+        # TMDB-numbered manifest across jobs, and a TVDB job must not see it.
+        from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
+
+        if current_namespace() == NAMESPACE_TVDB:
+            return None
+
         if self._precomputed_manifest is not None:
             return self._precomputed_manifest or None
 

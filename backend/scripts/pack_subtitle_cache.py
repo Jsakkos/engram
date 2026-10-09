@@ -116,7 +116,7 @@ def _discover_shows(data_dir: Path) -> dict[str, dict[int, list[tuple[int, str, 
     ``code`` is the normalized ``S%02dE%02d`` episode code.
     """
     shows: dict[str, dict[int, list[tuple[int, str, Path]]]] = {}
-    for show_dir in sorted(p for p in data_dir.iterdir() if p.is_dir()):
+    for show_dir in sorted(p for p in data_dir.iterdir() if p.is_dir() and "@" not in p.name):
         by_season: dict[int, list[tuple[int, str, Path]]] = {}
         for srt in sorted(show_dir.glob("*.srt")):
             if _MULTI_EP_RE.search(srt.name):
