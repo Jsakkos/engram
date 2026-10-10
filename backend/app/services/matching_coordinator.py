@@ -778,8 +778,11 @@ class MatchingCoordinator:
             )
             if translated is None:
                 logger.info(
-                    f"Job {job_id}: dropping {origin} hint {episode_code} for title "
-                    f"{title.title_index}; it has no 1:1 TheTVDB equivalent"
+                    "Job %s: dropping %s hint %s for title %s; it has no 1:1 TheTVDB equivalent",
+                    job_id,
+                    sanitize_log_value(origin),
+                    sanitize_log_value(episode_code),
+                    title.title_index,
                 )
                 return False
             episode_code = translated

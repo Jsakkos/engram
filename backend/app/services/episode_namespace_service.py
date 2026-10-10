@@ -17,7 +17,7 @@ from sqlalchemy import update
 from app.core import episode_namespace as ns
 from app.database import async_session
 from app.matcher import tmdb_client, tvdb_client
-from app.models.disc_job import ContentType, DiscJob, DiscTitle
+from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState
 from app.models.show_ordering import ShowOrderingPreference
 
 TVDB_UNAVAILABLE_NOTE = "TheTVDB unavailable; matched with TMDB numbering"
@@ -25,6 +25,10 @@ TVDB_UNAVAILABLE_NOTE = "TheTVDB unavailable; matched with TMDB numbering"
 
 class TvdbUnavailableError(RuntimeError):
     """TheTVDB could not supply a roster, so the switch was not applied."""
+
+
+class NotInReviewError(ValueError):
+    """The job left review while the switch was fetching rosters; nothing changed."""
 
 
 async def _rosters(tmdb_id: int, season: int, config, tvdb_id: int | None):
@@ -159,6 +163,12 @@ async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
         job = _validate_tv_job(await session.get(DiscJob, job_id))
         if job.tmdb_id != tmdb_id or job.detected_season != season:
             raise ValueError("the job's identity changed; try again")
+        # Re-checked here, at the write, not only in the route: the review can
+        # be finished while the TheTVDB round trips run, and changing the
+        # numbering under finalization is exactly what the review-only rule
+        # exists to prevent.
+        if job.state != JobState.REVIEW_NEEDED:
+            raise NotInReviewError("the disc left review; numbering was not changed")
         pref = await session.get(ShowOrderingPreference, tmdb_id)
         if pref is None:
             pref = ShowOrderingPreference(tmdb_id=tmdb_id, ordering="")

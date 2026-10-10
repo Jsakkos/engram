@@ -40,7 +40,7 @@ def test_download_uses_namespace_episode_count(monkeypatch):
     monkeypatch.setattr(testing_service, "fetch_season_details", lambda show, season: 24)
     monkeypatch.setattr(
         "app.services.config_service.get_config_sync",
-        lambda: type("C", (), {"tmdb_api_key": "k"})(),
+        type("C", (), {"tmdb_api_key": "k"}),
     )
     assert testing_service._season_episode_count("1618", 1) == 24  # TMDB path
     with namespace_context("tvdb"):

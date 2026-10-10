@@ -211,6 +211,85 @@ class TestSwitchEndpoint:
         assert pref.ordering == "tvdb"
         assert pref.tvdb_id == 76320
 
+    async def test_review_finished_during_the_fetch_is_refused(self, client, monkeypatch):
+        """The route's review check runs before the TheTVDB round trips; the
+        service re-checks at the write so a review finished meanwhile wins."""
+        from sqlalchemy import update
+
+        from app.services import episode_namespace_service as svc
+        from app.services.job_manager import job_manager
+
+        job_id = await _job()
+        rerun = []
+
+        async def rosters_while_review_finishes(tmdb_id, season, config, tvdb_id):
+            async with _unit_session_factory() as s:
+                await s.execute(
+                    update(DiscJob).where(DiscJob.id == job_id).values(state=JobState.ORGANIZING)
+                )
+                await s.commit()
+            return 76320, [{"episode_number": 1, "name": "A"}], [{"episode_number": 1, "name": "A"}]
+
+        async def record(*a, **k):
+            rerun.append(a)
+
+        monkeypatch.setattr(svc, "_rosters", rosters_while_review_finishes)
+        monkeypatch.setattr(job_manager, "rerun_matching", record)
+
+        resp = await client.post(
+            f"/api/jobs/{job_id}/episode-namespace", json={"namespace": "tvdb"}
+        )
+
+        assert resp.status_code == 409
+        assert "in review" in resp.json()["detail"]
+        assert rerun == []
+        async with _unit_session_factory() as s:
+            job = await s.get(DiscJob, job_id)
+            pref = await s.get(ShowOrderingPreference, 1618)
+        assert job.episode_namespace == "tmdb"
+        assert pref is None
+
+    async def test_second_switch_while_one_runs_is_refused(self, client, monkeypatch):
+        from app.api import routes
+
+        job_id = await _job()
+        monkeypatch.setattr(routes, "_namespace_switches_in_flight", {job_id})
+
+        resp = await client.post(
+            f"/api/jobs/{job_id}/episode-namespace", json={"namespace": "tvdb"}
+        )
+
+        assert resp.status_code == 409
+        assert "already being changed" in resp.json()["detail"]
+
+    async def test_in_flight_guard_is_released_after_success_and_failure(self, client, monkeypatch):
+        from app.api import routes
+        from app.services import episode_namespace_service as svc
+        from app.services.job_manager import job_manager
+
+        async def noop(*a, **k):
+            return None
+
+        async def unavailable(jid, namespace):
+            raise svc.TvdbUnavailableError("down")
+
+        monkeypatch.setattr(svc, "switch_job_namespace", noop)
+        monkeypatch.setattr(job_manager._matching, "restart_subtitle_download", noop)
+        monkeypatch.setattr(job_manager, "forget_episode_runtimes", lambda jid: None)
+        monkeypatch.setattr(job_manager, "rerun_matching", noop)
+        job_id = await _job()
+
+        ok = await client.post(f"/api/jobs/{job_id}/episode-namespace", json={"namespace": "tvdb"})
+        assert ok.status_code == 200
+        assert job_id not in routes._namespace_switches_in_flight
+
+        monkeypatch.setattr(svc, "switch_job_namespace", unavailable)
+        down = await client.post(
+            f"/api/jobs/{job_id}/episode-namespace", json={"namespace": "tvdb"}
+        )
+        assert down.status_code == 503
+        assert job_id not in routes._namespace_switches_in_flight
+
 
 @pytest.mark.unit
 async def test_llm_match_runs_under_the_job_namespace(monkeypatch, tmp_path):

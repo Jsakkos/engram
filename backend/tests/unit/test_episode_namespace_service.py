@@ -6,7 +6,7 @@ import pytest
 from sqlmodel import select
 
 from app.models.app_config import AppConfig
-from app.models.disc_job import ContentType, DiscJob, DiscTitle
+from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState
 from app.models.show_ordering import ShowOrderingPreference
 from app.services import episode_namespace_service as svc
 from tests.unit.conftest import _unit_session_factory
@@ -33,6 +33,8 @@ def stubs(monkeypatch):
 
 
 async def _job(**kw) -> int:
+    # In review by default: a numbering switch is only allowed there.
+    kw.setdefault("state", JobState.REVIEW_NEEDED)
     async with _unit_session_factory() as s:
         job = DiscJob(
             drive_id="E:",
@@ -388,3 +390,11 @@ class TestDismissEdges:
         await svc.dismiss_tvdb_suggestion(1618)
         pref = await _pref()
         assert pref.ordering == "dvd" and pref.tvdb_suggestion_dismissed is True
+
+
+@pytest.mark.unit
+async def test_switch_refused_once_the_job_left_review(stubs):
+    job_id = await _job(state=JobState.ORGANIZING)
+    with pytest.raises(svc.NotInReviewError):
+        await svc.switch_job_namespace(job_id, "tvdb")
+    assert (await _get(job_id)).episode_namespace == "tmdb"

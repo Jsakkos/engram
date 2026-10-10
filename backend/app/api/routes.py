@@ -4786,6 +4786,10 @@ class EpisodeNamespaceRequest(BaseModel):
     namespace: Literal["tmdb", "tvdb"]
 
 
+# Job ids with a numbering switch currently running (see set_job_episode_namespace).
+_namespace_switches_in_flight: set[int] = set()
+
+
 @router.post("/jobs/{job_id}/episode-namespace")
 async def set_job_episode_namespace(
     request: EpisodeNamespaceRequest,
@@ -4818,19 +4822,37 @@ async def set_job_episode_namespace(
     job_id = job.id
     show_name, season, tmdb_id = job.detected_title, job.detected_season, job.tmdb_id
     await session.close()
-    try:
-        await svc.switch_job_namespace(job_id, request.namespace)
-    except svc.TvdbUnavailableError:
-        raise HTTPException(
-            status_code=503,
-            detail="TheTVDB is unavailable right now; numbering was not changed.",
-        ) from None
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from None
 
-    job_manager.forget_episode_runtimes(job_id)
-    await job_manager._matching.restart_subtitle_download(job_id, show_name, season, tmdb_id)
-    await job_manager.rerun_matching(job_id)
+    # A double-click or a second tab must not start two switches (and two
+    # concurrent re-matches) for one job. Single-process server, so an
+    # in-memory set is the whole story; the service re-checks the state too.
+    if job_id in _namespace_switches_in_flight:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode numbering is already being changed for this disc.",
+        )
+    _namespace_switches_in_flight.add(job_id)
+    try:
+        try:
+            await svc.switch_job_namespace(job_id, request.namespace)
+        except svc.TvdbUnavailableError:
+            raise HTTPException(
+                status_code=503,
+                detail="TheTVDB is unavailable right now; numbering was not changed.",
+            ) from None
+        except svc.NotInReviewError:
+            raise HTTPException(
+                status_code=409,
+                detail="Episode numbering can only be changed while the disc is in review.",
+            ) from None
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
+
+        job_manager.forget_episode_runtimes(job_id)
+        await job_manager._matching.restart_subtitle_download(job_id, show_name, season, tmdb_id)
+        await job_manager.rerun_matching(job_id)
+    finally:
+        _namespace_switches_in_flight.discard(job_id)
     return {"job_id": job_id, "episode_namespace": request.namespace}
 
 
