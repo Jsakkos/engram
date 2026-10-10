@@ -228,6 +228,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // Settings mode can deep-link to a section; onboarding always starts at step 1.
     const [step, setStep] = useState(() => (!isOnboarding ? resolveSection(initialSection)?.step : undefined) ?? 1);
     const [isLoading, setIsLoading] = useState(true);
+    const wizardBodyRef = useRef<HTMLDivElement | null>(null);
     // A deep-linked control (e.g. the GPU toggle) to scroll into view once the
     // settings body has rendered. Consumed once.
     const pendingScrollAnchor = useRef<string | null>(
@@ -501,6 +502,24 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         }, 400);
         return () => window.clearTimeout(timer);
     }, [config.discordTemplateCompleted, config.discordTemplateFailed, config.discordTemplateReview, config.discordTemplateRipped]);
+
+    useEffect(() => {
+        if (pendingScrollAnchor.current) {
+            return;
+        }
+
+        const body = wizardBodyRef.current;
+
+        if (!body) {
+            return;
+        }
+
+        if (typeof body.scrollTo === 'function') {
+            body.scrollTo({ top: 0 });
+        }
+
+        body.scrollTop = 0;
+    }, [step]);
 
     // Detect tools when entering step 2
     useEffect(() => {
@@ -2408,7 +2427,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // Shared scrollable content pane — same in both modes, only the surrounding
     // chrome (stepper vs. section nav) differs.
     const wizardBody = (
-        <div className="wizard-body">
+        <div
+            className="wizard-body"
+            ref={wizardBodyRef}
+        >
             {isLoading ? (
                 <div className="wizard-loading">
                     <div className="spinner-mini"></div>

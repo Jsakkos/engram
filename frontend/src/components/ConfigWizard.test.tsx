@@ -590,3 +590,58 @@ describe('ConfigWizard: disc backup before ripping', () => {
         expect(body.backup_path).toBe('/mnt/backups');
     });
 });
+
+describe('ConfigWizard — scroll reset on step change (#725)', () => {
+    const getBody = (container: HTMLElement) => container.querySelector('.wizard-body') as HTMLElement;
+
+    it('settings: switching section via the sidebar scrolls the body back to the top', async () => {
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        const body = getBody(container);
+
+        body.scrollTop = 300;
+        fireEvent.click(within(nav).getByRole('button', { name: 'Preferences' }));
+
+        expect(await screen.findByText('Max Concurrent Matches')).toBeInTheDocument();
+        expect(body.scrollTop).toBe(0);
+    });
+
+    it('settings: every section switch resets the scroll position, not just the first', async () => {
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        const body = getBody(container);
+
+        for (const name of ['Tools & License', 'Data Sharing', 'Library Paths']) {
+            body.scrollTop = 250;
+            fireEvent.click(within(nav).getByRole('button', { name }));
+            await waitFor(() => expect(body.scrollTop).toBe(0));
+        }
+    });
+
+    it('onboarding: Next and Back both open the step at the top', async () => {
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={true} />);
+        await screen.findByRole('heading', { level: 2, name: 'Setup Wizard' });
+        const body = getBody(container);
+
+        body.scrollTop = 302;
+        fireEvent.click(screen.getByRole('button', { name: /next/i }));
+        await waitFor(() => expect(screen.getByLabelText(/^Step 2: Tools \(current\)/)).toBeInTheDocument());
+        expect(body.scrollTop).toBe(0);
+
+        body.scrollTop = 180;
+        fireEvent.click(screen.getByRole('button', { name: /back/i }));
+        await waitFor(() => expect(screen.getByLabelText(/^Step 1: Paths \(current\)/)).toBeInTheDocument());
+        expect(body.scrollTop).toBe(0);
+    });
+
+    it('does not move the scroll position when the step has not changed', async () => {
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        const body = getBody(container);
+
+        body.scrollTop = 120;
+        fireEvent.change(await screen.findByLabelText('Movies Library'), { target: { value: '/other' } });
+        expect(body.scrollTop).toBe(120);
+        expect(nav).toBeInTheDocument();
+    });
+});
