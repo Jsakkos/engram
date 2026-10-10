@@ -161,7 +161,8 @@ def build_crosswalk(season: int, tmdb_eps: list[dict], tvdb_eps: list[dict]) -> 
     Pairs by ``normalize_title`` first (part numbers included, so "(1)" and
     "(2)" are distinct titles). A title held by more than one episode on either
     side is ambiguous and excluded from both passes. Episodes still unpaired
-    then pair by air date when exactly one of each side shares it. The split
+    then pair by air date when exactly one of each side shares it and their
+    runtimes agree (both known, within a few minutes). The split
     Justice League pilot (TVDB "Secret Origins (1)/(2)/(3)" against TMDB's one
     "Secret Origins", all on the same date) therefore stays unmapped.
     """
@@ -203,9 +204,23 @@ def build_crosswalk(season: int, tmdb_eps: list[dict], tvdb_eps: list[dict]) -> 
     tv_dates = by_date(tvdb_eps, set(crosswalk))
     for date, tv in tv_dates.items():
         tm = tm_dates.get(date, [])
-        if len(tv) == 1 and len(tm) == 1:
+        if len(tv) == 1 and len(tm) == 1 and _runtimes_agree(tv[0], tm[0]):
             crosswalk[code(tv[0])] = code(tm[0])
     return crosswalk
+
+
+# A date-only pairing has no title to confirm it, so the runtimes must agree
+# too (minutes; catalogues round differently). A wrong pairing would put the
+# wrong TMDB code into contributions and exports; omitting the title is safer.
+_DATE_PAIR_RUNTIME_TOLERANCE_MIN = 3
+
+
+def _runtimes_agree(tv: dict, tm: dict) -> bool:
+    try:
+        a, b = int(tv.get("runtime") or 0), int(tm.get("runtime") or 0)
+    except (TypeError, ValueError):
+        return False
+    return a > 0 and b > 0 and abs(a - b) <= _DATE_PAIR_RUNTIME_TOLERANCE_MIN
 
 
 def _translate(code: str | None, mapping: dict[str, str]) -> str | None:

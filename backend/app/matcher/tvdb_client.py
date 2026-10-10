@@ -68,6 +68,14 @@ def _login(api_key: str) -> str:
 
 
 def _token(api_key: str, *, force: bool = False) -> str:
+    # Fast path without the lock: a cached token for this key is returned
+    # directly, so matcher threads do not queue behind a slow (30 s timeout)
+    # login. Key is read before token; a torn read during a key rotation can
+    # at worst hand out a stale token, which _get turns into one 401 + re-login.
+    if not force:
+        key, token = _token_state.key, _token_state.token
+        if token and key == api_key:
+            return token
     with _token_lock:
         if force or not _token_state.token or _token_state.key != api_key:
             _token_state.token = _login(api_key)

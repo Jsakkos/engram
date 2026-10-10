@@ -130,9 +130,23 @@ def test_crosswalk_ambiguous_title_is_skipped():
 
 
 def test_crosswalk_pairs_by_air_date_when_titles_differ():
-    tmdb = [{"episode_number": 1, "name": "Colour", "air_date": "2001-01-01"}]
-    tvdb = [{"episode_number": 1, "name": "Color", "air_date": "2001-01-01"}]
+    tmdb = [{"episode_number": 1, "name": "Colour", "air_date": "2001-01-01", "runtime": 22}]
+    tvdb = [{"episode_number": 1, "name": "Color", "air_date": "2001-01-01", "runtime": 24}]
     assert ns.build_crosswalk(1, tmdb, tvdb) == {"S01E01": "S01E01"}
+
+
+@pytest.mark.parametrize(
+    "tm_runtime,tv_runtime",
+    [(44, 22), (22, 0), (0, 22), (None, 22)],
+)
+def test_crosswalk_date_pair_needs_agreeing_runtimes(tm_runtime, tv_runtime):
+    """A date-only match has no title to confirm it: a different episode on the
+    same date (or an unknown runtime) must stay unmapped, not be mislabelled."""
+    tmdb = [{"episode_number": 1, "name": "Pilot", "air_date": "2001-01-01", "runtime": tm_runtime}]
+    tvdb = [
+        {"episode_number": 1, "name": "Renamed", "air_date": "2001-01-01", "runtime": tv_runtime}
+    ]
+    assert ns.build_crosswalk(1, tmdb, tvdb) == {}
 
 
 def test_translation_helpers():

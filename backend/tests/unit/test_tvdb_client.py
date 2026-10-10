@@ -281,3 +281,14 @@ def test_fetch_season_episodes_includes_air_date(monkeypatch):
     eps = tmdb_client.fetch_season_episodes("1618", 1, "tok")
     assert len(eps) == 24
     assert eps[0]["air_date"]
+
+
+def test_cached_token_is_returned_without_the_lock(monkeypatch):
+    """A warm token for the same key must not wait on a login in progress."""
+    tvdb_client._token_state.key, tvdb_client._token_state.token = "k", "warm"
+    monkeypatch.setattr(tvdb_client, "_login", lambda key: pytest.fail("logged in again"))
+    assert tvdb_client._token_lock.acquire(blocking=False)
+    try:
+        assert tvdb_client._token("k") == "warm"
+    finally:
+        tvdb_client._token_lock.release()
