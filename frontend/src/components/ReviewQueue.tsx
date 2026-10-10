@@ -5,7 +5,7 @@ import { Save, Package } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, type TitleAction } from './ReviewQueue/utils';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
@@ -13,10 +13,12 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, selectionCollides, suggestGapCode } from './ReviewQueue/coverage';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
+import { TvdbSuggestionNotice } from './ReviewQueue/TvdbSuggestionNotice';
+import { TvdbAttribution } from './ReviewQueue/TvdbAttribution';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
 import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
-import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
+import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dismissTvdbSuggestion, submitReviewBatch, rematchTitle } from '../api/client';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
 import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
@@ -199,16 +201,53 @@ function ReviewQueue() {
     // Persist a per-show ordering choice (#200), then refetch the roster so the
     // projection/divergence reflect it. Ordering is a show property, so it is
     // stored by tmdb_id rather than threaded through the review-batch decision.
+    //
+    // TheTVDB is not a projection: moving onto or off it changes the job's
+    // episode namespace, which re-downloads references and re-matches (the
+    // job leaves review for MATCHING), so those moves go through the job
+    // endpoint and then hand off to the dashboard like "re-match all" does.
+    const switchNamespace = async (namespace: 'tmdb' | 'tvdb') => {
+        if (!job) return;
+        await setEpisodeNamespace(job.id, namespace);
+        navigate('/');
+    };
+
     const handleOrderingChange = async (ordering: string) => {
         if (!roster?.show_id) return;
         setOrderingError(null);
+        const namespaceMove = ordering === 'tvdb' || roster.episode_source === 'tvdb';
         try {
+            if (ordering === 'tvdb') {
+                await switchNamespace('tvdb');
+                return;
+            }
+            if (roster.episode_source === 'tvdb') {
+                // Namespace first: if TheTVDB-to-TMDB is refused (job left
+                // review), the show preference must not have moved either.
+                if (!job) return;
+                await setEpisodeNamespace(job.id, 'tmdb');
+                // The switch already reset the show preference to the global
+                // default, which is what "aired" means. Only a DVD pick needs a
+                // follow-up write, and its failure is non-fatal: re-matching has
+                // started, so the page must still hand off.
+                if (ordering !== 'aired') {
+                    try {
+                        await setShowOrdering(roster.show_id, ordering);
+                    } catch (e) {
+                        console.error('Failed to set show ordering after namespace switch', e);
+                    }
+                }
+                navigate('/');
+                return;
+            }
             await setShowOrdering(roster.show_id, ordering);
             reloadRoster();
         } catch (e) {
             console.error('Failed to set show ordering', e);
             setOrderingError(
-                'Could not save the ordering preference — the selection was not applied. Please try again.',
+                namespaceMove && e instanceof Error
+                    ? e.message
+                    : 'Could not save the ordering preference: the selection was not applied. Please try again.',
             );
         }
     };
@@ -1032,6 +1071,18 @@ function ReviewQueue() {
                     </div>
                 )}
 
+                {roster?.tvdb_suggestion && roster.show_id && (
+                    <TvdbSuggestionNotice
+                        suggestion={roster.tvdb_suggestion}
+                        onSwitch={() => switchNamespace('tvdb')}
+                        onDismiss={async () => {
+                            await dismissTvdbSuggestion(roster.show_id as number);
+                            reloadRoster();
+                        }}
+                    />
+                )}
+                {roster?.namespace_note && <SvNotice tone="warn">› {roster.namespace_note}</SvNotice>}
+
                 {/* Episode ordering (#200) — only when a divergent ordering exists. */}
                 {roster?.ordering_available && roster?.ordering_diverges && roster.ordering_options && (
                     <div style={{ marginBottom: 24 }}>
@@ -1040,8 +1091,13 @@ function ReviewQueue() {
                         </div>
                         <OrderingSelector
                             options={roster.ordering_options}
-                            current={roster.current_ordering ?? 'aired'}
+                            current={effectiveOrdering(roster)}
                             onChange={handleOrderingChange}
+                            reselectable={
+                                roster.current_ordering === 'tvdb' && roster.episode_source !== 'tvdb'
+                                    ? 'aired'
+                                    : undefined
+                            }
                         />
                     </div>
                 )}
@@ -1049,8 +1105,9 @@ function ReviewQueue() {
                 {/* Season roster */}
                 {roster?.available && rosterEpisodes.length > 0 && (
                     <div style={{ marginBottom: 24 }}>
-                        <div style={{ marginBottom: 12 }}>
+                        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
                             <SvLabel>Season roster — coverage across this disc</SvLabel>
+                            {roster.episode_source === 'tvdb' && <TvdbAttribution />}
                         </div>
                         {missingRefCodes.length > 0 && (
                             <div

@@ -202,5 +202,6 @@ AGPL-3.0. See [LICENSE](LICENSE).
 - [mkv-episode-matcher](https://github.com/Jsakkos/mkv-episode-matcher) for episode matching
 - [TheDiscDB](https://thediscdb.com/) for disc content-hash lookups
 - [TMDB](https://www.themoviedb.org/) for media metadata and poster art
+- Episode data for TheTVDB-numbered shows is provided by [TheTVDB](https://thetvdb.com).
 
 And thank you to Engram's community [contributors](CONTRIBUTORS.md) 💜

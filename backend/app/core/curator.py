@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
 from app.matcher.llm_episode_matcher import match_episode_via_llm
 from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
@@ -372,8 +373,13 @@ class EpisodeCurator:
 
         # Phase 3 cascade: chromaprint first (no-op when the flag is off → identical to legacy ASR path).
         # The guard above already guarantees `season` is truthy, so only `series_name` needs checking.
+        # Fingerprint packs are keyed by TMDB season/episode, so a hit is a TMDB
+        # code. Under a TheTVDB-numbered job that code would be stored as-is
+        # (accepted with needs_review False) or cross-checked against a TVDB
+        # ASR code. The curator has no crosswalk to translate it, so skip the
+        # prepass entirely and let the ASR matcher (TVDB references) decide.
         cp = None
-        if series_name:
+        if series_name and current_namespace() != NAMESPACE_TVDB:
             try:
                 cp = await self._chromaprint_prepass(
                     file_path=file_path, series_name=series_name, season=season, tmdb_id=tmdb_id

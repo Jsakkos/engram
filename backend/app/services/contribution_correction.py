@@ -15,6 +15,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.episode_codes import parse_episode_code
+from app.core.episode_namespace import to_tmdb_code
 from app.matcher.chromaprint_extractor import ChromaprintResult
 from app.models.disc_job import DiscJob, DiscTitle
 from app.models.fingerprint import FingerprintContribution, FingerprintRetraction
@@ -126,7 +127,16 @@ class ContributionCorrectionService:
         # episode. Retraction of the old contribution has already happened; we
         # simply don't publish a new one. Mirrors disc_contribution_queue's
         # deliberate under-count for the same case.
-        parsed = parse_episode_code(episode_code)
+        # The network is TMDB-keyed; a TheTVDB-numbered job's code is translated
+        # through its crosswalk, and one with no 1:1 TMDB equivalent is not published.
+        tmdb_code = to_tmdb_code(job.episode_namespace, job.episode_crosswalk_json, episode_code)
+        if not tmdb_code:
+            logger.debug(
+                f"Skipping re-contribution for title {title.id}: "
+                f"{episode_code} has no TMDB equivalent"
+            )
+            return
+        parsed = parse_episode_code(tmdb_code)
         if not parsed:
             return
         season, episodes = parsed

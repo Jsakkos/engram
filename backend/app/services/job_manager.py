@@ -2588,6 +2588,10 @@ class JobManager:
             f"{sanitize_log_value(title_id)} -> {sanitize_log_value(target.kind)}"
         )
 
+    def forget_episode_runtimes(self, job_id: int) -> None:
+        """Drop a job's cached episode runtimes (after an episode-namespace switch)."""
+        self._matching.forget_episode_runtimes(job_id)
+
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for all titles in a job."""
         # A full re-match starts conflict escalation over from the first tier.

@@ -41,7 +41,7 @@ def _refused_for_references(title) -> bool:
     return isinstance(details, dict) and details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE
 
 
-def _ordering_for_title(match_details, ordering: str) -> str:
+def _ordering_for_title(match_details, ordering: str, namespace: str | None = None) -> str:
     """The output ordering to project ONE title through: ``ordering``, or "aired".
 
     The projection looks a matched code up as a canonical TMDB ``(season, episode)``
@@ -55,7 +55,17 @@ def _ordering_for_title(match_details, ordering: str) -> str:
     Degrading to "aired" keeps the matcher's own number in the filename. That
     number is at least the one the review page showed, which is the property the
     user actually relies on; projecting it would be precise about the wrong thing.
+
+    A TVDB-numbered job is never projected: its codes are TheTVDB coordinates,
+    which a TMDB episode group cannot resolve, even if the show preference has
+    since changed to "dvd" or "aired".
     """
+    if namespace == "tvdb":
+        return "tvdb"
+    if ordering == "tvdb" and namespace is not None and namespace != "tvdb":
+        # The show prefers TheTVDB numbering but this job fell back to TMDB numbering
+        # (TheTVDB outage), so the files are TMDB-numbered: do not label them "tvdb".
+        return "aired"
     if ordering == "aired":
         return ordering
     try:
@@ -1358,6 +1368,7 @@ class FinalizationCoordinator:
             ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
             _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
             _tmdb_year = job.tmdb_year
+            _namespace = job.episode_namespace
             _lib_path = _library_path_for_job(job, "tv")
             _staging_path = job.staging_path
             _detected_title = job.detected_title
@@ -1460,7 +1471,7 @@ class FinalizationCoordinator:
 
             # Per title: a code from a corpus numbered unlike the TMDB roster is not
             # a coordinate the episode group can resolve, so it keeps aired numbering.
-            _title_ordering = _ordering_for_title(cap["match_details"], ordering)
+            _title_ordering = _ordering_for_title(cap["match_details"], ordering, _namespace)
 
             if is_extra:
                 # Mirror the review path (apply_review / process_matched_titles):
@@ -2034,7 +2045,9 @@ class FinalizationCoordinator:
                     _lib_path = _library_path_for_job(job, "tv")
                     # Per title: a code from a corpus numbered unlike the TMDB roster is not
                     # a coordinate the episode group can resolve, so it keeps aired numbering.
-                    _title_ordering = _ordering_for_title(disc_title.match_details, ordering)
+                    _title_ordering = _ordering_for_title(
+                        disc_title.match_details, ordering, job.episode_namespace
+                    )
                     if disc_title.matched_episode == "extra":
                         org_result = await asyncio.to_thread(
                             organize_tv_extras,
@@ -2267,7 +2280,9 @@ class FinalizationCoordinator:
                 _lib_path = _library_path_for_job(job, "tv")
                 # Per title: a code from a corpus numbered unlike the TMDB roster is not
                 # a coordinate the episode group can resolve, so it keeps aired numbering.
-                _title_ordering = _ordering_for_title(disc_title.match_details, ordering)
+                _title_ordering = _ordering_for_title(
+                    disc_title.match_details, ordering, job.episode_namespace
+                )
                 if disc_title.matched_episode == "extra":
                     org_result = await asyncio.to_thread(
                         organize_tv_extras,

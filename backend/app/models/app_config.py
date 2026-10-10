@@ -55,6 +55,9 @@ class AppConfig(SQLModel, table=True):
 
     # TMDB API (for show metadata)
     tmdb_api_key: str = ""
+    # TheTVDB v4 project key override. Blank means "use the key built into this
+    # release" (TVDB_API_KEY env var, baked into frozen builds). Redacted on GET.
+    tvdb_api_key: str = ""
 
     # Matching concurrency (limits parallel Whisper ASR tasks to avoid GPU OOM)
     max_concurrent_matches: int = 2

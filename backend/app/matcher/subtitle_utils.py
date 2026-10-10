@@ -299,7 +299,13 @@ def corpus_dir_name(tmdb_id, show_name: str) -> str:
     2023 revival #195241) never collide into one directory. Falls back to the
     sanitized show name only when no tmdb_id is known (legacy caches, or a flat
     import that never resolved an id).
+
+    Under a TheTVDB-numbered job (``episode_namespace`` context) the name gains
+    an ``@tvdb`` suffix: those references are numbered differently and must
+    never share a folder with the TMDB-numbered ones (spec 2026-10-08).
     """
+    from app.core.episode_namespace import corpus_dir_suffix
+
     if tmdb_id is not None and str(tmdb_id).strip():
-        return str(tmdb_id)
-    return sanitize_filename(show_name)
+        return f"{tmdb_id}{corpus_dir_suffix()}"
+    return f"{sanitize_filename(show_name)}{corpus_dir_suffix()}"

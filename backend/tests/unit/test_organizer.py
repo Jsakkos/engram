@@ -176,6 +176,28 @@ class TestTVOrganization:
         assert "Season 01" in str(dest)
         assert "The Office" in str(dest)
 
+    def test_tvdb_ordering_is_never_projected(self, tmp_path, monkeypatch):
+        """A TheTVDB-numbered job's code is already the output number."""
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("project_episode must not run for a tvdb job")
+
+        monkeypatch.setattr("app.core.episode_ordering.project_episode", _boom)
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 1024)
+
+        result = organize_tv_episode(
+            source_file=source,
+            show_name="The Office",
+            episode_code="S01E01",
+            library_path=tmp_path / "library",
+            ordering="tvdb",
+            tmdb_id="1618",
+        )
+
+        assert result["success"] is True
+        assert result["final_path"].name == "The Office - S01E01.mkv"
+
     def test_tv_invalid_episode_code(self, tmp_path):
         """Invalid episode code → error."""
         source = tmp_path / "source.mkv"

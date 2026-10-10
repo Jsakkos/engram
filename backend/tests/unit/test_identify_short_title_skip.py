@@ -121,6 +121,22 @@ class TestShortTitleSkip:
         assert [t.title_index for t in skipped] == [3, 4]
         assert "TMDB" not in json.loads(skipped[0].match_details)["reason"]
 
+    async def test_tvdb_numbered_show_uses_disc_evidence_only(self, short_env):
+        """A show on TheTVDB numbering: TMDB runtimes describe another episode
+        split, so they are not fetched and the disc's own evidence decides."""
+        from app.models.show_ordering import ShowOrderingPreference
+
+        async with _unit_session_factory() as s:
+            s.add(ShowOrderingPreference(tmdb_id=1234, ordering="tvdb"))
+            await s.commit()
+        job_id, _, _ = await _identify_tv()
+
+        short_env.runtimes.assert_not_called()
+        titles = await _job_titles(job_id)
+        skipped = [t for t in titles if t.state == TitleState.SKIPPED]
+        assert [t.title_index for t in skipped] == [3, 4]
+        assert "TMDB" not in json.loads(skipped[0].match_details)["reason"]
+
     async def test_gate_b_tmdb_lookup_failed_rips_everything(self, short_env):
         """Gate B (TV detected, TMDB lookup failed): the name is untrusted and the
         disc rips first with a name prompt, so nothing is auto-skipped."""

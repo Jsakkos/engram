@@ -229,6 +229,29 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
   form; roster coverage counts the track against every episode it claims. The DiscDB export
   publishes the range form too (`"1-2"`), which is TheDiscDB's own convention for a combined
   title — not the first episode alone.
+- **A job's episode numbering is a value: `DiscJob.episode_namespace` (`tmdb` | `tvdb`).**
+  TMDB aired order is the identity unless a job opts into TheTVDB official order (per show,
+  via the review-page suggestion when the two catalogues disagree, e.g. Justice League S1:
+  24 vs 26). Under `tvdb`, `matched_episode`, references, the review roster and filenames
+  are TVDB-numbered. The namespace is decided in `MatchingCoordinator.download_subtitles`;
+  the STORED value rides in a ContextVar (`app/core/episode_namespace.py`), bound there and
+  in `download_subtitles_all_seasons`, the match path, and the roster, manual-subtitle
+  and LLM routes. The match path binds AFTER the subtitle-ready wait
+  (`_run_match_single_file`), not at task entry: imports and `rerun_matching` dispatch
+  matches before the decision commits, so binding earlier would match in a stale
+  namespace. A tvdb job is never projected through a TMDB episode group
+  (`_ordering_for_title` returns "tvdb"). Chokepoints: `corpus_dir_name` (`@tvdb` suffix), `load_precomputed_manifest`
+  and `EpisodeMatcher._load_precomputed_manifest` (hidden under tvdb); the matcher's
+  reference-file cache is keyed by the resolved reference dir; the chromaprint prepass is
+  skipped. Under tvdb `season_episodes` never falls back to TMDB (returns `[]`, so an outage
+  fails visibly). TMDB-keyed boundaries translate through the job's persisted 1:1 crosswalk
+  or omit: disc contribution, per-track fingerprint contribution, corrected re-contribution,
+  TheDiscDB export, inbound DiscDB/network hints. `POST /api/jobs/{id}/episode-namespace`
+  is allowed only in REVIEW_NEEDED. Cache scripts skip `*@tvdb` dirs so they are never
+  published. `tests/unit/test_matched_episode_consumers.py` fails until a new
+  `matched_episode` parser is classified. TheTVDB's free tier requires the in-app attribution
+  link (`TvdbAttribution.tsx`); the key ships via the `TVDB_API_KEY` secret. Spec:
+  `docs/superpowers/specs/2026-10-08-thetvdb-episode-namespace-design.md`.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
 - **A job's MakeMKV source is a value, not a drive.** `DiscSource`
   (`app/core/disc_source.py`) answers "is this a physical drive?" once, for eject, sentinel

@@ -1313,6 +1313,20 @@ class TestOrderingProjectionNamespaceGuard:
     def _details(self, **extra) -> str:
         return json.dumps({"episode": "S1E1", **extra})
 
+    def test_tvdb_pref_on_tmdb_numbered_job_records_aired(self):
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title(self._details(), "tvdb", "tmdb") == "aired"
+        assert _ordering_for_title(self._details(), "tvdb", "tvdb") == "tvdb"
+
+    def test_tvdb_job_is_never_projected_even_if_the_show_now_prefers_dvd(self):
+        """A TVDB-numbered job's codes are TheTVDB coordinates; a TMDB episode
+        group cannot resolve them, whatever the show preference says later."""
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title(self._details(), "dvd", "tvdb") == "tvdb"
+        assert _ordering_for_title(self._details(), "aired", "tvdb") == "tvdb"
+
     def test_mismatched_namespace_falls_back_to_aired(self):
         from app.services.finalization_coordinator import _ordering_for_title
 

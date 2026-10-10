@@ -17,6 +17,12 @@ from pathlib import Path
 from loguru import logger
 
 from app import __version__
+from app.core.episode_namespace import (
+    NAMESPACE_TVDB,
+    current_namespace,
+    season_episode_count,
+    season_episodes,
+)
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call, os_download_temp_name
@@ -634,6 +640,30 @@ def _reject_content_duplicates(series_cache_dir: str | Path, episodes: list[dict
     return episodes
 
 
+def _season_episode_count(show_id: str, season: int) -> int:
+    """Episodes in the season under the current namespace (TVDB counts 26 for
+    Justice League S1 where TMDB counts 24). TMDB path keeps the cached
+    ``fetch_season_details`` so its persistent cache is still used."""
+    from app.services.config_service import get_config_sync
+
+    if current_namespace() == NAMESPACE_TVDB:
+        return season_episode_count(show_id, season, get_config_sync().tmdb_api_key)
+    return fetch_season_details(show_id, season)
+
+
+def _season_episode_titles(show_id: str, season: int, tmdb_api_key: str) -> dict[int, str]:
+    """Episode number -> title for the season in the current namespace, the
+    ground truth OpenSubtitles metadata is validated against (TheTVDB's roster
+    for a TVDB job, so its E25/E26 are not rejected as out of range). The TMDB
+    path calls this module's ``fetch_season_episodes`` directly, as it always
+    has, so existing patches of that name keep working."""
+    if current_namespace() == NAMESPACE_TVDB:
+        episodes = season_episodes(show_id, season, tmdb_api_key)
+    else:
+        episodes = fetch_season_episodes(show_id, season, tmdb_api_key)
+    return {e["episode_number"]: e["name"] for e in episodes if e.get("episode_number") is not None}
+
+
 def download_subtitles(
     show_name: str, season: int, *, tmdb_id: int | None = None, use_precomputed: bool = True
 ) -> dict:
@@ -712,9 +742,10 @@ def download_subtitles(
                     config=config,
                 )
 
-    episode_count = fetch_season_details(show_id, season)
+    episode_count = _season_episode_count(show_id, season)
     if episode_count == 0:
-        raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on TMDB")
+        source = "TheTVDB" if current_namespace() == NAMESPACE_TVDB else "TMDB"
+        raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on {source}")
 
     # Cache DIR is keyed by tmdb_id (fallback: sanitized canonical name) so two
     # same-named shows (e.g. Frasier 1993 #3452 vs the 2023 revival #195241) never
@@ -795,15 +826,11 @@ def download_subtitles(
                     max_attempts=4,
                     base_delay=1.0,
                 )
-                # TMDB episode titles for this season — the ground truth the OS
-                # metadata is validated against. Empty (e.g. no TMDB key / lookup
-                # failure) degrades validation to a no-op rather than rejecting
-                # everything.
-                episode_titles = {
-                    e["episode_number"]: e["name"]
-                    for e in fetch_season_episodes(show_id, season, config.tmdb_api_key)
-                    if e.get("episode_number") is not None
-                }
+                # Episode titles for this season in the job's namespace: the
+                # ground truth the OS metadata is validated against. Empty (e.g.
+                # no key / lookup failure) degrades validation to a no-op rather
+                # than rejecting everything.
+                episode_titles = _season_episode_titles(show_id, season, config.tmdb_api_key)
                 seen_api_eps: set[int] = set()
                 for subtitle in response.data or []:
                     ep_num = getattr(subtitle, "episode_number", None)

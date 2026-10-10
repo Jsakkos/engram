@@ -806,8 +806,10 @@ def organize_tv_episode(
     # in the DB and the fingerprint key stay canonical. Aired/no-tmdb_id is a no-op.
     # Every part of a multi-episode code is projected, so a range stays contiguous
     # in the output ordering rather than mixing orderings within one filename.
+    # A TheTVDB-numbered job ("tvdb") is never projected: its code is already the
+    # output number.
     out_season, out_episodes = season_num, list(episode_nums)
-    if ordering != "aired" and tmdb_id:
+    if ordering not in ("aired", "tvdb") and tmdb_id:
         from app.core.episode_ordering import project_episode
 
         projected: list[int] = []
