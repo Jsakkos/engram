@@ -25,11 +25,29 @@ Cancel** buttons, and only the reporter or a maintainer can press them. Before d
 the model searches existing issues. If it finds the same problem, the button reads **Add
 to issue** and posts the report as a comment on that issue instead.
 
+**Diagnostics bundles.** Users can attach the per-job diagnostic `.zip` from Engram's
+dashboard. The bot reads it (`diagnostics.py`): versions, job state, the errors and warnings
+from the job log, and problems in the MakeMKV logs. The model gets a short summary, so it
+can troubleshoot without asking for things the bundle already says. When the reporter's
+thread becomes an issue, the bot appends their latest bundle (the report plus a log
+excerpt) to the issue as a collapsed section, so the evidence reaches GitHub word for word
+rather than paraphrased by the model.
+
+The archive is treated as hostile input:
+- only the five known file names are read, ignoring any others or any paths;
+- each file is capped at 2 MB decompressed, whatever the zip claims, which stops zip bombs;
+- the zip is capped at 8 MB;
+- everything goes through the bot's own secret redaction as well as the backend's.
+
+The reporter can ask for the bundle to be left out of the issue.
+
 Every issue gets the `from-discord` and `needs-triage` labels, plus `bug`,
 `enhancement` or `documentation`, and any area labels the model picked from
 `BOT_ALLOWED_LABELS` that exist in the repo. The bot renders the body itself from fixed
 fields. All user text passes through `sanitize.py`, which strips mentions (including
-`@claude`), escapes HTML and caps lengths. The footer credits the reporter and links back
+`@claude`), redacts secrets and home paths (webhook URLs, MakeMKV keys, API tokens,
+`key=` values), escapes HTML and caps lengths. Bodies are kept under GitHub's 65,536-character
+limit by dropping the bulkiest optional sections first. The footer credits the reporter and links back
 to the Discord thread.
 
 ## Setup
@@ -141,6 +159,7 @@ run `ENGRAM_DOCS_DIR=.. uv run python -m engram_bot`.
 | `knowledge.py` | Docs to system-prompt block, from GitHub or a local checkout. |
 | `history.py` | Discord thread to Messages API history. |
 | `intake.py` | Draft schema, validation, issue/comment rendering, embed fields. |
-| `sanitize.py` | Mention, HTML and length safety for anything published to GitHub. |
+| `diagnostics.py` | Engram diagnostics `.zip` to a model summary and an issue section. |
+| `sanitize.py` | Secret redaction, mention, HTML and length safety for anything published to GitHub. |
 | `github.py` | Minimal REST client with GitHub App or token auth. |
 | `store.py` | SQLite: threads, drafts, usage. |

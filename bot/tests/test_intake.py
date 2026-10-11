@@ -92,3 +92,24 @@ def test_tool_schema_is_strict_and_requires_everything():
     assert set(schema["required"]) == set(schema["properties"])
     assert schema["properties"]["labels"]["items"]["enum"] == list(LABELS)
     assert "enum" not in intake.draft_tool(())["input_schema"]["properties"]["labels"]["items"]
+
+
+def test_old_payloads_without_new_fields_still_load():
+    d = intake.Draft.from_tool_input(tool_input(), LABELS)
+    payload = d.to_json()
+    for key in ("include_diagnostics", "diagnostics", "diagnostics_note"):
+        payload.pop(key)
+    payload["field_from_the_future"] = 1
+    loaded = intake.Draft.from_json(payload)
+    assert loaded.include_diagnostics and loaded.diagnostics == ""
+
+
+def test_body_stays_under_githubs_limit():
+    d = intake.Draft.from_tool_input(tool_input(logs="x\n" * 20000), LABELS)
+    for field in ("summary", "steps_to_reproduce", "expected_behavior", "actual_behavior"):
+        setattr(d, field, "y" * 10000)
+    d.attach_diagnostics("<details>" + "z" * 30000 + "</details>", "job 1")
+    body = intake.render_body(d, intake.Reporter("x", "https://t"))
+    assert len(body) <= intake.MAX_BODY_CHARS
+    assert "Pasted logs omitted for length" in body
+    assert "Reported on Discord" in body

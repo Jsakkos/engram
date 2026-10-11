@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-MAX_MESSAGE_CHARS = 6000
+MAX_MESSAGE_CHARS = 12_000  # room for a diagnostics summary plus the message
 
 
 @dataclass(frozen=True)

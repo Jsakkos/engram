@@ -35,3 +35,20 @@ def test_fence_outgrows_backticks_in_content():
 def test_truncate_and_inline():
     assert sanitize.clean("x" * 50, limit=30).endswith("(truncated)")
     assert sanitize.clean_inline("a |\n b") == "a \\| b"
+
+
+def test_redacts_secret_shapes():
+    text = (
+        "hook https://discord.com/api/webhooks/1/abc key=SUPERSECRET1 "
+        "T-" + "a" * 60 + " sk-ant-abcdefghijkl ghp_" + "b" * 30 + " /home/bob/x "
+        "token: eyJhbGciOiJIUzI1NiJ9.payload.sig monkey=banana"
+    )
+    out = sanitize.redact(text)
+    for secret in ("webhooks/1", "SUPERSECRET1", "T-aaa", "sk-ant-abc", "ghp_bbb", "bob", "eyJ"):
+        assert secret not in out
+    assert "monkey=banana" in out  # \b keeps ordinary words alone
+
+
+def test_published_text_is_redacted():
+    assert "SUPERSECRET1" not in sanitize.clean("my key=SUPERSECRET1")
+    assert "SUPERSECRET1" not in sanitize.fence("my key=SUPERSECRET1")

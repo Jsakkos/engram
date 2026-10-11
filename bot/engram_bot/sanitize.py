@@ -21,6 +21,29 @@ _DISCORD_CHANNEL = re.compile(r"<#\d+>")
 _DISCORD_EMOJI = re.compile(r"<a?:(\w+):\d+>")
 _EVERYONE = re.compile(r"@(everyone|here)\b")
 
+# Secrets and personal paths. Engram's diagnostics are already scrubbed by the backend, but
+# users also paste raw logs, and the backend misses some shapes (webhook URLs, MakeMKV keys)
+# and only knows its own home directory.
+_REDACTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"https://(?:\w+\.)?discord(?:app)?\.com/api/webhooks/\S+"), "<discord-webhook>"),
+    (re.compile(r"\bT-[A-Za-z0-9@_-]{40,}"), "<makemkv-key>"),
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)*"), "<token>"),
+    (re.compile(r"\bsk-ant-[A-Za-z0-9_-]{10,}"), "<anthropic-key>"),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}"), "<github-token>"),
+    (
+        re.compile(r"(?i)\b(api[_-]?key|key|token|password|passwd|secret)\s*[=:]\s*[^\s,;'\"]{6,}"),
+        r"\1=<redacted>",
+    ),
+    (re.compile(r"(?i)\b([A-Z]:\\Users\\)[^\\\s]+"), r"\1<user>"),
+    (re.compile(r"(/home/|/Users/)[^/\s]+"), r"\1<user>"),
+)
+
+
+def redact(text: str) -> str:
+    for pattern, replacement in _REDACTIONS:
+        text = pattern.sub(replacement, text)
+    return text
+
 
 def strip_discord_markup(text: str) -> str:
     text = _DISCORD_USER.sub("@user", text)
@@ -44,7 +67,7 @@ def truncate(text: str, limit: int) -> str:
 
 def clean(text: str, limit: int = 4000) -> str:
     """Prose field: strip Discord markup, escape HTML, defuse mentions, cap length."""
-    text = strip_discord_markup(text or "").strip()
+    text = redact(strip_discord_markup(text or "")).strip()
     text = html.escape(text, quote=False)
     text = neutralize_mentions(text)
     return truncate(text, limit)
@@ -64,7 +87,7 @@ def fence(text: str, limit: int = 20000, lang: str = "") -> str:
     Mentions are still defused, because workflows match on the raw body text
     (``contains(github.event.issue.body, '@claude')``), not the rendered issue.
     """
-    text = strip_discord_markup(text or "").strip("\n")
+    text = redact(strip_discord_markup(text or "")).strip("\n")
     text = truncate(neutralize_mentions(text), limit)
     longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
     ticks = "`" * max(3, longest + 1)

@@ -1,4 +1,4 @@
-from engram_bot.history import Item, build_messages
+from engram_bot.history import MAX_MESSAGE_CHARS, Item, build_messages
 
 
 def test_merges_and_names_speakers():
@@ -26,5 +26,7 @@ def test_starts_and_ends_on_user():
 
 
 def test_skips_empty_and_truncates():
-    out = build_messages([Item("user", "   ", "x"), Item("user", "y" * 10000, "x")])
+    out = build_messages(
+        [Item("user", "   ", "x"), Item("user", "y" * (MAX_MESSAGE_CHARS + 1), "x")]
+    )
     assert len(out) == 1 and out[0]["content"].endswith("(message truncated)")

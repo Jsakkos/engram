@@ -21,7 +21,7 @@ The bot uses Claude Haiku 5.5 through the Anthropic API.
 | Who files | Anyone, but only by pressing **File issue** on a draft they've seen. Discord accounts younger than 7 days, and users past 3 filed issues a day, can chat but not file. Maintainers are exempt. |
 | Home | A help **forum** channel: one post is one conversation and at most one issue. @mention in a text channel opens a thread. |
 | Labels | Applied directly, but only from an allowlist intersected with the repo's real labels, plus `from-discord` and `needs-triage` always. |
-| Diagnostics/logs | May go into public issues, in a collapsed `<details>` block. The prompt makes the bot warn that issues are public. `.zip` bundles aren't parsed yet; the bot asks for the relevant `report.md` excerpt. |
+| Diagnostics/logs | May go into public issues, in a collapsed `<details>` block. The prompt makes the bot warn that issues are public. Bundles are parsed by the bot (phase 2, below). |
 | Transcripts | Not stored. Discord already holds them and the bot rebuilds history from the thread each turn. The DB keeps only thread ownership, drafts and usage. |
 | DMs | Not answered. `/ask` gives a private answer without leaving the server. |
 | Persona | Says it is an AI, names the maintainer as the human who reads issues, promises no timelines. |
@@ -114,10 +114,9 @@ changes when `main` or the latest release changes, so most requests read it from
    - per-user and global limits;
    - the maintainer step-back and `/quiet`;
    - Docker deploy.
-2. **Next:**
-   - parse diagnostics `.zip` bundles (`report.md` plus the job-tagged log tail) into the
-     draft;
-   - GitHub → Discord follow-through: post in the originating thread when its issue
+2. **Phase 2:**
+   - **Done:** diagnostics `.zip` parsing (see below).
+   - **Next:** GitHub → Discord follow-through: post in the originating thread when its issue
      closes or ships in a release, and relay a maintainer's "needs info" comment to the
      thread. `drafts.issue_number` already maps issues to threads.
 3. **Later:**
@@ -125,3 +124,67 @@ changes when `main` or the latest release changes, so most requests read it from
      a docs-gap report);
    - 👍/👎 feedback on answers;
    - Sonnet escalation for long or low-confidence threads, if the data shows a need.
+
+## Phase 2a: diagnostics bundles
+
+The per-job bundle from `GET /api/diagnostics/report/{job_id}/bundle` contains:
+- `report.md`;
+- `job-detail.json`;
+- `job-logs.txt`;
+- `scan.log` / `rip.log`, when MakeMKV wrote them.
+
+When a user attaches one, `diagnostics.parse` reads only those five names, and produces two
+things.
+
+**For the model** (`summary_for_model`), under about 6K characters and placed where the
+attachment was in the history:
+- Engram, OS and MakeMKV versions, parsed from `report.md`;
+- the Job Context fields;
+- a digest of `job-detail.json`: review reason, error, classification, TMDB match, and
+  per-state track counts;
+- the last 25 ERROR/WARNING/traceback lines from the job log;
+- MakeMKV log lines that mention errors or failures.
+
+So the model stops asking for what the bundle already answers, and fills the draft's
+environment fields itself.
+
+**For the issue** (`issue_section`): a collapsed `<details>` block with `report.md` (capped
+at 8K), the error/warning log excerpt (10K) and the MakeMKV problems (4K).
+- The bot attaches it to the draft from the reporter's *latest* bundle in the thread.
+  Bundles other people post are read for the model but never published under the
+  reporter's issue.
+- The model only controls `include_diagnostics`, so the reporter can say "leave the logs
+  out"; it cannot rewrite the evidence.
+
+**Threat model.** The archive comes from the internet.
+- The zip is capped at 8 MB and at 64 members.
+- Unknown names, including path-traversal names, are ignored.
+- Each member read stops at 2 MB decompressed, whatever the header claims, which stops zip
+  bombs.
+- Encrypted and unsupported members are reported as "not a bundle".
+- Parsing runs in a worker thread.
+
+**Redaction.** Redaction moved into `sanitize.redact` and now applies to *everything*
+published to GitHub, not just bundles. It covers:
+- Discord webhooks;
+- MakeMKV `T-` keys;
+- JWTs;
+- `sk-ant-` and `gh*_` tokens;
+- `key=`, `token=` and `password=` values;
+- `C:\Users\<name>`, `/home/<name>` and `/Users/<name>` paths.
+
+The backend's own pass only knows JWTs, `key=` / `token=` values and the server's own home
+directory.
+
+Raw text attachments (an `engram.log`, say) are redacted before the model sees them, so the
+model can't copy a secret into the draft's logs field.
+
+**Body size.** GitHub rejects issue bodies over 65,536 characters. `render_body` keeps the
+body under 60K by first replacing the model's pasted logs, then the diagnostics block, with
+a pointer to the Discord thread.
+
+**Format coupling.** The parser keys on `report.md`'s `**Engram version**:` lines and the
+`- **ID**:` entries under `### Job Context`, both from `_build_markdown_summary`. If those
+change, the parser degrades: it still reads the logs and detail, but loses the version
+fields. Check `bot/tests/test_diagnostics.py`, which mirrors the format.
+

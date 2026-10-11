@@ -20,7 +20,7 @@ from collections import OrderedDict, defaultdict
 import discord
 from discord import app_commands
 
-from . import history, intake
+from . import diagnostics, history, intake, sanitize
 from .agent import FALLBACK_TEXT, Agent, TurnResult
 from .config import Settings
 from .github import GitHub, GitHubError
@@ -171,6 +171,8 @@ class EngramBot(discord.Client):
         self._latest_trigger: dict[int, int] = {}
         self._budget_noticed: dict[int, float] = {}
         self._attachment_cache: OrderedDict[int, str] = OrderedDict()
+        # attachment id -> parsed bundle, or the reason it couldn't be read
+        self._bundle_cache: OrderedDict[int, diagnostics.Diagnostics | str] = OrderedDict()
         self._register_commands()
 
     # -- lifecycle --------------------------------------------------------------------
@@ -320,11 +322,13 @@ class EngramBot(discord.Client):
             )
             try:
                 async with thread.typing():
-                    items = await self._history(thread, info)
+                    items, bundle = await self._history(thread, info)
                     conversation = history.build_messages(items)
                     if not conversation:
                         return
                     result = await self.agent.respond(conversation, context, self.kb.text)
+                if result.draft is not None and bundle is not None:
+                    result.draft.attach_diagnostics(bundle.issue_section(), bundle.preview())
                 self._record(result, author.id, thread.id)
                 await self._deliver(thread, info, result)
             except Exception:
@@ -392,7 +396,10 @@ class EngramBot(discord.Client):
         except discord.HTTPException:
             return None
 
-    async def _history(self, thread: discord.Thread, info: ThreadInfo) -> list[history.Item]:
+    async def _history(
+        self, thread: discord.Thread, info: ThreadInfo
+    ) -> tuple[list[history.Item], diagnostics.Diagnostics | None]:
+        """The thread as model history, plus the reporter's latest diagnostics bundle."""
         messages = [m async for m in thread.history(limit=self.settings.history_limit)]
         messages.reverse()
         if info.origin == "mention" and (not messages or messages[0].id != thread.id):
@@ -405,6 +412,7 @@ class EngramBot(discord.Client):
                 log.info("could not fetch the starter message of thread %s", thread.id)
         drafts = self.store.drafts_by_message([m.id for m in messages if m.author == self.user])
         items: list[history.Item] = []
+        bundle: diagnostics.Diagnostics | None = None
         for m in messages:
             if m.author == self.user:
                 if m.id == thread.id and info.origin == "command":
@@ -427,23 +435,36 @@ class EngramBot(discord.Client):
             text = m.content
             if self.user is not None:
                 text = text.replace(self.user.mention, "").replace(f"<@!{self.user.id}>", "")
-            text += await self._attachments_text(m)
+            extra, bundles = await self._attachments_text(m)
+            text += extra
+            if bundles and m.author.id == info.reporter_id:
+                bundle = bundles[-1]
             items.append(history.Item("user", text, m.author.display_name))
-        return items
+        return items, bundle
 
     def _name(self, m: discord.Message, info: ThreadInfo) -> str:
         member = m.guild.get_member(info.reporter_id) if m.guild else None
         return member.display_name if member else "reporter"
 
-    async def _attachments_text(self, m: discord.Message) -> str:
-        parts = []
+    async def _attachments_text(
+        self, m: discord.Message
+    ) -> tuple[str, list[diagnostics.Diagnostics]]:
+        """Readable attachments as text for the model, plus any diagnostics bundles."""
+        parts: list[str] = []
+        bundles: list[diagnostics.Diagnostics] = []
         for a in m.attachments:
             name = a.filename.lower()
             if name.endswith(".zip"):
-                parts.append(
-                    f"[attached {a.filename}: I can't open zip files yet. Ask the user to "
-                    "paste the relevant part of report.md from the diagnostics bundle.]"
-                )
+                parsed = await self._read_bundle(a)
+                if isinstance(parsed, diagnostics.Diagnostics):
+                    bundles.append(parsed)
+                    parts.append(parsed.summary_for_model())
+                else:
+                    parts.append(
+                        f"[attached {a.filename}: not a readable Engram diagnostics bundle "
+                        f"({parsed}). The bundle is the .zip downloaded from a job's detail "
+                        "view in the dashboard.]"
+                    )
                 continue
             is_text = (a.content_type or "").startswith("text/") or name.endswith(TEXT_SUFFIXES)
             if not is_text:
@@ -454,14 +475,39 @@ class EngramBot(discord.Client):
             text = self._attachment_cache.get(a.id)
             if text is None:
                 try:
-                    text = (await a.read()).decode("utf-8", errors="replace")
+                    raw = (await a.read()).decode("utf-8", errors="replace")
                 except discord.HTTPException:
+                    log.info("could not download attachment %s", a.filename, exc_info=True)
                     continue
-                self._attachment_cache[a.id] = text
-                if len(self._attachment_cache) > 200:
-                    self._attachment_cache.popitem(last=False)
+                text = sanitize.redact(raw)
+                self._remember(self._attachment_cache, a.id, text)
             parts.append(f"[attached {a.filename}]\n```\n{text}\n```")
-        return ("\n\n" + "\n\n".join(parts)) if parts else ""
+        return (("\n\n" + "\n\n".join(parts)) if parts else ""), bundles
+
+    async def _read_bundle(self, a: discord.Attachment) -> diagnostics.Diagnostics | str:
+        cached = self._bundle_cache.get(a.id)
+        if cached is not None:
+            return cached
+        if a.size > diagnostics.MAX_ZIP_BYTES:
+            result: diagnostics.Diagnostics | str = "it's larger than 8 MB"
+        else:
+            try:
+                data = await a.read()
+            except discord.HTTPException:
+                log.info("could not download attachment %s", a.filename, exc_info=True)
+                return "it couldn't be downloaded"  # not cached: worth retrying next turn
+            try:
+                result = await asyncio.to_thread(diagnostics.parse, data, a.filename)
+            except diagnostics.NotABundle as e:
+                result = str(e)
+        self._remember(self._bundle_cache, a.id, result)
+        return result
+
+    @staticmethod
+    def _remember(cache: OrderedDict, key: int, value) -> None:
+        cache[key] = value
+        if len(cache) > 200:
+            cache.popitem(last=False)
 
     # -- draft buttons ----------------------------------------------------------------
 

@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field
 from . import sanitize
 
 KINDS = ("bug", "feature", "docs")
+MAX_BODY_CHARS = 60_000
 
 KIND_LABEL = {"bug": "bug", "feature": "enhancement", "docs": "documentation"}
 KIND_TITLE = {"bug": "Bug report", "feature": "Feature request", "docs": "Documentation"}
@@ -48,13 +49,21 @@ def draft_tool(allowed_labels: tuple[str, ...]) -> dict:
             "empty string for any field that does not apply or that the user could not "
             "provide; never invent values. Set duplicate_of to an existing issue number "
             "when search_issues found the same problem, so the report is added to that "
-            "issue as a comment instead of opening a new one; otherwise 0."
+            "issue as a comment instead of opening a new one; otherwise 0. When the user "
+            "attached a diagnostics bundle, the bot attaches it to the issue; set "
+            "include_diagnostics to false only if they ask to leave it out."
         ),
         "strict": True,
         "input_schema": {
             "type": "object",
             "additionalProperties": False,
-            "required": [*_STRING_FIELDS, "kind", "labels", "duplicate_of"],
+            "required": [
+                *_STRING_FIELDS,
+                "kind",
+                "labels",
+                "duplicate_of",
+                "include_diagnostics",
+            ],
             "properties": {
                 "kind": {"type": "string", "enum": list(KINDS)},
                 "title": {
@@ -94,6 +103,7 @@ def draft_tool(allowed_labels: tuple[str, ...]) -> dict:
                     "description": "Area labels that clearly apply. May be empty.",
                 },
                 "duplicate_of": {"type": "integer"},
+                "include_diagnostics": {"type": "boolean"},
             },
         },
     }
@@ -117,6 +127,10 @@ class Draft:
     logs: str = ""
     labels: list[str] = field(default_factory=list)
     duplicate_of: int = 0
+    include_diagnostics: bool = True
+    # Set by the bot, not the model: the reporter's latest diagnostics bundle, rendered.
+    diagnostics: str = ""
+    diagnostics_note: str = ""
 
     @classmethod
     def from_tool_input(cls, data: dict, allowed_labels: tuple[str, ...]) -> Draft:
@@ -134,14 +148,26 @@ class Draft:
             duplicate_of = max(0, int(data.get("duplicate_of") or 0))
         except (TypeError, ValueError):
             duplicate_of = 0
-        return cls(kind=kind, labels=sorted(set(labels)), duplicate_of=duplicate_of, **values)
+        return cls(
+            kind=kind,
+            labels=sorted(set(labels)),
+            duplicate_of=duplicate_of,
+            include_diagnostics=data.get("include_diagnostics") is not False,
+            **values,
+        )
 
     def to_json(self) -> dict:
         return asdict(self)
 
     @classmethod
     def from_json(cls, data: dict) -> Draft:
-        return cls(**data)
+        known = {f for f in cls.__dataclass_fields__}
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+    def attach_diagnostics(self, section: str, note: str) -> None:
+        if self.include_diagnostics:
+            self.diagnostics = section
+            self.diagnostics_note = note
 
     @property
     def is_comment(self) -> bool:
@@ -201,12 +227,24 @@ def render_body(d: Draft, reporter: Reporter) -> str:
         env = _environment_table(d)
         if env:
             parts.append("### Environment\n\n" + env)
+    logs = ""
     if d.logs.strip():
-        parts.append(
-            "<details>\n<summary>Logs</summary>\n\n" + sanitize.fence(d.logs) + "\n\n</details>"
-        )
-    parts.append(_footer(reporter))
-    return "\n\n".join(p for p in parts if p)
+        logs = "<details>\n<summary>Logs</summary>\n\n" + sanitize.fence(d.logs) + "\n\n</details>"
+    diagnostics = d.diagnostics if d.include_diagnostics else ""
+    footer = _footer(reporter)
+
+    def assemble() -> str:
+        return "\n\n".join(p for p in [*parts, logs, diagnostics, footer] if p)
+
+    # GitHub rejects bodies over 65,536 characters. Shed the bulkiest optional parts first.
+    body = assemble()
+    if len(body) > MAX_BODY_CHARS and logs:
+        logs = "_Pasted logs omitted for length; they are in the Discord thread._"
+        body = assemble()
+    if len(body) > MAX_BODY_CHARS and diagnostics:
+        diagnostics = "_Diagnostics omitted for length; the bundle is in the Discord thread._"
+        body = assemble()
+    return body
 
 
 def render_comment(d: Draft, reporter: Reporter) -> str:
@@ -249,6 +287,8 @@ def preview_fields(d: Draft) -> list[tuple[str, str]]:
                 fields.append((name, cap(value)))
     if d.logs:
         fields.append(("Logs", f"{len(d.logs.splitlines())} line(s) attached"))
+    if d.diagnostics and d.include_diagnostics:
+        fields.append(("Diagnostics", cap(d.diagnostics_note or "bundle attached")))
     return fields
 
 
