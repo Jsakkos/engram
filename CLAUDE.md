@@ -202,6 +202,10 @@ React 19 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at lo
 
 Playwright-based E2E tests (10 spec files) that use simulation endpoints to test the full UI workflow without physical discs. Test scenarios include disc flow, progress display, review flow, error recovery, visual verification, realistic disc scenarios, and screenshot capture.
 
+### Discord support bot (`bot/`)
+
+Separate `uv` project (never imports `backend/`), deployed with Docker from `deploy/discord-bot/`. Claude Haiku 5.5 answers from the user-facing docs (fetched from `main`, sent whole as one cached system block) and drafts GitHub issues; **filing only happens when a person presses the draft's button**, in bot code, never as a model tool. Anything published to GitHub goes through `bot/engram_bot/sanitize.py` (defuses `@` mentions incl. `@claude`, escapes HTML). Docs pages the bot loads are `BOT_DOCS_INCLUDE` globs in `config.py`; moving or renaming user-facing docs may need that list updated. Commands from `bot/`: `uv sync`, `uv run pytest`, `uv run ruff check .`. Setup: `bot/README.md`; design: `docs/superpowers/specs/2026-10-11-discord-support-bot-design.md`.
+
 ## Key Patterns
 
 - **Async everywhere**: Backend uses async SQLAlchemy sessions, asyncio tasks for background jobs, and async subprocess for MakeMKV CLI calls

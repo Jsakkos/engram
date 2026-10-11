@@ -1,0 +1,71 @@
+"""Make Discord-sourced text safe to publish in a GitHub issue.
+
+Everything a user (or the model, which read the user) wrote is untrusted. On GitHub that
+text must not ping people (``@user``, ``@org/team``), must not reach the repo's
+``@claude`` workflow trigger, and must not inject raw HTML into the rendered issue.
+"""
+
+from __future__ import annotations
+
+import html
+import re
+
+ZWSP = "​"
+
+# GitHub mention syntax: @name or @org/team, not preceded by a word char (so emails pass).
+_MENTION = re.compile(r"(?<![\w`])@(?=[A-Za-z0-9][A-Za-z0-9-]*)")
+# Discord's raw mention / channel / role / emoji markup.
+_DISCORD_USER = re.compile(r"<@!?\d+>")
+_DISCORD_ROLE = re.compile(r"<@&\d+>")
+_DISCORD_CHANNEL = re.compile(r"<#\d+>")
+_DISCORD_EMOJI = re.compile(r"<a?:(\w+):\d+>")
+_EVERYONE = re.compile(r"@(everyone|here)\b")
+
+
+def strip_discord_markup(text: str) -> str:
+    text = _DISCORD_USER.sub("@user", text)
+    text = _DISCORD_ROLE.sub("@role", text)
+    text = _DISCORD_CHANNEL.sub("#channel", text)
+    text = _DISCORD_EMOJI.sub(r":\1:", text)
+    return text
+
+
+def neutralize_mentions(text: str) -> str:
+    """Break ``@name`` so GitHub renders it as text instead of a notification."""
+    text = _EVERYONE.sub(lambda m: "@" + ZWSP + m.group(1), text)
+    return _MENTION.sub("@" + ZWSP, text)
+
+
+def truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 20)].rstrip() + "\n… (truncated)"
+
+
+def clean(text: str, limit: int = 4000) -> str:
+    """Prose field: strip Discord markup, escape HTML, defuse mentions, cap length."""
+    text = strip_discord_markup(text or "").strip()
+    text = html.escape(text, quote=False)
+    text = neutralize_mentions(text)
+    return truncate(text, limit)
+
+
+def clean_inline(text: str, limit: int = 200) -> str:
+    """Single-line field (titles, table cells)."""
+    text = " ".join((text or "").split())
+    text = clean(text, limit)
+    return text.replace("|", "\\|")
+
+
+def fence(text: str, limit: int = 20000, lang: str = "") -> str:
+    """Wrap verbatim text (logs) in a code fence longer than any backtick run inside it.
+
+    Code blocks are not HTML-rendered and GitHub does not resolve mentions inside them.
+    Mentions are still defused, because workflows match on the raw body text
+    (``contains(github.event.issue.body, '@claude')``), not the rendered issue.
+    """
+    text = strip_discord_markup(text or "").strip("\n")
+    text = truncate(neutralize_mentions(text), limit)
+    longest = max((len(m) for m in re.findall(r"`+", text)), default=0)
+    ticks = "`" * max(3, longest + 1)
+    return f"{ticks}{lang}\n{text}\n{ticks}"
