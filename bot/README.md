@@ -19,6 +19,30 @@ Design and rationale: [`docs/superpowers/specs/2026-10-11-discord-support-bot-de
 
 A maintainer posting in a thread makes the bot step back until someone mentions it.
 
+**After an issue is filed, the bot keeps the thread informed.** It polls GitHub every 10
+minutes, so it works without a public webhook URL, and posts in the originating thread
+when:
+- the issue is closed as completed, closed as not planned or as a duplicate, or reopened;
+- a maintainer (owner, member or collaborator) comments on it. The comment is quoted with a
+  **Reply on GitHub** button. Only the reporter or a maintainer can use it; it opens a form
+  whose text is posted to the issue, sanitized and credited to the reporter's Discord name;
+- a new release comes out after an issue was closed as completed ("Engram vX.Y.Z is out
+  and should include the fix").
+
+Duplicate reports that were added to an existing issue get the same updates. The bot never
+relays its own comments back.
+
+**Feedback and the weekly digest.** 👍 / 👎 reactions on the bot's answers are recorded. If
+`DISCORD_MAINTAINER_LOG_CHANNEL_ID` is set, the bot posts a weekly digest there (Mondays,
+09:00 UTC by default). It covers new threads, answers, spend, drafts filed or cancelled,
+relayed comments, feedback counts, and links to answers people marked unhelpful, which
+usually point at a gap in the docs.
+
+**Escalation (off by default).** Set `BOT_ESCALATION_MODEL` (e.g. `claude-sonnet-5-5`) to
+answer with a stronger model in long threads (from the 6th user message) or once any answer
+in the thread got a 👎. Escalated calls use Anthropic's server-side refusal fallback, and
+their spend counts against the same daily budget at that model's prices.
+
 **Issues are only filed when a person presses a button.** The model can *propose* a draft
 (the `draft_issue` tool). The bot shows the draft as an embed with **File issue / Edit /
 Cancel** buttons, and only the reporter or a maintainer can press them. Before drafting,
@@ -120,6 +144,10 @@ The ones worth knowing:
 | `BOT_MAX_ISSUES_PER_USER_PER_DAY` | `3` | Maintainers are exempt. |
 | `BOT_MIN_ACCOUNT_AGE_DAYS` | `7` | Newer Discord accounts can chat but not file. |
 | `BOT_MAX_TURNS_PER_USER_PER_HOUR` | `30` | |
+| `BOT_GITHUB_POLL_MINUTES` | `10` | How often to check GitHub for issue updates, comments and releases. |
+| `BOT_ESCALATION_MODEL` | unset | Stronger model for long or 👎 threads, e.g. `claude-sonnet-5-5`. |
+| `BOT_ESCALATION_AFTER_TURNS` | `6` | User messages in a thread before escalating. |
+| `BOT_DIGEST_WEEKDAY` / `BOT_DIGEST_HOUR_UTC` | `0` / `9` | When the weekly digest posts (0 = Monday). |
 | `BOT_DOCS_INCLUDE` | user-facing docs | Comma-separated globs of repo paths to load. |
 | `ENGRAM_DOCS_DIR` | unset | Read docs from a local checkout instead of GitHub (development). |
 
@@ -153,7 +181,8 @@ run `ENGRAM_DOCS_DIR=.. uv run python -m engram_bot`.
 
 | Module | |
 |---|---|
-| `discord_app.py` | Events, slash commands, persistent draft buttons, turn orchestration. |
+| `discord_app.py` | Events, slash commands, persistent buttons, turn orchestration, feedback, digest. |
+| `followup.py` | GitHub → Discord follow-through (state changes, maintainer comments, releases). |
 | `agent.py` | Claude call and tool loop (`search_issues`, `get_issue`, `draft_issue`), usage and cost. |
 | `prompts.py` | Standing instructions (cached) and the per-turn context note. |
 | `knowledge.py` | Docs to system-prompt block, from GitHub or a local checkout. |
@@ -162,4 +191,4 @@ run `ENGRAM_DOCS_DIR=.. uv run python -m engram_bot`.
 | `diagnostics.py` | Engram diagnostics `.zip` to a model summary and an issue section. |
 | `sanitize.py` | Secret redaction, mention, HTML and length safety for anything published to GitHub. |
 | `github.py` | Minimal REST client with GitHub App or token auth. |
-| `store.py` | SQLite: threads, drafts, usage. |
+| `store.py` | SQLite: threads, drafts, usage, follows, relays, feedback, meta. |

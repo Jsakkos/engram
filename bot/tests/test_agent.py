@@ -172,3 +172,24 @@ async def test_usage_and_cost_accumulate():
 def test_long_prompts_use_the_higher_rate_card():
     p = Prices(input=0.1, output=0.5, cache_read=0.01, cache_write=0.2, long_prompt_multiplier=5)
     assert p.cost(0, 0, 100_001, 0) == 5 * p.cost(0, 0, 100_000, 0) * 100_001 / 100_000
+
+
+async def test_escalation_uses_the_beta_fallback_path_and_its_own_prices():
+    beta = FakeMessages([reply(text("deeper answer"), u=usage(1_000_000, 0))])
+    agent, plain = make_agent([])
+    agent._client.beta = NS(messages=beta)
+    result = await agent.respond(CONVO, TurnContext(), "K", model="claude-sonnet-5-5")
+    assert result.text == "deeper answer" and result.model == "claude-sonnet-5-5"
+    call = beta.calls[0]
+    assert call["model"] == "claude-sonnet-5-5"
+    assert call["betas"] == ["server-side-fallback-2026-07-01"]
+    assert call["fallbacks"] == "default"
+    assert plain.calls == []
+    assert abs(result.usage.cost_usd - 2.0) < 1e-9  # Sonnet input price, not Haiku's
+
+
+async def test_default_model_never_sends_fallbacks():
+    agent, fake = make_agent([reply(text("a"))])
+    result = await agent.respond(CONVO, TurnContext(), "K")
+    assert result.model == "claude-haiku-5-5"
+    assert "fallbacks" not in fake.calls[0] and "betas" not in fake.calls[0]

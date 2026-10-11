@@ -93,3 +93,52 @@ async def test_app_auth_mints_and_caches_installation_token():
     await gh.list_labels()
     await gh.list_labels()
     assert calls.count("/app/installations/42/access_tokens") == 1
+
+
+async def test_polling_endpoints_parse_and_skip_prs():
+    def handler(request: httpx.Request):
+        assert request.url.params["since"] == "2026-10-11T00:00:00Z"
+        if request.url.path == "/repos/o/r/issues":
+            return httpx.Response(
+                200,
+                json=[
+                    issue_json(1, state="closed", state_reason="completed", closed_at="x"),
+                    issue_json(2, pull_request={}),
+                ],
+            )
+        if request.url.path == "/repos/o/r/issues/comments":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 9,
+                        "issue_url": "https://api.github.com/repos/o/r/issues/1",
+                        "user": {"login": "Jsakkos", "type": "User"},
+                        "author_association": "OWNER",
+                        "body": "which drive?",
+                        "html_url": "https://gh/c/9",
+                        "created_at": "2026-10-11T01:00:00Z",
+                    }
+                ],
+            )
+        return httpx.Response(404)
+
+    gh = GitHub("o/r", token="t", transport=httpx.MockTransport(handler))
+    changes = await gh.issues_updated_since("2026-10-11T00:00:00Z")
+    assert [(c.number, c.state_reason) for c in changes] == [(1, "completed")]
+    (c,) = await gh.comments_since("2026-10-11T00:00:00Z")
+    assert (c.issue_number, c.author, c.association, c.author_is_bot) == (
+        1,
+        "Jsakkos",
+        "OWNER",
+        False,
+    )
+
+
+async def test_create_comment_returns_id():
+    def handler(request: httpx.Request):
+        return httpx.Response(201, json={"id": 77, "html_url": "https://gh/c/77"})
+
+    gh = GitHub("o/r", token="t", transport=httpx.MockTransport(handler))
+    ref = await gh.create_comment(1, "x")
+    assert (ref.id, ref.url) == (77, "https://gh/c/77")

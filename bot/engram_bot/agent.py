@@ -110,7 +110,19 @@ class TurnResult:
     draft: intake.Draft | None = None
     usage: Usage = field(default_factory=Usage)
     tools_used: list[str] = field(default_factory=list)
+    model: str = ""
 
+
+# USD per million tokens for models the bot may escalate to (1-hour cache writes bill at 2x
+# input). The configured model's prices come from Settings; anything unknown falls back to
+# them too, which only skews the spend estimate.
+KNOWN_PRICES = {
+    "claude-sonnet-5-5": Prices(input=2.0, output=10.0, cache_read=0.20, cache_write=4.0),
+    "claude-opus-5-5": Prices(input=4.0, output=20.0, cache_read=0.20, cache_write=8.0),
+}
+# Models that take server-side refusal fallback (beta). Haiku 5.5 has none.
+SERVER_FALLBACK_MODELS = frozenset({"claude-sonnet-5-5", "claude-opus-5-5"})
+SERVER_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 FALLBACK_TEXT = (
     "Sorry, I couldn't put an answer together just now. Someone from the team will take "
@@ -163,19 +175,34 @@ class Agent:
             },
         ]
 
+    async def _create(self, model: str, **kwargs):
+        if model in SERVER_FALLBACK_MODELS:
+            return await self._client.beta.messages.create(
+                model=model, betas=[SERVER_FALLBACK_BETA], fallbacks="default", **kwargs
+            )
+        return await self._client.messages.create(model=model, **kwargs)
+
     async def respond(
-        self, conversation: list[dict], context: TurnContext, knowledge: str
+        self,
+        conversation: list[dict],
+        context: TurnContext,
+        knowledge: str,
+        *,
+        model: str | None = None,
     ) -> TurnResult:
-        """``conversation`` is history from ``history.build_messages`` (ends on a user turn)."""
+        """``conversation`` is history from ``history.build_messages`` (ends on a user turn).
+        ``model`` overrides the configured model for this turn (escalation)."""
+        model = model or self._model
+        prices = self._prices if model == self._model else KNOWN_PRICES.get(model, self._prices)
         can_draft = context.mode != "ask" and context.can_file
         tools = self._tools(can_draft)
         messages = [*conversation, {"role": "system", "content": context.render()}]
-        result = TurnResult(text="")
+        result = TurnResult(text="", model=model)
 
         for _ in range(MAX_STEPS):
             try:
-                response = await self._client.messages.create(
-                    model=self._model,
+                response = await self._create(
+                    model,
                     max_tokens=self._max_tokens,
                     system=self._system(knowledge),
                     tools=tools,
@@ -192,7 +219,7 @@ class Agent:
                 result.text = result.text or FALLBACK_TEXT
                 return result
 
-            result.usage.add(response.usage, self._prices)
+            result.usage.add(response.usage, prices)
             text = "\n\n".join(b.text for b in response.content if b.type == "text").strip()
 
             if response.stop_reason == "refusal":

@@ -16,6 +16,7 @@ import logging
 import re
 import time
 from collections import OrderedDict, defaultdict
+from datetime import UTC, datetime
 
 import discord
 from discord import app_commands
@@ -23,10 +24,11 @@ from discord import app_commands
 from . import diagnostics, history, intake, sanitize
 from .agent import FALLBACK_TEXT, Agent, TurnResult
 from .config import Settings
+from .followup import FollowUp
 from .github import GitHub, GitHubError
 from .knowledge import KnowledgeBase
 from .prompts import TurnContext
-from .store import DAY, Store, ThreadInfo
+from .store import DAY, Digest, Store, ThreadInfo
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +48,34 @@ BUDGET_TEXT = (
     "see this thread, or you can try me again tomorrow."
 )
 RATE_TEXT = "You're sending me a lot of messages. Give me a little while and try again."
+
+
+FEEDBACK_EMOJI = {"👍": 1, "👎": -1}
+
+
+def render_digest(d: Digest, repo: str, guild_id: int | str = "@me") -> str:
+    """The weekly maintainer summary. Plain text so it reads in any client."""
+    lines = [
+        "**Engram support bot: weekly digest**",
+        f"- {d.threads} new thread(s), {d.turns} answer(s), ~${d.spend_usd:.2f} spent",
+        f"- {d.drafts} draft(s): {len(d.filed)} filed, {d.cancelled} cancelled",
+        f"- {d.relays} maintainer comment(s) relayed to Discord",
+        f"- Feedback: {d.thumbs_up} 👍 / {d.thumbs_down} 👎",
+    ]
+    if d.filed:
+        lines.append("\n**Filed from Discord**")
+        for number, payload, url in d.filed[:25]:
+            title = str(payload.get("title", ""))[:100]
+            lines.append(
+                f"- #{number} {title} <{url or f'https://github.com/{repo}/issues/{number}'}>"
+            )
+    if d.downvoted:
+        lines.append("\n**Answers people marked unhelpful** (often a docs gap)")
+        for thread_id, message_id in d.downvoted:
+            lines.append(f"- https://discord.com/channels/{guild_id}/{thread_id}/{message_id}")
+    if not (d.threads or d.turns or d.filed):
+        lines.append("\nA quiet week.")
+    return "\n".join(lines)
 
 
 def chunk(text: str, limit: int = DISCORD_LIMIT) -> list[str]:
@@ -127,6 +157,49 @@ def draft_embed(d: intake.Draft, draft_id: int) -> discord.Embed:
     return embed
 
 
+class ReplyButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"engram:reply:(?P<id>\d+)",
+):
+    """Under a relayed maintainer comment: lets the reporter answer on the issue."""
+
+    def __init__(self, relay_id: int) -> None:
+        super().__init__(
+            discord.ui.Button(
+                label="Reply on GitHub",
+                style=discord.ButtonStyle.primary,
+                custom_id=f"engram:reply:{relay_id}",
+            )
+        )
+        self.relay_id = relay_id
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):  # noqa: D102
+        return cls(int(match["id"]))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        bot = interaction.client
+        assert isinstance(bot, EngramBot)
+        await bot.on_reply_button(interaction, self.relay_id)
+
+
+class ReplyModal(discord.ui.Modal):
+    reply = discord.ui.TextInput(
+        label="Your reply",
+        style=discord.TextStyle.paragraph,
+        max_length=3000,
+        placeholder="This is posted publicly on the GitHub issue, credited to your Discord name.",
+    )
+
+    def __init__(self, bot: EngramBot, relay_id: int, issue_number: int) -> None:
+        super().__init__(title=f"Reply on issue #{issue_number}")
+        self.bot = bot
+        self.relay_id = relay_id
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await self.bot.post_reply(interaction, self.relay_id, str(self.reply))
+
+
 class BugModal(discord.ui.Modal):
     summary = discord.ui.TextInput(label="Short summary", max_length=90)
     details = discord.ui.TextInput(
@@ -167,6 +240,7 @@ class EngramBot(discord.Client):
         self.kb = knowledge
         self.gh = github
         self.tree = app_commands.CommandTree(self)
+        self.followup = FollowUp(github, store, self.send_to_thread)
         self._locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._latest_trigger: dict[int, int] = {}
         self._budget_noticed: dict[int, float] = {}
@@ -178,7 +252,7 @@ class EngramBot(discord.Client):
     # -- lifecycle --------------------------------------------------------------------
 
     async def setup_hook(self) -> None:
-        self.add_dynamic_items(DraftButton)
+        self.add_dynamic_items(DraftButton, ReplyButton)
         await self.kb.refresh()
         await self._prepare_labels()
         if self.settings.guild_id:
@@ -188,9 +262,49 @@ class EngramBot(discord.Client):
         else:
             await self.tree.sync()
         self._refresh_task = asyncio.create_task(self._refresh_loop())
+        self._poll_task = asyncio.create_task(self._poll_loop())
+        self._digest_task = asyncio.create_task(self._digest_loop())
 
     async def on_ready(self) -> None:
         log.info("connected as %s", self.user)
+
+    async def _poll_loop(self) -> None:
+        await self.wait_until_ready()
+        while not self.is_closed():
+            try:
+                await self.followup.poll()
+            except Exception:
+                log.exception("follow-through poll crashed; retrying next interval")
+            await asyncio.sleep(self.settings.github_poll_minutes * 60)
+
+    async def send_to_thread(
+        self, thread_id: int, content: str, relay_id: int | None
+    ) -> int | None:
+        """Post a follow-through notice. Returns the message id; 0 means the thread is gone
+        for good (don't retry); None means try again on the next poll."""
+        try:
+            channel = self.get_channel(thread_id) or await self.fetch_channel(thread_id)
+        except (discord.NotFound, discord.Forbidden):
+            log.warning("thread %s is gone or hidden; dropping follow-through", thread_id)
+            return 0
+        except discord.HTTPException:
+            log.info("could not fetch thread %s", thread_id, exc_info=True)
+            return None
+        if not isinstance(channel, discord.Thread):
+            return 0
+        view = None
+        if relay_id is not None:
+            view = discord.ui.View(timeout=None)
+            view.add_item(ReplyButton(relay_id))
+        try:
+            message = await channel.send(content[:DISCORD_LIMIT], view=view)
+        except discord.Forbidden:
+            log.warning("not allowed to post in thread %s", thread_id)
+            return 0
+        except discord.HTTPException:
+            log.info("could not post in thread %s", thread_id, exc_info=True)
+            return None
+        return message.id
 
     async def _refresh_loop(self) -> None:
         while not self.is_closed():
@@ -241,6 +355,70 @@ class EngramBot(discord.Client):
         return turns >= self.settings.max_turns_per_user_per_hour
 
     # -- message routing --------------------------------------------------------------
+
+    def turn_model(self, thread_id: int, conversation: list[dict]) -> str | None:
+        """The escalation model for long threads or after a 👎, if one is configured."""
+        model = self.settings.escalation_model
+        if not model:
+            return None
+        user_turns = sum(1 for m in conversation if m["role"] == "user")
+        if user_turns >= self.settings.escalation_after_turns:
+            return model
+        if self.store.thread_downvoted(thread_id):
+            return model
+        return None
+
+    # -- feedback ---------------------------------------------------------------------
+
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
+        await self._on_reaction(payload, added=True)
+
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
+        await self._on_reaction(payload, added=False)
+
+    async def _on_reaction(self, payload: discord.RawReactionActionEvent, *, added: bool):
+        value = FEEDBACK_EMOJI.get(str(payload.emoji))
+        if value is None or self.user is None or payload.user_id == self.user.id:
+            return
+        if not self.store.is_bot_message(payload.message_id):
+            return
+        self.store.set_feedback(payload.message_id, payload.user_id, value if added else None)
+
+    # -- weekly digest ----------------------------------------------------------------
+
+    async def _digest_loop(self) -> None:
+        await self.wait_until_ready()
+        while not self.is_closed():
+            try:
+                await self.maybe_post_digest()
+            except Exception:
+                log.exception("digest failed; retrying next hour")
+            await asyncio.sleep(3600)
+
+    async def maybe_post_digest(self, now: datetime | None = None) -> bool:
+        channel_id = self.settings.maintainer_log_channel_id
+        if not channel_id:
+            return False
+        now = now or datetime.now(UTC)
+        if now.weekday() != self.settings.digest_weekday:
+            return False
+        if now.hour < self.settings.digest_hour_utc:
+            return False
+        last = self.store.get_meta("digest_at")
+        if last and now.timestamp() - float(last) < 6 * DAY:
+            return False
+        channel = self.get_channel(channel_id)
+        if not isinstance(channel, discord.abc.Messageable):
+            return False
+        since = float(last) if last else now.timestamp() - 7 * DAY
+        guild = getattr(channel, "guild", None)
+        text = render_digest(
+            self.store.digest(since), self.settings.github_repo, guild.id if guild else "@me"
+        )
+        for part in chunk(text):
+            await channel.send(part)
+        self.store.set_meta("digest_at", str(now.timestamp()))
+        return True
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot or message.guild is None or self.user is None:
@@ -326,7 +504,12 @@ class EngramBot(discord.Client):
                     conversation = history.build_messages(items)
                     if not conversation:
                         return
-                    result = await self.agent.respond(conversation, context, self.kb.text)
+                    result = await self.agent.respond(
+                        conversation,
+                        context,
+                        self.kb.text,
+                        model=self.turn_model(thread.id, conversation),
+                    )
                 if result.draft is not None and bundle is not None:
                     result.draft.attach_diagnostics(bundle.issue_section(), bundle.preview())
                 self._record(result, author.id, thread.id)
@@ -361,7 +544,8 @@ class EngramBot(discord.Client):
 
     async def _deliver(self, thread: discord.Thread, info: ThreadInfo, result: TurnResult):
         for part in chunk(result.text):
-            await thread.send(part)
+            sent = await thread.send(part)
+            self.store.add_bot_message(sent.id, thread.id, result.model)
         if result.draft is None:
             return
         for old in self.store.supersede_drafts(thread.id):
@@ -570,10 +754,19 @@ class EngramBot(discord.Client):
                 target = await self.gh.get_issue(draft.duplicate_of)
                 if target is None:
                     raise GitHubError(f"issue #{draft.duplicate_of} does not exist")
-                url = await self.gh.create_comment(
+                comment = await self.gh.create_comment(
                     draft.duplicate_of, intake.render_comment(draft, reporter)
                 )
-                number = draft.duplicate_of
+                self.store.add_own_comment(comment.id)
+                number, url = draft.duplicate_of, comment.url
+                self.store.add_follow(
+                    number,
+                    row.thread_id,
+                    row.reporter_id,
+                    "comment",
+                    target.state,
+                    target.state_reason,
+                )
                 done = f"Added your report to #{number}: <{url}>"
             else:
                 issue = await self.gh.create_issue(
@@ -582,6 +775,7 @@ class EngramBot(discord.Client):
                     draft.issue_labels(self.settings.always_labels),
                 )
                 number, url = issue.number, issue.url
+                self.store.add_follow(number, row.thread_id, row.reporter_id, "issue")
                 done = (
                     f"Filed as #{number}: <{url}>\n"
                     f"Thanks! {self.settings.maintainer_name} will take it from here."
@@ -599,6 +793,62 @@ class EngramBot(discord.Client):
             await self._close_draft_message(channel, interaction.message.id, f"Filed: #{number}")
         await interaction.followup.send(done)
         await self._log_filed(number, url, thread_url, draft)
+
+    async def on_reply_button(self, interaction: discord.Interaction, relay_id: int) -> None:
+        relay = self.store.relay(relay_id)
+        if relay is None:
+            await interaction.response.send_message(
+                "I can't find that comment any more.", ephemeral=True
+            )
+            return
+        user = interaction.user
+        if user.id != relay.reporter_id and not self.is_maintainer(user):
+            await interaction.response.send_message(
+                "Only the person who reported this can reply from here. You can comment on "
+                f"the issue directly: <{relay.url}>",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_modal(ReplyModal(self, relay_id, relay.issue_number))
+
+    async def post_reply(self, interaction: discord.Interaction, relay_id: int, text: str):
+        relay = self.store.relay(relay_id)
+        if relay is None or not text.strip():
+            await interaction.response.send_message("Nothing was posted.", ephemeral=True)
+            return
+        if self.over_rate(interaction.user.id):
+            await interaction.response.send_message(RATE_TEXT, ephemeral=True)
+            return
+        await interaction.response.defer(thinking=True)
+        name = sanitize.clean_inline(interaction.user.display_name, 80)
+        thread_url = getattr(interaction.channel, "jump_url", "") or ""
+        body = (
+            f"{sanitize.clean(text, 3000)}\n\n---\n"
+            f"_Reply from **{name}** on Discord ([conversation]({thread_url})), "
+            f"answering @{sanitize.ZWSP}{sanitize.clean_inline(relay.author, 40)}._"
+        )
+        try:
+            comment = await self.gh.create_comment(relay.issue_number, body)
+        except GitHubError as e:
+            log.error("posting reply to #%s failed: %s", relay.issue_number, e)
+            await interaction.followup.send(
+                "GitHub didn't accept that just now. Press the button again in a minute."
+            )
+            return
+        self.store.add_own_comment(comment.id)
+        # Counts toward the per-user rate limit like a model turn, at no cost.
+        self.store.record_usage(
+            user_id=interaction.user.id,
+            thread_id=relay.thread_id,
+            input_tokens=0,
+            output_tokens=0,
+            cache_read=0,
+            cache_write=0,
+            cost_usd=0.0,
+        )
+        await interaction.followup.send(
+            f"Posted your reply on #{relay.issue_number}: <{comment.url}>"
+        )
 
     async def _log_filed(self, number: int, url: str, thread_url: str, d: intake.Draft) -> None:
         channel_id = self.settings.maintainer_log_channel_id

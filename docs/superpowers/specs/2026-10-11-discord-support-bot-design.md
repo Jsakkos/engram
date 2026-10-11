@@ -114,16 +114,10 @@ changes when `main` or the latest release changes, so most requests read it from
    - per-user and global limits;
    - the maintainer step-back and `/quiet`;
    - Docker deploy.
-2. **Phase 2:**
-   - **Done:** diagnostics `.zip` parsing (see below).
-   - **Next:** GitHub → Discord follow-through: post in the originating thread when its issue
-     closes or ships in a release, and relay a maintainer's "needs info" comment to the
-     thread. `drafts.issue_number` already maps issues to threads.
-3. **Later:**
-   - a weekly digest of `from-discord` issues and unanswered questions (which doubles as
-     a docs-gap report);
-   - 👍/👎 feedback on answers;
-   - Sonnet escalation for long or low-confidence threads, if the data shows a need.
+2. **Phase 2 (done):** diagnostics `.zip` parsing (2a) and GitHub → Discord
+   follow-through (2b).
+3. **Phase 3 (done):** 👍/👎 feedback, a weekly digest, and optional escalation to a
+   stronger model (3, below).
 
 ## Phase 2a: diagnostics bundles
 
@@ -187,4 +181,78 @@ a pointer to the Discord thread.
 `- **ID**:` entries under `### Job Context`, both from `_build_markdown_summary`. If those
 change, the parser degrades: it still reads the logs and detail, but loses the version
 fields. Check `bot/tests/test_diagnostics.py`, which mirrors the format.
+
+## Phase 2b: GitHub → Discord follow-through
+
+**Polling, not webhooks.** The bot runs on a home server with no public URL. Each
+`BOT_GITHUB_POLL_MINUTES` (default 10) it makes three requests, whatever the number of
+followed issues:
+- issues updated since the cursor (`state=all&since=`);
+- repo comments updated since the cursor (`/issues/comments?since=`);
+- `releases/latest`.
+
+**State.**
+- `follows` maps each issue to each thread that reported it: one row per (issue, thread),
+  so duplicates added as comments are followed too. A row is written when the issue or
+  comment is filed, with the issue's state at that moment.
+- `meta.poll_since` is the cursor. Each window overlaps the last by 2 minutes, so a clock
+  difference can't skip an update. Repeats are harmless: notices fire only on a state
+  change, and `relays` is unique per (comment, thread).
+- On the very first poll the bot records the cursor and the current release and posts
+  nothing, so it never replays the repo's history.
+- A GitHub error leaves the cursor in place, so the next poll covers the window again.
+
+**What gets posted.**
+- **State changes:** closed as completed, not planned or duplicate, and reopened.
+- **Maintainer comments:** only from `OWNER`, `MEMBER` or `COLLABORATOR` authors, never from
+  bots, never from the bot's own comments (`own_comments`, which matters with token auth,
+  where the bot posts as the maintainer), and only comments made after the follow began.
+  - The comment is quoted (up to 1,500 characters) with a persistent **Reply on GitHub**
+    button (`engram:reply:<relay id>`).
+  - Only the relay's reporter or a maintainer can open its form.
+  - The reply is sanitized, credited to the reporter's Discord name and the thread, and
+    posted as a comment, which is recorded as the bot's own.
+  - Posting a reply counts toward the per-user rate limit.
+  - The model is told it can't post on GitHub, and to help the user word an answer and
+    point them to the button.
+- **Releases:** when `releases/latest` changes, each follow closed as completed *before*
+  that release was published gets one "vX.Y.Z is out" notice. One closed afterwards waits
+  for the next release.
+
+**Delivery.** A failed Discord post returns `None` and is retried next poll: the follow's
+state isn't advanced, or the relay row is deleted. A thread that is gone or forbidden
+returns `0` and is dropped, so a deleted thread doesn't retry forever.
+
+## Phase 3: feedback, digest, escalation
+
+**Feedback.**
+- Every bot reply is recorded in `bot_messages` with the model that wrote it.
+- Raw reaction events (no member cache needed) turn 👍 / 👎 on those messages into
+  `feedback` rows, one per user per message. Removing the reaction removes the row.
+- The bot ignores its own reactions.
+
+**Digest.** Posted to the maintainer log channel once a week, at `BOT_DIGEST_WEEKDAY` /
+`BOT_DIGEST_HOUR_UTC`, with at most one post per 6 days; the time is kept in
+`meta.digest_at`. It lists:
+- threads, answers and spend;
+- drafts filed or cancelled, and the filed issues;
+- relayed comments;
+- feedback counts;
+- jump links to answers with a net-negative score.
+
+Downvoted answers are the docs-gap signal: an answer marked unhelpful usually means the
+docs didn't cover the question.
+
+**Escalation.** `BOT_ESCALATION_MODEL` is empty by default, so it stays off. When set, a
+turn uses that model once the thread has `BOT_ESCALATION_AFTER_TURNS` user messages, or
+once any answer in the thread has a net 👎.
+- History is text only (see "A turn"), so switching models mid-thread needs no
+  thinking-block handling.
+- Escalated calls to Claude Sonnet 5.5 or Claude Opus 5.5 go through
+  `client.beta.messages` with `fallbacks: "default"` (beta
+  `server-side-fallback-2026-07-01`), so a safety-classifier refusal is retried on a
+  fallback model server-side. Claude Haiku 5.5 has no server-side fallback, and its calls
+  stay on the plain endpoint.
+- Spend is priced per model (`agent.KNOWN_PRICES`) and counts against the same daily
+  budget.
 

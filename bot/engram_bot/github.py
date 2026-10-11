@@ -36,6 +36,34 @@ class IssueRef:
     state_reason: str | None = None
 
 
+@dataclass(frozen=True)
+class CommentRef:
+    id: int
+    url: str
+
+
+@dataclass(frozen=True)
+class IssueChange:
+    number: int
+    title: str
+    state: str
+    state_reason: str | None
+    closed_at: str | None
+    url: str
+
+
+@dataclass(frozen=True)
+class Comment:
+    id: int
+    issue_number: int
+    author: str
+    author_is_bot: bool
+    association: str  # OWNER | MEMBER | COLLABORATOR | CONTRIBUTOR | NONE ...
+    body: str
+    url: str
+    created_at: str
+
+
 def _issue(data: dict) -> IssueRef:
     return IssueRef(
         number=data["number"],
@@ -148,12 +176,82 @@ class GitHub:
         self._raise(r, "create the issue")
         return _issue(r.json())
 
-    async def create_comment(self, number: int, body: str) -> str:
+    async def create_comment(self, number: int, body: str) -> CommentRef:
         r = await self._request(
             "POST", f"/repos/{self.repo}/issues/{number}/comments", json={"body": body}
         )
         self._raise(r, f"comment on #{number}")
-        return r.json()["html_url"]
+        data = r.json()
+        return CommentRef(id=data["id"], url=data["html_url"])
+
+    async def issues_updated_since(self, since: str, max_pages: int = 5) -> list[IssueChange]:
+        """Issues (not PRs) whose state, labels, body or comments changed since ``since``."""
+        changes: list[IssueChange] = []
+        for page in range(1, max_pages + 1):
+            r = await self._request(
+                "GET",
+                f"/repos/{self.repo}/issues",
+                params={
+                    "state": "all",
+                    "since": since,
+                    "sort": "updated",
+                    "direction": "asc",
+                    "per_page": 100,
+                    "page": page,
+                },
+            )
+            self._raise(r, "list updated issues")
+            batch = r.json()
+            changes += [
+                IssueChange(
+                    number=i["number"],
+                    title=i["title"],
+                    state=i["state"],
+                    state_reason=i.get("state_reason"),
+                    closed_at=i.get("closed_at"),
+                    url=i["html_url"],
+                )
+                for i in batch
+                if "pull_request" not in i
+            ]
+            if len(batch) < 100:
+                break
+        return changes
+
+    async def comments_since(self, since: str, max_pages: int = 5) -> list[Comment]:
+        """Issue comments across the repo created or edited since ``since``, oldest first."""
+        comments: list[Comment] = []
+        for page in range(1, max_pages + 1):
+            r = await self._request(
+                "GET",
+                f"/repos/{self.repo}/issues/comments",
+                params={
+                    "since": since,
+                    "sort": "updated",
+                    "direction": "asc",
+                    "per_page": 100,
+                    "page": page,
+                },
+            )
+            self._raise(r, "list recent comments")
+            batch = r.json()
+            for c in batch:
+                user = c.get("user") or {}
+                comments.append(
+                    Comment(
+                        id=c["id"],
+                        issue_number=int(c["issue_url"].rsplit("/", 1)[1]),
+                        author=user.get("login", "someone"),
+                        author_is_bot=user.get("type") == "Bot",
+                        association=c.get("author_association", "NONE"),
+                        body=c.get("body") or "",
+                        url=c["html_url"],
+                        created_at=c["created_at"],
+                    )
+                )
+            if len(batch) < 100:
+                break
+        return comments
 
     # -- labels -----------------------------------------------------------------------
 

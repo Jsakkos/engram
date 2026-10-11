@@ -55,7 +55,7 @@ LOGS = "\n".join(
         "2026-10-10 10:00:01 | WARNING  | job=42 | app.x:f:2 - slow provider",
         "2026-10-10 10:00:02 | ERROR    | job=42 | app.x:f:3 - no subtitles for S01E01",
         "2026-10-10 10:00:03 | INFO     | job=42 | app.x:f:4 - webhook "
-        "https://discord.com/api/webhooks/123/abcdef",
+        + "https://discord.com/api/webhooks/123/abcdef",
     ]
 )
 

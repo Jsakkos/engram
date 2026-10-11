@@ -67,6 +67,11 @@ class Settings:
     docs_site_url: str = "https://jsakkos.github.io/engram/"
     changelog_sections: int = 3
     knowledge_refresh_hours: float = 6.0
+    github_poll_minutes: float = 10.0
+    escalation_model: str = ""  # e.g. claude-sonnet-5-5; empty = never escalate
+    escalation_after_turns: int = 6
+    digest_weekday: int = 0  # Monday; digest posts to the maintainer log channel
+    digest_hour_utc: int = 9
 
     # Labels the model may apply, on top of the two the bot always applies.
     allowed_labels: tuple[str, ...] = (
@@ -148,6 +153,13 @@ class Settings:
             knowledge_refresh_hours=_float(
                 "BOT_KNOWLEDGE_REFRESH_HOURS", defaults.knowledge_refresh_hours
             ),
+            github_poll_minutes=_float("BOT_GITHUB_POLL_MINUTES", defaults.github_poll_minutes),
+            escalation_model=os.environ.get("BOT_ESCALATION_MODEL", defaults.escalation_model),
+            escalation_after_turns=_int(
+                "BOT_ESCALATION_AFTER_TURNS", defaults.escalation_after_turns
+            ),
+            digest_weekday=_int("BOT_DIGEST_WEEKDAY", defaults.digest_weekday),
+            digest_hour_utc=_int("BOT_DIGEST_HOUR_UTC", defaults.digest_hour_utc),
             allowed_labels=_list("BOT_ALLOWED_LABELS", defaults.allowed_labels),
             always_labels=_list("BOT_ALWAYS_LABELS", defaults.always_labels),
             min_account_age_days=_int("BOT_MIN_ACCOUNT_AGE_DAYS", defaults.min_account_age_days),
