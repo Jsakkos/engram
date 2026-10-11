@@ -352,6 +352,12 @@ async def test_reply_on_github_flow():
     await bot.on_reply_button(reporter, relay_id)
     assert reporter.response.modal is not None
 
+    bot.filing_block = lambda user: "their Discord account is too new"
+    blocked = interaction(7)
+    await bot.post_reply(blocked, relay_id, "spam")
+    assert posted == [] and "too new" in blocked.response.messages[0]
+
+    bot.filing_block = lambda user: "they've reached today's limit for new issues"
     await bot.post_reply(reporter, relay_id, "It's an LG WH16NS40 @someone")
     number, body = posted[0]
     assert number == 10

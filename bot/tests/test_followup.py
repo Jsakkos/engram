@@ -149,3 +149,17 @@ async def test_long_comments_are_trimmed_and_quoted():
     await fu.poll(T0 + timedelta(hours=1))
     text = sink.sent[0][1]
     assert "> line one" in text and len(text) < 2000
+
+
+async def test_failed_release_notice_is_retried():
+    gh, sink, store, fu = await setup()
+    gh.issues = [issue(state="closed", reason="completed", closed_at="2026-10-11T12:30:00Z")]
+    await fu.poll(T0 + timedelta(hours=1))
+    gh.release = {"tag": "v0.40.0", "published_at": "2026-10-12T00:00:00Z", "url": "rel"}
+    sink.result = None
+    await fu.poll(T0 + timedelta(days=1))
+    sink.result = 1
+    await fu.poll(T0 + timedelta(days=1, minutes=10))
+    await fu.poll(T0 + timedelta(days=1, minutes=20))
+    texts = [t for _, t, _ in sink.sent]
+    assert sum("v0.40.0" in t for t in texts) == 2  # one failed attempt, one success, no more

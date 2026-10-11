@@ -216,6 +216,10 @@ class GitHub:
             ]
             if len(batch) < 100:
                 break
+        else:
+            log.warning(
+                "more than %d issues changed since %s; some were skipped", max_pages * 100, since
+            )
         return changes
 
     async def comments_since(self, since: str, max_pages: int = 5) -> list[Comment]:
@@ -251,6 +255,8 @@ class GitHub:
                 )
             if len(batch) < 100:
                 break
+        else:
+            log.warning("more than %d comments since %s; some were skipped", max_pages * 100, since)
         return comments
 
     # -- labels -----------------------------------------------------------------------

@@ -819,6 +819,13 @@ class EngramBot(discord.Client):
         if self.over_rate(interaction.user.id):
             await interaction.response.send_message(RATE_TEXT, ephemeral=True)
             return
+        block = self.filing_block(interaction.user)
+        if block.startswith("their Discord account"):  # the daily issue cap doesn't apply
+            await interaction.response.send_message(
+                f"I can't post that for you: {block}. A maintainer will see this thread.",
+                ephemeral=True,
+            )
+            return
         await interaction.response.defer(thinking=True)
         name = sanitize.clean_inline(interaction.user.display_name, 80)
         thread_url = getattr(interaction.channel, "jump_url", "") or ""

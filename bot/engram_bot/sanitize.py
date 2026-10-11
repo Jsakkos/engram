@@ -13,7 +13,9 @@ import re
 ZWSP = "​"
 
 # GitHub mention syntax: @name or @org/team, not preceded by a word char (so emails pass).
-_MENTION = re.compile(r"(?<![\w`])@(?=[A-Za-z0-9][A-Za-z0-9-]*)")
+# Backticks are NOT exempt: workflows match the raw body, where `@claude` in a code span
+# still contains "@claude".
+_MENTION = re.compile(r"(?<!\w)@(?=[A-Za-z0-9][A-Za-z0-9-]*)")
 # Discord's raw mention / channel / role / emoji markup.
 _DISCORD_USER = re.compile(r"<@!?\d+>")
 _DISCORD_ROLE = re.compile(r"<@&\d+>")

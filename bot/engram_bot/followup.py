@@ -140,13 +140,14 @@ class FollowUp:
         if release is None:
             return
         tag = release["tag"]
-        last = self._store.get_meta("release_tag")
-        self._store.set_meta("release_tag", tag)
-        if first_run or last is None or last == tag:
+        self._store.set_meta("release_tag", tag)  # informational only
+        if first_run or not release.get("published_at"):
             return
-        published = _parse(release["published_at"]) if release.get("published_at") else None
+        published = _parse(release["published_at"])
+        # Every unannounced follow closed as completed before the latest release was cut gets
+        # its notice. Nothing else gates this, so a failed post is simply retried next poll.
         for f in self._store.follows_awaiting_release():
-            if published and f.closed_at and _parse(f.closed_at) > published:
+            if not f.closed_at or _parse(f.closed_at) > published:
                 continue  # closed after this release was cut; it'll be in the next one
             text = release_message(f.issue_number, tag, release["url"])
             if await self._send(f.thread_id, text, None) is not None:

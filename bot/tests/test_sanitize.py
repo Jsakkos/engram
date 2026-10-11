@@ -52,3 +52,8 @@ def test_redacts_secret_shapes():
 def test_published_text_is_redacted():
     assert "SUPERSECRET1" not in sanitize.clean("my key=SUPERSECRET1")
     assert "SUPERSECRET1" not in sanitize.fence("my key=SUPERSECRET1")
+
+
+def test_mentions_in_code_spans_and_brackets_are_defused_too():
+    for text in ("`@claude` fix", "(@claude)", "**@claude**", "x `@Jsakkos`"):
+        assert "@claude" not in sanitize.clean(text) and "@Jsakkos" not in sanitize.clean(text)
