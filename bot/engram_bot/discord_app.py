@@ -401,7 +401,8 @@ class EngramBot(discord.Client):
                 if isinstance(thread.parent, discord.TextChannel):
                     messages.insert(0, await thread.parent.fetch_message(thread.id))
             except discord.HTTPException:
-                pass
+                # Starter deleted or unreadable: answer from the thread's own messages.
+                log.info("could not fetch the starter message of thread %s", thread.id)
         drafts = self.store.drafts_by_message([m.id for m in messages if m.author == self.user])
         items: list[history.Item] = []
         for m in messages:
