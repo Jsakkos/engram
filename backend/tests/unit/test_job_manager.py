@@ -431,6 +431,53 @@ class TestRerunMatching:
         assert t.matched_episode is None
         dispatch.assert_awaited_once()
 
+    async def test_title_without_file_is_left_untouched(self, tmp_path, monkeypatch):
+        """An already-organized title has no staging file to re-match. Resetting it to
+        QUEUED with no task behind it stranded the job in MATCHING: force-advance and
+        the watchdog both treat QUEUED as draining."""
+        organized = "/library/Show/Season 01/Show - S01E05.mkv"
+        job, title = await _seed(
+            content_type=ContentType.TV,
+            staging=str(tmp_path),
+            is_selected=True,
+            output_filename=str(tmp_path / "C1_t00.mkv"),
+            state=TitleState.COMPLETED,
+            matched_episode="S01E05",
+            match_confidence=0.9,
+            organized_to=organized,
+        )
+        dispatch = AsyncMock()
+        monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
+        monkeypatch.setattr(job_manager._finalization, "check_job_completion", AsyncMock())
+
+        await job_manager._rerun_matching(job.id)
+        await asyncio.sleep(0)
+
+        t = await _get_title(title.id)
+        assert t.state == TitleState.COMPLETED
+        assert t.matched_episode == "S01E05"
+        assert t.organized_to == organized
+        dispatch.assert_not_called()
+
+    async def test_nothing_dispatched_runs_completion_check(self, tmp_path, monkeypatch):
+        """With no match task in flight, nothing else would ever re-check the job."""
+        job, _ = await _seed(
+            content_type=ContentType.TV,
+            staging=str(tmp_path),
+            is_selected=True,
+            output_filename=str(tmp_path / "C1_t00.mkv"),
+            state=TitleState.COMPLETED,
+            matched_episode="S01E05",
+        )
+        monkeypatch.setattr(job_manager._matching, "match_single_file", AsyncMock())
+        check = AsyncMock()
+        monkeypatch.setattr(job_manager._finalization, "check_job_completion", check)
+
+        await job_manager._rerun_matching(job.id)
+
+        check.assert_awaited_once()
+        assert check.await_args.args[1] == job.id
+
     async def test_missing_job_is_noop(self):
         # Must not raise for an unknown job id.
         await job_manager._rerun_matching(999999)

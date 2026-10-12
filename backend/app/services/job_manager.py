@@ -1244,7 +1244,23 @@ class JobManager:
                         session.add(title)
                 await session.commit()
             else:
+                rematchable: list[tuple[DiscTitle, Path]] = []
                 for title in disc_titles:
+                    file_path = None
+                    if title.output_filename:
+                        file_path = Path(title.output_filename)
+                        if not file_path.exists():
+                            file_path = staging / file_path.name
+                    if file_path is None or not file_path.exists():
+                        # A QUEUED title with no match task is never picked up again:
+                        # force-advance and the watchdog both treat QUEUED as draining.
+                        logger.warning(
+                            f"Job {sanitize_log_value(job_id)}: title "
+                            f"{sanitize_log_value(title.id)} not re-matched — no file in "
+                            f"staging (organized to "
+                            f"{sanitize_log_value(title.organized_to or 'nowhere')})"
+                        )
+                        continue
                     # Reset title state for re-matching → QUEUED (enqueued; the
                     # QUEUED→MATCHING flip happens once a match slot is acquired).
                     title.state = TitleState.QUEUED
@@ -1252,25 +1268,23 @@ class JobManager:
                     title.match_confidence = 0.0
                     title.match_details = None
                     session.add(title)
+                    rematchable.append((title, file_path))
 
                 await session.commit()
 
-                # Start matching for each ripped file
-                for title in disc_titles:
-                    if title.output_filename:
-                        file_path = Path(title.output_filename)
-                        if not file_path.exists():
-                            file_path = staging / file_path.name
-                        if file_path.exists():
-                            # match_single_file self-tags the job log context.
-                            match_task = asyncio.create_task(
-                                self._matching.match_single_file(job_id, title.id, file_path)
-                            )
-                            match_task.add_done_callback(
-                                lambda t, jid=job_id, tid=title.id: (
-                                    self._matching.on_match_task_done(t, jid, tid)
-                                )
-                            )
+                for title, file_path in rematchable:
+                    # match_single_file self-tags the job log context.
+                    match_task = asyncio.create_task(
+                        self._matching.match_single_file(job_id, title.id, file_path)
+                    )
+                    match_task.add_done_callback(
+                        lambda t, jid=job_id, tid=title.id: self._matching.on_match_task_done(
+                            t, jid, tid
+                        )
+                    )
+
+                if not rematchable:
+                    await self._finalization.check_job_completion(session, job_id)
 
             logger.info(
                 f"Job {job_id}: re-matching {len(disc_titles)} titles with corrected metadata"
