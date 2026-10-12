@@ -44,7 +44,7 @@ gpu = [
 ]
 dev = [
     "pandas>=3.0.6",
-    "ipykernel>=7.3.0",
+    "ipykernel>=7.4.0",
 ]
 docs = [
     "mkdocs-material>=9.7.7",
