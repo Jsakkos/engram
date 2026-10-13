@@ -1255,8 +1255,7 @@ class JobManager:
                         if not file_path.exists():
                             file_path = staging / file_path.name
                     if file_path is None or not file_path.exists():
-                        # A QUEUED title with no match task is never picked up again:
-                        # force-advance and the watchdog both treat QUEUED as draining.
+                        # Reset to QUEUED, it would have no match task behind it.
                         logger.warning(
                             f"Job {sanitize_log_value(job_id)}: title "
                             f"{sanitize_log_value(title.id)} not re-matched — no ripped file "
@@ -1308,7 +1307,8 @@ class JobManager:
                 rematched_count = len(rematchable)
 
             logger.info(
-                f"Job {job_id}: re-matching {rematched_count} titles with corrected metadata"
+                f"Job {sanitize_log_value(job_id)}: re-matching {rematched_count} titles "
+                f"with corrected metadata"
             )
 
     async def start_ripping(self, job_id: int) -> None:
@@ -4778,8 +4778,7 @@ class JobManager:
                         f"{sanitize_log_value(t.id)} failed — ripped file missing "
                         f"({sanitize_log_value(file_path.name)})"
                     )
-                    # Left QUEUED it would never be dispatched, and force-advance
-                    # skips QUEUED titles.
+                    # Left QUEUED, it would have no match task behind it.
                     t.state = TitleState.FAILED
                     t.match_details = json.dumps({"reason": "Ripped file missing"})
                     session.add(t)

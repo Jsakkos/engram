@@ -317,7 +317,7 @@ class TestDispatchPendingMatches:
         assert (await _get_title(ripping.id)).state == TitleState.RIPPING
 
     async def test_queued_title_with_missing_file_fails(self, tmp_path, monkeypatch):
-        """Left QUEUED it would never be dispatched, and force-advance skips QUEUED."""
+        """A QUEUED title whose file is missing fails instead of staying QUEUED."""
         job, _ = await _seed(content_type=ContentType.TV, identity_prompt_json=_PROMPT)
         gone = await self._add_title(
             job.id, 1, TitleState.QUEUED, output=str(tmp_path / "missing.mkv")
@@ -444,9 +444,7 @@ class TestRerunMatching:
         dispatch.assert_awaited_once()
 
     async def test_filed_title_is_left_untouched_and_noted(self, tmp_path, monkeypatch):
-        """An already-organized title has no staging file to re-match. Resetting it to
-        QUEUED with no task behind it stranded the job in MATCHING: force-advance and
-        the watchdog both treat QUEUED as draining."""
+        """A filed title keeps its state and match, and is reported to finalization."""
         organized = "/library/Show/Season 01/Show - S01E05.mkv"
         job, title = await _seed(
             content_type=ContentType.TV,
@@ -475,7 +473,7 @@ class TestRerunMatching:
         note.assert_called_once_with(job.id, [organized])
 
     async def test_unfiled_title_without_file_fails(self, tmp_path, monkeypatch):
-        """Kept as MATCHED, finalization would try to move a file that is gone."""
+        """A title with no file and no library location fails instead of staying MATCHED."""
         job, title = await _seed(
             content_type=ContentType.TV,
             staging=str(tmp_path),
@@ -494,7 +492,7 @@ class TestRerunMatching:
         assert t.matched_episode is None
 
     async def test_nothing_dispatched_completes_the_job(self, tmp_path, monkeypatch):
-        """With no match task in flight, nothing else would ever re-check the job."""
+        """With no match task started, the re-match runs the completion check itself."""
         job, _ = await _seed(
             content_type=ContentType.TV,
             staging=str(tmp_path),

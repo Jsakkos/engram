@@ -1,10 +1,5 @@
-"""Tracks a re-match could not reach because they were already filed into the library.
-
-Re-identifying a disc to a different season or show re-matches what is still in
-staging, but a track already moved into the library keeps its old episode code and
-folder. Finishing the job quietly would hide that, so the disc is held in review
-with the filed locations named, as long as something is left for the review to do.
-"""
+"""A re-match skips tracks already filed into the library. The completion check then
+holds the job in review and names their folders, unless nothing is left to act on."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -104,7 +99,7 @@ class TestLeftAsFiled:
         assert "/library/TV/Show/Season 01" in job.review_reason
 
     async def test_completes_when_nothing_is_left_to_organize(self):
-        """The review page cannot finish a job with nothing to organize."""
+        """Same gate as always_review: nothing left to organize, so no review."""
         coord = _coord()
         job_id = await _seed([TitleState.COMPLETED, TitleState.COMPLETED])
         coord.note_left_as_filed(job_id, [FILED, FILED])

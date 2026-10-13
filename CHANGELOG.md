@@ -10,7 +10,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
-- Re-identifying or re-matching a disc whose episodes were already filed no longer leaves the job stuck in Matching, where even Force could not move it. Tracks already in the library keep their filed episode and location, and the disc is held for review with a note naming where they were filed, so a wrong season or show can be corrected by hand.
+- Re-matching a disc whose episodes were already filed no longer leaves the job stuck in Matching. Filed episodes stay where they are, and the disc goes to review with a note saying where they were filed.
 ## [0.39.0] - 2026-10-09
 
 _Highlights: "Skip extras" now skips short TV tracks before ripping instead of after._

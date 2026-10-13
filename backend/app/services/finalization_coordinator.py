@@ -515,13 +515,11 @@ class FinalizationCoordinator:
         # own (a re-pin needs matched titles, which is success), but the set makes
         # "at most one cross-season sweep per job" explicit rather than emergent.
         self._season_retries: set[int] = set()
-        # Library paths of tracks a re-match left alone because they were already
-        # filed, per job. Consumed by the next completion check that finishes it.
+        # Library paths of already-filed tracks that a re-match skipped, per job.
         self._left_as_filed: dict[int, list[str]] = {}
 
     def note_left_as_filed(self, job_id: int, organized_paths: list[str]) -> None:
-        """Record already-filed tracks a re-match could not reach, so the job is held
-        in review instead of finishing as if every track had been re-matched."""
+        """Remember filed tracks a re-match skipped, for the completion check to report."""
         self._left_as_filed[job_id] = organized_paths
 
     def set_callbacks(
@@ -1136,8 +1134,7 @@ class FinalizationCoordinator:
                 f"{len(left_as_filed)} track(s) were already filed to {folders} and were "
                 f"not re-matched. If that is the wrong season or show, move them by hand."
             )
-            # Parking a job with nothing left to organize would strand it: the
-            # review page can only finish jobs through their remaining tracks.
+            # Same gate as always_review below: park only if tracks are left to act on.
             if has_review or has_matched:
                 if has_review:
                     pending = sum(1 for t in matchable if t.state == TitleState.REVIEW)
@@ -1146,7 +1143,7 @@ class FinalizationCoordinator:
                     reason = f"{filed_note} Confirm the remaining tracks below."
                 await self._park_in_review(session, job, reason)
                 return
-            logger.warning(f"Job {job_id}: {filed_note}")
+            logger.warning(f"Job {sanitize_log_value(job_id)}: {sanitize_log_value(filed_note)}")
 
         # Manual-review override: hold every disc for confirmation, however
         # confident the matcher was. Placed AFTER the escalation ladders on
