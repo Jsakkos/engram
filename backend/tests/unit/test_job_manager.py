@@ -11,7 +11,7 @@ import importlib
 import json
 import logging
 import time
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlmodel import select
@@ -316,6 +316,18 @@ class TestDispatchPendingMatches:
         # The RIPPING seed title is untouched.
         assert (await _get_title(ripping.id)).state == TitleState.RIPPING
 
+    async def test_queued_title_with_missing_file_fails(self, tmp_path, monkeypatch):
+        """Left QUEUED it would never be dispatched, and force-advance skips QUEUED."""
+        job, _ = await _seed(content_type=ContentType.TV, identity_prompt_json=_PROMPT)
+        gone = await self._add_title(
+            job.id, 1, TitleState.QUEUED, output=str(tmp_path / "missing.mkv")
+        )
+        self._stub_dispatch(monkeypatch)
+
+        await job_manager.dispatch_pending_matches(job.id)
+
+        assert (await _get_title(gone.id)).state == TitleState.FAILED
+
     async def test_discdb_assignment_path_dispatches_match(self, tmp_path, monkeypatch):
         """ASR-preferred precedence: match_single_file is always dispatched.
         DiscDB assignment is now applied as a fallback inside _match_single_file_inner,
@@ -431,7 +443,7 @@ class TestRerunMatching:
         assert t.matched_episode is None
         dispatch.assert_awaited_once()
 
-    async def test_title_without_file_is_left_untouched(self, tmp_path, monkeypatch):
+    async def test_filed_title_is_left_untouched_and_noted(self, tmp_path, monkeypatch):
         """An already-organized title has no staging file to re-match. Resetting it to
         QUEUED with no task behind it stranded the job in MATCHING: force-advance and
         the watchdog both treat QUEUED as draining."""
@@ -449,6 +461,8 @@ class TestRerunMatching:
         dispatch = AsyncMock()
         monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
         monkeypatch.setattr(job_manager._finalization, "check_job_completion", AsyncMock())
+        note = Mock()
+        monkeypatch.setattr(job_manager._finalization, "note_left_as_filed", note)
 
         await job_manager._rerun_matching(job.id)
         await asyncio.sleep(0)
@@ -458,8 +472,28 @@ class TestRerunMatching:
         assert t.matched_episode == "S01E05"
         assert t.organized_to == organized
         dispatch.assert_not_called()
+        note.assert_called_once_with(job.id, [organized])
 
-    async def test_nothing_dispatched_runs_completion_check(self, tmp_path, monkeypatch):
+    async def test_unfiled_title_without_file_fails(self, tmp_path, monkeypatch):
+        """Kept as MATCHED, finalization would try to move a file that is gone."""
+        job, title = await _seed(
+            content_type=ContentType.TV,
+            staging=str(tmp_path),
+            is_selected=True,
+            output_filename=str(tmp_path / "C1_t00.mkv"),
+            state=TitleState.MATCHED,
+            matched_episode="S01E05",
+        )
+        monkeypatch.setattr(job_manager._matching, "match_single_file", AsyncMock())
+        monkeypatch.setattr(job_manager._finalization, "check_job_completion", AsyncMock())
+
+        await job_manager._rerun_matching(job.id)
+
+        t = await _get_title(title.id)
+        assert t.state == TitleState.FAILED
+        assert t.matched_episode is None
+
+    async def test_nothing_dispatched_completes_the_job(self, tmp_path, monkeypatch):
         """With no match task in flight, nothing else would ever re-check the job."""
         job, _ = await _seed(
             content_type=ContentType.TV,
@@ -468,15 +502,19 @@ class TestRerunMatching:
             output_filename=str(tmp_path / "C1_t00.mkv"),
             state=TitleState.COMPLETED,
             matched_episode="S01E05",
+            organized_to="/library/Show/Season 01/Show - S01E05.mkv",
         )
+        async with _unit_session_factory() as session:
+            row = await session.get(DiscJob, job.id)
+            row.state = JobState.MATCHING
+            await session.commit()
         monkeypatch.setattr(job_manager._matching, "match_single_file", AsyncMock())
-        check = AsyncMock()
-        monkeypatch.setattr(job_manager._finalization, "check_job_completion", check)
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
 
         await job_manager._rerun_matching(job.id)
 
-        check.assert_awaited_once()
-        assert check.await_args.args[1] == job.id
+        async with _unit_session_factory() as session:
+            assert (await session.get(DiscJob, job.id)).state == JobState.COMPLETED
 
     async def test_missing_job_is_noop(self):
         # Must not raise for an unknown job id.

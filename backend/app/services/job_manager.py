@@ -1243,8 +1243,11 @@ class JobManager:
                         title.state = TitleState.MATCHED
                         session.add(title)
                 await session.commit()
+                rematched_count = len(disc_titles)
             else:
                 rematchable: list[tuple[DiscTitle, Path]] = []
+                left_as_filed: list[str] = []
+                failed: list[DiscTitle] = []
                 for title in disc_titles:
                     file_path = None
                     if title.output_filename:
@@ -1256,10 +1259,20 @@ class JobManager:
                         # force-advance and the watchdog both treat QUEUED as draining.
                         logger.warning(
                             f"Job {sanitize_log_value(job_id)}: title "
-                            f"{sanitize_log_value(title.id)} not re-matched — no file in "
-                            f"staging (organized to "
-                            f"{sanitize_log_value(title.organized_to or 'nowhere')})"
+                            f"{sanitize_log_value(title.id)} not re-matched — no ripped file "
+                            f"found (organized_to={sanitize_log_value(title.organized_to)})"
                         )
+                        if title.organized_to:
+                            left_as_filed.append(title.organized_to)
+                        else:
+                            title.state = TitleState.FAILED
+                            title.matched_episode = None
+                            title.match_confidence = 0.0
+                            title.match_details = json.dumps(
+                                {"reason": "Ripped file missing at re-match"}
+                            )
+                            session.add(title)
+                            failed.append(title)
                         continue
                     # Reset title state for re-matching → QUEUED (enqueued; the
                     # QUEUED→MATCHING flip happens once a match slot is acquired).
@@ -1271,6 +1284,13 @@ class JobManager:
                     rematchable.append((title, file_path))
 
                 await session.commit()
+
+                for title in failed:
+                    await ws_manager.broadcast_title_update(
+                        job_id, title.id, title.state.value, error="Ripped file missing"
+                    )
+                if left_as_filed:
+                    self._finalization.note_left_as_filed(job_id, left_as_filed)
 
                 for title, file_path in rematchable:
                     # match_single_file self-tags the job log context.
@@ -1285,9 +1305,10 @@ class JobManager:
 
                 if not rematchable:
                     await self._finalization.check_job_completion(session, job_id)
+                rematched_count = len(rematchable)
 
             logger.info(
-                f"Job {job_id}: re-matching {len(disc_titles)} titles with corrected metadata"
+                f"Job {job_id}: re-matching {rematched_count} titles with corrected metadata"
             )
 
     async def start_ripping(self, job_id: int) -> None:
@@ -4733,6 +4754,7 @@ class JobManager:
         number of titles dispatched.
         """
         pending: list[tuple[int, Path]] = []
+        failed_ids: list[int] = []
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if job and job.content_type != ContentType.TV:
@@ -4753,11 +4775,23 @@ class JobManager:
                 if not file_path.exists():
                     logger.warning(
                         f"Job {sanitize_log_value(job_id)}: queued title "
-                        f"{sanitize_log_value(t.id)} skipped — ripped file missing "
+                        f"{sanitize_log_value(t.id)} failed — ripped file missing "
                         f"({sanitize_log_value(file_path.name)})"
                     )
+                    # Left QUEUED it would never be dispatched, and force-advance
+                    # skips QUEUED titles.
+                    t.state = TitleState.FAILED
+                    t.match_details = json.dumps({"reason": "Ripped file missing"})
+                    session.add(t)
+                    failed_ids.append(t.id)
                     continue
                 pending.append((t.id, file_path))
+            await session.commit()
+
+        for title_id in failed_ids:
+            await ws_manager.broadcast_title_update(
+                job_id, title_id, TitleState.FAILED.value, error="Ripped file missing"
+            )
 
         dispatched = 0
         for title_id, file_path in pending:
