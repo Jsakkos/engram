@@ -21,6 +21,7 @@ import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './Rev
 import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dismissTvdbSuggestion, submitReviewBatch, rematchTitle } from '../api/client';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
+import { ReviewReasonNotice } from './ReviewQueue/ReviewReasonNotice';
 import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
 
@@ -1015,6 +1016,7 @@ function ReviewQueue() {
                     </SvNotice>
                 )}
                 {job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>}
+                <ReviewReasonNotice reason={job.review_reason} />
                 {hasConflicts && (
                     <SvNotice tone="warn">
                         › {collisions.size} EPISODE CONFLICT{collisions.size > 1 ? 'S' : ''} — TWO TITLES SHARE AN EPISODE. RESOLVE BEFORE SAVING.
