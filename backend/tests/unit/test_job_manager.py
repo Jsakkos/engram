@@ -518,6 +518,27 @@ class TestRerunMatching:
         # Must not raise for an unknown job id.
         await job_manager._rerun_matching(999999)
 
+    async def test_identity_answer_rematch_starts_escalation_over(self, monkeypatch):
+        """Re-identify runs _rerun_matching without the public wrapper, so it needs
+        the wrapper's reset: a stale escalation note and counters from the old identity."""
+        job, _ = await _seed(content_type=ContentType.TV)
+        async with _unit_session_factory() as session:
+            row = await session.get(DiscJob, job.id)
+            row.state = JobState.MATCHING
+            row.conflict_status = "Re-matching across all seasons (season 2 matched nothing)"
+            await session.commit()
+        job_manager._finalization._season_retries.add(job.id)
+        monkeypatch.setattr(job_manager, "_rerun_matching", AsyncMock())
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        await job_manager._apply_identity_resume_action(job.id, "rerun_matching")
+        await asyncio.sleep(0)
+
+        async with _unit_session_factory() as session:
+            assert (await session.get(DiscJob, job.id)).conflict_status is None
+        assert job.id not in job_manager._finalization._season_retries
+        job_manager._rerun_matching.assert_awaited_once()
+
 
 @pytest.fixture
 def rip_env(monkeypatch, tmp_path):
