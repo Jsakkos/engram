@@ -48,7 +48,7 @@ dev = [
 ]
 docs = [
     "mkdocs-material>=9.7.7",
-    "mkdocstrings[python]>=1.0.6",
+    "mkdocstrings[python]>=1.0.7",
 ]
 
 [dependency-groups]
