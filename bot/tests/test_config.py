@@ -42,3 +42,11 @@ def test_missing_credentials_fail_fast(monkeypatch):
 def test_label_list_override(monkeypatch):
     env(monkeypatch, GITHUB_TOKEN="t", BOT_ALLOWED_LABELS="bug, ux,")
     assert Settings.from_env().allowed_labels == ("bug", "ux")
+
+
+def test_docs_repo_is_separate_from_the_issue_repo(monkeypatch):
+    env(monkeypatch, GITHUB_TOKEN="t", GITHUB_REPO="me/engram-bot-test")
+    s = Settings.from_env()
+    assert (s.github_repo, s.docs_repo) == ("me/engram-bot-test", "Jsakkos/engram")
+    monkeypatch.setenv("BOT_DOCS_REPO", "me/engram-fork")
+    assert Settings.from_env().docs_repo == "me/engram-fork"

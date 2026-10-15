@@ -142,3 +142,51 @@ async def test_create_comment_returns_id():
     gh = GitHub("o/r", token="t", transport=httpx.MockTransport(handler))
     ref = await gh.create_comment(1, "x")
     assert (ref.id, ref.url) == (77, "https://gh/c/77")
+
+
+async def test_docs_client_reads_its_repo_with_the_issue_repos_app_token():
+    """The app is installed on the test repo only; Engram's public docs must still load."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append((request.url.path, request.headers["Authorization"]))
+        if request.url.path == "/repos/me/engram-bot-test/installation":
+            return httpx.Response(200, json={"id": 42})
+        if request.url.path == "/repos/Jsakkos/engram/installation":
+            return httpx.Response(404, json={"message": "Not Found"})  # not installed there
+        if request.url.path == "/app/installations/42/access_tokens":
+            return httpx.Response(201, json={"token": "ghs_inst"})
+        if request.url.path == "/repos/Jsakkos/engram/releases/latest":
+            return httpx.Response(
+                200, json={"tag_name": "v1", "published_at": None, "html_url": "u"}
+            )
+        return httpx.Response(404, json={"message": "unexpected"})
+
+    issues = GitHub(
+        "me/engram-bot-test", app_id="1", private_key=pem, transport=httpx.MockTransport(handler)
+    )
+    docs = issues.for_repo("Jsakkos/engram")
+    assert docs.repo == "Jsakkos/engram" and issues.repo == "me/engram-bot-test"
+    assert (await docs.latest_release())["tag"] == "v1"
+    assert ("/repos/Jsakkos/engram/releases/latest", "Bearer ghs_inst") in calls
+    assert not any(path == "/repos/Jsakkos/engram/installation" for path, _ in calls)
+    assert issues.for_repo("me/engram-bot-test") is issues
+
+
+async def test_check_access_reports_the_status():
+    def handler(request: httpx.Request):
+        return httpx.Response(401, json={"message": "Bad credentials"})
+
+    gh = GitHub("o/r", token="not-a-github-token", transport=httpx.MockTransport(handler))
+    try:
+        await gh.check_access()
+    except GitHubError as e:
+        assert e.status == 401 and "Bad credentials" in str(e)
+    else:
+        raise AssertionError("expected GitHubError")

@@ -75,8 +75,14 @@ def release_message(number: int, tag: str, url: str) -> str:
 
 
 class FollowUp:
-    def __init__(self, github: GitHub, store: Store, send: Send) -> None:
+    def __init__(
+        self, github: GitHub, store: Store, send: Send, releases: GitHub | None = None
+    ) -> None:
+        """``github`` is the repo issues are filed in; ``releases`` is the repo whose
+        releases ship the fixes (Engram itself, BOT_DOCS_REPO). They differ when the bot
+        files into a test repo; "Engram vX is out" always means the app's release."""
         self._gh = github
+        self._releases = releases or github
         self._store = store
         self._send = send
 
@@ -94,21 +100,29 @@ class FollowUp:
             if followed:
                 await self._check_issues(since, followed)
                 await self._check_comments(since, followed)
-            await self._check_release()
         except GitHubError as e:
             # Leave the cursor where it was so the next poll covers this window again.
             log.warning("follow-through poll failed: %s", e)
             return
         self._store.set_meta("poll_since", _iso(now))
+        # Release notices don't depend on the cursor, so a failure here (e.g. a token that
+        # can't read releases) must not hold back issue and comment notices.
+        try:
+            await self._check_release()
+        except GitHubError as e:
+            log.warning("release check failed: %s", e)
 
     async def _check_issues(self, since: str, followed: set[int]) -> None:
         for change in await self._gh.issues_updated_since(since):
             if change.number not in followed:
                 continue
+            # Store and compare the same normalized pair: GitHub reports a reopened issue as
+            # ("open", "reopened"), but an open follow is stored with no reason. Comparing the
+            # raw pair re-posted "was reopened" on every later poll that saw the issue.
+            reason = change.state_reason if change.state == "closed" else None
             for f in self._store.follows_for(change.number):
-                if (f.state, f.state_reason) == (change.state, change.state_reason):
+                if (f.state, f.state_reason) == (change.state, reason):
                     continue
-                reason = change.state_reason if change.state == "closed" else None
                 text = state_message(change.number, change.title, change.url, change.state, reason)
                 if await self._send(f.thread_id, text, None) is None:
                     continue  # try again next poll
@@ -136,7 +150,7 @@ class FollowUp:
                     self._store.remove_relay(relay_id)
 
     async def _check_release(self, first_run: bool = False) -> None:
-        release = await self._gh.latest_release()
+        release = await self._releases.latest_release()
         if release is None:
             return
         tag = release["tag"]

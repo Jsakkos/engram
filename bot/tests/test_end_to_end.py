@@ -31,6 +31,12 @@ from tests.test_agent import FakeMessages, reply, text, tool
 from tests.test_diagnostics import bundle
 
 FORUM_ID = 55
+
+
+def iso(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 REPO = "Jsakkos/engram"
 
 
@@ -51,7 +57,7 @@ class FakeGitHubServer:
         self.searches: list[str] = []
         self.next_number = 800
         self.next_comment = 9000
-        self.clock = "2026-10-11T12:00:00Z"
+        self.clock = iso(datetime.now(UTC))
 
     def _issue(self, number: int, title: str, updated: str, body: str = "", labels=()):
         return {
@@ -352,13 +358,15 @@ async def test_forum_post_to_filed_issue_to_release(world):
     assert len([n for n in server.issues if n > 800]) == 1
 
     # 3. The follow-through loop's first run only sets its baseline.
-    t0 = datetime(2026, 10, 11, 12, 0, tzinfo=UTC)
+    # The timeline starts now: follows are stamped with the real clock when filed, so a
+    # fixed date would make the maintainer's comment look older than the report.
+    t0 = datetime.now(UTC).replace(microsecond=0) + timedelta(minutes=1)
     before = len(thread.messages)
     await bot.followup.poll(t0)
     assert len(thread.messages) == before
 
     # 4. The maintainer asks a question on GitHub; it reaches the thread with a Reply button.
-    server.clock = "2026-10-11T12:05:00Z"
+    server.clock = iso(t0 + timedelta(minutes=5))
     server.comment(801, "Which optical drive is this?")
     await bot.followup.poll(t0 + timedelta(minutes=10))
     relay_msg = thread.messages[-1]
@@ -370,7 +378,7 @@ async def test_forum_post_to_filed_issue_to_release(world):
     click = press(ann, thread)
     await bot.on_reply_button(click, relay_id)
     assert click.response.modal is not None
-    server.clock = "2026-10-11T12:15:00Z"
+    server.clock = iso(t0 + timedelta(minutes=15))
     await bot.post_reply(click, relay_id, "An LG WH16NS40, @everyone")
     answer = server.comments[-1]
     assert "LG WH16NS40" in answer["body"] and "ann" in answer["body"]
@@ -384,15 +392,15 @@ async def test_forum_post_to_filed_issue_to_release(world):
     server.issues[801].update(
         state="closed",
         state_reason="completed",
-        closed_at="2026-10-11T13:00:00Z",
-        updated_at="2026-10-11T13:00:00Z",
+        closed_at=iso(t0 + timedelta(hours=1)),
+        updated_at=iso(t0 + timedelta(hours=1)),
     )
     await bot.followup.poll(t0 + timedelta(hours=1, minutes=5))
     assert "closed as completed" in thread.bot_texts()[-1]
     server.release = {
         "tag_name": "v0.40.0",
         "name": "v0.40.0",
-        "published_at": "2026-10-12T00:00:00Z",
+        "published_at": iso(t0 + timedelta(hours=12)),
         "html_url": "https://github.com/x/releases/v0.40.0",
     }
     await bot.followup.poll(t0 + timedelta(days=1))

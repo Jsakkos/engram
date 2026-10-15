@@ -180,3 +180,16 @@ def test_model_summary_stays_bounded_with_long_noisy_logs():
     text = d.summary_for_model()
     assert len(text) < history.MAX_MESSAGE_CHARS - 2000
     assert text.endswith("into the logs field.]")
+
+
+def test_lan_paths_in_a_real_style_bundle_never_reach_the_issue():
+    unc = r"\\192.168.86.83\NAS Downloads\Dexter's Laboratory\Season 3\Disc 5\D2_t07.mkv"
+    logs = "\n".join(
+        f"2026-10-14 10:00:0{i} | ERROR    | job=12 | matcher:match:1 - failed {unc}"
+        for i in range(5)
+    )
+    report = REPORT.replace("~/Engram/staging", r"\\192.168.86.83\NAS Downloads\staging")
+    d = diagnostics.parse(bundle(**{"job-logs.txt": logs, "report.md": report}), "b.zip")
+    for text in (d.issue_section(), d.summary_for_model()):
+        assert "192.168" not in text and "NAS Downloads" not in text
+        assert r"<share>\Dexter's Laboratory\Season 3\Disc 5\D2_t07.mkv" in text

@@ -32,6 +32,9 @@ def _list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
 class Settings:
     discord_token: str
     github_repo: str = "Jsakkos/engram"
+    # Where docs, the changelog and releases come from. Separate from github_repo so the bot
+    # can file into a test repo while still answering from (and announcing) Engram's own.
+    docs_repo: str = "Jsakkos/engram"
 
     # GitHub auth: a GitHub App (preferred, issues show as the app's bot account) or a
     # fine-grained token scoped to Issues read/write on the one repository.
@@ -134,6 +137,7 @@ class Settings:
         return cls(
             discord_token=token,
             github_repo=os.environ.get("GITHUB_REPO", defaults.github_repo),
+            docs_repo=os.environ.get("BOT_DOCS_REPO", defaults.docs_repo),
             github_app_id=app_id,
             github_app_private_key=private_key,
             github_token=gh_token,

@@ -57,3 +57,56 @@ def test_published_text_is_redacted():
 def test_mentions_in_code_spans_and_brackets_are_defused_too():
     for text in ("`@claude` fix", "(@claude)", "**@claude**", "x `@Jsakkos`"):
         assert "@claude" not in sanitize.clean(text) and "@Jsakkos" not in sanitize.clean(text)
+
+
+UNC_LINE = (
+    "2026-10-14 | WARNING  | job=12 | matcher - no subtitles for "
+    r"\\192.168.86.83\NAS Downloads\Dexter's Laboratory\Season 3\Disc 5\D2_t07.mkv"
+)
+
+
+def test_unc_share_is_redacted_but_the_path_is_kept():
+    out = sanitize.redact(UNC_LINE)
+    assert "192.168" not in out and "NAS Downloads" not in out
+    assert r"\\<host>\<share>\Dexter's Laboratory\Season 3\Disc 5\D2_t07.mkv" in out
+
+
+def test_unc_variants():
+    cases = {
+        r"\\nas\media\TV\x.mkv": r"\\<host>\<share>\TV\x.mkv",
+        r"\\nas\media": r"\\<host>\<share>",
+        "'\\\\\\\\nas\\\\media\\\\TV'": "'\\\\\\\\<host>\\\\<share>\\\\TV'",  # repr, doubled
+        "//nas/media/TV/x.mkv": "//<host>/<share>/TV/x.mkv",
+        "smb://nas.local/media/TV": "smb://<host>/<share>/TV",
+    }
+    for raw, expected in cases.items():
+        assert sanitize.redact(raw) == expected, raw
+
+
+def test_urls_are_not_mistaken_for_unc_paths():
+    text = "see https://github.com/Jsakkos/engram/issues/1 and https://jsakkos.github.io/engram/"
+    assert sanitize.redact(text) == text
+
+
+def test_private_ips_are_redacted_public_ones_kept():
+    text = (
+        "dashboard http://192.168.1.50:8000/history 10.0.0.7 172.20.3.4 100.101.2.3 "
+        "public 8.8.8.8 1.1.1.1 172.32.0.1 version 10.2.3"
+    )
+    out = sanitize.redact(text)
+    assert "http://<lan-ip>:8000/history" in out
+    for private in ("192.168.1.50", "10.0.0.7", "172.20.3.4", "100.101.2.3"):
+        assert private not in out
+    for public in ("8.8.8.8", "1.1.1.1", "172.32.0.1", "version 10.2.3"):
+        assert public in out
+
+
+def test_lan_details_never_reach_an_issue():
+    # Both publishing paths: prose fields and fenced logs.
+    for rendered in (sanitize.clean(UNC_LINE), sanitize.fence(UNC_LINE)):
+        assert "192.168" not in rendered and "NAS Downloads" not in rendered
+
+
+def test_windows_paths_in_reprs_are_not_mistaken_for_shares():
+    text = r"'C:\\Program Files\\MakeMKV\\makemkvcon64.exe' and D:\Rips\Show\t01.mkv"
+    assert sanitize.redact(text) == text

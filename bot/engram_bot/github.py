@@ -8,6 +8,7 @@ and its own two labels.
 
 from __future__ import annotations
 
+import copy
 import logging
 import time
 from dataclasses import dataclass
@@ -21,7 +22,9 @@ API = "https://api.github.com"
 
 
 class GitHubError(Exception):
-    pass
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 @dataclass(frozen=True)
@@ -107,6 +110,27 @@ class GitHub:
             },
         )
 
+    def for_repo(self, repo: str) -> GitHub:
+        """A client for another repo that shares this one's credentials and connection.
+
+        Used for the docs repo (BOT_DOCS_REPO). Token minting stays bound to this client,
+        so a GitHub App only installed on the issues repo still authenticates; reading
+        a public repo with that token works. Close only the original client.
+        """
+        if repo == self.repo:
+            return self
+        child = copy.copy(self)
+        child.repo = repo
+        child._token = self._token  # bound to self: the installation lookup uses our repo
+        return child
+
+    async def check_access(self) -> None:
+        """Fail fast on bad credentials: read the repo, then its issues."""
+        r = await self._request("GET", f"/repos/{self.repo}")
+        self._raise(r, f"read {self.repo}")
+        r = await self._request("GET", f"/repos/{self.repo}/issues", params={"per_page": 1})
+        self._raise(r, f"read issues in {self.repo}")
+
     async def aclose(self) -> None:
         await self._http.aclose()
 
@@ -147,7 +171,9 @@ class GitHub:
             message = r.json().get("message", r.text)
         except ValueError:
             message = r.text
-        raise GitHubError(f"GitHub refused to {action}: {r.status_code} {message}")
+        raise GitHubError(
+            f"GitHub refused to {action}: {r.status_code} {message}", status=r.status_code
+        )
 
     # -- issues -----------------------------------------------------------------------
 

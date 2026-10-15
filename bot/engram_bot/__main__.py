@@ -7,14 +7,18 @@ import logging
 import os
 
 import anthropic
+import httpx
+import jwt
 
 from .agent import Agent, Prices
 from .config import Settings
 from .discord_app import EngramBot
-from .github import GitHub
+from .github import GitHub, GitHubError
 from .knowledge import KnowledgeBase
 from .prompts import system_prompt
 from .store import Store
+
+log = logging.getLogger("engram_bot")
 
 
 def build(settings: Settings) -> EngramBot:
@@ -40,14 +44,46 @@ def build(settings: Settings) -> EngramBot:
             long_prompt_multiplier=settings.long_prompt_multiplier,
         ),
     )
+    docs = github.for_repo(settings.docs_repo)
     knowledge = KnowledgeBase(
-        github,
+        docs,
         include=settings.docs_include,
         site_url=settings.docs_site_url,
         changelog_sections=settings.changelog_sections,
         docs_dir=settings.docs_dir,
     )
-    return EngramBot(settings, Store(settings.db_path), agent, knowledge, github)
+    return EngramBot(settings, Store(settings.db_path), agent, knowledge, github, releases=docs)
+
+
+FATAL_STATUSES = (401, 403, 404)
+
+
+async def credential_problem(github: GitHub, settings: Settings) -> str | None:
+    """One clear sentence if GitHub rejects the configured credentials, else None.
+
+    Without this check a wrong token (a Discord token pasted into GITHUB_TOKEN, say) let the
+    bot run with a 401 traceback on every poll. Network trouble is not treated as fatal.
+    """
+    repo = settings.github_repo
+    if settings.github_app_id:
+        fix = (
+            f"Check GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY(_FILE), and that the app is "
+            f"installed on {repo} with Issues: Read and write"
+        )
+    else:
+        fix = f"Check GITHUB_TOKEN: it needs Issues: Read and write on {repo}"
+    fix += " (plus Contents: Read-only if the repo is private)."
+    try:
+        await github.check_access()
+    except GitHubError as e:
+        if e.status in FATAL_STATUSES:
+            return f"GitHub rejected the bot's credentials for {repo} ({e}). {fix}"
+        log.warning("could not verify GitHub access at startup: %s", e)
+    except (ValueError, jwt.PyJWTError) as e:
+        return f"The GitHub App private key could not be used ({e}). {fix}"
+    except httpx.HTTPError as e:
+        log.warning("could not reach GitHub at startup: %s", e)
+    return None
 
 
 async def main() -> None:
@@ -58,6 +94,11 @@ async def main() -> None:
     logging.getLogger("discord.gateway").setLevel(logging.WARNING)
     settings = Settings.from_env()
     bot = build(settings)
+    problem = await credential_problem(bot.gh, settings)
+    if problem:
+        log.error(problem)
+        await bot.gh.aclose()
+        raise SystemExit(1)
     try:
         async with bot:
             await bot.start(settings.discord_token)

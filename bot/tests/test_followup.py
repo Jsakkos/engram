@@ -163,3 +163,46 @@ async def test_failed_release_notice_is_retried():
     await fu.poll(T0 + timedelta(days=1, minutes=20))
     texts = [t for _, t, _ in sink.sent]
     assert sum("v0.40.0" in t for t in texts) == 2  # one failed attempt, one success, no more
+
+
+async def test_reopen_is_announced_once():
+    # GitHub reports a reopened issue as state="open", state_reason="reopened".
+    gh, sink, store, fu = await setup()
+    gh.issues = [issue(state="closed", reason="completed", closed_at="2026-10-11T12:30:00Z")]
+    await fu.poll(T0 + timedelta(hours=1))
+    gh.issues = [issue(state="open", reason="reopened")]
+    await fu.poll(T0 + timedelta(hours=2))
+    await fu.poll(T0 + timedelta(hours=2, minutes=1))  # same window again (overlap)
+    gh.issues = [issue(state="open", reason="reopened")]  # e.g. a label added while open
+    await fu.poll(T0 + timedelta(hours=3))
+    texts = [t for _, t, _ in sink.sent]
+    assert sum("reopened" in t for t in texts) == 1
+
+
+async def test_release_errors_do_not_hold_the_cursor():
+    gh, sink, store, fu = await setup()
+
+    async def broken_release():
+        raise GitHubError("403 Resource not accessible by personal access token")
+
+    gh.latest_release = broken_release
+    gh.issues = [issue(state="closed", reason="not_planned")]
+    await fu.poll(T0 + timedelta(hours=1))
+    assert "not planned" in sink.sent[0][1]
+    assert store.get_meta("poll_since") == "2026-10-11T13:00:00Z"  # advanced
+
+
+async def test_release_notices_come_from_the_release_repo():
+    gh, sink, store = FakeGitHub(), Sink(), Store(":memory:")
+    store.add_follow(10, 1, 7, "issue")
+    engram = FakeGitHub()  # the app's repo, separate from the test repo issues go to
+    fu = FollowUp(gh, store, sink, releases=engram)
+    await fu.poll(T0)
+    gh.issues = [issue(state="closed", reason="completed", closed_at="2026-10-11T12:30:00Z")]
+    await fu.poll(T0 + timedelta(hours=1))
+    gh.release = {"tag": "test-repo-tag", "published_at": "2026-10-12T00:00:00Z", "url": "x"}
+    engram.release = {"tag": "v0.40.0", "published_at": "2026-10-12T00:00:00Z", "url": "rel"}
+    await fu.poll(T0 + timedelta(days=1))
+    texts = [t for _, t, _ in sink.sent]
+    assert any("v0.40.0" in t for t in texts)
+    assert not any("test-repo-tag" in t for t in texts)

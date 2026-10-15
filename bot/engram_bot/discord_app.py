@@ -230,6 +230,7 @@ class EngramBot(discord.Client):
         agent: Agent,
         knowledge: KnowledgeBase,
         github: GitHub,
+        releases: GitHub | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -240,7 +241,7 @@ class EngramBot(discord.Client):
         self.kb = knowledge
         self.gh = github
         self.tree = app_commands.CommandTree(self)
-        self.followup = FollowUp(github, store, self.send_to_thread)
+        self.followup = FollowUp(github, store, self.send_to_thread, releases=releases)
         self._locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._latest_trigger: dict[int, int] = {}
         self._budget_noticed: dict[int, float] = {}

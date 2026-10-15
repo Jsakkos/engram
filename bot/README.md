@@ -98,13 +98,27 @@ rather than as you.
 1. Go to **Settings → Developer settings → GitHub Apps → New GitHub App**. Turn off the
    webhook.
 2. Repository permissions: **Issues: Read and write**. Metadata (read) is selected
-   automatically. Nothing else.
-3. Install it on `Jsakkos/engram` only.
+   automatically. If the repo the bot files into is **private** (a test repo, say), also
+   grant **Contents: Read-only**: GitHub needs it to read a private repo's releases, and
+   without it the follow-through check logs a 403 on every poll. A public repo needs nothing
+   else.
+3. Install it on `Jsakkos/engram` only (or only on your test repo).
 4. Note the App ID and generate a private key (`.pem`).
 
 The simpler alternative is a fine-grained personal access token with **Issues: Read and
-write** on the one repository. Set it as `GITHUB_TOKEN` and remove the `.pem` volume line
-from the compose file. Issues will then show up as authored by you.
+write** on the one repository, plus **Contents: Read-only** if that repository is private.
+Set it as `GITHUB_TOKEN` and remove the `.pem` volume line from the compose file. Issues
+will then show up as authored by you.
+
+The bot checks these credentials at startup. If GitHub rejects them (401, 403 or 404), it
+logs one error naming the variable to fix and exits, so `docker compose logs` shows the
+problem instead of a traceback on every poll.
+
+**Testing against a scratch repo.** Point `GITHUB_REPO` at it so drafts, comments and
+labels go there. Docs, the changelog and release notices still come from `BOT_DOCS_REPO`
+(default `Jsakkos/engram`, which is public, so the same credentials can read it). A release
+notice means "the Engram app shipped the fix", so it always tracks Engram's releases, not
+the scratch repo's.
 
 ### 3. Anthropic API key
 
@@ -144,6 +158,8 @@ The ones worth knowing:
 | `BOT_MAX_ISSUES_PER_USER_PER_DAY` | `3` | Maintainers are exempt. |
 | `BOT_MIN_ACCOUNT_AGE_DAYS` | `7` | Newer Discord accounts can chat but not file. |
 | `BOT_MAX_TURNS_PER_USER_PER_HOUR` | `30` | |
+| `GITHUB_REPO` | `Jsakkos/engram` | Where issues are filed, searched and followed, and where labels and comments go. |
+| `BOT_DOCS_REPO` | `Jsakkos/engram` | Where docs, the changelog and releases come from (and what release notices announce). |
 | `BOT_GITHUB_POLL_MINUTES` | `10` | How often to check GitHub for issue updates, comments and releases. |
 | `BOT_ESCALATION_MODEL` | unset | Stronger model for long or 👎 threads, e.g. `claude-sonnet-5-5`. |
 | `BOT_ESCALATION_AFTER_TURNS` | `6` | User messages in a thread before escalating. |

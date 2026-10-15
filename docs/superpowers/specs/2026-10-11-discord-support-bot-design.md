@@ -1,4 +1,4 @@
-# Discord support bot — design
+# Discord support bot: design
 
 **Status:** Phase 1 implemented in `bot/`. **Date:** 2026-10-11.
 
@@ -255,4 +255,30 @@ once any answer in the thread has a net 👎.
   stay on the plain endpoint.
 - Spend is priced per model (`agent.KNOWN_PRICES`) and counts against the same daily
   budget.
+
+## Live-test fixes (2026-10-15)
+
+From the first deployment against a test server and a private scratch repo:
+
+- **Reopen notices repeated.** GitHub reports a reopened issue as `("open", "reopened")`,
+  but a follow stores no reason while open. The poll compared the raw pair to the stored
+  one, so every later poll that saw the issue posted "was reopened" again. It now compares
+  the normalized pair it stores.
+- **LAN details in published text.** Real bundles carry matcher paths such as
+  `\\192.168.x.x\NAS Downloads\Show\Disc 5\t07.mkv`. `sanitize.redact` now rewrites
+  network shares to `\\<host>\<share>\...` (keeping the path below the share, which is the
+  useful part), handles `//host/share/` and `smb://` forms and repr-doubled separators, and
+  replaces private-range IPv4 addresses (RFC 1918 plus 100.64/10) with `<lan-ip>`. A UNC
+  prefix must start a token, so a repr'd Windows path is not mistaken for a share.
+- **Docs repo split from the issue repo.** `BOT_DOCS_REPO` (default `Jsakkos/engram`)
+  supplies docs, the changelog and releases; `GITHUB_REPO` is only where issues go.
+  Release notices use `BOT_DOCS_REPO`, because "vX is out" means the app shipped the fix.
+  The docs client shares the issue client's credentials, so a GitHub App installed only on
+  a scratch repo still reads Engram's public repo.
+- **Bad credentials fail fast.** Startup reads the repo and its issues once; a 401, 403 or
+  404 (or an unusable App key) logs one error naming the variable and the permissions
+  needed, then exits non-zero. Network errors only warn.
+- **Release errors no longer hold the cursor.** The release check runs after the cursor
+  advances, in its own `try`, so a token that can't read releases (a private repo without
+  Contents: read) doesn't stall issue and comment notices.
 
