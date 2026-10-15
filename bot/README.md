@@ -11,7 +11,7 @@ Design and rationale: [`docs/superpowers/specs/2026-10-11-discord-support-bot-de
 | Where | Behaviour |
 |---|---|
 | Help forum | Answers every new post. Keeps replying to the post's author; anyone else must @mention it. |
-| `@Engram Bot` in a text channel | Opens a thread from that message and answers there. |
+| `@Trace` in a text channel | Opens a thread from that message and answers there. |
 | `/ask` | Private, one-off answer (ephemeral). No issue filing. |
 | `/bug`, `/feature` | Short form, then a forum post where the bot gathers details and drafts the issue. |
 | `/issue <n>` | Shows an issue's title, state and labels. |
@@ -79,6 +79,13 @@ to the Discord thread.
 ### 1. Discord application
 
 1. Create an application at <https://discord.com/developers/applications>, then add a bot.
+   Name it **Trace** and upload
+   [`frontend/public/brand/bot/trace-avatar-1024.png`](../frontend/public/brand/bot/trace-avatar-1024.png)
+   in two places: **General Information → App Icon** and **Bot → Icon** (the bot's avatar).
+   Both slots take the same 1024×1024 PNG. Discord crops the avatar to a circle, so the
+   artwork keeps everything inside it. The PNG is generated, not hand-edited: change
+   `botAvatarSvg()` in `frontend/scripts/render-svg-sources.mjs`, then run
+   `npm run brand:export` from `frontend/`.
 2. Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**. Leave
    Server Members off; the bot doesn't need it.
 3. Invite it with the `bot` and `applications.commands` scopes and these permissions:
