@@ -148,6 +148,27 @@ jobs:
       - run: uvx ruff check
       - run: uvx ruff format --check
 
+  discord-bot:
+    name: Discord Bot
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bot
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "bot/uv.lock"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+
   backend-test-unit:
     name: Backend Tests (unit)
     # Kept on release PRs as the unit smoke, but ubuntu-only there: the dynamic
@@ -672,6 +693,7 @@ jobs:
       - detect-release
       - changelog-version-check
       - backend-lint
+      - discord-bot
       - backend-test-unit
       - backend-test-integration
       - backend-coverage
