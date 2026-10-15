@@ -6,6 +6,9 @@ Where it answers:
 - threads it opens for /bug and /feature.
 In those threads it replies to the reporter, and to anyone else only when mentioned. When
 a maintainer joins a thread the bot steps back until someone mentions it again.
+
+Only in its home server: with DISCORD_GUILD_ID set, messages and interactions from any
+other server (or a DM) are ignored, so an invite elsewhere can't spend the API budget.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ BUDGET_TEXT = (
     "see this thread, or you can try me again tomorrow."
 )
 RATE_TEXT = "You're sending me a lot of messages. Give me a little while and try again."
+FOREIGN_TEXT = "I only work in the Engram Discord server."
 
 
 FEEDBACK_EMOJI = {"👍": 1, "👎": -1}
@@ -125,6 +129,11 @@ class DraftButton(
     async def from_custom_id(cls, interaction, item, match, /):  # noqa: D102
         return cls(match["action"], int(match["id"]))
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        bot = interaction.client
+        assert isinstance(bot, EngramBot)
+        return await bot.home_interaction(interaction)
+
     async def callback(self, interaction: discord.Interaction) -> None:
         bot = interaction.client
         assert isinstance(bot, EngramBot)
@@ -177,6 +186,11 @@ class ReplyButton(
     async def from_custom_id(cls, interaction, item, match, /):  # noqa: D102
         return cls(int(match["id"]))
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        bot = interaction.client
+        assert isinstance(bot, EngramBot)
+        return await bot.home_interaction(interaction)
+
     async def callback(self, interaction: discord.Interaction) -> None:
         bot = interaction.client
         assert isinstance(bot, EngramBot)
@@ -222,6 +236,15 @@ class BugModal(discord.ui.Modal):
         )
 
 
+class HomeTree(app_commands.CommandTree):
+    """Slash commands answer only in the bot's home server."""
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        bot = interaction.client
+        assert isinstance(bot, EngramBot)
+        return await bot.home_interaction(interaction)
+
+
 class EngramBot(discord.Client):
     def __init__(
         self,
@@ -240,7 +263,7 @@ class EngramBot(discord.Client):
         self.agent = agent
         self.kb = knowledge
         self.gh = github
-        self.tree = app_commands.CommandTree(self)
+        self.tree = HomeTree(self)
         self.followup = FollowUp(github, store, self.send_to_thread, releases=releases)
         self._locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._latest_trigger: dict[int, int] = {}
@@ -261,6 +284,7 @@ class EngramBot(discord.Client):
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
         else:
+            log.warning("DISCORD_GUILD_ID is not set: answering in every server I'm in")
             await self.tree.sync()
         self._refresh_task = asyncio.create_task(self._refresh_loop())
         self._poll_task = asyncio.create_task(self._poll_loop())
@@ -329,6 +353,22 @@ class EngramBot(discord.Client):
         self.agent.set_allowed_labels(allowed)
 
     # -- permissions & limits ---------------------------------------------------------
+
+    def in_home_guild(self, guild: discord.abc.Snowflake | None) -> bool:
+        """Whether an event comes from the configured server (any server if none is set)."""
+        home = self.settings.guild_id
+        if home is None:
+            return True
+        return guild is not None and guild.id == home
+
+    async def home_interaction(self, interaction: discord.Interaction) -> bool:
+        """Gate for slash commands and buttons: refuse, politely, outside the home server."""
+        if self.in_home_guild(interaction.guild):
+            return True
+        log.info("ignoring an interaction from guild %s", interaction.guild_id)
+        with contextlib.suppress(discord.HTTPException):
+            await interaction.response.send_message(FOREIGN_TEXT, ephemeral=True)
+        return False
 
     def is_maintainer(self, user: discord.abc.User) -> bool:
         role_id = self.settings.maintainer_role_id
@@ -423,6 +463,8 @@ class EngramBot(discord.Client):
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot or message.guild is None or self.user is None:
+            return
+        if not self.in_home_guild(message.guild):
             return
         channel = message.channel
         mentioned = self.user in message.mentions

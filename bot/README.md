@@ -87,7 +87,8 @@ to the Discord thread.
    `botAvatarSvg()` in `frontend/scripts/render-svg-sources.mjs`, then run
    `npm run brand:export` from `frontend/`.
 2. Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**. Leave
-   Server Members off; the bot doesn't need it.
+   Server Members off; the bot doesn't need it. On the same page, turn **Public Bot** off
+   so only you can add it to a server.
 3. Invite it with the `bot` and `applications.commands` scopes and these permissions:
    View Channels, Send Messages, Send Messages in Threads, Create Public Threads, Embed
    Links, Read Message History, Attach Files.
@@ -96,6 +97,12 @@ to the Discord thread.
 5. Create a maintainer role (or reuse one) and give it to yourself.
 6. Turn on Developer Mode in Discord, then copy the server ID, the forum's channel ID and
    the maintainer role ID.
+
+The server ID (`DISCORD_GUILD_ID`) is also a fence: with it set, the bot ignores mentions,
+slash commands and buttons from every other server and from DMs (an interaction gets a
+one-line "I only work in the Engram Discord server" reply), so being invited elsewhere
+can't spend the Anthropic budget. Leave it empty only for local testing; the bot logs a
+warning at startup when it is.
 
 ### 2. GitHub App (recommended)
 
@@ -138,8 +145,18 @@ good backstop on top of the bot's own `BOT_DAILY_BUDGET_USD`.
 cd deploy/discord-bot
 cp engram-discord-bot.env.example .env     # fill in the IDs and secrets
 cp ~/Downloads/your-app.private-key.pem github-app.pem
+sudo chown "$USER":10001 github-app.pem && chmod 640 github-app.pem
 docker compose up -d --build
 docker compose logs -f
+```
+
+The container runs as UID/GID 10001, so the bind-mounted key has to be readable by group
+10001. Otherwise the bot restarts in a loop with
+`PermissionError: [Errno 13] Permission denied: '/run/secrets/github-app.pem'`. Without
+sudo, let a throwaway container do the `chown`:
+
+```bash
+docker run --rm -v "$PWD":/w alpine sh -c "chown $(id -u):10001 /w/github-app.pem && chmod 640 /w/github-app.pem"
 ```
 
 On startup the bot:
