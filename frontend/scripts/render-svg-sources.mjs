@@ -12,6 +12,7 @@
  *   - mark-mono.svg         monogram only (≤32px favicon use)
  *   - app-icon-dark.svg     1024-square dark edition with squircle chrome
  *   - app-icon-light.svg    paper edition
+ *   - bot-avatar.svg        Discord support bot ("Trace") avatar, 1024 square
  *
  * Geometry is in lockstep with frontend/src/app/components/synapse/
  * (SvMark.tsx, MarkMono.tsx, AppIcon.tsx). When the React component
@@ -147,9 +148,68 @@ function appIconSvg({ dark }) {
 `;
 }
 
+/**
+ * Discord support bot ("Trace") avatar, the "speech arc" variant of the mark.
+ *
+ * The outer arc closes into a speech bubble whose tail is a sharp 90° corner;
+ * the inner arcs and read-line are unchanged, so the node now sits on the
+ * bubble's edge. Full-bleed square (Discord's App Icon keeps the square, the
+ * bot avatar is cropped to a circle), with everything that matters inside the
+ * 86% safe circle: the bubble's corner is the farthest point, 24√2 mark units
+ * × 11 ≈ 373px from centre against a 440px safe radius.
+ *
+ * Strokes are 3 units rather than the app icon's 2.5 because Discord shows
+ * avatars as small as 20 to 32px (the same reason mark-mono.svg uses 3).
+ */
+function botAvatarSvg() {
+  const SIZE = 1024;
+  const scale = 11;
+  const offset = SIZE / 2 - 32 * scale;
+  const sw = 3;
+
+  const rings = [440, 360]
+    .map(
+      (r, i) =>
+        `<circle cx="${SIZE / 2}" cy="${SIZE / 2}" r="${r}" fill="none" stroke="${CYAN}" stroke-width="3.2" opacity="${(0.04 + i * 0.02).toFixed(2)}"/>`
+    )
+    .join("\n  ");
+
+  const innerArcs = [
+    { d: "M 32 16 A 16 16 0 1 0 32 48", opacity: 0.78 },
+    { d: "M 32 24 A 8 8 0 1 0 32 40", opacity: 0.55 },
+  ]
+    .map(
+      (a) =>
+        `<path d="${a.d}" fill="none" stroke="${CYAN}" stroke-width="${sw}" stroke-linecap="round" opacity="${a.opacity}"/>`
+    )
+    .join("\n    ");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SIZE} ${SIZE}" width="${SIZE}" height="${SIZE}">
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="#102031"/>
+      <stop offset="60%" stop-color="${BG0}"/>
+      <stop offset="100%" stop-color="#02030a"/>
+    </radialGradient>
+  </defs>
+  <rect width="${SIZE}" height="${SIZE}" fill="url(#bg)"/>
+  ${rings}
+  <g transform="translate(${offset} ${offset}) scale(${scale})">
+    <path d="M 8 32 A 24 24 0 1 1 32 56 L 8 56 Z" fill="${CYAN}" fill-opacity="0.06" stroke="${CYAN}" stroke-width="${sw}" stroke-linejoin="miter" stroke-linecap="round"/>
+    ${innerArcs}
+    <line x1="32" y1="32" x2="56" y2="32" stroke="${MAGENTA}" stroke-width="${sw}" stroke-linecap="round"/>
+    <circle cx="56" cy="32" r="3.5" fill="${MAGENTA}"/>
+    <circle cx="56" cy="32" r="6.5" fill="${MAGENTA}" opacity="0.18"/>
+  </g>
+</svg>
+`;
+}
+
 writeFileSync(join(OUTPUT_DIR, "mark.svg"), markSvg);
 writeFileSync(join(OUTPUT_DIR, "mark-mono.svg"), markMonoSvg);
 writeFileSync(join(OUTPUT_DIR, "app-icon-dark.svg"), appIconSvg({ dark: true }));
 writeFileSync(join(OUTPUT_DIR, "app-icon-light.svg"), appIconSvg({ dark: false }));
+writeFileSync(join(OUTPUT_DIR, "bot-avatar.svg"), botAvatarSvg());
 
 console.log(`✓ Wrote SVG sources to ${OUTPUT_DIR}`);
