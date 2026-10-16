@@ -354,16 +354,15 @@ class EngramBot(discord.Client):
 
     # -- permissions & limits ---------------------------------------------------------
 
-    def in_home_guild(self, guild: discord.abc.Snowflake | None) -> bool:
+    def in_home_guild(self, guild_id: int | None) -> bool:
         """Whether an event comes from the configured server (any server if none is set)."""
         home = self.settings.guild_id
-        if home is None:
-            return True
-        return guild is not None and guild.id == home
+        return home is None or guild_id == home
 
     async def home_interaction(self, interaction: discord.Interaction) -> bool:
         """Gate for slash commands and buttons: refuse, politely, outside the home server."""
-        if self.in_home_guild(interaction.guild):
+        # guild_id, not guild: the latter is a cache lookup and can be None in a real guild.
+        if self.in_home_guild(interaction.guild_id):
             return True
         log.info("ignoring an interaction from guild %s", interaction.guild_id)
         with contextlib.suppress(discord.HTTPException):
@@ -464,7 +463,7 @@ class EngramBot(discord.Client):
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot or message.guild is None or self.user is None:
             return
-        if not self.in_home_guild(message.guild):
+        if not self.in_home_guild(message.guild.id):
             return
         channel = message.channel
         mentioned = self.user in message.mentions

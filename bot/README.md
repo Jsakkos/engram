@@ -88,7 +88,8 @@ to the Discord thread.
    `npm run brand:export` from `frontend/`.
 2. Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**. Leave
    Server Members off; the bot doesn't need it. On the same page, turn **Public Bot** off
-   so only you can add it to a server.
+   so only you can add it to a server, and leave **Requires OAuth2 Code Grant** off (with
+   it on, the plain invite link fails).
 3. Invite it with the `bot` and `applications.commands` scopes and these permissions:
    View Channels, Send Messages, Send Messages in Threads, Create Public Threads, Embed
    Links, Read Message History, Attach Files.

@@ -442,13 +442,11 @@ async def test_mentions_in_another_server_are_ignored(monkeypatch):
 
 
 async def test_interactions_outside_the_home_server_are_refused():
-    from types import SimpleNamespace as NS
-
     from engram_bot import discord_app
 
     def inter(guild_id):
         i = interaction(7)
-        i.guild = NS(id=guild_id) if guild_id else None
+        i.guild = None  # not cached: the gate must go by guild_id
         i.guild_id = guild_id
         return i
 
