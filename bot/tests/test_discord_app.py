@@ -496,26 +496,49 @@ def fake_guild(guild_id, left, *, fails=False):
     return NS(id=guild_id, leave=leave)
 
 
-async def test_joining_another_server_leaves_it():
+def in_guilds(monkeypatch, guilds):
+    from engram_bot import discord_app
+
+    monkeypatch.setattr(discord_app.EngramBot, "guilds", property(lambda self: guilds))
+
+
+async def test_joining_another_server_leaves_it(monkeypatch):
     left = []
+    home, other = fake_guild(1, left), fake_guild(2, left)
+    in_guilds(monkeypatch, [home, other])
     bot = bare_bot(guild_id=1)
-    await bot.on_guild_join(fake_guild(1, left))
+    await bot.on_guild_join(home)
     assert left == []
-    await bot.on_guild_join(fake_guild(2, left))
+    await bot.on_guild_join(other)
     assert left == [2]
+
+    # A foreign guild that was unavailable at startup is caught when it comes back.
+    await bot.on_guild_available(fake_guild(4, left))
+    assert left == [2, 4]
 
     # With no home server configured, the bot stays wherever it's invited.
     await bare_bot(guild_id=None).on_guild_join(fake_guild(3, left))
-    assert left == [2]
+    assert left == [2, 4]
 
 
 async def test_ready_sweeps_out_of_foreign_servers(monkeypatch):
     from engram_bot import discord_app
 
     left = []
-    guilds = [fake_guild(1, left), fake_guild(2, left), fake_guild(3, left, fails=True)]
+    failing = fake_guild(3, left, fails=True)
+    in_guilds(monkeypatch, [fake_guild(1, left), fake_guild(2, left), failing])
     monkeypatch.setattr(discord_app.EngramBot, "user", property(lambda self: "Trace"))
-    monkeypatch.setattr(discord_app.EngramBot, "guilds", property(lambda self: guilds))
     bot = bare_bot(guild_id=1)
     await bot.on_ready()  # a failed leave is logged, not raised
     assert left == [2]
+    assert await bot.leave_if_foreign(failing) is False
+
+
+async def test_a_mistyped_home_guild_never_leaves_the_real_one(monkeypatch):
+    left = []
+    real = fake_guild(1, left)
+    in_guilds(monkeypatch, [real])
+    bot = bare_bot(guild_id=11)  # typo: the bot isn't in guild 11
+    await bot.on_guild_join(real)
+    await bot.on_guild_available(real)
+    assert left == []

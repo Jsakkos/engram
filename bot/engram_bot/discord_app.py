@@ -292,7 +292,7 @@ class EngramBot(discord.Client):
         self._digest_task = asyncio.create_task(self._digest_loop())
 
     async def on_ready(self) -> None:
-        log.info("connected as %s", self.user)
+        log.info("connected as %s; home guild %s", self.user, self.settings.guild_id)
         # Clean up invites to other servers that predate the fence (or happened offline).
         for guild in list(self.guilds):
             await self.leave_if_foreign(guild)
@@ -300,9 +300,23 @@ class EngramBot(discord.Client):
     async def on_guild_join(self, guild: discord.Guild) -> None:
         await self.leave_if_foreign(guild)
 
+    async def on_guild_available(self, guild: discord.Guild) -> None:
+        # A guild that was unavailable at on_ready arrives here, not in the sweep.
+        await self.leave_if_foreign(guild)
+
     async def leave_if_foreign(self, guild: discord.Guild) -> bool:
         """Leave a server that isn't the home one. Returns whether it left."""
         if self.in_home_guild(guild.id):
+            return False
+        home = self.settings.guild_id
+        if not any(g.id == home for g in self.guilds):
+            # Most likely a mistyped DISCORD_GUILD_ID: leaving would walk out of the real
+            # server, which then needs a fresh invite. Ignoring (the fence) is enough.
+            log.error(
+                "not leaving guild %s: home guild %s isn't one I'm in (check DISCORD_GUILD_ID)",
+                guild.id,
+                home,
+            )
             return False
         log.warning("leaving guild %s: not my home server", guild.id)
         try:
