@@ -481,3 +481,41 @@ async def test_slash_commands_and_buttons_use_the_home_gate(monkeypatch):
     assert not await discord_app.DraftButton("file", 3).interaction_check(i)
     assert not await discord_app.ReplyButton(4).interaction_check(i)
     assert seen == [i, i, i]
+
+
+def fake_guild(guild_id, left, *, fails=False):
+    from types import SimpleNamespace as NS
+
+    import discord
+
+    async def leave():
+        if fails:
+            raise discord.HTTPException(NS(status=500, reason="boom"), "boom")
+        left.append(guild_id)
+
+    return NS(id=guild_id, leave=leave)
+
+
+async def test_joining_another_server_leaves_it():
+    left = []
+    bot = bare_bot(guild_id=1)
+    await bot.on_guild_join(fake_guild(1, left))
+    assert left == []
+    await bot.on_guild_join(fake_guild(2, left))
+    assert left == [2]
+
+    # With no home server configured, the bot stays wherever it's invited.
+    await bare_bot(guild_id=None).on_guild_join(fake_guild(3, left))
+    assert left == [2]
+
+
+async def test_ready_sweeps_out_of_foreign_servers(monkeypatch):
+    from engram_bot import discord_app
+
+    left = []
+    guilds = [fake_guild(1, left), fake_guild(2, left), fake_guild(3, left, fails=True)]
+    monkeypatch.setattr(discord_app.EngramBot, "user", property(lambda self: "Trace"))
+    monkeypatch.setattr(discord_app.EngramBot, "guilds", property(lambda self: guilds))
+    bot = bare_bot(guild_id=1)
+    await bot.on_ready()  # a failed leave is logged, not raised
+    assert left == [2]

@@ -102,7 +102,9 @@ to the Discord thread.
 The server ID (`DISCORD_GUILD_ID`) is also a fence: with it set, the bot ignores mentions,
 slash commands and buttons from every other server and from DMs (an interaction gets a
 one-line "I only work in the Engram Discord server" reply), so being invited elsewhere
-can't spend the Anthropic budget. Leave it empty only for local testing; the bot logs a
+can't spend the Anthropic budget. It also leaves any other server it's added to, and on
+startup it leaves every server other than this one that it finds itself in, logging each
+server ID it leaves. Leave it empty only for local testing; the bot logs a
 warning at startup when it is.
 
 ### 2. GitHub App (recommended)
