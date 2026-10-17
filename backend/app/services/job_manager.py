@@ -38,7 +38,7 @@ from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.database import async_session
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
-from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.models.disc_job import ContentType, DiscTitle, TitleState, start_rip_refusal
 from app.services.backup_reconcile import ReconcileOutcome, reconcile_titles
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
@@ -1294,6 +1294,15 @@ class JobManager:
 
             if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
                 raise ValueError(f"Cannot start job in state: {job.state}")
+
+            # Same guard as POST /api/jobs/{id}/start, so no future caller can
+            # re-rip a post-rip review (#710).
+            titles = (
+                await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            ).scalars()
+            refusal = start_rip_refusal(job, titles)
+            if refusal:
+                raise ValueError(refusal)
 
             # A resume from review honours backup_before_rip exactly as a
             # fresh identification does; next_state_after_identify is the one

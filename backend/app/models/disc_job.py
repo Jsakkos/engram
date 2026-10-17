@@ -1,5 +1,6 @@
 """DiscJob model - the core state machine for disc processing."""
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -44,6 +45,42 @@ class TitleState(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"  # User skipped this track before ripping; excluded, not a failure
+
+
+# Title states that mean "MakeMKV has not touched this track yet".
+_PRE_RIP_TITLE_STATES = frozenset({TitleState.PENDING, TitleState.SKIPPED})
+
+
+def start_rip_refusal(job: "DiscJob", titles: Iterable["DiscTitle"]) -> str | None:
+    """Why a full rip may not start for this job, or None when it may.
+
+    REVIEW_NEEDED covers both a pre-rip review (name prompt, unclear movie vs
+    TV) and a post-rip one (low-confidence match, file conflict); the state
+    alone cannot tell them apart. This is the one place that does, and both
+    ``POST /api/jobs/{id}/start`` (via ``JobManager.start_ripping``) and the
+    review page's Start rip button (``canStartRip``) gate on it (#710). Either
+    way the disc has already left the drive, so a second full rip fails the job
+    or rips whatever disc is now inserted under this job's identity.
+
+    - Any title has left PENDING/SKIPPED: the disc was ripped. Partially
+      ripped jobs recover through per-title re-rip instead. Deselected titles
+      count too: movie extras are deselected AFTER they are ripped, and before
+      a rip a deselected title is only ever PENDING or SKIPPED anyway.
+    - A completed backup: the drive was released when the copy finished, even
+      though every title can still be PENDING (an unreconcilable backup
+      re-scan parks here before any rip).
+    """
+    if any(t.state not in _PRE_RIP_TITLE_STATES for t in titles):
+        return (
+            "This disc has already been ripped, so it cannot be started again. "
+            "Finish the review, or re-rip individual tracks instead."
+        )
+    if job.backup_status == "completed":
+        return (
+            "This disc has already been copied to a backup and released from the "
+            "drive, so it cannot be started again. Re-import the backup to continue."
+        )
+    return None
 
 
 class DiscJob(SQLModel, table=True):

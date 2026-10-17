@@ -20,6 +20,7 @@ import { Inspector } from './ReviewQueue/Inspector';
 import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
 import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dismissTvdbSuggestion, submitReviewBatch, rematchTitle } from '../api/client';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
+import { canStartRip, startRipErrorMessage } from './ReviewQueue/startRip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
 import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
@@ -602,7 +603,7 @@ function ReviewQueue() {
             const response = await fetch(`/api/jobs/${jobId}/start`, { method: 'POST' });
             if (!response.ok) {
                 const text = await response.text();
-                throw new Error(`Failed to start: ${text}`);
+                throw new Error(startRipErrorMessage(text));
             }
             navigate('/');
         } catch (err) {
@@ -961,14 +962,16 @@ function ReviewQueue() {
                 maxWidth={sv.layoutMaxWidth}
                 right={
                     <>
-                        <HeaderButton
-                            color={sv.cyan}
-                            onClick={handleStartRip}
-                            disabled={isSaving || isProcessing}
-                            icon={<IcoPlay size={12} />}
-                        >
-                            Start rip
-                        </HeaderButton>
+                        {canStartRip(job, titles) && (
+                            <HeaderButton
+                                color={sv.cyan}
+                                onClick={handleStartRip}
+                                disabled={isSaving || isProcessing}
+                                icon={<IcoPlay size={12} />}
+                            >
+                                Start rip
+                            </HeaderButton>
+                        )}
                         {assignedCount > 0 && (
                             <HeaderButton
                                 color={sv.yellow}
