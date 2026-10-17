@@ -39,7 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = [
-    "nvidia-cudnn-cu12[nvidia-cublas-cu12]>=9.19.0.56",
+    "nvidia-cudnn-cu12[nvidia-cublas-cu12]>=9.27.0.42",
     "gputil>=1.4.0",
 ]
 dev = [
