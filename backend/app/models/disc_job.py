@@ -1,5 +1,6 @@
 """DiscJob model - the core state machine for disc processing."""
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -44,6 +45,24 @@ class TitleState(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"  # User skipped this track before ripping; excluded, not a failure
+
+
+# Title states that mean "MakeMKV has not touched this track yet".
+_PRE_RIP_TITLE_STATES = frozenset({TitleState.PENDING, TitleState.SKIPPED})
+
+
+def rip_has_started(titles: Iterable["DiscTitle"]) -> bool:
+    """True once any selected title has left the pre-rip states.
+
+    REVIEW_NEEDED covers both a pre-rip review (name prompt, unclear movie vs
+    TV) and a post-rip one (low-confidence match, file conflict); the state
+    alone cannot tell them apart. This is the one derived fact that does, and
+    both ``POST /api/jobs/{id}/start`` and the review page's Start rip button
+    gate on it (#710). A post-rip disc is usually ejected, so a second full rip
+    either fails the job or rips whatever disc is now in the drive.
+    Partially ripped jobs recover through per-title re-rip instead.
+    """
+    return any(t.is_selected and t.state not in _PRE_RIP_TITLE_STATES for t in titles)
 
 
 class DiscJob(SQLModel, table=True):

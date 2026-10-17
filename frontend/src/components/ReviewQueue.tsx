@@ -20,6 +20,7 @@ import { Inspector } from './ReviewQueue/Inspector';
 import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
 import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dismissTvdbSuggestion, submitReviewBatch, rematchTitle } from '../api/client';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
+import { canStartRip } from './ReviewQueue/startRip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
 import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
@@ -961,14 +962,16 @@ function ReviewQueue() {
                 maxWidth={sv.layoutMaxWidth}
                 right={
                     <>
-                        <HeaderButton
-                            color={sv.cyan}
-                            onClick={handleStartRip}
-                            disabled={isSaving || isProcessing}
-                            icon={<IcoPlay size={12} />}
-                        >
-                            Start rip
-                        </HeaderButton>
+                        {canStartRip(titles) && (
+                            <HeaderButton
+                                color={sv.cyan}
+                                onClick={handleStartRip}
+                                disabled={isSaving || isProcessing}
+                                icon={<IcoPlay size={12} />}
+                            >
+                                Start rip
+                            </HeaderButton>
+                        )}
                         {assignedCount > 0 && (
                             <HeaderButton
                                 color={sv.yellow}

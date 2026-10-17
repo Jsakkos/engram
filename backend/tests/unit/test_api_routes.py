@@ -222,6 +222,76 @@ class TestJobEndpoints:
         response = await client.post("/api/jobs/999/start")
         assert response.status_code == 404
 
+    @pytest.mark.parametrize(
+        "ripped_state",
+        [TitleState.REVIEW, TitleState.MATCHED, TitleState.COMPLETED, TitleState.FAILED],
+    )
+    async def test_start_job_refuses_post_rip_review(self, client, monkeypatch, ripped_state):
+        """#710: a post-rip REVIEW_NEEDED job (low-confidence match, file conflict)
+        must not be ripped again. The disc is usually ejected, so a second rip
+        either fails the job or rips whatever disc is now in the drive."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        start = AsyncMock()
+        monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        titles = await _seed_titles(job.id, count=3)
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, titles[1].id)
+            t.state = ripped_state
+            await session.commit()
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 409
+        assert "already been ripped" in response.json()["detail"]
+        start.assert_not_awaited()
+
+    async def test_start_job_allows_pre_rip_review(self, client, monkeypatch):
+        """#710: a pre-rip review (name prompt, unclear movie vs TV) keeps its
+        Start rip. Skipped titles are excluded and do not count as ripped."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        start = AsyncMock()
+        monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        titles = await _seed_titles(job.id, count=3)
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, titles[2].id)
+            t.state = TitleState.SKIPPED
+            t.is_selected = False
+            await session.commit()
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 200
+        start.assert_awaited_once_with(job.id)
+
+    async def test_start_job_ignores_unselected_ripped_title(self, client, monkeypatch):
+        """Only selected titles decide it: a deselected title cannot be ripped by
+        this start, so its state does not block the selected ones."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        start = AsyncMock()
+        monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        titles = await _seed_titles(job.id, count=2)
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, titles[0].id)
+            t.state = TitleState.FAILED
+            t.is_selected = False
+            await session.commit()
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 200
+
     async def test_cancel_job_not_found(self, client):
         response = await client.post("/api/jobs/999/cancel")
         assert response.status_code == 404

@@ -7,6 +7,11 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - TheTVDB episode numbering for shows whose discs follow it. When TheTVDB numbers a season differently from TMDB (Justice League's three-part pilot is one TMDB episode), the review page offers to switch the show; Engram then re-downloads subtitles and re-matches in TheTVDB numbering, without re-ripping, and files episodes under TheTVDB's numbers. Release builds include a TheTVDB key; Docker and source installs set `TVDB_API_KEY` or enter a key in Settings.
+
+### Fixed
+
+- The review page no longer offers **Start rip** for a disc that has already been ripped. On a post-rip review (low-confidence matches, file conflicts) the button started a second full rip against a drive that was usually empty, failing the job, or holding a different disc, which was then ripped under this job's name. The button now appears only when nothing has been ripped yet, and the server refuses such a start with a clear message. Partially ripped tracks still have their per-track re-rip. (#710)
+
 ## [0.39.0] - 2026-10-09
 
 _Highlights: "Skip extras" now skips short TV tracks before ripping instead of after._
