@@ -1,0 +1,81 @@
+<h2>Master-card patterns for grouped submissions</h2>
+<p class="subtitle">When discs are dragged together, they form one "master submission" that expands to show each disc. Which expansion pattern fits Engram best?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="accordion" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-body" style="padding:14px;background:#0a0e14;border:1px solid rgba(34,211,238,0.4);border-radius:8px">
+          <div style="display:flex;align-items:center;gap:10px;color:#22d3ee;font-family:monospace;font-size:13px">
+            <span style="transform:rotate(90deg);display:inline-block">▸</span>
+            <span style="color:#22d3ee;font-weight:600">For All Mankind</span>
+            <span style="color:#888">Season 1</span>
+            <span style="margin-left:auto;color:#22d3ee;border:1px solid #22d3ee;padding:2px 8px;border-radius:3px;font-size:11px">SUBMIT GROUP (4)</span>
+          </div>
+          <div style="margin-top:10px;margin-left:24px;border-left:2px solid rgba(34,211,238,0.3);padding-left:12px">
+            <div style="color:#bbb;font-family:monospace;font-size:11px;padding:4px 0;display:flex;justify-content:space-between"><span>Disc 1 · 4F98348A</span><span style="color:#10b981">EXPORTED</span></div>
+            <div style="color:#bbb;font-family:monospace;font-size:11px;padding:4px 0;display:flex;justify-content:space-between"><span>Disc 2 · 7BFC7C5A</span><span style="color:#10b981">EXPORTED</span></div>
+            <div style="color:#bbb;font-family:monospace;font-size:11px;padding:4px 0;display:flex;justify-content:space-between"><span>Disc 3 · 13269471</span><span style="color:#10b981">EXPORTED</span></div>
+            <div style="color:#bbb;font-family:monospace;font-size:11px;padding:4px 0;display:flex;justify-content:space-between"><span>Disc 4 · CA8AE296</span><span style="color:#10b981">EXPORTED</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A · Accordion master</h3>
+      <p>Master = a wrapper row that expands to indented child rows. Drop a disc onto the header to add. Drop a child row outside to ungroup. Familiar mental model (like a folder).</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="deck" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-body" style="padding:14px;background:#0a0e14;border:2px solid #d946ef;border-radius:8px;position:relative">
+          <div style="position:absolute;top:-8px;left:8px;background:#0a0e14;color:#d946ef;font-family:monospace;font-size:10px;padding:0 6px;border:1px solid #d946ef;border-radius:3px">RELEASE GROUP</div>
+          <div style="color:#d946ef;font-weight:600;font-family:monospace;font-size:13px;margin-bottom:6px">For All Mankind · Season 1</div>
+          <div style="color:#888;font-size:11px;margin-bottom:12px">4 discs · UPC 043996634404</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <div style="background:rgba(217,70,239,0.15);border:1px solid rgba(217,70,239,0.5);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:10px;color:#d946ef">D1 4F98348A</div>
+            <div style="background:rgba(217,70,239,0.15);border:1px solid rgba(217,70,239,0.5);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:10px;color:#d946ef">D2 7BFC7C5A</div>
+            <div style="background:rgba(217,70,239,0.15);border:1px solid rgba(217,70,239,0.5);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:10px;color:#d946ef">D3 13269471</div>
+            <div style="background:rgba(217,70,239,0.15);border:1px solid rgba(217,70,239,0.5);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:10px;color:#d946ef">D4 CA8AE296</div>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <span style="color:#d946ef;border:1px solid #d946ef;padding:3px 10px;border-radius:3px;font-size:11px">SUBMIT</span>
+            <span style="color:#888;border:1px solid #333;padding:3px 10px;border-radius:3px;font-size:11px">EXPAND</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B · Hub card with disc chips</h3>
+      <p>Master = a single card showing release metadata + disc chips inline. Click chip to expand details below. Drag a chip out to ungroup; drag a disc onto the hub to add. Compact, spatially clear.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="stack" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-body" style="padding:14px;background:#0a0e14;border-radius:8px;position:relative;min-height:180px">
+          <div style="position:absolute;top:14px;right:14px;color:#fbbf24;font-family:monospace;font-size:9px;border:1px solid #fbbf24;padding:2px 6px;border-radius:3px">STACK · 4</div>
+          <div style="position:relative;width:100%;height:130px">
+            <div style="position:absolute;top:18px;left:18px;right:30px;bottom:30px;background:#0a0e14;border:1px solid rgba(251,191,36,0.3);border-radius:6px"></div>
+            <div style="position:absolute;top:12px;left:12px;right:24px;bottom:24px;background:#0a0e14;border:1px solid rgba(251,191,36,0.5);border-radius:6px"></div>
+            <div style="position:absolute;top:6px;left:6px;right:18px;bottom:18px;background:#0a0e14;border:1px solid rgba(251,191,36,0.7);border-radius:6px"></div>
+            <div style="position:absolute;top:0;left:0;right:12px;bottom:12px;background:#0a0e14;border:1px solid #fbbf24;border-radius:6px;padding:10px">
+              <div style="color:#fbbf24;font-weight:600;font-family:monospace;font-size:13px">For All Mankind</div>
+              <div style="color:#888;font-size:11px;margin-top:2px">Season 1 · 4 discs</div>
+              <div style="margin-top:18px;display:flex;gap:6px"><span style="color:#fbbf24;border:1px solid #fbbf24;padding:2px 8px;border-radius:3px;font-size:10px">SUBMIT</span><span style="color:#888;border:1px solid #333;padding:2px 8px;border-radius:3px;font-size:10px">FAN OUT</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C · Stacked deck</h3>
+      <p>Master shows as physical "deck of discs" with depth. Click "Fan out" to splay into individual cards. Most evocative of a physical box set, but fan-out animation needs care; less efficient if you need to see all 4 hashes at once.</p>
+    </div>
+  </div>
+
+</div>

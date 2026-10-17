@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bootstrap Library · Direction B · Dense Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg0:#05070c;--bg1:#0a0e18;--bg2:#121827;--bg3:#1a2234;
+  --ink:#e6ecf5;--inkDim:#8893a8;--inkFaint:#4a5369;--inkGhost:#2a3147;
+  --cyan:#5eead4;--cyanHi:#9ff8e8;--cyanDim:#2dd4bf;
+  --magenta:#ff3d7f;--magentaHi:#ff7aa5;--magentaDim:#d63171;
+  --yellow:#fde047;--amber:#fcd34d;--green:#86efac;--greenDim:#4ade80;
+  --red:#ff5555;--purple:#a78bfa;
+  --line:rgba(94,234,212,.14);--lineMid:rgba(94,234,212,.24);--lineHi:rgba(94,234,212,.42);
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --display:"Chakra Petch",ui-sans-serif,sans-serif;
+}
+html,body{height:100%;width:2560px}
+body{
+  background:var(--bg0);color:var(--ink);font-family:var(--mono);font-size:13px;
+  line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;
+  background-image:
+    radial-gradient(circle,rgba(94,234,212,.15) 1px,transparent 1px),
+    repeating-linear-gradient(0deg,transparent,transparent 79px,rgba(94,234,212,.06) 79px,rgba(94,234,212,.06) 80px),
+    repeating-linear-gradient(90deg,transparent,transparent 79px,rgba(94,234,212,.06) 79px,rgba(94,234,212,.06) 80px);
+  background-size:20px 20px,100% 80px,80px 100%;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.013) 0 1px,transparent 1px 3px);
+}
+/* Subtle radial glow corners */
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(1600px 800px at 0% 0%,rgba(94,234,212,.07),transparent 60%),
+    radial-gradient(1200px 700px at 100% 100%,rgba(255,61,127,.05),transparent 60%);
+}
+
+/* ── Layout ── */
+.page{
+  position:relative;z-index:1;display:flex;flex-direction:column;
+  min-height:100vh;width:2560px;
+}
+
+/* ── Topbar ── */
+.topbar{
+  height:48px;background:rgba(5,7,12,.94);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;padding:0 40px;gap:24px;flex-shrink:0;position:sticky;top:0;z-index:50;
+}
+.logo{
+  font-family:var(--display);font-size:15px;font-weight:700;letter-spacing:.22em;
+  color:var(--cyanHi);text-shadow:0 0 12px rgba(94,234,212,.45);text-transform:uppercase;
+}
+.topbar-sep{width:1px;height:20px;background:var(--line)}
+.nav-item{font-size:11px;letter-spacing:.16em;color:var(--inkDim);text-transform:uppercase;cursor:pointer}
+.nav-item.active{color:var(--cyan)}
+.topbar-grow{flex:1}
+.topbar-tag{
+  font-size:10px;letter-spacing:.18em;color:var(--magenta);text-transform:uppercase;
+  border:1px solid rgba(255,61,127,.3);padding:4px 10px;
+}
+
+/* ── Page header ── */
+.page-header{
+  padding:36px 40px 0;display:flex;align-items:flex-end;justify-content:space-between;
+}
+.page-title-group{}
+.page-eyebrow{
+  font-size:10px;letter-spacing:.22em;color:var(--magenta);text-transform:uppercase;margin-bottom:8px;
+}
+.page-title{
+  font-family:var(--display);font-size:28px;font-weight:700;letter-spacing:.04em;
+  color:var(--cyanHi);text-shadow:0 0 20px rgba(94,234,212,.3);
+}
+.page-sub{font-size:12px;letter-spacing:.13em;color:var(--inkDim);text-transform:uppercase;margin-top:6px}
+.page-actions{display:flex;gap:10px;align-items:center}
+
+/* ── Directory picker bar ── */
+.dir-bar{
+  margin:28px 40px 0;display:flex;align-items:center;gap:12px;
+  padding:14px 18px;
+  background:linear-gradient(180deg,var(--bg2),var(--bg1));
+  border:1px solid var(--lineHi);
+  position:relative;
+}
+.dir-bar::before,.dir-bar::after{
+  content:"";position:absolute;width:9px;height:9px;border:1px solid var(--cyan);pointer-events:none;
+}
+.dir-bar::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.dir-bar::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.dir-label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--inkFaint);white-space:nowrap}
+.dir-input{
+  flex:1;background:var(--bg0);border:1px solid var(--lineMid);color:var(--ink);
+  font-family:var(--mono);font-size:12px;padding:8px 12px;outline:none;
+}
+.dir-input:focus{border-color:var(--cyan)}
+.btn{
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  padding:9px 16px;border:1px solid var(--lineMid);color:var(--inkDim);cursor:pointer;
+  background:transparent;transition:.14s;white-space:nowrap;
+}
+.btn:hover{border-color:var(--lineHi);color:var(--ink)}
+.btn.primary{
+  background:var(--cyan);color:var(--bg0);border-color:var(--cyan);font-weight:600;
+  box-shadow:0 0 10px rgba(94,234,212,.3);
+}
+.btn.primary:hover{box-shadow:0 0 18px rgba(94,234,212,.45)}
+.btn.green-outline{border-color:rgba(134,239,172,.5);color:var(--green)}
+.btn.green-outline:hover{background:rgba(134,239,172,.08)}
+.btn.magenta-outline{border-color:rgba(255,61,127,.45);color:var(--magenta)}
+.btn.sm{padding:6px 11px;font-size:9px}
+
+/* ── Scan progress strip ── */
+.scan-strip{
+  margin:12px 40px 0;padding:10px 16px;
+  background:rgba(94,234,212,.04);border:1px solid var(--line);
+  display:flex;align-items:center;gap:16px;
+}
+.scan-strip-label{font-size:10px;letter-spacing:.16em;color:var(--cyanDim);text-transform:uppercase}
+.scan-bar-wrap{flex:1;height:3px;background:var(--inkGhost);position:relative}
+.scan-bar-fill{height:100%;background:var(--cyanDim);position:absolute;left:0;top:0;width:93%}
+.scan-count{font-size:11px;color:var(--ink);white-space:nowrap;font-weight:600}
+.scan-sub{font-size:10px;color:var(--inkFaint)}
+
+/* ── Bulk action bar (sticky) ── */
+.bulk-bar{
+  position:sticky;top:48px;z-index:40;
+  margin:0 40px;
+  background:rgba(10,14,24,.96);backdrop-filter:blur(6px);
+  border:1px solid var(--lineHi);border-top:0;
+  display:flex;align-items:center;gap:12px;padding:10px 18px;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+}
+.bulk-selected{
+  font-size:11px;font-weight:600;color:var(--cyan);letter-spacing:.12em;
+  display:flex;align-items:center;gap:8px;
+}
+.bulk-dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+.bulk-sep{width:1px;height:18px;background:var(--lineMid)}
+.bulk-grow{flex:1}
+.bulk-note{font-size:10px;color:var(--inkFaint);letter-spacing:.12em}
+
+/* ── Filter row ── */
+.filter-row{
+  margin:16px 40px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.filter-tabs{display:flex;gap:0}
+.ftab{
+  font-size:9px;letter-spacing:.18em;text-transform:uppercase;padding:7px 14px;
+  border:1px solid var(--line);color:var(--inkDim);cursor:pointer;background:transparent;
+  border-right:0;transition:.12s;
+}
+.ftab:last-child{border-right:1px solid var(--line)}
+.ftab:hover{color:var(--ink);border-color:var(--lineMid)}
+.ftab.active{background:rgba(94,234,212,.08);border-color:var(--lineHi);color:var(--cyan)}
+.filter-grow{flex:1}
+.filter-search{
+  background:var(--bg1);border:1px solid var(--lineMid);color:var(--ink);
+  font-family:var(--mono);font-size:11px;padding:7px 12px;outline:none;width:280px;
+}
+.filter-search:focus{border-color:var(--cyan)}
+.filter-search::placeholder{color:var(--inkFaint)}
+.sort-lbl{font-size:10px;letter-spacing:.14em;color:var(--inkFaint);text-transform:uppercase}
+.sort-sel{
+  background:var(--bg1);border:1px solid var(--lineMid);color:var(--inkDim);
+  font-family:var(--mono);font-size:10px;padding:6px 10px;cursor:pointer;
+}
+
+/* ── Table ── */
+.tbl-wrap{margin:12px 40px 0;position:relative}
+.tbl-panel{
+  background:linear-gradient(180deg,var(--bg2),var(--bg1));
+  border:1px solid var(--line);position:relative;
+}
+.tbl-panel::before,.tbl-panel::after{
+  content:"";position:absolute;width:10px;height:10px;border:1px solid var(--cyan);pointer-events:none;z-index:2;
+}
+.tbl-panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.tbl-panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--inkFaint);
+  padding:11px 14px;border-bottom:1px solid var(--lineMid);text-align:left;
+  background:rgba(94,234,212,.04);font-weight:600;white-space:nowrap;
+}
+.tbl th.sortable{cursor:pointer;user-select:none}
+.tbl th.sortable:hover{color:var(--inkDim)}
+.tbl th.sorted{color:var(--cyan)}
+.sort-arrow{margin-left:4px;opacity:.6}
+
+.tbl td{
+  padding:9px 14px;border-bottom:1px solid var(--line);vertical-align:middle;
+  font-size:12px;
+}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr:hover td{background:rgba(94,234,212,.03)}
+.tbl tr.row-accepted td{background:rgba(134,239,172,.03)}
+.tbl tr.row-skipped td{opacity:.38}
+.tbl tr.row-flagged td{background:rgba(253,224,71,.03)}
+.tbl tr.row-selected td{background:rgba(94,234,212,.06)}
+.tbl tr.row-selected td:first-child{border-left:2px solid var(--cyan)}
+
+/* Checkbox */
+.chk{
+  width:15px;height:15px;border:1px solid var(--lineMid);background:transparent;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;
+}
+.chk.checked{border-color:var(--cyan);background:rgba(94,234,212,.12)}
+.chk.checked::after{content:"✓";font-size:9px;color:var(--cyan)}
+
+/* File cell */
+.td-file{}
+.f-name{color:var(--ink);font-size:12px;font-weight:500;white-space:nowrap}
+.f-path{font-size:10px;color:var(--inkFaint);margin-top:1px;white-space:nowrap}
+
+/* Show cell */
+.td-show{white-space:nowrap;color:var(--ink)}
+
+/* Episode cell */
+.ep-code{
+  font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.05em;
+  color:var(--cyan);white-space:nowrap;
+}
+.ep-code.yellow{color:var(--yellow)}
+.ep-code.faint{color:var(--inkFaint)}
+.ep-title{font-size:10px;color:var(--inkDim);margin-top:1px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+
+/* Confidence cell */
+.conf-cell{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.conf-track{width:60px;height:3px;background:var(--inkGhost);position:relative;flex-shrink:0}
+.conf-fill{height:100%;position:absolute;left:0;top:0}
+.conf-fill.hi{background:var(--green)}
+.conf-fill.mid{background:var(--yellow)}
+.conf-fill.lo{background:var(--magenta)}
+.conf-pct{font-size:11px;color:var(--inkDim);font-variant-numeric:tabular-nums}
+
+/* Status / badge */
+.badge{
+  display:inline-flex;align-items:center;gap:4px;font-size:9px;letter-spacing:.14em;
+  text-transform:uppercase;padding:3px 7px;border:1px solid var(--line);
+}
+.badge.green{color:var(--green);border-color:rgba(134,239,172,.4);background:rgba(134,239,172,.06)}
+.badge.yellow{color:var(--yellow);border-color:rgba(253,224,71,.4);background:rgba(253,224,71,.06)}
+.badge.magenta{color:var(--magentaHi);border-color:rgba(255,61,127,.4);background:rgba(255,61,127,.06)}
+.badge.ghost{color:var(--inkFaint);border-color:var(--line);background:rgba(255,255,255,.02)}
+.badge.cyan{color:var(--cyan);border-color:rgba(94,234,212,.4);background:rgba(94,234,212,.06)}
+.dot{width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 5px currentColor;flex-shrink:0}
+
+/* Action cell */
+.td-actions{white-space:nowrap}
+.act-row{display:flex;gap:5px;align-items:center}
+.act-btn{
+  font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  padding:5px 8px;border:1px solid var(--line);color:var(--inkDim);cursor:pointer;
+  background:transparent;transition:.12s;white-space:nowrap;
+}
+.act-btn:hover{border-color:var(--lineHi);color:var(--ink)}
+.act-btn.accept{border-color:rgba(134,239,172,.45);color:var(--green)}
+.act-btn.accept:hover{background:rgba(134,239,172,.09)}
+.act-btn.accept.done{
+  background:rgba(134,239,172,.1);border-color:var(--green);color:var(--green);
+  pointer-events:none;
+}
+.act-btn.edit{border-color:rgba(253,224,71,.35);color:var(--yellow)}
+.act-btn.skip{border-color:rgba(255,85,85,.3);color:var(--red);opacity:.7}
+.act-btn.skip:hover{opacity:1;background:rgba(255,85,85,.07)}
+
+/* ── Footer / queue bar ── */
+.queue-bar{
+  position:sticky;bottom:0;z-index:40;
+  margin:0 40px;
+  background:rgba(10,14,24,.97);backdrop-filter:blur(6px);
+  border:1px solid var(--lineHi);border-top:2px solid var(--cyan);
+  display:flex;align-items:center;gap:16px;padding:14px 20px;
+  box-shadow:0 -4px 24px rgba(94,234,212,.1);
+}
+.queue-stat{font-size:11px;letter-spacing:.13em;color:var(--inkDim)}
+.queue-stat b{color:var(--ink)}
+.queue-stat.cyan b{color:var(--cyan)}
+.queue-stat.green b{color:var(--green)}
+.queue-stat.yellow b{color:var(--yellow)}
+.queue-sep{width:1px;height:18px;background:var(--lineMid)}
+.queue-grow{flex:1}
+.queue-fp-label{
+  font-size:10px;letter-spacing:.16em;color:var(--inkDim);text-transform:uppercase;
+}
+.queue-fp-val{
+  font-size:14px;font-weight:700;color:var(--cyanHi);
+  font-family:var(--display);letter-spacing:.1em;margin-left:8px;
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="logo">ENGRAM</div>
+    <div class="topbar-sep"></div>
+    <div class="nav-item">Dashboard</div>
+    <div class="nav-item">Review</div>
+    <div class="nav-item">History</div>
+    <div class="nav-item active">Library Bootstrap</div>
+    <div class="topbar-grow"></div>
+    <div class="topbar-tag">Beta Feature</div>
+  </div>
+
+  <!-- Page header -->
+  <div class="page-header">
+    <div class="page-title-group">
+      <div class="page-eyebrow">Fingerprint Network · Seed Catalog</div>
+      <div class="page-title">Bootstrap from Library</div>
+      <div class="page-sub">Scan existing TV files · Propose episode labels · Queue for fingerprinting</div>
+    </div>
+    <div class="page-actions">
+      <button class="btn magenta-outline">Discard Session</button>
+    </div>
+  </div>
+
+  <!-- Directory picker -->
+  <div class="dir-bar">
+    <div class="dir-label">Source Directory</div>
+    <input class="dir-input" type="text" value="D:\TV" />
+    <button class="btn">Browse…</button>
+    <button class="btn primary">▶ Re-Scan</button>
+    <div style="width:1px;height:20px;background:var(--line)"></div>
+    <div style="font-size:10px;color:var(--inkFaint);letter-spacing:.12em">Scanned <span style="color:var(--ink)">187</span> files · Completed</div>
+  </div>
+
+  <!-- Scan progress strip -->
+  <div class="scan-strip">
+    <div class="scan-strip-label">Scan Complete</div>
+    <div class="scan-bar-wrap"><div class="scan-bar-fill"></div></div>
+    <div class="scan-count">174 / 187 parsed</div>
+    <div style="width:1px;height:14px;background:var(--line)"></div>
+    <div class="scan-sub"><span style="color:var(--green)">142</span> high-conf · <span style="color:var(--yellow)">32</span> review · <span style="color:var(--magenta)">13</span> unmatched</div>
+  </div>
+
+  <!-- Bulk action bar -->
+  <div class="bulk-bar">
+    <div class="bulk-selected">
+      <div class="bulk-dot"></div>
+      47 selected
+    </div>
+    <div class="bulk-sep"></div>
+    <button class="btn sm green-outline">✓ Accept 47 Selected</button>
+    <button class="btn sm" style="border-color:rgba(255,85,85,.3);color:var(--red);font-size:9px;padding:6px 11px;">Skip 47 Selected</button>
+    <div class="bulk-grow"></div>
+    <div class="bulk-note">Shift-click to range-select · Ctrl-click individual rows</div>
+  </div>
+
+  <!-- Filter row -->
+  <div class="filter-row">
+    <div class="filter-tabs">
+      <button class="ftab active">All (187)</button>
+      <button class="ftab">Accepted (4)</button>
+      <button class="ftab">Needs Review (32)</button>
+      <button class="ftab">Unmatched (13)</button>
+      <button class="ftab">Skipped (1)</button>
+    </div>
+    <div class="filter-grow"></div>
+    <input class="filter-search" type="text" placeholder="Filter by file name, show, or episode…" />
+    <div class="sort-lbl">Sort by</div>
+    <select class="sort-sel">
+      <option>Show · Season · Episode</option>
+      <option>Confidence ↓</option>
+      <option>File Name</option>
+      <option>Status</option>
+    </select>
+  </div>
+
+  <!-- Table -->
+  <div class="tbl-wrap">
+  <div class="tbl-panel">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th style="width:32px"><div class="chk checked"></div></th>
+        <th class="sortable">File <span class="sort-arrow">↕</span></th>
+        <th class="sortable sorted">Show <span class="sort-arrow">↑</span></th>
+        <th class="sortable">Season / Episode <span class="sort-arrow">↕</span></th>
+        <th class="sortable">Episode Title <span class="sort-arrow">↕</span></th>
+        <th class="sortable">TMDB Conf. <span class="sort-arrow">↕</span></th>
+        <th>Status</th>
+        <th style="width:190px">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <!-- Accepted rows -->
+      <tr class="row-accepted row-selected">
+        <td><div class="chk checked"></div></td>
+        <td class="td-file">
+          <div class="f-name">Severance.S01E01.Good.News.About.Hell.mkv</div>
+          <div class="f-path">D:\TV\Severance\Season 1\</div>
+        </td>
+        <td class="td-show">Severance</td>
+        <td><span class="ep-code">S01E01</span></td>
+        <td><div class="ep-title">Good News About Hell</div></td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-track"><div class="conf-fill hi" style="width:94%"></div></div>
+            <span class="conf-pct">94%</span>
+          </div>
+        </td>
+        <td><span class="badge green"><span class="dot"></span>Accepted</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn accept done">✓ Accepted</button>
+          </div>
+        </td>
+      </tr>
+
+      <tr class="row-selected">
+        <td><div class="chk checked"></div></td>
+        <td class="td-file">
+          <div class="f-name">Severance.1x02.BlueField.mkv</div>
+          <div class="f-path">D:\TV\Severance\Season 1\</div>
+        </td>
+        <td class="td-show">Severance</td>
+        <td><span class="ep-code yellow">S01E02</span></td>
+        <td><div class="ep-title">Half Loop</div></td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-track"><div class="conf-fill mid" style="width:61%"></div></div>
+            <span class="conf-pct">61%</span>
+          </div>
+        </td>
+        <td><span class="badge yellow"><span class="dot"></span>Review</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn accept">✓ Accept</button>
+            <button class="act-btn edit">✎</button>
+            <button class="act-btn skip">Skip</button>
+          </div>
+        </td>
+      </tr>
+
+      <tr class="row-selected">
+        <td><div class="chk checked"></div></td>
+        <td class="td-file">
+          <div class="f-name">Severance_S01E07_Defiant_Jazz.mkv</div>
+          <div class="f-path">D:\TV\Severance\Season 1\</div>
+        </td>
+        <td class="td-show">Severance</td>
+        <td><span class="ep-code">S01E07</span></td>
+        <td><div class="ep-title">Defiant Jazz</div></td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-track"><div class="conf-fill hi" style="width:88%"></div></div>
+            <span class="conf-pct">88%</span>
+          </div>
+        </td>
+        <td><span class="badge cyan"><span class="dot"></span>High Conf.</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn accept">✓ Accept</button>
+            <button class="act-btn edit">✎</button>
+            <button class="act-btn skip">Skip</button>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Arrested Development -->
+      <tr class="row-selected">
+        <td><div class="chk checked"></div></td>
+        <td class="td-file">
+          <div class="f-name">Arrested.Development.1x01.mp4</div>
+          <div class="f-path">D:\TV\AD\S1\</div>
+        </td>
+        <td class="td-show">Arrested Development</td>
+        <td><span class="ep-code">S01E01</span></td>
+        <td><div class="ep-title">Pilot</div></td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-track"><div class="conf-fill hi" style="width:91%"></div></div>
+            <span class="conf-pct">91%</span>
+          </div>
+        </td>
+        <td><span class="badge cyan"><span class="dot"></span>High Conf.</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn accept">✓ Accept</button>
+            <button class="act-btn edit">✎</button>
+            <button class="act-btn skip">Skip</button>
+          </div>
+        </td>
+      </tr>
+
+      <tr class="row-flagged row-selected">
+        <td><div class="chk checked"></div></td>
+        <td class="td-file">
+          <div class="f-name">AD_S01E02_Pilot.mkv</div>
+          <div class="f-path">D:\TV\AD\S1\</div>
+        </td>
+        <td class="td-show">Arrested Development</td>
+        <td>
+          <span class="ep-code yellow">S01E02</span>
+          <span class="badge yellow" style="font-size:8px;padding:2px 5px;margin-left:4px">conflict</span>
+        </td>
+        <td><div class="ep-title" style="color:var(--yellow)">Possible: Top Banana</div></td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-track"><div class="conf-fill mid" style="width:47%"></div></div>
+            <span class="conf-pct">47%</span>
+          </div>
+        </td>
+        <td><span class="badge yellow"><span class="dot"></span>Review</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn accept">✓ Accept</button>
+            <button class="act-btn edit">✎ Edit</button>
+            <button class="act-btn skip">Skip</button>
+          </div>
+        </td>
+      </tr>
+
+      <!-- The Bear -->
+      <tr class="row-accepted row-selected">
+        <td><div class="chk checked"></div></td>
+        <td class="td-file">
+          <div class="f-name">TheBear.S01E01.SystemError.mkv</div>
+          <div class="f-path">D:\TV\The Bear\Season 1\</div>
+        </td>
+        <td class="td-show">The Bear</td>
+        <td><span class="ep-code">S01E01</span></td>
+        <td><div class="ep-title">System</div></td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-track"><div class="conf-fill hi" style="width:97%"></div></div>
+            <span class="conf-pct">97%</span>
+          </div>
+        </td>
+        <td><span class="badge green"><span class="dot"></span>Accepted</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn accept done">✓ Accepted</button>
+          </div>
+        </td>
+      </tr>
+
+      <tr class="row-selected">
+        <td><div class="chk checked"></div></td>
+        <td class="td-file">
+          <div class="f-name">The.Bear.S02E06.Fishes.mkv</div>
+          <div class="f-path">D:\TV\The Bear\S2\</div>
+        </td>
+        <td class="td-show">The Bear</td>
+        <td><span class="ep-code">S02E06</span></td>
+        <td><div class="ep-title">Fishes</div></td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-track"><div class="conf-fill hi" style="width:98%"></div></div>
+            <span class="conf-pct">98%</span>
+          </div>
+        </td>
+        <td><span class="badge cyan"><span class="dot"></span>High Conf.</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn accept">✓ Accept</button>
+            <button class="act-btn edit">✎</button>
+            <button class="act-btn skip">Skip</button>
+          </div>
+        </td>
+      </tr>
+
+      <tr class="row-selected">
+        <td><div class="chk checked"></div></td>
+        <td class="td-file">
+          <div class="f-name">The.Bear.S03E01.Tomorrow.mkv</div>
+          <div class="f-path">D:\TV\The Bear\Season 3\</div>
+        </td>
+        <td class="td-show">The Bear</td>
+        <td><span class="ep-code">S03E01</span></td>
+        <td><div class="ep-title">Tomorrow</div></td>
+        <td>
+          <div class="conf-cell">
+            <div class="conf-track"><div class="conf-fill hi" style="width:95%"></div></div>
+            <span class="conf-pct">95%</span>
+          </div>
+        </td>
+        <td><span class="badge cyan"><span class="dot"></span>High Conf.</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn accept">✓ Accept</button>
+            <button class="act-btn edit">✎</button>
+            <button class="act-btn skip">Skip</button>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Unmatched -->
+      <tr>
+        <td><div class="chk"></div></td>
+        <td class="td-file">
+          <div class="f-name">UNKNOWN_EPISODE_HDR.mkv</div>
+          <div class="f-path">D:\TV\Misc\</div>
+        </td>
+        <td class="td-show" style="color:var(--inkFaint);font-style:italic">No match</td>
+        <td><span class="ep-code faint">—</span></td>
+        <td><div class="ep-title" style="color:var(--inkFaint)">—</div></td>
+        <td><span class="badge magenta"><span class="dot"></span>Unmatched</span></td>
+        <td><span class="badge magenta"><span class="dot"></span>Unmatched</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn edit">✎ Assign</button>
+            <button class="act-btn skip">Skip</button>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Skipped -->
+      <tr class="row-skipped">
+        <td><div class="chk"></div></td>
+        <td class="td-file">
+          <div class="f-name">Featurette_BehindScenes.mkv</div>
+          <div class="f-path">D:\TV\The Bear\Extras\</div>
+        </td>
+        <td class="td-show" style="color:var(--inkFaint)">—</td>
+        <td><span class="ep-code faint">—</span></td>
+        <td><div class="ep-title" style="color:var(--inkFaint)">—</div></td>
+        <td><span style="color:var(--inkFaint);font-size:11px">—</span></td>
+        <td><span class="badge ghost">Skipped</span></td>
+        <td class="td-actions">
+          <div class="act-row">
+            <button class="act-btn" style="font-size:9px">↩ Restore</button>
+          </div>
+        </td>
+      </tr>
+
+      <!-- More rows (faded hint) -->
+      <tr style="opacity:.4">
+        <td><div class="chk"></div></td>
+        <td class="td-file"><div class="f-name">Severance.S01E09.The.We_We_Are.mkv</div><div class="f-path">D:\TV\Severance\Season 1\</div></td>
+        <td>Severance</td>
+        <td><span class="ep-code">S01E09</span></td>
+        <td><div class="ep-title">The We We Are</div></td>
+        <td><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:96%"></div></div><span class="conf-pct">96%</span></div></td>
+        <td><span class="badge cyan"><span class="dot"></span>High Conf.</span></td>
+        <td class="td-actions"><div class="act-row"><button class="act-btn accept">✓ Accept</button><button class="act-btn edit">✎</button><button class="act-btn skip">Skip</button></div></td>
+      </tr>
+
+      <tr style="opacity:.22">
+        <td><div class="chk"></div></td>
+        <td class="td-file"><div class="f-name">Arrested.Development.S02E04.Good.Grief.mkv</div><div class="f-path">D:\TV\AD\S2\</div></td>
+        <td>Arrested Development</td>
+        <td><span class="ep-code">S02E04</span></td>
+        <td><div class="ep-title">Good Grief</div></td>
+        <td><div class="conf-cell"><div class="conf-track"><div class="conf-fill hi" style="width:93%"></div></div><span class="conf-pct">93%</span></div></td>
+        <td><span class="badge cyan"><span class="dot"></span>High Conf.</span></td>
+        <td class="td-actions"><div class="act-row"><button class="act-btn accept">✓ Accept</button><button class="act-btn edit">✎</button><button class="act-btn skip">Skip</button></div></td>
+      </tr>
+
+    </tbody>
+  </table>
+  </div>
+  </div>
+
+  <div style="padding:12px 40px;font-size:10px;color:var(--inkFaint);letter-spacing:.12em">
+    Showing 12 of 187 files · <span style="color:var(--cyan);cursor:pointer">Load all</span>
+  </div>
+  <div style="height:80px"></div>
+
+  <!-- Queue footer bar -->
+  <div class="queue-bar">
+    <div class="queue-stat cyan">Total files: <b>187</b></div>
+    <div class="queue-sep"></div>
+    <div class="queue-stat green">Accepted: <b>4</b></div>
+    <div class="queue-sep"></div>
+    <div class="queue-stat yellow">Pending review: <b>32</b></div>
+    <div class="queue-sep"></div>
+    <div class="queue-stat" style="color:var(--inkDim)">Skipped: <b>1</b></div>
+    <div class="queue-sep"></div>
+    <div class="queue-stat" style="color:var(--magentaHi)">Unmatched: <b>13</b></div>
+    <div class="queue-grow"></div>
+    <div class="queue-fp-label">Queue for fingerprinting:</div>
+    <div class="queue-fp-val">4 files</div>
+    <div style="width:1px;height:24px;background:var(--lineMid);margin:0 8px"></div>
+    <button class="btn" style="border-color:rgba(134,239,172,.4);color:var(--green);padding:10px 20px;font-size:10px">
+      Accept All High Confidence (142)
+    </button>
+    <button class="btn primary" style="padding:11px 22px;font-size:11px">
+      Queue 4 Accepted for Fingerprinting →
+    </button>
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>
