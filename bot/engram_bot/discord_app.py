@@ -8,7 +8,8 @@ In those threads it replies to the reporter, and to anyone else only when mentio
 a maintainer joins a thread the bot steps back until someone mentions it again.
 
 Only in its home server: with DISCORD_GUILD_ID set, messages and interactions from any
-other server (or a DM) are ignored, so an invite elsewhere can't spend the API budget.
+other server (or a DM) are ignored, so an invite elsewhere can't spend the API budget,
+and the bot leaves any other server it's added to (or finds itself in at startup).
 """
 
 from __future__ import annotations
@@ -291,7 +292,39 @@ class EngramBot(discord.Client):
         self._digest_task = asyncio.create_task(self._digest_loop())
 
     async def on_ready(self) -> None:
-        log.info("connected as %s", self.user)
+        log.info("connected as %s; home guild %s", self.user, self.settings.guild_id)
+        # Clean up invites to other servers that predate the fence (or happened offline).
+        for guild in list(self.guilds):
+            await self.leave_if_foreign(guild)
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        await self.leave_if_foreign(guild)
+
+    async def on_guild_available(self, guild: discord.Guild) -> None:
+        # A guild that was unavailable at on_ready arrives here, not in the sweep.
+        await self.leave_if_foreign(guild)
+
+    async def leave_if_foreign(self, guild: discord.Guild) -> bool:
+        """Leave a server that isn't the home one. Returns whether it left."""
+        if self.in_home_guild(guild.id):
+            return False
+        home = self.settings.guild_id
+        if not any(g.id == home for g in self.guilds):
+            # Most likely a mistyped DISCORD_GUILD_ID: leaving would walk out of the real
+            # server, which then needs a fresh invite. Ignoring (the fence) is enough.
+            log.error(
+                "not leaving guild %s: home guild %s isn't one I'm in (check DISCORD_GUILD_ID)",
+                guild.id,
+                home,
+            )
+            return False
+        log.warning("leaving guild %s: not my home server", guild.id)
+        try:
+            await guild.leave()
+        except discord.HTTPException:
+            log.warning("could not leave guild %s", guild.id, exc_info=True)
+            return False
+        return True
 
     async def _poll_loop(self) -> None:
         await self.wait_until_ready()
