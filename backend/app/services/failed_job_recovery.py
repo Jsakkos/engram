@@ -13,11 +13,14 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.models.disc_job import DiscJob, DiscTitle, JobState, TitleState
+
+_OPENER_TIMEOUT_S = 10
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,16 @@ class StagingRecovery:
         return self.reason is None
 
 
+def _path_key(path: str | Path, base: Path) -> str:
+    """A comparable identity for a file path: absolute, resolved, case-folded
+    where the filesystem is case-insensitive. Relative paths are taken relative
+    to the job's staging folder."""
+    p = Path(path)
+    if not p.is_absolute():
+        p = base / p
+    return os.path.normcase(str(p.resolve()))
+
+
 def assess_staging_recovery(job: DiscJob, titles: Iterable[DiscTitle]) -> StagingRecovery:
     staging = job.staging_path
     staging_dir = Path(staging) if staging else None
@@ -54,8 +67,10 @@ def assess_staging_recovery(job: DiscJob, titles: Iterable[DiscTitle]) -> Stagin
 
     # The track MakeMKV was writing when the job died holds a truncated file;
     # feeding it to the matcher would only produce a wrong or failed match.
+    # Compared by normalized key, not string: the stored output_filename and
+    # the glob result can differ in separators, case, or relative vs absolute.
     partial = {
-        str(Path(t.output_filename))
+        _path_key(t.output_filename, staging_dir)
         for t in titles
         if t.state == TitleState.RIPPING and t.output_filename
     }
@@ -71,7 +86,9 @@ def assess_staging_recovery(job: DiscJob, titles: Iterable[DiscTitle]) -> Stagin
     else:
         candidates = sorted(staging_dir.glob("*.mkv"))
 
-    files = tuple(str(f) for f in candidates if f.is_file() and str(f) not in partial)
+    files = tuple(
+        str(f) for f in candidates if f.is_file() and _path_key(f, staging_dir) not in partial
+    )
     if not files:
         return refuse("The staging folder holds no ripped files to retry.")
 
@@ -89,11 +106,31 @@ def assess_staging_recovery(job: DiscJob, titles: Iterable[DiscTitle]) -> Stagin
 
 
 def open_in_file_manager(path: Path) -> None:
-    """Reveal ``path`` in the host's file manager. Never blocks on the child."""
+    """Reveal ``path`` in the host's file manager.
+
+    Raises OSError when the opener cannot run or reports failure (``xdg-open``
+    exits non-zero when no handler is registered). Called off the event loop.
+    """
     # ``path`` is always a job's stored staging_path, never client input.
     if sys.platform == "win32":
+        # ShellExecute: no child process of ours to reap.
         os.startfile(path)
-    elif sys.platform == "darwin":
-        subprocess.Popen(["open", str(path)])
-    else:
-        subprocess.Popen(["xdg-open", str(path)])
+        return
+    cmd = ["open" if sys.platform == "darwin" else "xdg-open", str(path)]
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        returncode = proc.wait(timeout=_OPENER_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        # Some openers stay in the foreground while the file manager runs.
+        # Leave it running, but reap it when it exits so it never lingers as
+        # a zombie for the backend's lifetime.
+        threading.Thread(target=proc.wait, daemon=True).start()
+        return
+    if returncode != 0:
+        raise OSError(f"{cmd[0]} exited with status {returncode}")

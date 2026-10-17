@@ -8,7 +8,9 @@ and opening the staging folder on the host.
 """
 
 import json
-from unittest.mock import AsyncMock, patch
+import os
+import subprocess
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -16,7 +18,7 @@ from httpx import ASGITransport, AsyncClient
 from app.database import get_session
 from app.main import app
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
-from app.services.failed_job_recovery import assess_staging_recovery
+from app.services.failed_job_recovery import assess_staging_recovery, open_in_file_manager
 from app.services.import_guard import ImportBlock, StagingJobResult
 from tests.unit.conftest import _unit_session_factory
 
@@ -93,6 +95,42 @@ class TestAssessStagingRecovery:
         # has to pin the usable files.
         assert r.retry_manifest is not None
         assert r.retry_manifest["files"] == [str(done)]
+
+    def test_partial_file_matched_across_path_forms(self, tmp_path):
+        """The stored output_filename need not be spelled like the glob result."""
+        done = _mkv(tmp_path / "title_t00.mkv")
+        _mkv(tmp_path / "title_t01.mkv")
+        _mkv(tmp_path / "title_t02.mkv")
+        titles = [
+            # Relative to the staging folder.
+            DiscTitle(
+                job_id=1, title_index=1, state=TitleState.RIPPING, output_filename="title_t01.mkv"
+            ),
+            # Redundant segment plus the other separator style.
+            DiscTitle(
+                job_id=1,
+                title_index=2,
+                state=TitleState.RIPPING,
+                output_filename=str(tmp_path / "sub" / ".." / "title_t02.mkv").replace("\\", "/"),
+            ),
+        ]
+        r = assess_staging_recovery(_job(staging_path=str(tmp_path)), titles)
+        assert r.files == (str(done),)
+
+    @pytest.mark.skipif(os.name != "nt", reason="case-insensitive paths are a Windows trait")
+    def test_partial_file_matched_case_insensitively_on_windows(self, tmp_path):
+        done = _mkv(tmp_path / "title_t00.mkv")
+        partial = _mkv(tmp_path / "title_t01.mkv")
+        titles = [
+            DiscTitle(
+                job_id=1,
+                title_index=1,
+                state=TitleState.RIPPING,
+                output_filename=str(partial).upper(),
+            )
+        ]
+        r = assess_staging_recovery(_job(staging_path=str(tmp_path)), titles)
+        assert r.files == (str(done),)
 
     def test_only_partial_files_is_not_retryable(self, tmp_path):
         partial = _mkv(tmp_path / "title_t00.mkv")
@@ -314,3 +352,48 @@ class TestOpenStaging:
             app.dependency_overrides.clear()
         assert resp.status_code == 403
         opener.assert_not_called()
+
+    async def test_opener_failure_is_500(self, client, tmp_path):
+        job_id = await _persist(_job(staging_path=str(tmp_path)))
+        with patch(
+            "app.services.failed_job_recovery.open_in_file_manager",
+            side_effect=OSError("xdg-open exited with status 3"),
+        ):
+            resp = await client.post(f"/api/jobs/{job_id}/open-staging")
+        assert resp.status_code == 500
+
+
+class TestOpenInFileManager:
+    """POSIX openers are child processes: they must be reaped and checked."""
+
+    def _popen(self, wait):
+        proc = MagicMock()
+        proc.wait.side_effect = wait
+        return proc
+
+    def test_success_waits_for_the_opener(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("sys.platform", "linux")
+        proc = self._popen([0])
+        with patch("subprocess.Popen", return_value=proc) as popen:
+            open_in_file_manager(tmp_path)
+        assert popen.call_args.args[0] == ["xdg-open", str(tmp_path)]
+        assert popen.call_args.kwargs["start_new_session"] is True
+        proc.wait.assert_called_once()
+
+    def test_non_zero_exit_raises(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("sys.platform", "linux")
+        with patch("subprocess.Popen", return_value=self._popen([3])):
+            with pytest.raises(OSError, match="status 3"):
+                open_in_file_manager(tmp_path)
+
+    def test_slow_opener_is_reaped_in_background(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("sys.platform", "darwin")
+        proc = self._popen([subprocess.TimeoutExpired("open", 10), 0])
+        with (
+            patch("subprocess.Popen", return_value=proc) as popen,
+            patch("app.services.failed_job_recovery.threading.Thread") as thread,
+        ):
+            open_in_file_manager(tmp_path)
+        assert popen.call_args.args[0][0] == "open"
+        thread.assert_called_once_with(target=proc.wait, daemon=True)
+        thread.return_value.start.assert_called_once()

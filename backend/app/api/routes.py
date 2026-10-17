@@ -1338,7 +1338,11 @@ async def retry_job_from_staging(
             else f"Job {ids} already imported this staging folder."
         )
         raise HTTPException(status_code=409, detail=detail)
-    logger.info("Retried failed job %s from staging as job %s", job.id, result.job_id)
+    logger.info(
+        "Retried failed job %s from staging as job %s",
+        sanitize_log_value(job.id),
+        sanitize_log_value(result.job_id),
+    )
     return {"job_id": result.job_id, "retried_from": job.id}
 
 
@@ -1357,7 +1361,11 @@ async def open_job_staging(job: DiscJob = Depends(get_job_or_404)) -> dict:
     try:
         await asyncio.to_thread(failed_job_recovery.open_in_file_manager, staging)
     except OSError as exc:
-        logger.warning("Could not open staging folder for job %s: %s", job.id, exc)
+        logger.warning(
+            "Could not open staging folder for job %s: %s",
+            sanitize_log_value(job.id),
+            sanitize_log_value(str(exc)),
+        )
         raise HTTPException(status_code=500, detail="Could not open the folder") from exc
     return {"status": "opened", "job_id": job.id}
 
