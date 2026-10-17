@@ -25,7 +25,8 @@ turn Trace off in your own thread (or back on), use `/quiet`.
 
 1. Run `/bug` in the Engram server. A short form asks for a one-line summary and the
    details: what happened, what you expected, and your Engram version and OS if you know them.
-2. Trace opens a post in `#ask-engram` with your report (tagged **Bug** or **Feature**) and asks for anything it still needs.
+2. Trace opens a post in `#ask-engram` with your report (tagged **Bug** or **Feature**)
+   and asks for anything it still needs.
 3. **Attach a diagnostics bundle** if the problem involves a disc or job (see
    [below](#attaching-a-diagnostics-bundle)). It answers most of Trace's questions up front.
 4. When it has enough, Trace searches existing issues and shows you a **draft** with three
@@ -76,8 +77,8 @@ To check on any issue yourself, run `/issue` with its number.
 
 ## Good to know
 
-- Filing is limited to a few issues per person per day, and Discord accounts younger than a
-  week can chat with Trace but not file. Maintainers can always file for you.
+- Filing is limited to a few issues per person per day, and brand-new Discord accounts can
+  chat with Trace but not file. Maintainers can always file for you.
 - Trace only works in the Engram server, not in DMs or other servers.
 - If Trace has hit its daily budget it says so and is back the next day. A maintainer can
   still help in the meantime.
