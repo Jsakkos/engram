@@ -335,6 +335,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     const [showBootstrapFlow, setShowBootstrapFlow] = useState(false);
     // "Custom" is a choice, not something derivable from the formats: picking it while
     // the formats still equal a preset must stick, or the select snaps back to the preset.
+    // Deliberately sticky: typing a preset-equal format keeps "Custom" until a preset is picked.
     const [customNamingChosen, setCustomNamingChosen] = useState(false);
     const namingSelection = customNamingChosen
         ? 'custom'

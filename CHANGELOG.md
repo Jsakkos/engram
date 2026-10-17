@@ -11,7 +11,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - The review page no longer offers **Start rip** for a disc that has already been ripped. On a post-rip review (low-confidence matches, file conflicts) the button started a second full rip against a drive that was usually empty, failing the job, or holding a different disc, which was then ripped under this job's name. The button now appears only while the disc is still in the drive (nothing ripped yet, and no completed backup), and the server refuses such a start with a clear message. Partially ripped tracks still have their per-track re-rip. (#710)
-- Choosing **Custom** under Settings → Naming Convention works again. The dropdown ignored the click and stayed on Plex, Kodi or Minimal, so the season-folder and episode-filename fields never appeared. Those fields now also show for a saved custom episode format whose season folder matches a preset; before, the dropdown read "Custom" but the fields stayed hidden.
+- Choosing **Custom** under Settings → Naming Convention works again. The dropdown ignored the click and stayed on Plex, Kodi or Minimal, so the season-folder and episode-filename fields never appeared. Those fields now also show for a saved custom episode format whose season folder matches a preset; before, the dropdown read "Custom" but the fields stayed hidden. (#777)
 
 ## [0.39.0] - 2026-10-09
 
