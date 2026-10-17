@@ -40,6 +40,7 @@ _asr_device_override: str | None = None
 # failed to load" apart from "not enabled", which otherwise look identical (#694).
 #   "runtime_missing"  - flag on, but no complete CUDA runtime on disk
 #   "register_failed"  - runtime on disk, but its libraries could not be loaded
+#   "load_failed"      - libraries registered, but the first CUDA model load/run failed
 _gpu_fallback_reason: str | None = None
 
 
@@ -320,6 +321,10 @@ class FasterWhisperModel(ASRModel):
                         f"Failed to load/run on CUDA due to missing libraries: {e}. "
                         "Falling back to CPU."
                     )
+                    # Startup pinned "cuda" because the libraries registered; this load just
+                    # proved they don't run. Repin so the badge, the settings panel and later
+                    # models report CPU instead of "CUDA float16" over a CPU model.
+                    set_asr_device("cpu", gpu_fallback_reason="load_failed")
                     self.device = "cpu"
                     compute_type = "int8"
                     cpu_runtime = resolve_asr_runtime("cpu", self.requested_workers)
