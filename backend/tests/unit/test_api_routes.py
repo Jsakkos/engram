@@ -271,26 +271,67 @@ class TestJobEndpoints:
         assert response.status_code == 200
         start.assert_awaited_once_with(job.id)
 
-    async def test_start_job_ignores_unselected_ripped_title(self, client, monkeypatch):
-        """Only selected titles decide it: a deselected title cannot be ripped by
-        this start, so its state does not block the selected ones."""
+    async def test_start_job_refuses_after_completed_backup(self, client, monkeypatch):
+        """A backup whose re-scan cannot be reconciled parks in REVIEW_NEEDED with
+        every title still PENDING, but the drive was already released when the
+        copy finished. A full rip from there would re-back-up whatever disc is in
+        the drive, or rip the copy with unreconciled indices."""
         from unittest.mock import AsyncMock
 
         from app.services.job_manager import job_manager
 
         start = AsyncMock()
         monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED, backup_status="completed")
+        await _seed_titles(job.id, count=2)
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 409
+        assert "backup" in response.json()["detail"]
+        start.assert_not_awaited()
+
+    async def test_start_job_maps_manager_refusal_to_409(self, client, monkeypatch):
+        """start_ripping re-checks in its own session; if the state moved between
+        the route's check and that one, the refusal is still a 409, not a 500."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        monkeypatch.setattr(
+            job_manager, "start_ripping", AsyncMock(side_effect=ValueError("already ripped"))
+        )
         job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_titles(job.id, count=1)
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "already ripped"
+
+    async def test_start_job_counts_deselected_ripped_titles(self, client, monkeypatch):
+        """Movie extras are deselected AFTER they are ripped. A disc whose every
+        ripped title ended up deselected has still been ripped, so it must not
+        offer a fresh full rip."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        start = AsyncMock()
+        monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED, content_type=ContentType.MOVIE)
         titles = await _seed_titles(job.id, count=2)
         async with _unit_session_factory() as session:
-            t = await session.get(DiscTitle, titles[0].id)
-            t.state = TitleState.FAILED
-            t.is_selected = False
+            for seeded in titles:
+                t = await session.get(DiscTitle, seeded.id)
+                t.state = TitleState.REVIEW
+                t.is_selected = False
             await session.commit()
 
         response = await client.post(f"/api/jobs/{job.id}/start")
 
-        assert response.status_code == 200
+        assert response.status_code == 409
+        start.assert_not_awaited()
 
     async def test_cancel_job_not_found(self, client):
         response = await client.post("/api/jobs/999/cancel")
