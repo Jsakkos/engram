@@ -348,9 +348,9 @@ class FasterWhisperModel(ASRModel):
             logger.info(f"Loaded Faster Whisper model: {self.model_name} on {self.device}")
 
         except ImportError as e:
-            raise ImportError(
-                "faster-whisper not installed. Run: pip install faster-whisper"
-            ) from e
+            message = describe_faster_whisper_import_error(e)
+            logger.error(f"Faster Whisper import failed: {message}", exc_info=True)
+            raise ImportError(message) from e
         except Exception as e:
             logger.error(f"Failed to load Faster Whisper model {self.model_name}: {e}")
             raise
@@ -611,6 +611,20 @@ def clear_model_cache():
     logger.info("Cleared ASR model cache")
 
 
+def describe_faster_whisper_import_error(error: ImportError) -> str:
+    """Explain a failed ``faster_whisper`` import without blaming the wrong thing.
+
+    "Not installed" is only true when the ``faster_whisper`` package itself is absent.
+    Anything else (a CUDA DLL that will not load, a broken ctranslate2 or av) means the
+    package is present but unusable, and hiding that behind an install hint sent #760
+    chasing a bundled dependency that was never missing.
+    """
+    root = (getattr(error, "name", None) or "").split(".")[0]
+    if isinstance(error, ModuleNotFoundError) and root == "faster_whisper":
+        return "faster-whisper not installed. Run: pip install faster-whisper"
+    return f"faster-whisper failed to import ({type(error).__name__}: {error})"
+
+
 def list_available_models() -> dict:
     """
     List available model types and their requirements.
@@ -622,7 +636,7 @@ def list_available_models() -> dict:
 
     # Check Faster Whisper availability
     try:
-        import faster_whisper  # noqa: F401
+        from faster_whisper import WhisperModel  # noqa: F401
 
         availability["whisper"] = {
             "available": True,
@@ -630,10 +644,10 @@ def list_available_models() -> dict:
             "default": "small",
             "description": "OpenAI Whisper models via faster-whisper (CTranslate2)",
         }
-    except ImportError:
+    except ImportError as e:
         availability["whisper"] = {
             "available": False,
-            "error": "faster-whisper not installed. Run: pip install faster-whisper",
+            "error": describe_faster_whisper_import_error(e),
         }
 
     return availability
