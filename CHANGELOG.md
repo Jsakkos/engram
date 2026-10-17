@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - TheTVDB episode numbering for shows whose discs follow it. When TheTVDB numbers a season differently from TMDB (Justice League's three-part pilot is one TMDB episode), the review page offers to switch the show; Engram then re-downloads subtitles and re-matches in TheTVDB numbering, without re-ripping, and files episodes under TheTVDB's numbers. Release builds include a TheTVDB key; Docker and source installs set `TVDB_API_KEY` or enter a key in Settings.
+- A **Getting Help & Reporting Issues** guide covering Trace, the support bot in the Engram Discord: run `/bug` or `/feature` and it gathers the details, checks for an existing issue, and drafts a GitHub issue you file with one click; attach a job's diagnostics bundle and it reads the logs for you. The README, Troubleshooting and Contributing pages, and GitHub's new-issue page, now point there.
 
 ### Fixed
 

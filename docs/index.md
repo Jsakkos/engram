@@ -99,6 +99,7 @@ Season folders may be written `Season 1` or `Season 01`. When there's no season 
 
 [Get Started](getting-started/installation.md){ .md-button .md-button--primary }
 [Join Discord](https://discord.gg/G8fjjGswdc){ .md-button }
+[Get Help / Report a Bug](getting-help.md){ .md-button }
 [API Reference](api/rest.md){ .md-button }
 [Architecture](architecture/overview.md){ .md-button }
 [Brand System](development/brand.md){ .md-button }
