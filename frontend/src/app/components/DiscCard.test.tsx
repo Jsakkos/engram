@@ -481,3 +481,49 @@ describe('DiscCard: disc backup outcome', () => {
     expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
   });
 });
+
+describe('DiscCard: failed job recovery (#713)', () => {
+  function stubRecovery(body: Record<string, unknown>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        String(url).endsWith('/recovery')
+          ? Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+          : Promise.resolve({ ok: false }),
+      ),
+    );
+  }
+
+  const recoveryCalls = () =>
+    vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/recovery')).length;
+
+  const retryable = {
+    job_id: 1, staging_path: 'C:/staging/X', staging_exists: true,
+    file_count: 3, can_retry: true, reason: null,
+  };
+
+  it('offers Retry on a failed card whose staging still holds files, behind a confirm', async () => {
+    stubRecovery(retryable);
+    const onRetry = vi.fn();
+    render(<DiscCard disc={makeDisc({ state: 'error', needsReview: false })} onRetryFromStaging={onRetry} />);
+
+    fireEvent.click(await screen.findByTestId('retry-from-staging-button'));
+    expect(onRetry).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('hides Retry when the staging folder is gone', async () => {
+    stubRecovery({ ...retryable, staging_exists: false, file_count: 0, can_retry: false, reason: 'gone' });
+    render(<DiscCard disc={makeDisc({ state: 'error', needsReview: false })} onRetryFromStaging={vi.fn()} />);
+    await vi.waitFor(() => expect(recoveryCalls()).toBe(1));
+    expect(screen.queryByTestId('retry-from-staging-button')).not.toBeInTheDocument();
+  });
+
+  it('never asks for recovery on a job that did not fail', () => {
+    stubRecovery(retryable);
+    render(<DiscCard disc={makeDisc({ state: 'completed', needsReview: false })} onRetryFromStaging={vi.fn()} />);
+    expect(recoveryCalls()).toBe(0);
+    expect(screen.queryByTestId('retry-from-staging-button')).not.toBeInTheDocument();
+  });
+});

@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { apiFetch, apiFetchVoid } from '../../api/client';
+import { recoveryErrorMessage, retryFromStaging } from '../../api/recoveryClient';
 import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage, BackupProgressMessage } from '../../types';
 import type { ArmedIdentity } from '../components/ArmedDriveCard';
 
@@ -298,6 +299,17 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
+    async function retryJobFromStaging(jobId: string) {
+        try {
+            const { job_id } = await retryFromStaging(jobId);
+            toast.success(`Retrying from staging as job #${job_id}.`);
+            // The new job arrives via WebSocket (job_created).
+        } catch (error) {
+            console.error('Failed to retry job from staging:', error);
+            toast.error(recoveryErrorMessage(error, 'Could not retry this job from staging.'));
+        }
+    }
+
     async function clearFinished() {
         try {
             // Both terminal states. DELETE /api/jobs/{id} already accepts COMPLETED
@@ -518,6 +530,7 @@ export function useJobManagement(devMode: boolean = false) {
         cancelJob,
         ejectJob,
         advanceJob,
+        retryJobFromStaging,
         clearFinished,
         setJobName,
         reIdentifyJob,
