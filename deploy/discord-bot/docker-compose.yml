@@ -1,0 +1,23 @@
+# Engram Discord support bot. From this directory:
+#   cp engram-discord-bot.env.example .env   # then fill it in
+#   docker compose up -d --build
+# Setup (Discord app, GitHub App, forum channel): bot/README.md
+services:
+  engram-discord-bot:
+    build: ../../bot
+    image: engram-discord-bot:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github-app.pem
+    volumes:
+      - bot-data:/data
+      - ./github-app.pem:/run/secrets/github-app.pem:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bot-data:
