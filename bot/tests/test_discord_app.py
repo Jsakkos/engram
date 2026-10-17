@@ -396,3 +396,149 @@ async def test_send_to_thread_outcomes():
     bot.get_channel = lambda _id: None
     bot.fetch_channel = gone
     assert await bot.send_to_thread(1, "x", None) == 0  # don't retry a deleted thread
+
+
+async def test_mentions_in_another_server_are_ignored(monkeypatch):
+    from types import SimpleNamespace as NS
+
+    import discord
+
+    from engram_bot import discord_app
+
+    me = NS(id=999, display_name="Trace")
+    monkeypatch.setattr(discord_app.EngramBot, "user", property(lambda self: me))
+    opened = []
+
+    class Channel(discord.TextChannel):
+        def __init__(self):
+            pass
+
+    def mention(guild_id):
+        async def create_thread(**kwargs):
+            opened.append(guild_id)
+            return NS(id=50 + guild_id)
+
+        return NS(
+            author=NS(bot=False, id=7),
+            guild=NS(id=guild_id),
+            channel=Channel(),
+            mentions=[me],
+            clean_content="@Trace help",
+            create_thread=create_thread,
+            id=100 + guild_id,
+        )
+
+    turns = []
+
+    async def handle_turn(thread, info, author, *, trigger_id=None):
+        turns.append(thread.id)
+
+    bot = bare_bot(guild_id=1)
+    bot.handle_turn = handle_turn
+    await bot.on_message(mention(2))
+    assert opened == [] and turns == []
+    await bot.on_message(mention(1))
+    assert opened == [1] and turns == [51]
+
+
+async def test_interactions_outside_the_home_server_are_refused():
+    from engram_bot import discord_app
+
+    def inter(guild_id):
+        i = interaction(7)
+        i.guild = None  # not cached: the gate must go by guild_id
+        i.guild_id = guild_id
+        return i
+
+    bot = bare_bot(guild_id=1)
+    assert await bot.home_interaction(inter(1))
+    for guild_id in (2, None):  # another server, or a DM
+        foreign = inter(guild_id)
+        assert not await bot.home_interaction(foreign)
+        assert foreign.response.messages == [discord_app.FOREIGN_TEXT]
+
+    # With no home server configured, anywhere goes (the pre-existing behaviour).
+    assert await bare_bot(guild_id=None).home_interaction(inter(2))
+
+
+async def test_slash_commands_and_buttons_use_the_home_gate(monkeypatch):
+    import discord
+
+    from engram_bot import discord_app
+
+    seen = []
+
+    async def gate(self, interaction):
+        seen.append(interaction)
+        return False
+
+    monkeypatch.setattr(discord_app.EngramBot, "home_interaction", gate)
+    bot = bare_bot(guild_id=1)
+    i = interaction(7)
+    i.client = bot
+    tree = discord_app.HomeTree(discord.Client(intents=discord.Intents.none()))
+    assert not await tree.interaction_check(i)
+    assert not await discord_app.DraftButton("file", 3).interaction_check(i)
+    assert not await discord_app.ReplyButton(4).interaction_check(i)
+    assert seen == [i, i, i]
+
+
+def fake_guild(guild_id, left, *, fails=False):
+    from types import SimpleNamespace as NS
+
+    import discord
+
+    async def leave():
+        if fails:
+            raise discord.HTTPException(NS(status=500, reason="boom"), "boom")
+        left.append(guild_id)
+
+    return NS(id=guild_id, leave=leave)
+
+
+def in_guilds(monkeypatch, guilds):
+    from engram_bot import discord_app
+
+    monkeypatch.setattr(discord_app.EngramBot, "guilds", property(lambda self: guilds))
+
+
+async def test_joining_another_server_leaves_it(monkeypatch):
+    left = []
+    home, other = fake_guild(1, left), fake_guild(2, left)
+    in_guilds(monkeypatch, [home, other])
+    bot = bare_bot(guild_id=1)
+    await bot.on_guild_join(home)
+    assert left == []
+    await bot.on_guild_join(other)
+    assert left == [2]
+
+    # A foreign guild that was unavailable at startup is caught when it comes back.
+    await bot.on_guild_available(fake_guild(4, left))
+    assert left == [2, 4]
+
+    # With no home server configured, the bot stays wherever it's invited.
+    await bare_bot(guild_id=None).on_guild_join(fake_guild(3, left))
+    assert left == [2, 4]
+
+
+async def test_ready_sweeps_out_of_foreign_servers(monkeypatch):
+    from engram_bot import discord_app
+
+    left = []
+    failing = fake_guild(3, left, fails=True)
+    in_guilds(monkeypatch, [fake_guild(1, left), fake_guild(2, left), failing])
+    monkeypatch.setattr(discord_app.EngramBot, "user", property(lambda self: "Trace"))
+    bot = bare_bot(guild_id=1)
+    await bot.on_ready()  # a failed leave is logged, not raised
+    assert left == [2]
+    assert await bot.leave_if_foreign(failing) is False
+
+
+async def test_a_mistyped_home_guild_never_leaves_the_real_one(monkeypatch):
+    left = []
+    real = fake_guild(1, left)
+    in_guilds(monkeypatch, [real])
+    bot = bare_bot(guild_id=11)  # typo: the bot isn't in guild 11
+    await bot.on_guild_join(real)
+    await bot.on_guild_available(real)
+    assert left == []
