@@ -12,6 +12,9 @@ All notable changes to Engram will be documented in this file.
 
 - The review page no longer offers **Start rip** for a disc that has already been ripped. On a post-rip review (low-confidence matches, file conflicts) the button started a second full rip against a drive that was usually empty, failing the job, or holding a different disc, which was then ripped under this job's name. The button now appears only while the disc is still in the drive (nothing ripped yet, and no completed backup), and the server refuses such a start with a clear message. Partially ripped tracks still have their per-track re-rip. (#710)
 - Choosing **Custom** under Settings → Naming Convention works again. The dropdown ignored the click and stayed on Plex, Kodi or Minimal, so the season-folder and episode-filename fields never appeared. Those fields now also show for a saved custom episode format whose season folder matches a preset; before, the dropdown read "Custom" but the fields stayed hidden. (#777)
+- **Download & enable** for GPU acceleration works on Windows machines where it failed with `CERTIFICATE_VERIFY_FAILED`. The CUDA download was the one connection that checked certificates against the Windows store instead of the certificates Engram ships with, and Windows can be missing the root that files.pythonhosted.org uses. (#694)
+- A `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE` or `SSL_CERT_FILE` environment variable pointing at a file that does not exist no longer breaks TMDB validation and every other online lookup with "Could not find a suitable TLS CA certificate bundle". Engram logs a warning and uses its own certificates. A bundle that exists is still honoured.
+- When the CUDA libraries load at startup but the GPU model then fails to run, the ASR badge and the GPU settings now say it fell back to CPU, and the log records the error. Before, the badge kept showing "CUDA float16" while transcription ran on the CPU.
 
 ## [0.39.0] - 2026-10-09
 

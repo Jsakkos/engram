@@ -33,6 +33,7 @@ import io
 import os
 import platform
 import shutil
+import ssl
 import sys
 import tempfile
 import threading
@@ -205,12 +206,26 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _tls_context() -> ssl.SSLContext:
+    """Verify against the bundled certifi CA file, as httpx/requests do everywhere else.
+
+    A bare ``urlopen`` trusts only the OS store, and the Windows store fetches missing
+    roots lazily (when something like Edge first needs them), so a fresh machine failed
+    files.pythonhosted.org with CERTIFICATE_VERIFY_FAILED (#694).
+    """
+    import certifi
+
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def _download_verified(wheel: _Wheel, progress_cb=None, base: int = 0, total: int = 0) -> bytes:
     """Stream a pinned wheel, verifying its SHA256, reporting cumulative bytes via callback."""
     chunks: list[bytes] = []
     received = 0
     try:
-        with urllib.request.urlopen(wheel.url, timeout=120) as resp:  # noqa: S310 - pinned https
+        with urllib.request.urlopen(  # noqa: S310 - pinned https
+            wheel.url, timeout=120, context=_tls_context()
+        ) as resp:
             while True:
                 chunk = resp.read(1024 * 256)
                 if not chunk:
