@@ -1960,8 +1960,14 @@ class MakeMKVExtractor:
                         title.name = value
                     elif attr_id == 9:  # Duration (H:MM:SS)
                         title.duration_seconds = self._parse_duration(value)
-                    elif attr_id == 10:  # Size
-                        title.size_bytes = self._parse_size(value)
+                    elif attr_id == 10:  # Size, rounded for display (e.g., "7.0 GB")
+                        if not title.size_bytes:
+                            title.size_bytes = self._parse_size(value)
+                    elif attr_id == 11:  # Size in exact bytes; wins over the rounded attr 10
+                        try:
+                            title.size_bytes = int(value)
+                        except ValueError:
+                            pass
                     elif attr_id == 8:  # Chapter count
                         try:
                             title.chapter_count = int(value)
