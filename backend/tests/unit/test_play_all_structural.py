@@ -212,6 +212,39 @@ class TestNoFalsePositives:
         assert _analyst()._detect_play_all_by_sum(titles) == [0]
         assert _analyst()._detect_play_all_by_sum(titles, [90, 45, 45]) == []
 
+    def test_zero_min_duration_does_not_divide_by_zero(self):
+        """analyst_tv_min_duration is user-configurable; 0 must not let zero-length
+        titles in as parts (their sum would be 0)."""
+        config = _config()
+        config.analyst_tv_min_duration = 0
+        analyst = DiscAnalyst(config=config)
+        titles = [
+            TitleInfo(0, 0, 0, 0, source_filename="00001.mpls", segment_map="1"),
+            TitleInfo(1, 0, 0, 0, source_filename="00002.mpls", segment_map="2"),
+            TitleInfo(2, 0, 0, 0, source_filename="00003.mpls", segment_map="1,2,3"),
+        ]
+        assert analyst._detect_play_all_by_segments(titles) == []
+        assert analyst._detect_play_all_by_sum(titles) == []
+
+    def test_sum_counts_a_duplicated_episode_once(self):
+        """An .mpls and its bare .m2ts are one episode, so a double-length episode
+        twice its runtime is not their 'Play-All'."""
+        titles = [
+            TitleInfo(0, 2600, 13_000_000_000, 6, source_filename="00001.mpls", segment_map="5"),
+            TitleInfo(1, 2600, 13_000_000_000, 0, source_filename="00005.m2ts", segment_map="5"),
+            TitleInfo(2, 5200, 26_000_000_000, 12, source_filename="00002.mpls", segment_map="9"),
+        ]
+        assert _analyst()._detect_play_all_by_sum(titles) == []
+
+    def test_sum_counts_identical_dvd_titles_once(self):
+        """Same runtime and exact byte size on a DVD is one episode listed twice."""
+        titles = [
+            TitleInfo(0, 1320, 700_000_000, 6),
+            TitleInfo(1, 1320, 700_000_000, 6),
+            TitleInfo(2, 2640, 1_400_000_000, 12),
+        ]
+        assert _analyst()._detect_play_all_by_sum(titles) == []
+
     def test_sum_without_sizes_uses_duration_only(self):
         """Staging imports and simulations may have no sizes; runtime alone decides."""
         titles = [
@@ -236,3 +269,15 @@ class TestAnalyzeEndToEnd:
         result = _analyst().analyze(_scan(name), label, tmdb_signal=_tv_signal("Project Runway"))
         assert result.content_type == ContentType.TV
         assert result.play_all_title_indices == expected
+
+    def test_ambiguous_movie_kept_as_movie_has_no_play_all(self):
+        """Disc 3 reads as an ambiguous movie (two feature-length titles). When TMDB
+        does not flip it to TV, no title is set aside as a Play-All."""
+        signal = TmdbSignal(
+            content_type=ContentType.MOVIE, confidence=0.9, tmdb_id=1, tmdb_name="Project Runway"
+        )
+        result = _analyst().analyze(
+            _scan("project_runway_disc3_dvd.txt"), "PROJECT_RUNWAY_DISC3", tmdb_signal=signal
+        )
+        assert result.content_type == ContentType.MOVIE
+        assert result.play_all_title_indices == []

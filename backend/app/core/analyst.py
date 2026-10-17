@@ -234,6 +234,22 @@ def _parse_segment_map(segment_map: str) -> frozenset[int]:
     return frozenset(numbers)
 
 
+def _content_key(t: "TitleInfo") -> tuple:
+    """Identify a title's content so the same episode listed twice counts once.
+
+    Blu-ray titles key on their clip set (an .mpls and the bare .m2ts it plays
+    share one); otherwise identical runtime and exact byte size; otherwise the
+    title stands alone.
+    """
+    if t.source_filename.lower().endswith((".mpls", ".m2ts")):
+        clips = _parse_segment_map(t.segment_map)
+        if clips:
+            return ("clips", clips)
+    if t.size_bytes:
+        return ("size", t.duration_seconds, t.size_bytes)
+    return ("title", t.index)
+
+
 @dataclass
 class TitleInfo:
     """Information about a single title on a disc."""
@@ -904,7 +920,9 @@ class DiscAnalyst:
         """
         # Structural signals first: they compare the disc with itself, so they
         # hold where TMDB runtimes disagree with the disc and need no expected
-        # runtimes. The runtime heuristics below are the fallback.
+        # runtimes. The runtime heuristics below are the fallback only: once the
+        # disc's structure has answered, they are not consulted, because on job 70
+        # they flagged a real double-length episode as the Play-All (#634).
         structural = sorted(
             set(self._detect_play_all_by_segments(titles))
             | set(self._detect_play_all_by_sum(titles, expected_runtimes))
@@ -962,7 +980,8 @@ class DiscAnalyst:
         because episodes cut from one shared clip with in/out points all list
         that clip and nest under any title that adds a clip to it.
         """
-        min_part = self._get_config().analyst_tv_min_duration
+        # A zero minimum would admit zero-length titles as parts
+        min_part = max(1, self._get_config().analyst_tv_min_duration)
         clip_sets: dict[int, frozenset[int]] = {}
         for t in titles:
             if not t.source_filename.lower().endswith((".mpls", ".m2ts")):
@@ -982,9 +1001,9 @@ class DiscAnalyst:
                     parts.setdefault(other_clips, other)
             # Keep only maximal parts so a nested part is not counted twice
             maximal = [t for s, t in parts.items() if not any(s < o for o in parts)]
-            if len(maximal) < 2:
-                continue
             parts_total = sum(t.duration_seconds for t in maximal)
+            if len(maximal) < 2 or parts_total <= 0:
+                continue
             ratio = by_index[idx].duration_seconds / parts_total
             if 0.8 <= ratio <= 1.25:
                 play_all.append(idx)
@@ -1012,17 +1031,19 @@ class DiscAnalyst:
         the title also matches an expected TMDB runtime. Three or more parts
         summing to the second is not a coincidence, and TMDB is not consulted.
         """
-        min_part = self._get_config().analyst_tv_min_duration
+        min_part = max(1, self._get_config().analyst_tv_min_duration)
         play_all = []
         for t in titles:
             pair_is_episode = bool(expected_runtimes) and _matches_expected_runtime(
                 t.duration_seconds, expected_runtimes
             )
-            parts = [
-                p
-                for p in titles
-                if p.index != t.index and min_part <= p.duration_seconds < t.duration_seconds
-            ]
+            # One title per piece of content: an .mpls and its bare .m2ts (or a
+            # title listed twice) would otherwise sum as two episodes
+            unique: dict[tuple, TitleInfo] = {}
+            for p in titles:
+                if p.index != t.index and min_part <= p.duration_seconds < t.duration_seconds:
+                    unique.setdefault(_content_key(p), p)
+            parts = list(unique.values())
             if len(parts) < 2:
                 continue
             if len(parts) > _MAX_SUM_PARTS:
@@ -1040,6 +1061,11 @@ class DiscAnalyst:
                         combo_size = sum(p.size_bytes for p in combo)
                         if abs(combo_size - t.size_bytes) > _SUM_SIZE_TOLERANCE * t.size_bytes:
                             continue
+                    else:
+                        logger.debug(
+                            f"Play-All sum check for title {t.index}: no sizes, "
+                            f"matching on runtime alone"
+                        )
                     match = combo
                     break
                 if match:
