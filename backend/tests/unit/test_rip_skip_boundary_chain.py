@@ -201,8 +201,14 @@ async def _wait_for_file(path: Path, timeout: float = 5.0) -> None:
 
 
 def _make_popen(staging: Path, natives: list[int], write_log: list[int], procs: list):
+    """``natives`` is what an 'all' pass writes. A per-title command
+    (``mkv <source> <idx> <dir>``) writes only that one title, as MakeMKV does;
+    every caller here seeds native == scan for the titles it re-rips."""
+
     def _fake_popen(cmd, **kwargs):
-        proc = _WriteLoggingProc(_rip_steps(staging, natives, write_log))
+        target = cmd[-2]
+        rip = natives if target == "all" else [int(target)]
+        proc = _WriteLoggingProc(_rip_steps(staging, rip, write_log))
         procs.append(proc)
         return proc
 
@@ -263,9 +269,11 @@ class TestRipSkipBoundaryChain:
         assert titles[3].state == TitleState.SKIPPED
         assert titles[4].state == TitleState.SKIPPED
 
-    async def test_middle_skip_does_not_cost_the_rest_of_the_disc(self, tmp_path):
-        """Skipping title 3 alone, with title 4 still wanted, must not abort
-        the pass -- every title including 4 gets written."""
+    async def test_middle_skip_stops_at_its_boundary_and_still_rips_the_rest(self, tmp_path):
+        """Skipping title 3 alone, with title 4 still wanted: the pass stops at
+        title 3's boundary instead of ripping it in full only to delete it
+        (#765), and the per-title fallback rips title 4, so a skipped middle
+        track still never costs the rest of the disc."""
         staging = tmp_path / "staging"
         staging.mkdir()
         job_id, title_ids = await _seed_job(staging, native_offset=0)
@@ -289,11 +297,14 @@ class TestRipSkipBoundaryChain:
             # effect-free to static analysis (CodeQL py/ineffectual-statement).
             await asyncio.wait_for(task, timeout=60)
 
-        assert len(procs) == 1
-        assert set(write_log) == {1, 2, 3, 4}, "a skipped middle track cost the rest of the disc"
+        assert len(procs) == 2, "expected the all-pass plus a per-title pass for title 4"
+        assert procs[0].terminated is True, "the all-pass ran past the skipped title"
+        assert write_log == [1, 2, 3, 4]
+        assert not (staging / "TEST_t03.mkv").exists(), "the skipped title's stub survived"
+        assert (staging / "TEST_t02.mkv").stat().st_size == 4096
 
         titles = await _titles_by_index(job_id)
-        assert titles[4].output_filename is not None
+        assert titles[4].output_filename is not None, "a skipped middle track cost the disc"
         assert titles[3].state == TitleState.SKIPPED
 
     async def test_offset_disc_517_aborts_on_the_correct_title(self, tmp_path):

@@ -11,6 +11,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - The review page no longer offers **Start rip** for a disc that has already been ripped. On a post-rip review (low-confidence matches, file conflicts) the button started a second full rip against a drive that was usually empty, failing the job, or holding a different disc, which was then ripped under this job's name. The button now appears only while the disc is still in the drive (nothing ripped yet, and no completed backup), and the server refuses such a start with a clear message. Partially ripped tracks still have their per-track re-rip. (#710)
+- A track you skip once ripping has started is no longer ripped in full and then deleted. When every track on a disc is selected, Engram rips the whole disc in one MakeMKV pass, and a skip during that pass was only honored by deleting the finished file, so skipping the first few tracks while MakeMKV was still opening the disc could waste half an hour. The pass now stops as soon as MakeMKV reaches a skipped track, and the tracks still wanted are ripped one at a time. A track that is already being written when you skip it still finishes and is then discarded, so a skip never cuts off the track in progress. (#765)
 
 ## [0.39.0] - 2026-10-09
 
