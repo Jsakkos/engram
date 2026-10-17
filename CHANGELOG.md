@@ -10,6 +10,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- The top bar no longer pushes the Settings button off-screen in narrow windows. Below 1100px the MANUAL and IMPORT buttons collapse to icons and the wordmark tagline is trimmed to a single line; below 900px the wordmark yields to the mark, so every control fits down to 768px (#712).
 - The review page no longer offers **Start rip** for a disc that has already been ripped. On a post-rip review (low-confidence matches, file conflicts) the button started a second full rip against a drive that was usually empty, failing the job, or holding a different disc, which was then ripped under this job's name. The button now appears only while the disc is still in the drive (nothing ripped yet, and no completed backup), and the server refuses such a start with a clear message. Partially ripped tracks still have their per-track re-rip. (#710)
 
 ## [0.39.0] - 2026-10-09
