@@ -126,7 +126,13 @@ def test_download_verifies_tls_against_bundled_certifi(monkeypatch):
         url="https://example.test/x.whl", sha256=cr._sha256(payload), size=len(payload)
     )
     seen: dict = {}
-    sentinel = object()
+
+    class _Ctx:
+        def load_default_certs(self):
+            # The OS store is added on top, so a proxy CA installed only there still works.
+            seen["os_store"] = True
+
+    sentinel = _Ctx()
 
     def _fake_context(*a, **k):
         seen["cafile"] = k.get("cafile")
@@ -153,6 +159,7 @@ def test_download_verifies_tls_against_bundled_certifi(monkeypatch):
     assert cr._download_verified(wheel) == payload
     assert seen["cafile"] == certifi.where()
     assert seen["context"] is sentinel
+    assert seen["os_store"] is True
 
 
 # ----------------------------------------------------------------------- presence gate ----

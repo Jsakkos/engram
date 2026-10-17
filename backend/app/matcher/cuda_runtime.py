@@ -211,11 +211,14 @@ def _tls_context() -> ssl.SSLContext:
 
     A bare ``urlopen`` trusts only the OS store, and the Windows store fetches missing
     roots lazily (when something like Edge first needs them), so a fresh machine failed
-    files.pythonhosted.org with CERTIFICATE_VERIFY_FAILED (#694).
+    files.pythonhosted.org with CERTIFICATE_VERIFY_FAILED (#694). The OS store is loaded on
+    top rather than dropped, so a proxy CA installed only there keeps working.
     """
     import certifi
 
-    return ssl.create_default_context(cafile=certifi.where())
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    ctx.load_default_certs()
+    return ctx
 
 
 def _download_verified(wheel: _Wheel, progress_cb=None, base: int = 0, total: int = 0) -> bytes:
