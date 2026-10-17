@@ -591,6 +591,47 @@ describe('ConfigWizard: disc backup before ripping', () => {
     });
 });
 
+describe('ConfigWizard: TV naming convention', () => {
+    async function selectNaming(label: string) {
+        fireEvent.click(screen.getByLabelText('Naming Convention'));
+        fireEvent.click(await screen.findByRole('option', { name: label }));
+    }
+
+    it('choosing Custom from a preset reveals the editable format fields', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+        await screen.findByLabelText('Naming Convention');
+        expect(screen.queryByLabelText('Season Folder Format')).not.toBeInTheDocument();
+
+        await selectNaming('Custom');
+
+        expect(await screen.findByLabelText('Season Folder Format')).toHaveValue('Season {season:02d}');
+        expect(screen.getByLabelText('Episode Filename Format')).toBeInTheDocument();
+        expect(screen.getByLabelText('Naming Convention')).toHaveTextContent('Custom');
+    });
+
+    it('stays on Custom while a preset-equal value is typed, and a preset pick leaves Custom', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+        await screen.findByLabelText('Naming Convention');
+        await selectNaming('Custom');
+
+        // Typing a value that happens to equal a preset must not yank the fields away.
+        fireEvent.change(await screen.findByLabelText('Season Folder Format'), {
+            target: { value: 'Season {season:d}' },
+        });
+        expect(screen.getByLabelText('Season Folder Format')).toBeInTheDocument();
+
+        await selectNaming('Minimal (S01 / Show - S01E01)');
+        expect(screen.queryByLabelText('Season Folder Format')).not.toBeInTheDocument();
+    });
+
+    it('shows the fields for a saved custom episode format even when the season folder is a preset', async () => {
+        mockApi({ naming_season_format: 'Season {season:02d}', naming_episode_format: '{show} {season}x{episode:02d}' });
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+
+        expect(await screen.findByLabelText('Episode Filename Format')).toHaveValue('{show} {season}x{episode:02d}');
+    });
+});
+
 describe('ConfigWizard: TheTVDB key copy', () => {
     it('says the built-in key is in use only when a key is configured', async () => {
         mockApi({ tvdb_configured: true });
