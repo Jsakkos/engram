@@ -106,6 +106,22 @@ test.describe('Basic UI Verification - No Disc Simulation', () => {
     await expect(settingsButton).toBeVisible();
   });
 
+  // #712: the top bar's right-hand cluster used to push Settings off-screen at
+  // 960px with no horizontal scroll, leaving it unreachable.
+  for (const width of [768, 960, 1024, 1280]) {
+    test(`Top bar controls stay inside the viewport at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/');
+      await expect(page.getByTestId('sv-settings-btn')).toBeVisible();
+      for (const id of ['sv-settings-btn', 'sv-import-btn', 'sv-manual-btn']) {
+        const box = await page.getByTestId(id).boundingBox();
+        expect(box, id).not.toBeNull();
+        expect(box!.x, `${id} left edge`).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width, `${id} right edge`).toBeLessThanOrEqual(width);
+      }
+    });
+  }
+
   test('Full page screenshot for manual review', async ({ page }) => {
     // Take full page screenshot
     await page.screenshot({

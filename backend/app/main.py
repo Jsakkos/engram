@@ -37,6 +37,14 @@ async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("Starting Engram Backend...")
 
+    from app.core.tls_env import drop_missing_ca_bundle_env
+
+    for var, value in drop_missing_ca_bundle_env():
+        logger.warning(
+            f"Ignoring {var}={value}: the file does not exist, so HTTPS would fail. "
+            "Using the bundled CA certificates instead."
+        )
+
     await init_db()
     logger.info("Database initialized")
 

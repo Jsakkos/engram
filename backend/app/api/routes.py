@@ -55,7 +55,7 @@ from app.matcher.manual_subtitle_import import (
 )
 from app.matcher.tmdb_client import get_number_of_seasons
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
-from app.models.disc_job import ContentType, DiscTitle
+from app.models.disc_job import ContentType, DiscTitle, start_rip_refusal
 from app.services.identity_prompts import BLOCKING_KINDS
 from app.services.import_guard import ImportBlock
 
@@ -1246,15 +1246,30 @@ async def get_job_detail(
 
 
 @router.post("/jobs/{job_id}/start")
-async def start_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
+async def start_job(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
     """Start ripping a disc."""
     if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
         raise HTTPException(status_code=400, detail=f"Cannot start job in state: {job.state}")
 
+    # REVIEW_NEEDED is also the state of a post-rip review, where the disc has
+    # usually left the drive; a full rip from there re-rips it (#710).
+    titles = (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))).scalars()
+    refusal = start_rip_refusal(job, titles)
+    if refusal:
+        raise HTTPException(status_code=409, detail=refusal)
+
     # Import here to avoid circular imports
     from app.services.job_manager import job_manager
 
-    await job_manager.start_ripping(job.id)
+    try:
+        await job_manager.start_ripping(job.id)
+    except ValueError as e:
+        # start_ripping re-checks in its own session; a state change between the
+        # two checks (a double click, say) is still a conflict, not a 500.
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return {"status": "started", "job_id": job.id}
 
 

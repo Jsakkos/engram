@@ -164,3 +164,47 @@ async def test_colliding_native_numbers_disable_the_map(tmp_path, monkeypatch):
     first = ext.kwargs[0]
     assert first["title_indices"] is None, "every title selected -> all-pass"
     assert first["disc_title_map"] is None, "colliding natives must disable the map, not corrupt it"
+
+
+class _SkipAbortingExtractor(_RecordingExtractor):
+    """The all-pass stops at the boundary of title 1, which the user skipped
+    while MakeMKV was opening the disc; later passes rip nothing."""
+
+    def __init__(self, job_id: int):
+        super().__init__()
+        self.job_id = job_id
+
+    async def rip_titles(self, drive, output_dir, **kw):
+        self.kwargs.append(kw)
+        if len(self.kwargs) == 1:
+            async with async_session() as s:
+                t = (
+                    await s.execute(
+                        text("SELECT id FROM disc_titles WHERE job_id = :j AND title_index = 1"),
+                        {"j": self.job_id},
+                    )
+                ).one()
+                row = await s.get(DiscTitle, t[0])
+                row.state = TitleState.SKIPPED
+                row.is_selected = False
+                await s.commit()
+            return RipResult(success=True, output_files=[], aborted_for_skip=True)
+        return RipResult(success=True, output_files=[Path("x.mkv")])
+
+
+async def test_skip_aborted_all_pass_rips_only_the_wanted_titles_per_title(tmp_path, monkeypatch):
+    # Issue #765: once the all-pass stops at a skipped title, the titles still
+    # wanted are ripped one at a time and the skipped one is never ripped.
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    job_id = await _seed(staging, native_offset=0)
+
+    ext = _SkipAbortingExtractor(job_id)
+    monkeypatch.setattr(job_manager, "_extractor", ext)
+    monkeypatch.setattr("app.core.sentinel.eject_disc", lambda *_a, **_k: None)
+
+    await job_manager._run_ripping(job_id)
+
+    assert len(ext.kwargs) == 2, "the per-title fallback did not run"
+    assert ext.kwargs[0]["title_indices"] is None
+    assert ext.kwargs[1]["title_indices"] == [2, 3]

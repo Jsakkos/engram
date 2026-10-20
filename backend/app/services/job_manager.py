@@ -38,7 +38,7 @@ from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.database import async_session
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
-from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.models.disc_job import ContentType, DiscTitle, TitleState, start_rip_refusal
 from app.services.backup_reconcile import ReconcileOutcome, reconcile_titles
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
@@ -1332,6 +1332,15 @@ class JobManager:
 
             if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
                 raise ValueError(f"Cannot start job in state: {job.state}")
+
+            # Same guard as POST /api/jobs/{id}/start, so no future caller can
+            # re-rip a post-rip review (#710).
+            titles = (
+                await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            ).scalars()
+            refusal = start_rip_refusal(job, titles)
+            if refusal:
+                raise ValueError(refusal)
 
             # A resume from review honours backup_before_rip exactly as a
             # fresh identification does; next_state_after_identify is the one
@@ -3821,8 +3830,8 @@ class JobManager:
                     title_error_callback=on_title_error,
                     log_dir=get_makemkv_log_dir(job_id),
                     job_id=job_id,
-                    # Lets the extractor decide, at a title boundary, whether the
-                    # user's skips have left nothing wanted on the disc. None for
+                    # Lets the extractor stop the pass at the boundary of a title
+                    # the user skipped (#765). None for
                     # a per-title pass (see where native_to_scan is built), which
                     # drops skipped indices command-by-command instead.
                     disc_title_map=native_to_scan,
@@ -3886,9 +3895,8 @@ class JobManager:
                     # so discard it — nothing actually failed.
                     if result.aborted_for_skip:
                         logger.info(
-                            f"Job {safe_job}: full-disc pass stopped at a title "
-                            f"boundary because every remaining title was skipped "
-                            f"by the user — nothing left to rip"
+                            f"Job {safe_job}: full-disc pass stopped at a skipped "
+                            f"title's boundary and nothing wanted is left to rip"
                         )
                     result.stalled_titles = None
                     result.success = True
@@ -3926,8 +3934,9 @@ class JobManager:
                     result.success = True
                 else:
                     if result.aborted_for_skip:
-                        # A title was un-skipped between the boundary abort and
-                        # this check. Not a fault — rip what is still wanted.
+                        # The pass stopped at a skipped title with wanted titles
+                        # still ahead (#765). Not a fault: rip those per title,
+                        # exactly as a skip made before the rip would have.
                         logger.info(
                             f"Job {safe_job}: full-disc pass stopped for a skip, but "
                             f"{len(missing)} title(s) are still wanted; ripping them "
