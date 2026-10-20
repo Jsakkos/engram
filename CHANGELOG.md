@@ -19,6 +19,7 @@ _Highlights: TheTVDB episode numbering for shows whose discs follow it, plus fix
 
 ### Fixed
 
+- Re-matching a disc whose episodes were already filed no longer leaves the job stuck in Matching. Filed episodes stay where they are, and the disc goes to review with a note saying where they were filed.
 - The top bar no longer pushes the Settings button off-screen in narrow windows. Below 1100px the MANUAL and IMPORT buttons collapse to icons and the wordmark tagline is trimmed to a single line; below 900px the wordmark yields to the mark, so every control fits down to 768px (#712).
 - A job that fails because MakeMKV's licence has lapsed now says so. When the beta key has expired or the MakeMKV beta build is too old to run, the job's error (on the dashboard and in History) names the cause and the fix (copy the current key from the MakeMKV forum into Settings, or update MakeMKV) instead of the generic "No titles found on disc" or a raw rip error. (#714)
 - A failed `faster-whisper` import no longer reports "faster-whisper not installed" unless the package is really missing. A CUDA, ctranslate2 or av import problem now surfaces its own error type and message in the log and in the ASR status, so bug reports point at the real cause. (#760)

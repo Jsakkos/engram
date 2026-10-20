@@ -515,6 +515,12 @@ class FinalizationCoordinator:
         # own (a re-pin needs matched titles, which is success), but the set makes
         # "at most one cross-season sweep per job" explicit rather than emergent.
         self._season_retries: set[int] = set()
+        # Library paths of already-filed tracks that a re-match skipped, per job.
+        self._left_as_filed: dict[int, list[str]] = {}
+
+    def note_left_as_filed(self, job_id: int, organized_paths: list[str]) -> None:
+        """Remember filed tracks a re-match skipped, for the completion check to report."""
+        self._left_as_filed[job_id] = organized_paths
 
     def set_callbacks(
         self,
@@ -551,6 +557,7 @@ class FinalizationCoordinator:
         # budget too. The retry only fires on a total match failure, so restoring
         # it cannot make a job that is matching anything churn.
         self._season_retries.discard(job_id)
+        self._left_as_filed.pop(job_id, None)
 
     async def on_terminal_clear_conflicts(self, job_id: int, _state) -> None:
         """Terminal-state hook: drop conflict-escalation tracking for the job.
@@ -1119,6 +1126,25 @@ class FinalizationCoordinator:
                     f"episodes below, or organize as-is if it really is extras.",
                 )
                 return
+
+        left_as_filed = self._left_as_filed.pop(job_id, None)
+        if left_as_filed:
+            folders = ", ".join(sorted({str(Path(p).parent) for p in left_as_filed}))
+            filed_note = (
+                f"{len(left_as_filed)} track(s) were already filed to {folders} and were "
+                f"not re-matched. If that is the wrong season or show, move them by hand."
+            )
+            # Same gate as always_review below: park only if tracks are left to act on.
+            # Filed tracks never count here: setting organized_to also sets COMPLETED.
+            if has_review or has_matched:
+                if has_review:
+                    pending = sum(1 for t in matchable if t.state == TitleState.REVIEW)
+                    reason = f"{pending} title(s) need manual episode assignment. {filed_note}"
+                else:
+                    reason = f"{filed_note} Confirm the remaining tracks below."
+                await self._park_in_review(session, job, reason)
+                return
+            logger.warning(f"Job {sanitize_log_value(job_id)}: {sanitize_log_value(filed_note)}")
 
         # Manual-review override: hold every disc for confirmation, however
         # confident the matcher was. Placed AFTER the escalation ladders on

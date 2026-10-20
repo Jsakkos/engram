@@ -22,6 +22,7 @@ import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dis
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { canStartRip, startRipErrorMessage } from './ReviewQueue/startRip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
+import { ReviewReasonNotice } from './ReviewQueue/ReviewReasonNotice';
 import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
 import { PlayerControls } from './ReviewQueue/PlayerControls';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
@@ -1023,6 +1024,7 @@ function ReviewQueue() {
                     </SvNotice>
                 )}
                 {job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>}
+                <ReviewReasonNotice reason={job.review_reason} />
                 {hasConflicts && (
                     <SvNotice tone="warn">
                         › {collisions.size} EPISODE CONFLICT{collisions.size > 1 ? 'S' : ''} — TWO TITLES SHARE AN EPISODE. RESOLVE BEFORE SAVING.
