@@ -23,6 +23,7 @@ import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { canStartRip, startRipErrorMessage } from './ReviewQueue/startRip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
 import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
+import { PlayerControls } from './ReviewQueue/PlayerControls';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
@@ -903,6 +904,10 @@ function ReviewQueue() {
                                                 </SvBadge>
                                                 <span>{title.chapter_count} chapters</span>
                                             </div>
+                                            {/* Telling cuts apart (theatrical vs extended) usually
+                                                means watching them, so the same external-player
+                                                handoff the TV inspector has. */}
+                                            <PlayerControls title={title} />
                                         </div>
 
                                         {/* Edition input */}
