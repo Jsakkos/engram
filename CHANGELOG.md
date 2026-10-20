@@ -4,16 +4,26 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-17
+
+_Highlights: TheTVDB episode numbering for shows whose discs follow it, plus fixes for narrow windows, MakeMKV licence errors, post-rip review, GPU downloads on Windows and the Custom naming convention._
+
 ### Added
 
 - TheTVDB episode numbering for shows whose discs follow it. When TheTVDB numbers a season differently from TMDB (Justice League's three-part pilot is one TMDB episode), the review page offers to switch the show; Engram then re-downloads subtitles and re-matches in TheTVDB numbering, without re-ripping, and files episodes under TheTVDB's numbers. Release builds include a TheTVDB key; Docker and source installs set `TVDB_API_KEY` or enter a key in Settings.
 
 ### Fixed
 
+- The top bar no longer pushes the Settings button off-screen in narrow windows. Below 1100px the MANUAL and IMPORT buttons collapse to icons and the wordmark tagline is trimmed to a single line; below 900px the wordmark yields to the mark, so every control fits down to 768px (#712).
+- A job that fails because MakeMKV's licence has lapsed now says so. When the beta key has expired or the MakeMKV beta build is too old to run, the job's error (on the dashboard and in History) names the cause and the fix (copy the current key from the MakeMKV forum into Settings, or update MakeMKV) instead of the generic "No titles found on disc" or a raw rip error. (#714)
+- A failed `faster-whisper` import no longer reports "faster-whisper not installed" unless the package is really missing. A CUDA, ctranslate2 or av import problem now surfaces its own error type and message in the log and in the ASR status, so bug reports point at the real cause. (#760)
 - The review page no longer offers **Start rip** for a disc that has already been ripped. On a post-rip review (low-confidence matches, file conflicts) the button started a second full rip against a drive that was usually empty, failing the job, or holding a different disc, which was then ripped under this job's name. The button now appears only while the disc is still in the drive (nothing ripped yet, and no completed backup), and the server refuses such a start with a clear message. Partially ripped tracks still have their per-track re-rip. (#710)
 - A track you skip once ripping has started is no longer ripped in full and then deleted. When every track on a disc is selected, Engram rips the whole disc in one MakeMKV pass, and a skip during that pass was only honored by deleting the finished file, so skipping the first few tracks while MakeMKV was still opening the disc could waste half an hour. The pass now stops as soon as MakeMKV reaches a skipped track, and the tracks still wanted are ripped one at a time. A track that is already being written when you skip it still finishes and is then discarded, so a skip never cuts off the track in progress. (#765)
 - A "Play All" track that Engram has already set aside no longer shows as queued with a SKIP button that does nothing. The dashboard was told every track on a newly identified disc was pending, including the full-disc Play All track that is never ripped, so pressing SKIP on it was refused by the server and the card stayed put. Tracks now arrive with their real state, and if the server ever refuses a skip or un-skip, the dashboard says why and refreshes the card. (#754)
 - Choosing **Custom** under Settings → Naming Convention works again. The dropdown ignored the click and stayed on Plex, Kodi or Minimal, so the season-folder and episode-filename fields never appeared. Those fields now also show for a saved custom episode format whose season folder matches a preset; before, the dropdown read "Custom" but the fields stayed hidden. (#777)
+- **Download & enable** for GPU acceleration works on Windows machines where it failed with `CERTIFICATE_VERIFY_FAILED`. The CUDA download was the one connection that checked certificates against the Windows store instead of the certificates Engram ships with, and Windows can be missing the root that files.pythonhosted.org uses. (#694)
+- A `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE` or `SSL_CERT_FILE` environment variable pointing at a file that does not exist no longer breaks TMDB validation and every other online lookup with "Could not find a suitable TLS CA certificate bundle". Engram logs a warning and uses its own certificates. A bundle that exists is still honoured.
+- When the CUDA libraries load at startup but the GPU model then fails to run, the ASR badge and the GPU settings now say it fell back to CPU, and the log records the error. Before, the badge kept showing "CUDA float16" while transcription ran on the CPU.
 
 ## [0.39.0] - 2026-10-09
 

@@ -115,6 +115,53 @@ def test_download_verified_rejects_hash_mismatch(monkeypatch):
         cr._download_verified(wheel)
 
 
+def test_download_verifies_tls_against_bundled_certifi(monkeypatch):
+    # Bare urlopen trusts only the Windows certificate store, which fetches missing roots
+    # lazily and so failed files.pythonhosted.org with CERTIFICATE_VERIFY_FAILED while every
+    # httpx/requests call (certifi) worked. The download must use the same bundle.
+    import certifi
+
+    payload = b"wheel"
+    wheel = cr._Wheel(
+        url="https://example.test/x.whl", sha256=cr._sha256(payload), size=len(payload)
+    )
+    seen: dict = {}
+
+    class _Ctx:
+        def load_default_certs(self):
+            # The OS store is added on top, so a proxy CA installed only there still works.
+            seen["os_store"] = True
+
+    sentinel = _Ctx()
+
+    def _fake_context(*a, **k):
+        seen["cafile"] = k.get("cafile")
+        return sentinel
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            data, self._done = (payload, True) if not getattr(self, "_done", False) else (b"", True)
+            return data
+
+    def _fake_urlopen(url, *a, **k):
+        seen["context"] = k.get("context")
+        return _Resp()
+
+    monkeypatch.setattr(cr.ssl, "create_default_context", _fake_context)
+    monkeypatch.setattr(cr.urllib.request, "urlopen", _fake_urlopen)
+
+    assert cr._download_verified(wheel) == payload
+    assert seen["cafile"] == certifi.where()
+    assert seen["context"] is sentinel
+    assert seen["os_store"] is True
+
+
 # ----------------------------------------------------------------------- presence gate ----
 
 

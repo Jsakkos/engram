@@ -21,6 +21,7 @@ from pathlib import Path
 
 from app.core.analyst import TitleInfo
 from app.core.disc_source import NOSCAN, DiscSource, SourceKind
+from app.core.errors import MakeMKVLicenseError
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,32 @@ REGION_MISMATCH_FAILURE_REASON = (
     "Ripping stalled: the drive's region setting does not match this disc's "
     "region, so MakeMKV could not open the disc. Set the drive's region to match "
     "the disc, or use a region-free drive."
+)
+
+LICENSE_KEY_EXPIRED_MESSAGE = (
+    "MakeMKV's key has expired, so it will not open discs. Copy the current beta key "
+    "from the MakeMKV forum into Settings, or enter a purchased key."
+)
+LICENSE_VERSION_EXPIRED_MESSAGE = (
+    "This MakeMKV version is too old and has expired, so it will not open discs. "
+    "Update MakeMKV to the latest version, then try again."
+)
+
+# The ONLY place licence failures are recognized. makemkvcon reports both as an
+# MSG line whose first quoted field is the human text (see _MSG_TEXT_RE), but the
+# numeric code is shared with unrelated messages, so we match the English text.
+# Reconstructed from forum reports (#714): "Evaluation period has expired. Please
+# purchase the license key..." (expired key/trial) and "This application version is
+# too old. Please download the latest version..." (expired beta build).
+_LICENSE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"evaluation period has expired|key (?:has )?expired", re.I),
+        LICENSE_KEY_EXPIRED_MESSAGE,
+    ),
+    (
+        re.compile(r"application version is too old|version is too old", re.I),
+        LICENSE_VERSION_EXPIRED_MESSAGE,
+    ),
 )
 
 # Consecutive stable-size polls required before declaring in-flight title completion.
@@ -265,6 +292,21 @@ def _parse_backup_progress(line: str) -> float | None:
     if maximum <= 0:
         return None
     return min(100.0, total / maximum * 100.0)
+
+
+def detect_license_failure(*outputs: str) -> str | None:
+    """A user-facing licence error if *output* has a MakeMKV licence MSG line, else None.
+
+    Only MSG lines count, so disc-supplied text (TINFO/CINFO) cannot trigger it.
+    """
+    for line in (ln for out in outputs for ln in out.splitlines()):
+        m = _MSG_TEXT_RE.match(line.strip())
+        if not m:
+            continue
+        for pattern, message in _LICENSE_PATTERNS:
+            if pattern.search(m.group(1)):
+                return message
+    return None
 
 
 def _last_msg_text(output: str) -> str | None:
@@ -872,6 +914,11 @@ class MakeMKVExtractor:
             if result.stderr:
                 logger.debug(f"MakeMKV stderr: {result.stderr[:500]}")
 
+            license_error = detect_license_failure(result.stdout or "", result.stderr or "")
+            if license_error:
+                logger.error(f"MakeMKV scan refused by licence check: {license_error}")
+                raise MakeMKVLicenseError(license_error)
+
             if result.returncode != 0:
                 logger.error(
                     f"MakeMKV scan failed after {elapsed:.1f}s "
@@ -891,6 +938,8 @@ class MakeMKVExtractor:
 
             return titles, disc_name
 
+        except MakeMKVLicenseError:
+            raise
         except FileNotFoundError:
             logger.error(f"MakeMKV not found at: {self.makemkv_path}")
             return [], ""
@@ -1592,10 +1641,11 @@ class MakeMKVExtractor:
             stalled_list = sorted(stalled) if stalled else None
 
             if returncode != 0 and not stalled:
+                license_error = detect_license_failure(*output_lines, stderr)
                 return RipResult(
                     success=False,
                     output_files=output_files,
-                    error_message=stderr or "Unknown error during ripping",
+                    error_message=license_error or stderr or "Unknown error during ripping",
                     stalled_titles=stalled_list,
                     failure_reason=REGION_MISMATCH_FAILURE_REASON if region_mismatch[0] else None,
                 )
