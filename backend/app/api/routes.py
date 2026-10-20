@@ -35,7 +35,12 @@ from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.episode_codes import parse_episode_code
 from app.core.errors import AIProviderError
-from app.core.media_formats import is_importable_video, list_video_files, media_type_for
+from app.core.media_formats import (
+    IMPORTABLE_VIDEO_EXTENSIONS,
+    is_importable_video,
+    list_video_files,
+    media_type_for,
+)
 from app.core.security import (
     is_allowed_image_url,
     is_within_configured_roots,
@@ -2576,10 +2581,8 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
         )
 
     # --- Collect all media files, skipping Extras ---
-    _MEDIA_EXTENSIONS = {".mkv", ".mp4", ".m2ts"}
-
     all_media: set[Path] = set()
-    for ext in _MEDIA_EXTENSIONS:
+    for ext in IMPORTABLE_VIDEO_EXTENSIONS:
         for p in root.rglob(f"*{ext}"):
             # rglob follows symlinks; skip any hit whose real path escapes the
             # scanned tree so a crafted symlink can't surface outside files.
