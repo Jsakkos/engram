@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
+- Manual import now accepts `.mp4`, `.m4v`, `.ts` and `.m2ts` files as well as `.mkv`. Files are filed unchanged and keep their own extension in the library (an MP4 lands as `Show - S01E01.mp4`), and an existing copy of the same episode in another container counts as a conflict instead of becoming a duplicate. Picking a `BDMV` folder, its `STREAM` folder or a single stream clip imports the whole disc backup through MakeMKV, because those clips are fragments, not titles.
 - Movie review now has the same **Open in player** and **Copy stream URL** buttons as TV review, so you can watch each feature-length title in VLC or MPV before picking which cut to keep.
 
 ## [0.40.0] - 2026-10-17

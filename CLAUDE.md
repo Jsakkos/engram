@@ -268,6 +268,13 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   the same drive would run two makemkvcon processes at once. Every scan/rip call site reads
   the source, not `drive_id` (they did not, and the backup was silently ripping from the
   ejected drive).
+- **Import containers live in one place**: `app/core/media_formats.py` (`IMPORTABLE_VIDEO_EXTENSIONS`
+  = mkv/mp4/m4v/ts/m2ts) gates the import scanner and browse, names organized files
+  (`library_suffix`: the source's extension, never a forced `.mkv`), and picks the review media
+  Content-Type. Rips and staging stay `*.mkv` globs because MakeMKV only writes MKV. Conflicts are
+  per *slot*, not per name: `organizer._existing_media` treats `S01E01.mkv` and `S01E01.mp4` as
+  one episode. A pick inside `BDMV`/`VIDEO_TS` (e.g. a `STREAM/*.m2ts` clip) is redirected to the
+  enclosing backup by `import_scanner.enclosing_disc_backup`. `.vob` is deliberately unsupported.
 - **Import path ownership**: a staging path is owned by an *in-flight* job (hard block, not overridable) and merely recorded by a *completed* one (soft block, overridable via `force_keys`). `FAILED` never blocks. Rules live in `app/services/import_guard.py`; `POST /api/import/start` returns `{job_ids, blocked[]}` and never 409s.
 - **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.
 - **Review playback is a handoff, never a transcode.** The media endpoint serves
