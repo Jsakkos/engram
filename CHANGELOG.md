@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Movie review now has the same **Open in player** and **Copy stream URL** buttons as TV review, so you can watch each feature-length title in VLC or MPV before picking which cut to keep.
+
 ## [0.40.0] - 2026-10-17
 
 _Highlights: TheTVDB episode numbering for shows whose discs follow it, plus fixes for narrow windows, MakeMKV licence errors, post-rip review, GPU downloads on Windows and the Custom naming convention._
