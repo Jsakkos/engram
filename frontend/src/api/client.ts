@@ -236,14 +236,21 @@ export async function reripTitle(jobId: number, titleId: number): Promise<void> 
   return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/rerip`, { method: 'POST' });
 }
 
-/** Skip a queued/not-yet-ripped title so MakeMKV does not rip it. */
+/**
+ * Skip a not-yet-ripped title so MakeMKV does not rip it. Rejects with the
+ * server's reason when the title can no longer be skipped.
+ */
 export async function skipRipTitle(jobId: number, titleId: number): Promise<void> {
-  return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/skip-rip`, { method: 'POST' });
+  return withDetail(
+    apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/skip-rip`, { method: 'POST' }),
+  );
 }
 
-/** Reverse a skip while the title has not been ripped yet. */
+/** Reverse a skip while the title has not been ripped yet. Rejects with the server's reason. */
 export async function unskipRipTitle(jobId: number, titleId: number): Promise<void> {
-  return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/unskip-rip`, { method: 'POST' });
+  return withDetail(
+    apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/unskip-rip`, { method: 'POST' }),
+  );
 }
 
 // ---------------------------------------------------------------------------
