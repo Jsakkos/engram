@@ -21,6 +21,7 @@ from pathlib import Path
 
 from app.core.analyst import TitleInfo
 from app.core.disc_source import NOSCAN, DiscSource, SourceKind
+from app.core.errors import MakeMKVLicenseError
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,32 @@ REGION_MISMATCH_FAILURE_REASON = (
     "Ripping stalled: the drive's region setting does not match this disc's "
     "region, so MakeMKV could not open the disc. Set the drive's region to match "
     "the disc, or use a region-free drive."
+)
+
+LICENSE_KEY_EXPIRED_MESSAGE = (
+    "MakeMKV's key has expired, so it will not open discs. Copy the current beta key "
+    "from the MakeMKV forum into Settings, or enter a purchased key."
+)
+LICENSE_VERSION_EXPIRED_MESSAGE = (
+    "This MakeMKV version is too old and has expired, so it will not open discs. "
+    "Update MakeMKV to the latest version, then try again."
+)
+
+# The ONLY place licence failures are recognized. makemkvcon reports both as an
+# MSG line whose first quoted field is the human text (see _MSG_TEXT_RE), but the
+# numeric code is shared with unrelated messages, so we match the English text.
+# Reconstructed from forum reports (#714): "Evaluation period has expired. Please
+# purchase the license key..." (expired key/trial) and "This application version is
+# too old. Please download the latest version..." (expired beta build).
+_LICENSE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"evaluation period has expired|key (?:has )?expired", re.I),
+        LICENSE_KEY_EXPIRED_MESSAGE,
+    ),
+    (
+        re.compile(r"application version is too old|version is too old", re.I),
+        LICENSE_VERSION_EXPIRED_MESSAGE,
+    ),
 )
 
 # Consecutive stable-size polls required before declaring in-flight title completion.
@@ -267,6 +294,21 @@ def _parse_backup_progress(line: str) -> float | None:
     return min(100.0, total / maximum * 100.0)
 
 
+def detect_license_failure(*outputs: str) -> str | None:
+    """A user-facing licence error if *output* has a MakeMKV licence MSG line, else None.
+
+    Only MSG lines count, so disc-supplied text (TINFO/CINFO) cannot trigger it.
+    """
+    for line in (ln for out in outputs for ln in out.splitlines()):
+        m = _MSG_TEXT_RE.match(line.strip())
+        if not m:
+            continue
+        for pattern, message in _LICENSE_PATTERNS:
+            if pattern.search(m.group(1)):
+                return message
+    return None
+
+
 def _last_msg_text(output: str) -> str | None:
     """The text of the last MSG line in MakeMKV output, for error reporting."""
     last = None
@@ -284,30 +326,18 @@ def should_abort_all_pass(
 ) -> bool:
     """Whether a full-disc 'all' pass should stop at the title just opened.
 
-    True only when BOTH hold:
+    True when the title MakeMKV just opened is one the user skipped. That is
+    a title boundary: the previous title has finished and the file just
+    created is still a stub, so stopping throws nothing away. The caller then
+    re-rips every title that is still wanted one at a time (the one-pass +
+    per-title fallback in ``job_manager``), which is the same path a skip
+    made before the rip started takes. Letting the pass run on instead ripped
+    each skipped title in full only to delete it (issue #765). Killing the
+    process mid-title is never done: that threw away the rip in flight, which
+    is why skipping a *later* track used to stop the *current* one (#580).
 
-    * the title MakeMKV just opened is user-skipped, and
-    * every title still ahead of it is user-skipped too.
-
-    That is exactly the case where stopping costs nothing: the previous title
-    finished, the file just created is still a stub, and no wanted title
-    remains on the disc. Any other skip is honored by letting the pass run to
-    the end and deleting the skipped title's file once MakeMKV finishes it
-    (``job_manager._on_title_ripped``). Killing the process mid-title instead
-    threw away the rip in flight — which is why skipping a *later* track used
-    to stop the *current* one.
-
-    "Still ahead" is ``native > opened_native``: MakeMKV saves titles in
-    ascending disc-native order. That is a stronger assumption than the
-    completion detector's, which needs only that one title is written at a
-    time; ordering is what lets the caller take the highest newly-appeared
-    native as "the title just opened". Ordering is deliberate rather than
-    tracking which titles have been seen — ``makemkvcon mkv <disc> all``
-    applies MakeMKV's own selection profile, so a short title the scan
-    recorded may never be written at all. A seen-set rule would leave such a
-    title outstanding forever and the abort could never fire; with ordering,
-    only a filtered title *above* the current one suppresses it, and
-    suppressing is fail-safe (the pass simply runs to the end).
+    The opened title is the highest newly-appeared native number, because
+    MakeMKV saves titles in ascending disc-native order.
 
     ``opened_native`` is MakeMKV's disc-native title number, parsed from the
     output filename. ``disc_title_map`` maps that number to the scan-order
@@ -318,10 +348,7 @@ def should_abort_all_pass(
     if not disc_title_map:
         return False
     opened = disc_title_map.get(opened_native)
-    if opened is None or opened not in skipped_indices:
-        return False
-    remaining = {scan for native, scan in disc_title_map.items() if native > opened_native}
-    return remaining <= skipped_indices
+    return opened is not None and opened in skipped_indices
 
 
 def _safe_callback(cb: Callable, *args, label: str) -> None:
@@ -775,10 +802,11 @@ class MakeMKVExtractor:
         self._ejected_jobs: set[int] = set()
         # Per-job set of title_index values to skip. Checked before each
         # per-title rip command so a queued-but-not-yet-ripped title can be
-        # dropped mid-rip. A full-disc "all" pass cannot honor this (one process
-        # rips everything); those skips are handled downstream by deleting the
-        # finished file. Single-writer per job under the rip thread + async
-        # skip calls; set mutation is atomic under the GIL.
+        # dropped mid-rip. A full-disc "all" pass honors it at the next title
+        # boundary (should_abort_all_pass); a title that was already being
+        # written when it was skipped is deleted downstream once it finishes.
+        # Single-writer per job under the rip thread + async skip calls; set
+        # mutation is atomic under the GIL.
         self._skipped_indices: dict[int, set[int]] = {}
         # Per-source locks prevent concurrent MakeMKV operations on one source.
         # Two makemkvcon processes fighting over one drive causes both to stall.
@@ -886,6 +914,11 @@ class MakeMKVExtractor:
             if result.stderr:
                 logger.debug(f"MakeMKV stderr: {result.stderr[:500]}")
 
+            license_error = detect_license_failure(result.stdout or "", result.stderr or "")
+            if license_error:
+                logger.error(f"MakeMKV scan refused by licence check: {license_error}")
+                raise MakeMKVLicenseError(license_error)
+
             if result.returncode != 0:
                 logger.error(
                     f"MakeMKV scan failed after {elapsed:.1f}s "
@@ -905,6 +938,8 @@ class MakeMKVExtractor:
 
             return titles, disc_name
 
+        except MakeMKVLicenseError:
+            raise
         except FileNotFoundError:
             logger.error(f"MakeMKV not found at: {self.makemkv_path}")
             return [], ""
@@ -1034,7 +1069,7 @@ class MakeMKVExtractor:
         region_mismatch = [False]
 
         # Set by the reader loop when a full-disc "all" pass is stopped at a title
-        # boundary because every remaining title is user-skipped. The RipResult
+        # boundary because the title just opened is user-skipped. The RipResult
         # returns below read it, so — like region_mismatch — it lives out here
         # rather than inside run_rip_with_streaming.
         aborted_for_skip = [False]
@@ -1275,8 +1310,9 @@ class MakeMKVExtractor:
 
                     # Live skip: a queued title the user skipped before MakeMKV
                     # reached it is dropped here. (The "all" pass has
-                    # title_index None and cannot be skipped this way; those are
-                    # handled by deleting the finished file downstream.)
+                    # title_index None and cannot be skipped this way; it stops
+                    # at the skipped title's boundary instead, see
+                    # should_abort_all_pass.)
                     if title_index is not None and title_index in self._skipped_indices.get(
                         job_id, set()
                     ):
@@ -1373,9 +1409,9 @@ class MakeMKVExtractor:
                                 stub = _boundary_abort_stub()
                                 if stub is not None:
                                     logger.info(
-                                        f"Job {job_id}: every remaining title is "
-                                        f"user-skipped; stopping the full-disc pass "
-                                        f"at {stub}"
+                                        f"Job {job_id}: {stub} is user-skipped; "
+                                        f"stopping the full-disc pass at its "
+                                        f"boundary"
                                     )
                                     aborted_for_skip[0] = True
                                     aborted_stub[0] = stub
@@ -1605,10 +1641,11 @@ class MakeMKVExtractor:
             stalled_list = sorted(stalled) if stalled else None
 
             if returncode != 0 and not stalled:
+                license_error = detect_license_failure(*output_lines, stderr)
                 return RipResult(
                     success=False,
                     output_files=output_files,
-                    error_message=stderr or "Unknown error during ripping",
+                    error_message=license_error or stderr or "Unknown error during ripping",
                     stalled_titles=stalled_list,
                     failure_reason=REGION_MISMATCH_FAILURE_REASON if region_mismatch[0] else None,
                 )

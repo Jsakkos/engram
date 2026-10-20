@@ -45,6 +45,13 @@ class MakeMKVError(EngramError):
     pass
 
 
+class MakeMKVLicenseError(MakeMKVError):
+    """MakeMKV refused to run because of its licence (expired beta key or build).
+
+    The message is user-facing: it is stored verbatim as the job's error.
+    """
+
+
 class MatchingError(EngramError):
     """Episode matching failed.
 

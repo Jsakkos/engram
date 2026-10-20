@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
-import { apiFetch, apiFetchVoid } from '../../api/client';
+import { apiFetch, apiFetchVoid, skipRipTitle, unskipRipTitle } from '../../api/client';
 import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage, BackupProgressMessage } from '../../types';
 import type { ArmedIdentity } from '../components/ArmedDriveCard';
 
@@ -51,6 +51,11 @@ function toUpdateStatus(raw: Omit<UpdateStatusMessage, 'type'>): UpdateStatus {
         last_update_success_version: raw.last_update_success_version ?? null,
         is_frozen: raw.is_frozen ?? false,
     };
+}
+
+/** The server's reason from a rejected request, for a toast. */
+function errorText(error: unknown): string {
+    return error instanceof Error && error.message ? error.message : 'Please try again.';
 }
 
 /**
@@ -287,6 +292,30 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
+    // A refused skip/un-skip means the card disagrees with the server (#754:
+    // a Play All row the server had already set aside still showed SKIP). Say
+    // why, then refetch so the card shows the server's state, not the stale one.
+    async function skipTrack(jobId: string, titleId: number) {
+        try {
+            await skipRipTitle(Number(jobId), titleId);
+            // Track state arrives via WebSocket.
+        } catch (error) {
+            console.error('Failed to skip track:', error);
+            toast.error(`Could not skip that track. ${errorText(error)}`);
+            void fetchJobsAndTitles();
+        }
+    }
+
+    async function unskipTrack(jobId: string, titleId: number) {
+        try {
+            await unskipRipTitle(Number(jobId), titleId);
+        } catch (error) {
+            console.error('Failed to un-skip track:', error);
+            toast.error(`Could not un-skip that track. ${errorText(error)}`);
+            void fetchJobsAndTitles();
+        }
+    }
+
     async function advanceJob(jobId: string) {
         try {
             await apiFetchVoid(`/api/jobs/${jobId}/advance`, { method: 'POST' });
@@ -518,6 +547,8 @@ export function useJobManagement(devMode: boolean = false) {
         cancelJob,
         ejectJob,
         advanceJob,
+        skipTrack,
+        unskipTrack,
         clearFinished,
         setJobName,
         reIdentifyJob,
