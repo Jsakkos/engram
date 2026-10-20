@@ -2004,6 +2004,7 @@ class MakeMKVExtractor:
                         try:
                             title.size_bytes = int(value)
                         except ValueError:
+                            # Malformed exact size: keep whatever attr 10 set.
                             pass
                     elif attr_id == 8:  # Chapter count
                         try:
