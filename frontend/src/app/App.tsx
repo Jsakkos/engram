@@ -29,7 +29,7 @@ import { ROUTES, reviewPath } from "../config/routes";
 import { buildNavItems } from "./navigation";
 import { PROMPT_CTA_LABELS, classifyPromptJob, pruneDismissedIds, selectPromptJobs, shouldAutoOpenPrompt } from "./promptSelection";
 import type { Job } from "../types";
-import { skipRipTitle, unskipRipTitle, disarmDrive as disarmDriveRequest } from "../api/client";
+import { disarmDrive as disarmDriveRequest } from "../api/client";
 import { toast } from "sonner";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ParkedDiscBanner } from "./components/ParkedDiscBanner";
@@ -168,7 +168,7 @@ function MainDashboard() {
   }, [showImport]);
 
   // Job management with WebSocket
-  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, ejectJob, clearFinished, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
+  const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, skipTrack, unskipTrack, ejectJob, clearFinished, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
   useUpdateSuccessToast(updateStatus);
   const whatsNew = useWhatsNewModal(updateStatus, setupComplete);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
@@ -786,8 +786,8 @@ function MainDashboard() {
                   key={disc.id}
                   disc={disc}
                   onCancel={disc.state !== 'completed' && disc.state !== 'error' ? () => cancelJob(disc.id) : undefined}
-                  onSkipTrack={(titleId) => { void skipRipTitle(Number(disc.id), titleId); }}
-                  onUnskipTrack={(titleId) => { void unskipRipTitle(Number(disc.id), titleId); }}
+                  onSkipTrack={(titleId) => { void skipTrack(disc.id, titleId); }}
+                  onUnskipTrack={(titleId) => { void unskipTrack(disc.id, titleId); }}
                   onAdvance={disc.state !== 'completed' && disc.state !== 'error' ? () => advanceJob(disc.id) : undefined}
                   onEject={() => ejectJob(disc.id)}
                   onReview={disc.needsReview && !disc.identityReview && (disc.tracks?.length ?? 0) > 0 ? () => navigate(reviewPath(disc.id)) : undefined}
