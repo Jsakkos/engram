@@ -1111,6 +1111,9 @@ class JobManager:
                 return
             self._spawn_rematch(job_id)
             return
+        if action == "rerun_matching":
+            # Not via rerun_matching(): re-identify has already restarted subtitles.
+            await self._reset_rematch_state(job_id)
 
         coro_factory = {
             "start_rip": self._run_ripping,
@@ -1243,8 +1246,36 @@ class JobManager:
                         title.state = TitleState.MATCHED
                         session.add(title)
                 await session.commit()
+                rematched_count = len(disc_titles)
             else:
+                rematchable: list[tuple[DiscTitle, Path]] = []
+                left_as_filed: list[str] = []
+                failed: list[DiscTitle] = []
                 for title in disc_titles:
+                    file_path = None
+                    if title.output_filename:
+                        file_path = Path(title.output_filename)
+                        if not file_path.exists():
+                            file_path = staging / file_path.name
+                    if file_path is None or not file_path.exists():
+                        # Reset to QUEUED, it would have no match task behind it.
+                        logger.warning(
+                            f"Job {sanitize_log_value(job_id)}: title "
+                            f"{sanitize_log_value(title.id)} not re-matched — no ripped file "
+                            f"found (organized_to={sanitize_log_value(title.organized_to)})"
+                        )
+                        if title.organized_to:
+                            left_as_filed.append(title.organized_to)
+                        else:
+                            title.state = TitleState.FAILED
+                            title.matched_episode = None
+                            title.match_confidence = 0.0
+                            title.match_details = json.dumps(
+                                {"reason": "Ripped file missing at re-match"}
+                            )
+                            session.add(title)
+                            failed.append(title)
+                        continue
                     # Reset title state for re-matching → QUEUED (enqueued; the
                     # QUEUED→MATCHING flip happens once a match slot is acquired).
                     title.state = TitleState.QUEUED
@@ -1252,28 +1283,35 @@ class JobManager:
                     title.match_confidence = 0.0
                     title.match_details = None
                     session.add(title)
+                    rematchable.append((title, file_path))
 
                 await session.commit()
 
-                # Start matching for each ripped file
-                for title in disc_titles:
-                    if title.output_filename:
-                        file_path = Path(title.output_filename)
-                        if not file_path.exists():
-                            file_path = staging / file_path.name
-                        if file_path.exists():
-                            # match_single_file self-tags the job log context.
-                            match_task = asyncio.create_task(
-                                self._matching.match_single_file(job_id, title.id, file_path)
-                            )
-                            match_task.add_done_callback(
-                                lambda t, jid=job_id, tid=title.id: (
-                                    self._matching.on_match_task_done(t, jid, tid)
-                                )
-                            )
+                for title in failed:
+                    await ws_manager.broadcast_title_update(
+                        job_id, title.id, title.state.value, error="Ripped file missing"
+                    )
+                if left_as_filed:
+                    self._finalization.note_left_as_filed(job_id, left_as_filed)
+
+                for title, file_path in rematchable:
+                    # match_single_file self-tags the job log context.
+                    match_task = asyncio.create_task(
+                        self._matching.match_single_file(job_id, title.id, file_path)
+                    )
+                    match_task.add_done_callback(
+                        lambda t, jid=job_id, tid=title.id: self._matching.on_match_task_done(
+                            t, jid, tid
+                        )
+                    )
+
+                if not rematchable:
+                    await self._finalization.check_job_completion(session, job_id)
+                rematched_count = len(rematchable)
 
             logger.info(
-                f"Job {job_id}: re-matching {len(disc_titles)} titles with corrected metadata"
+                f"Job {sanitize_log_value(job_id)}: re-matching {rematched_count} titles "
+                f"with corrected metadata"
             )
 
     async def start_ripping(self, job_id: int) -> None:
@@ -2603,8 +2641,7 @@ class JobManager:
 
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for all titles in a job."""
-        # A full re-match starts conflict escalation over from the first tier.
-        self._finalization.reset_conflict_passes(job_id)
+        await self._reset_rematch_state(job_id)
         # If a previous subtitle download failed (e.g. unresolvable label that
         # has since been corrected via re-identification), give the user a
         # recovery path: retry subtitles when they hit "Re-match all".
@@ -2637,20 +2674,23 @@ class JobManager:
                     detected_season=job.detected_season,
                     conflict_status="",  # "" overwrites the merged-in stale value
                 )
-            elif job is not None and job.conflict_status is not None:
-                # Re-matching from a non-review state (e.g. an escalation pass is
-                # in flight): the in-memory counter was already reset above, so
-                # clear the persisted note too — "rerun starts over" must apply
-                # to the DB column, not just the counter.
-                job.conflict_status = None
-                job.updated_at = datetime.now(UTC)
-                await session.commit()
-                await ws_manager.broadcast_job_update(job_id, job.state.value, conflict_status="")
 
         if retry_args is not None:
             await self._matching.restart_subtitle_download(*retry_args)
 
         await self._rerun_matching(job_id, source_preference)
+
+    async def _reset_rematch_state(self, job_id: int) -> None:
+        """Start escalation over and clear its persisted note before a full re-match."""
+        self._finalization.reset_conflict_passes(job_id)
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job is None or job.conflict_status is None:
+                return
+            job.conflict_status = None
+            job.updated_at = datetime.now(UTC)
+            await session.commit()
+            await ws_manager.broadcast_job_update(job_id, job.state.value, conflict_status="")
 
     async def rematch_single_title(
         self,
@@ -4728,6 +4768,7 @@ class JobManager:
         number of titles dispatched.
         """
         pending: list[tuple[int, Path]] = []
+        failed_ids: list[int] = []
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if job and job.content_type != ContentType.TV:
@@ -4748,11 +4789,22 @@ class JobManager:
                 if not file_path.exists():
                     logger.warning(
                         f"Job {sanitize_log_value(job_id)}: queued title "
-                        f"{sanitize_log_value(t.id)} skipped — ripped file missing "
+                        f"{sanitize_log_value(t.id)} failed — ripped file missing "
                         f"({sanitize_log_value(file_path.name)})"
                     )
+                    # Left QUEUED, it would have no match task behind it.
+                    t.state = TitleState.FAILED
+                    t.match_details = json.dumps({"reason": "Ripped file missing"})
+                    session.add(t)
+                    failed_ids.append(t.id)
                     continue
                 pending.append((t.id, file_path))
+            await session.commit()
+
+        for title_id in failed_ids:
+            await ws_manager.broadcast_title_update(
+                job_id, title_id, TitleState.FAILED.value, error="Ripped file missing"
+            )
 
         dispatched = 0
         for title_id, file_path in pending:

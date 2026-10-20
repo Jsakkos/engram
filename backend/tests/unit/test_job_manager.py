@@ -11,7 +11,7 @@ import importlib
 import json
 import logging
 import time
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlmodel import select
@@ -316,6 +316,18 @@ class TestDispatchPendingMatches:
         # The RIPPING seed title is untouched.
         assert (await _get_title(ripping.id)).state == TitleState.RIPPING
 
+    async def test_queued_title_with_missing_file_fails(self, tmp_path, monkeypatch):
+        """A QUEUED title whose file is missing fails instead of staying QUEUED."""
+        job, _ = await _seed(content_type=ContentType.TV, identity_prompt_json=_PROMPT)
+        gone = await self._add_title(
+            job.id, 1, TitleState.QUEUED, output=str(tmp_path / "missing.mkv")
+        )
+        self._stub_dispatch(monkeypatch)
+
+        await job_manager.dispatch_pending_matches(job.id)
+
+        assert (await _get_title(gone.id)).state == TitleState.FAILED
+
     async def test_discdb_assignment_path_dispatches_match(self, tmp_path, monkeypatch):
         """ASR-preferred precedence: match_single_file is always dispatched.
         DiscDB assignment is now applied as a fallback inside _match_single_file_inner,
@@ -431,9 +443,101 @@ class TestRerunMatching:
         assert t.matched_episode is None
         dispatch.assert_awaited_once()
 
+    async def test_filed_title_is_left_untouched_and_noted(self, tmp_path, monkeypatch):
+        """A filed title keeps its state and match, and is reported to finalization."""
+        organized = "/library/Show/Season 01/Show - S01E05.mkv"
+        job, title = await _seed(
+            content_type=ContentType.TV,
+            staging=str(tmp_path),
+            is_selected=True,
+            output_filename=str(tmp_path / "C1_t00.mkv"),
+            state=TitleState.COMPLETED,
+            matched_episode="S01E05",
+            match_confidence=0.9,
+            organized_to=organized,
+        )
+        dispatch = AsyncMock()
+        monkeypatch.setattr(job_manager._matching, "match_single_file", dispatch)
+        monkeypatch.setattr(job_manager._finalization, "check_job_completion", AsyncMock())
+        note = Mock()
+        monkeypatch.setattr(job_manager._finalization, "note_left_as_filed", note)
+
+        await job_manager._rerun_matching(job.id)
+        await asyncio.sleep(0)
+
+        t = await _get_title(title.id)
+        assert t.state == TitleState.COMPLETED
+        assert t.matched_episode == "S01E05"
+        assert t.organized_to == organized
+        dispatch.assert_not_called()
+        note.assert_called_once_with(job.id, [organized])
+
+    async def test_unfiled_title_without_file_fails(self, tmp_path, monkeypatch):
+        """A title with no file and no library location fails instead of staying MATCHED."""
+        job, title = await _seed(
+            content_type=ContentType.TV,
+            staging=str(tmp_path),
+            is_selected=True,
+            output_filename=str(tmp_path / "C1_t00.mkv"),
+            state=TitleState.MATCHED,
+            matched_episode="S01E05",
+        )
+        monkeypatch.setattr(job_manager._matching, "match_single_file", AsyncMock())
+        monkeypatch.setattr(job_manager._finalization, "check_job_completion", AsyncMock())
+
+        await job_manager._rerun_matching(job.id)
+
+        t = await _get_title(title.id)
+        assert t.state == TitleState.FAILED
+        assert t.matched_episode is None
+
+    async def test_nothing_dispatched_completes_the_job(self, tmp_path, monkeypatch):
+        """With no match task started, the re-match runs the completion check itself."""
+        job, _ = await _seed(
+            content_type=ContentType.TV,
+            staging=str(tmp_path),
+            is_selected=True,
+            output_filename=str(tmp_path / "C1_t00.mkv"),
+            state=TitleState.COMPLETED,
+            matched_episode="S01E05",
+            organized_to="/library/Show/Season 01/Show - S01E05.mkv",
+        )
+        async with _unit_session_factory() as session:
+            row = await session.get(DiscJob, job.id)
+            row.state = JobState.MATCHING
+            await session.commit()
+        monkeypatch.setattr(job_manager._matching, "match_single_file", AsyncMock())
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        await job_manager._rerun_matching(job.id)
+
+        async with _unit_session_factory() as session:
+            assert (await session.get(DiscJob, job.id)).state == JobState.COMPLETED
+
     async def test_missing_job_is_noop(self):
         # Must not raise for an unknown job id.
         await job_manager._rerun_matching(999999)
+
+    async def test_identity_answer_rematch_starts_escalation_over(self, monkeypatch):
+        """Re-identify runs _rerun_matching without the public wrapper, so it needs
+        the wrapper's reset: a stale escalation note and counters from the old identity."""
+        job, _ = await _seed(content_type=ContentType.TV)
+        async with _unit_session_factory() as session:
+            row = await session.get(DiscJob, job.id)
+            row.state = JobState.MATCHING
+            row.conflict_status = "Re-matching across all seasons (season 2 matched nothing)"
+            await session.commit()
+        job_manager._finalization._season_retries.add(job.id)
+        monkeypatch.setattr(job_manager, "_rerun_matching", AsyncMock())
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        await job_manager._apply_identity_resume_action(job.id, "rerun_matching")
+        await asyncio.sleep(0)
+
+        async with _unit_session_factory() as session:
+            assert (await session.get(DiscJob, job.id)).conflict_status is None
+        assert job.id not in job_manager._finalization._season_retries
+        job_manager._rerun_matching.assert_awaited_once()
 
 
 @pytest.fixture
