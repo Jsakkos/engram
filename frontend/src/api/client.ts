@@ -362,6 +362,10 @@ export async function commitManualSubtitles(
  * One row in the import picker. "disc_image" is a folder holding a BDMV or
  * VIDEO_TS tree (a whole-disc backup) and "iso" is a disc image file; neither
  * carries an mkv_count, because neither is a folder of finished media.
+ *
+ * "mkv" and mkv_count predate non-MKV import and keep their names for wire
+ * compatibility: they cover every importable container (.mkv, .mp4, .m4v,
+ * .ts, .m2ts; see backend app/core/media_formats.py).
  */
 export interface BrowseEntry {
   name: string;

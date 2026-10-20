@@ -1138,8 +1138,9 @@ class IdentificationCoordinator:
         return signal
 
     async def identify_from_staging(self, job_id: int) -> None:
-        """Identify and process pre-ripped MKV files from staging."""
+        """Identify and process pre-ripped video files from staging."""
         from app.core.analyst import TitleInfo
+        from app.core.media_formats import list_video_files
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -1155,18 +1156,18 @@ class IdentificationCoordinator:
                     mkv_files = sorted(Path(f) for f in manifest.get("files", []))
                     mkv_files = [f for f in mkv_files if f.exists()]
                 else:
-                    mkv_files = sorted(staging_dir.glob("*.mkv"))
+                    mkv_files = list_video_files(staging_dir)
 
                 if not mkv_files:
                     msg = (
-                        "No MKV files found from import manifest (all listed files are missing)"
+                        "No video files found from import manifest (all listed files are missing)"
                         if job.import_manifest_json
-                        else "No MKV files found in staging directory"
+                        else "No video files found in staging directory"
                     )
                     await self._state_machine.transition_to_failed(job, session, msg)
                     return
 
-                # Build TitleInfo objects from MKV files using ffprobe
+                # Build TitleInfo objects from the files using ffprobe (any container)
                 titles: list[TitleInfo] = []
                 for idx, mkv_file in enumerate(mkv_files):
                     duration = await self._probe_duration(mkv_file)
