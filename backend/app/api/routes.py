@@ -1273,6 +1273,103 @@ async def start_job(
     return {"status": "started", "job_id": job.id}
 
 
+async def _assess_recovery(job: DiscJob, session: AsyncSession):
+    from app.services.failed_job_recovery import assess_staging_recovery
+
+    titles = (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))).scalars()
+    return await asyncio.to_thread(assess_staging_recovery, job, list(titles))
+
+
+@router.get("/jobs/{job_id}/recovery")
+async def get_job_recovery(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """What a failed job can still do: retry from staging, and why not (#713)."""
+    recovery = await _assess_recovery(job, session)
+    return {
+        "job_id": job.id,
+        "staging_path": recovery.staging_path,
+        "staging_exists": recovery.staging_exists,
+        "file_count": len(recovery.files),
+        "can_retry": recovery.can_retry,
+        "reason": recovery.reason,
+    }
+
+
+@router.post(
+    "/jobs/{job_id}/retry-from-staging",
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def retry_job_from_staging(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Run a failed job's ripped files through the import pipeline as a new job.
+
+    The failed job stays FAILED; the retry is a separate job pre-filled with its
+    identity. It reads only files already in staging, never the disc.
+    """
+    from app.services.job_manager import job_manager
+
+    recovery = await _assess_recovery(job, session)
+    if not recovery.can_retry:
+        raise HTTPException(status_code=409, detail=recovery.reason)
+
+    content_type = job.content_type.value if job.content_type else "unknown"
+    result = await job_manager.create_job_from_staging(
+        staging_path=recovery.staging_path,
+        volume_label=job.volume_label or "",
+        content_type=content_type,
+        detected_title=job.detected_title,
+        detected_season=job.detected_season,
+        destination_mode=job.destination_mode or "library",
+        # A retried disc rip must not carry the drive letter (the retry never
+        # touches the drive), and must not be "import" either: cleanup treats an
+        # import's staging as the user's own source folder and never deletes it.
+        drive_id="import" if job.drive_id == "import" else "staging",
+        import_manifest=recovery.retry_manifest,
+    )
+    if result.job_id is None:
+        ids = ", ".join(f"#{i}" for i in result.blocking_job_ids)
+        detail = (
+            f"Job {ids} is already processing this staging folder."
+            if result.block is ImportBlock.IN_FLIGHT
+            else f"Job {ids} already imported this staging folder."
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    logger.info(
+        "Retried failed job %s from staging as job %s",
+        sanitize_log_value(job.id),
+        sanitize_log_value(result.job_id),
+    )
+    return {"job_id": result.job_id, "retried_from": job.id}
+
+
+@router.post("/jobs/{job_id}/open-staging", dependencies=[Depends(require_localhost)])
+async def open_job_staging(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """Open a job's staging folder in the host's file manager.
+
+    Host-only: a LAN peer would be opening a window on someone else's screen.
+    The path is read from the job row, never from the request.
+    """
+    from app.services import failed_job_recovery
+
+    staging = Path(job.staging_path) if job.staging_path else None
+    if staging is None or not await asyncio.to_thread(staging.is_dir):
+        raise HTTPException(status_code=404, detail="The staging folder no longer exists")
+    try:
+        await asyncio.to_thread(failed_job_recovery.open_in_file_manager, staging)
+    except OSError as exc:
+        logger.warning(
+            "Could not open staging folder for job %s: %s",
+            sanitize_log_value(job.id),
+            sanitize_log_value(str(exc)),
+        )
+        raise HTTPException(status_code=500, detail="Could not open the folder") from exc
+    return {"status": "opened", "job_id": job.id}
+
+
 @router.post("/jobs/{job_id}/cancel")
 async def cancel_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
     """Cancel a running job."""

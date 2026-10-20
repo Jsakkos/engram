@@ -15,6 +15,7 @@ _Highlights: TheTVDB episode numbering for shows whose discs follow it, plus fix
 ### Added
 
 - TheTVDB episode numbering for shows whose discs follow it. When TheTVDB numbers a season differently from TMDB (Justice League's three-part pilot is one TMDB episode), the review page offers to switch the show; Engram then re-downloads subtitles and re-matches in TheTVDB numbering, without re-ripping, and files episodes under TheTVDB's numbers. Release builds include a TheTVDB key; Docker and source installs set `TVDB_API_KEY` or enter a key in Settings.
+- Failed jobs can be recovered without hunting through **Import**. When the staging folder still holds ripped files, the dashboard card and the History detail panel offer **Retry from staging**, which runs those files through import as a new job with the failed job's title and season (the disc is not needed, and the partial file of a track that was mid-rip is left out). History also offers **Open folder** (on the machine running Engram) and **Copy path**, and explains why retry is unavailable when the folder has been cleaned up. Tracks a failed job never ripped now read **Not ripped** instead of **Pending**. (#713)
 
 ### Fixed
 
