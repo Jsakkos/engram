@@ -18,7 +18,7 @@ _Highlights: recover failed jobs from staging, Play-All tracks detected from the
 
 ### Fixed
 
-- Re-matching a disc whose episodes were already filed no longer leaves the job stuck in Matching. Filed episodes stay where they are, and the disc goes to review with a note saying where they were filed.
+- Re-matching a disc whose episodes were already filed no longer leaves the job stuck in Matching. Filed episodes stay where they are, and the disc goes to review with a note saying where they were filed. (#757)
 
 - TV discs no longer rip the "Play All" track. Engram used to spot it only when its length came within 20% of a tight group of similar-length episodes, which missed discs whose episodes vary by a few minutes or include a double-length episode, so a multi-hour duplicate was ripped and matched. Engram now checks the disc against itself: on a Blu-ray, a playlist built from the clips of two or more episodes is the Play-All; on a DVD, a track whose length and size equal the sum of two or more episode tracks is. The track is left out before the rip starts. The old length check remains for discs where neither applies, and extras reels and single-title discs are not flagged. (#634)
 
