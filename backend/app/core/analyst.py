@@ -4,6 +4,7 @@ Analyzes disc structure to determine content type (TV/Movie) using heuristics,
 optionally enhanced by TMDB lookup signals.
 """
 
+import itertools
 import logging
 import re
 from dataclasses import dataclass, field
@@ -200,6 +201,53 @@ def _matches_expected_runtime(duration_seconds: int, expected_runtimes_min: list
         if _close(runtimes[i] + runtimes[i + 1]):
             return True
     return False
+
+
+# Play-All by runtime sum (#634). On the reported DVDs the Play-All matched its
+# episodes to the second and within 0.01% of bytes. MakeMKV truncates each
+# H:MM:SS, so an exact sum of N parts can be off by at most N + 1 seconds; the
+# DS9 S1D1 pilot is 4 s off the sum of the two episodes beside it, a real
+# coincidence this tolerance has to reject.
+_SUM_SIZE_TOLERANCE = 0.02
+# Episode-length titles tried as parts (2^12 subsets); larger discs skip the check
+_MAX_SUM_PARTS = 12
+
+
+def _parse_segment_map(segment_map: str) -> frozenset[int]:
+    """Parse a MakeMKV segment map ("1,2,3" or "1-3,4") into a set of numbers.
+
+    Returns an empty set when the map is missing or malformed.
+    """
+    numbers: set[int] = set()
+    for part in segment_map.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                numbers.update(range(int(lo), int(hi) + 1))
+            else:
+                numbers.add(int(part))
+        except ValueError:
+            return frozenset()
+    return frozenset(numbers)
+
+
+def _content_key(t: "TitleInfo") -> tuple:
+    """Identify a title's content so the same episode listed twice counts once.
+
+    Blu-ray titles key on their clip set (an .mpls and the bare .m2ts it plays
+    share one); otherwise identical runtime and exact byte size; otherwise the
+    title stands alone.
+    """
+    if t.source_filename.lower().endswith((".mpls", ".m2ts")):
+        clips = _parse_segment_map(t.segment_map)
+        if clips:
+            return ("clips", clips)
+    if t.size_bytes:
+        return ("size", t.duration_seconds, t.size_bytes)
+    return ("title", t.index)
 
 
 @dataclass
@@ -549,7 +597,12 @@ class DiscAnalyst:
                 review_reason=movie_result["reason"],
                 is_ambiguous_movie=True,
             )
-            return self._apply_tmdb_signal(result, tmdb_signal)
+            result = self._apply_tmdb_signal(result, tmdb_signal)
+            # A Play-All is often the second feature-length title that made the
+            # disc look like an ambiguous movie; once TMDB says TV, skip it.
+            if result.content_type == ContentType.TV:
+                result.play_all_title_indices = play_all
+            return result
 
         # If volume label indicates TV (has season pattern) but heuristics didn't detect it,
         # trust the volume label with moderate confidence
@@ -865,6 +918,18 @@ class DiscAnalyst:
         Returns:
             List of title indices that are Play All concatenations
         """
+        # Structural signals first: they compare the disc with itself, so they
+        # hold where TMDB runtimes disagree with the disc and need no expected
+        # runtimes. The runtime heuristics below are the fallback only: once the
+        # disc's structure has answered, they are not consulted, because on job 70
+        # they flagged a real double-length episode as the Play-All (#634).
+        structural = sorted(
+            set(self._detect_play_all_by_segments(titles))
+            | set(self._detect_play_all_by_sum(titles, expected_runtimes))
+        )
+        if structural:
+            return structural
+
         if not tv_result or "episode_indices" not in tv_result:
             # No episode cluster — try fallback using TV-range titles
             return self._detect_play_all_fallback(titles, expected_runtimes)
@@ -899,6 +964,118 @@ class DiscAnalyst:
                     f"({t.duration_seconds // 60}min ≈ {episode_total // 60}min episode total)"
                 )
 
+        return play_all
+
+    def _detect_play_all_by_segments(self, titles: list[TitleInfo]) -> list[int]:
+        """Blu-ray: a playlist whose clips include the clips of 2+ episode titles.
+
+        MakeMKV's segment map (TINFO 26) on a Blu-ray lists m2ts clip numbers,
+        which are global to the disc, and a Play-All playlist reuses the
+        episodes' own clips. On a DVD the map lists cell numbers local to each
+        title's program chain (different episodes both report "3,4,5,6"), so
+        only titles sourced from an .mpls/.m2ts take part.
+
+        Parts must be episode-length, which keeps extras reels that string short
+        featurettes together out. The runtime must roughly equal the parts' sum,
+        because episodes cut from one shared clip with in/out points all list
+        that clip and nest under any title that adds a clip to it.
+        """
+        # A zero minimum would admit zero-length titles as parts
+        min_part = max(1, self._get_config().analyst_tv_min_duration)
+        clip_sets: dict[int, frozenset[int]] = {}
+        for t in titles:
+            if not t.source_filename.lower().endswith((".mpls", ".m2ts")):
+                continue
+            clips = _parse_segment_map(t.segment_map)
+            if clips:
+                clip_sets[t.index] = clips
+        by_index = {t.index: t for t in titles}
+
+        play_all = []
+        for idx, clips in clip_sets.items():
+            # One title per distinct clip set (an .mpls and its bare .m2ts are one part)
+            parts: dict[frozenset[int], TitleInfo] = {}
+            for other_idx, other_clips in clip_sets.items():
+                other = by_index[other_idx]
+                if other_idx != idx and other_clips < clips and other.duration_seconds >= min_part:
+                    parts.setdefault(other_clips, other)
+            # Keep only maximal parts so a nested part is not counted twice
+            maximal = [t for s, t in parts.items() if not any(s < o for o in parts)]
+            parts_total = sum(t.duration_seconds for t in maximal)
+            if len(maximal) < 2 or parts_total <= 0:
+                continue
+            ratio = by_index[idx].duration_seconds / parts_total
+            if 0.8 <= ratio <= 1.25:
+                play_all.append(idx)
+                logger.info(
+                    f"Detected 'Play All' title {idx} by segment map: its clips include "
+                    f"titles {sorted(t.index for t in maximal)} "
+                    f"({by_index[idx].duration_seconds}s vs {parts_total}s)"
+                )
+        return sorted(play_all)
+
+    def _detect_play_all_by_sum(
+        self, titles: list[TitleInfo], expected_runtimes: list[int] | None = None
+    ) -> list[int]:
+        """A title whose runtime and size equal the sum of 2+ episode-length titles.
+
+        Works on DVDs, where segment maps cannot be compared: the Play-All
+        program chain plays the same cells as the episodes, so MakeMKV reports
+        it to the second and to within a few sectors of their combined size.
+        Parts must be episode-length because many short extras can be combined
+        to hit almost any runtime. Size is checked when every title involved has
+        one (staging imports and simulations may not).
+
+        A two-part match is the one a real double-length episode can hit by
+        chance (DS9's pilot next to two 45-min episodes), so it is dropped when
+        the title also matches an expected TMDB runtime. Three or more parts
+        summing to the second is not a coincidence, and TMDB is not consulted.
+        """
+        min_part = max(1, self._get_config().analyst_tv_min_duration)
+        play_all = []
+        for t in titles:
+            pair_is_episode = bool(expected_runtimes) and _matches_expected_runtime(
+                t.duration_seconds, expected_runtimes
+            )
+            # One title per piece of content: an .mpls and its bare .m2ts (or a
+            # title listed twice) would otherwise sum as two episodes
+            unique: dict[tuple, TitleInfo] = {}
+            for p in titles:
+                if p.index != t.index and min_part <= p.duration_seconds < t.duration_seconds:
+                    unique.setdefault(_content_key(p), p)
+            parts = list(unique.values())
+            if len(parts) < 2:
+                continue
+            if len(parts) > _MAX_SUM_PARTS:
+                logger.debug(
+                    f"Skipping Play-All sum check for title {t.index}: {len(parts)} candidate parts"
+                )
+                continue
+            match = None
+            for r in range(3 if pair_is_episode else 2, len(parts) + 1):
+                for combo in itertools.combinations(parts, r):
+                    # Each truncated H:MM:SS drops under a second
+                    if abs(sum(p.duration_seconds for p in combo) - t.duration_seconds) > r + 1:
+                        continue
+                    if t.size_bytes and all(p.size_bytes for p in combo):
+                        combo_size = sum(p.size_bytes for p in combo)
+                        if abs(combo_size - t.size_bytes) > _SUM_SIZE_TOLERANCE * t.size_bytes:
+                            continue
+                    else:
+                        logger.debug(
+                            f"Play-All sum check for title {t.index}: no sizes, "
+                            f"matching on runtime alone"
+                        )
+                    match = combo
+                    break
+                if match:
+                    break
+            if match:
+                play_all.append(t.index)
+                logger.info(
+                    f"Detected 'Play All' title {t.index} by runtime sum: "
+                    f"{t.duration_seconds}s = titles {sorted(p.index for p in match)}"
+                )
         return play_all
 
     def _detect_play_all_fallback(
