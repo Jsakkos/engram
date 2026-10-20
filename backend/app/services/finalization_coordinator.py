@@ -1135,6 +1135,7 @@ class FinalizationCoordinator:
                 f"not re-matched. If that is the wrong season or show, move them by hand."
             )
             # Same gate as always_review below: park only if tracks are left to act on.
+            # Filed tracks never count here: setting organized_to also sets COMPLETED.
             if has_review or has_matched:
                 if has_review:
                     pending = sum(1 for t in matchable if t.state == TitleState.REVIEW)

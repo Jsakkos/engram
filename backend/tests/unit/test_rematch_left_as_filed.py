@@ -1,6 +1,7 @@
 """A re-match skips tracks already filed into the library. The completion check then
 holds the job in review and names their folders, unless nothing is left to act on."""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -14,6 +15,8 @@ from app.services.job_state_machine import JobStateMachine
 from tests.unit.conftest import _unit_session_factory
 
 FILED = "/library/TV/Show/Season 01/Show - S01E05.mkv"
+# The note renders folders with the OS separator, as real paths are.
+FILED_DIR = str(Path(FILED).parent)
 
 
 @pytest.fixture(autouse=True)
@@ -84,7 +87,7 @@ class TestLeftAsFiled:
         job = await _run_completion(coord, job_id)
 
         assert job.state == JobState.REVIEW_NEEDED
-        assert "/library/TV/Show/Season 01" in job.review_reason
+        assert FILED_DIR in job.review_reason
         coord.finalize_disc_job.assert_not_awaited()
 
     async def test_review_reason_keeps_filed_note_alongside_manual_assignment(self):
@@ -96,7 +99,7 @@ class TestLeftAsFiled:
 
         assert job.state == JobState.REVIEW_NEEDED
         assert "need manual episode assignment" in job.review_reason
-        assert "/library/TV/Show/Season 01" in job.review_reason
+        assert FILED_DIR in job.review_reason
 
     async def test_completes_when_nothing_is_left_to_organize(self):
         """Same gate as always_review: nothing left to organize, so no review."""
