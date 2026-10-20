@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - Movie review now has the same **Open in player** and **Copy stream URL** buttons as TV review, so you can watch each feature-length title in VLC or MPV before picking which cut to keep.
+- A **Getting Help & Reporting Issues** guide covering Trace, the support bot in the Engram Discord: run `/bug` or `/feature` and it gathers the details, checks for an existing issue, and drafts a GitHub issue you file with one click; attach a job's diagnostics bundle and it reads the logs for you. The README, Troubleshooting and Contributing pages, and GitHub's new-issue page, now point there.
 
 ## [0.40.0] - 2026-10-17
 
@@ -15,7 +16,6 @@ _Highlights: TheTVDB episode numbering for shows whose discs follow it, plus fix
 ### Added
 
 - TheTVDB episode numbering for shows whose discs follow it. When TheTVDB numbers a season differently from TMDB (Justice League's three-part pilot is one TMDB episode), the review page offers to switch the show; Engram then re-downloads subtitles and re-matches in TheTVDB numbering, without re-ripping, and files episodes under TheTVDB's numbers. Release builds include a TheTVDB key; Docker and source installs set `TVDB_API_KEY` or enter a key in Settings.
-- A **Getting Help & Reporting Issues** guide covering Trace, the support bot in the Engram Discord: run `/bug` or `/feature` and it gathers the details, checks for an existing issue, and drafts a GitHub issue you file with one click; attach a job's diagnostics bundle and it reads the logs for you. The README, Troubleshooting and Contributing pages, and GitHub's new-issue page, now point there.
 - Failed jobs can be recovered without hunting through **Import**. When the staging folder still holds ripped files, the dashboard card and the History detail panel offer **Retry from staging**, which runs those files through import as a new job with the failed job's title and season (the disc is not needed, and the partial file of a track that was mid-rip is left out). History also offers **Open folder** (on the machine running Engram) and **Copy path**, and explains why retry is unavailable when the folder has been cleaned up. Tracks a failed job never ripped now read **Not ripped** instead of **Pending**. (#713)
 
 ### Fixed
