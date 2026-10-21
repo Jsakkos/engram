@@ -832,6 +832,8 @@ function ReviewQueue() {
     // Registered before the early returns below so hook order is stable; only
     // live on the TV inspector layout, and not behind the identity step.
     useReviewShortcuts(!!job && job.content_type !== 'movie' && !identityGated, (shortcut: ReviewShortcut) => {
+        // A save/process is committing the current picks; don't stage new ones under it.
+        const busy = isSaving || isProcessing;
         switch (shortcut.type) {
             case 'help':
                 setShowShortcuts((open) => !open);
@@ -846,14 +848,14 @@ function ReviewQueue() {
             }
             case 'accept': {
                 const pick = candidates[shortcut.rank - 1];
-                if (selectedTitle && pick) handleEpisodeChange(selectedTitle.id, pick.episodeCode);
+                if (!busy && selectedTitle && pick) handleEpisodeChange(selectedTitle.id, pick.episodeCode);
                 return;
             }
             case 'extra':
-                if (selectedTitle) handleTitleAction(selectedTitle.id, 'extra');
+                if (!busy && selectedTitle) handleTitleAction(selectedTitle.id, 'extra');
                 return;
             case 'skip':
-                if (selectedTitle) handleTitleAction(selectedTitle.id, 'skip');
+                if (!busy && selectedTitle) handleTitleAction(selectedTitle.id, 'skip');
                 return;
             case 'focusPicker':
                 document.querySelector<HTMLElement>('[data-review-picker]')?.focus();

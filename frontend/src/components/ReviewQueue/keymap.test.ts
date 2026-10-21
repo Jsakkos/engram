@@ -68,6 +68,9 @@ describe('isTypingTarget', () => {
         '<div contenteditable="true"></div>',
         '<div role="textbox"></div>',
         '<div role="combobox"></div>',
+        '<div role="listbox"></div>',
+        '<div role="menu"></div>',
+        '<div role="menuitem"></div>',
     ])('treats %s as typing', (html) => {
         expect(isTypingTarget(make(html))).toBe(true);
     });

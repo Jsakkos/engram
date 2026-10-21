@@ -79,7 +79,16 @@ export function isTypingTarget(target: EventTarget | null): boolean {
     if (target.getAttribute('contenteditable') === 'true') return true;
     if (target instanceof HTMLElement && target.isContentEditable) return true;
     const role = target.getAttribute('role');
-    return role === 'textbox' || role === 'combobox' || role === 'searchbox';
+    // Popups (Radix select/menu) use letter typeahead, so their keys are theirs.
+    return (
+        role === 'textbox' ||
+        role === 'combobox' ||
+        role === 'searchbox' ||
+        role === 'listbox' ||
+        role === 'option' ||
+        role === 'menu' ||
+        role === 'menuitem'
+    );
 }
 
 export interface ShortcutDoc {
