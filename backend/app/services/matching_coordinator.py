@@ -18,6 +18,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
 from app.core.episode_codes import (
+    episode_parts,
     format_episode_code,
     is_multi_episode,
     parse_episode_code,
@@ -394,18 +395,22 @@ def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -
 def _combined_code(codes: list) -> str | None:
     """The combined code for a verdict's playback-ordered codes, or None.
 
-    None when a code does not parse, a code is itself combined, fewer than two
-    episodes remain, or the codes span seasons: a filename carries one season, so
-    there is no honest combined name for a track that crosses one.
+    None when a code does not parse, fewer than two episodes remain, or the codes
+    span seasons: a filename carries one season, so there is no honest combined
+    name for a track that crosses one.
+
+    A code that is itself combined contributes every episode it holds. References
+    translated through a half-hour crosswalk are combined codes (#760), so a long
+    track can vote "S02E11-E12" then "S02E13"; that is S02E11-E13, not a refusal.
     """
     seasons: set[int] = set()
     episodes: list[int] = []
     for code in codes:
         parsed = parse_episode_code(code if isinstance(code, str) else None)
-        if parsed is None or len(parsed[1]) != 1:
+        if parsed is None:
             return None
         seasons.add(parsed[0])
-        episodes.append(parsed[1][0])
+        episodes.extend(e for e in parsed[1] if e not in episodes)
     if len(seasons) != 1 or len(episodes) < 2:
         return None
     return format_episode_code(seasons.pop(), episodes)
@@ -500,6 +505,22 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
         multi_detail = {}
     confirmed_multi = bool(multi_detail.get("is_multi_episode"))
     if not (confirmed_multi or conjoined_hint):
+        return False
+
+    # A reference translated through the pack's half-hour crosswalk already names
+    # every segment its broadcast holds (#760). When it holds exactly as many as
+    # the runtime suggests, the hint is answered, not contradicted: nothing would
+    # vanish from the library, so there is nothing to ask a reviewer.
+    if (
+        not confirmed_multi
+        and details.get("numbering_crosswalk")
+        and len(episode_parts(title.matched_episode)) == conjoined_hint
+    ):
+        logger.info(
+            f"Title {sanitize_log_value(getattr(title, 'id', None))}: runtime hint of "
+            f"~{conjoined_hint} conjoined episodes is explained by its crosswalked code "
+            f"{sanitize_log_value(title.matched_episode)}. Leaving the match as-is."
+        )
         return False
 
     # A runtime-only hint against a corpus numbered differently from the roster is
