@@ -13,7 +13,6 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
-### Fixed
 
 - The **Skip extras** setting now works on movie discs. It used to apply only to TV, so a movie disc ripped every bonus track and filed them all under `Extras/`. Now, when the disc is identified as a movie, titles that cannot be the feature are skipped before the rip (shown on the dashboard card with the reason, and UN-SKIP still works), and any that slip through are discarded rather than filed. Every feature-length cut is still ripped. **Ask me** now covers movies as well: the disc waits in review, where you discard the extras you don't want and keep the rest. (#773)
 - Re-identifying or naming a TV disc whose episodes were all filed no longer starts a second rip. Engram decided whether the disc had been ripped by looking for files in staging, which is empty once everything is filed, so the job went back to ripping a disc that had already left the drive. It now also checks the disc's tracks, and re-matches instead: filed episodes stay where they are, as with any re-match. (#774)
