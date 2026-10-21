@@ -11,6 +11,9 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - The **Skip extras** setting now works on movie discs. It used to apply only to TV, so a movie disc ripped every bonus track and filed them all under `Extras/`. Now, when the disc is identified as a movie, titles that cannot be the feature are skipped before the rip (shown on the dashboard card with the reason, and UN-SKIP still works), and any that slip through are discarded rather than filed. Every feature-length cut is still ripped. **Ask me** now covers movies as well: the disc waits in review, where you discard the extras you don't want and keep the rest. (#773)
+### Fixed
+
+- A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
 ## [0.41.0] - 2026-10-20
 
