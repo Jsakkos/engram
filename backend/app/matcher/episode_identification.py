@@ -63,7 +63,11 @@ def _stderr_tail(stderr: str | None, lines: int = _FFMPEG_STDERR_TAIL_LINES) -> 
 
 
 def _file_identity(path: str) -> tuple:
-    """(path, mtime_ns, size): changes when the file at ``path`` is rewritten."""
+    """(path, mtime_ns, size): changes when the file at ``path`` is rewritten.
+
+    On coarse-mtime filesystems (FAT/exFAT, 2 s) a same-size rewrite inside that
+    window keeps the old identity; an accepted edge for a per-matcher memo.
+    """
     try:
         st = Path(path).stat()
     except OSError:

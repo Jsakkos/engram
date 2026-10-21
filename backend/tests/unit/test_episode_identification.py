@@ -735,8 +735,8 @@ class TestExtractAudioChunkNoAudioStream:
         assert not matcher._no_audio_sources
 
     def test_rewritten_file_is_retried(self, tmp_path):
-        """A re-rip that rewrites the same path (with audio this time) is not
-        refused on the strength of the earlier, audio-less file."""
+        """A re-rip that rewrites the same path gets a fresh ffmpeg attempt and
+        probe instead of being refused on the strength of the earlier file."""
         from app.matcher.episode_identification import NoAudioStreamError
 
         matcher = self._matcher(tmp_path)
