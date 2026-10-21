@@ -248,7 +248,7 @@ export function Inspector({
                             No match data — use manual assignment below.
                         </div>
                     )}
-                    {candidates.map((cand) => {
+                    {candidates.map((cand, rank) => {
                         const others = takenByOther(cand.episodeCode);
                         const isGap = coverage[cand.episodeCode]?.status === 'missing';
                         const isSelected = selection === cand.episodeCode;
@@ -272,6 +272,14 @@ export function Inspector({
                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                                     <div style={{ minWidth: 0 }}>
                                         <div style={{ fontFamily: sv.mono, fontSize: 13, fontWeight: 600, color: sv.ink }}>
+                                            {rank < 3 && (
+                                                <kbd
+                                                    title={`Press ${rank + 1} to accept`}
+                                                    style={{ marginRight: 8, padding: '0 5px', fontSize: 10, color: sv.inkDim, border: `1px solid ${sv.lineMid}` }}
+                                                >
+                                                    {rank + 1}
+                                                </kbd>
+                                            )}
                                             {cand.episodeCode}
                                             {cand.episodeName && (
                                                 <span style={{ color: sv.inkDim, fontWeight: 400, fontSize: 11.5 }}> — {cand.episodeName}</span>
@@ -342,6 +350,8 @@ export function Inspector({
                             value={selection && /^S\d+E\d+$/i.test(selection) ? selection : ''}
                             onChange={(e) => e.target.value && onAssign(e.target.value)}
                             aria-label={`Manual episode for title ${title.title_index}`}
+                            aria-keyshortcuts="/"
+                            data-review-picker
                             style={{
                                 flex: 1,
                                 background: sv.bg0,

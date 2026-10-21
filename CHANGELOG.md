@@ -4,6 +4,13 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
+
+### Fixed
+
+- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
 ### Changed
 
 - **Force advance** now only appears beside Cancel and Eject once a job looks stuck, meaning it has made no progress for three minutes. The backend reports this as `looks_stuck` / `stalled_for_seconds` on the job (REST and WebSocket), taken from the same activity clock the stale-job watchdog uses, and the button's tooltip says how long the job has been idle. On a healthy job Force stays one click away in a **More actions** menu. (#718)
