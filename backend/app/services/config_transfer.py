@@ -20,6 +20,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app import __version__
+from app.api.config_models import ConfigUpdate, validate_config_update
 from app.core.paths import IS_WINDOWS, is_unc_path, normalize_user_path
 from app.services.config_service import SECRET_FIELDS, get_config, update_config
 
@@ -105,9 +106,6 @@ class ImportRejected(Exception):
 
 
 def _config_update_model():
-    # Imported lazily: routes.py imports the services layer at module load.
-    from app.api.routes import ConfigUpdate
-
     return ConfigUpdate
 
 
@@ -171,8 +169,6 @@ async def _validate_field(
     key: str, value: object, *, probe_paths: bool = True
 ) -> tuple[object, str | None]:
     """``(normalized, None)`` or ``(None, error)``, using PUT's own checks."""
-    from app.api.routes import validate_config_update
-
     try:
         coerced = _config_update_model()(**{key: value}).model_dump()[key]
     except ValidationError as exc:
