@@ -12,6 +12,8 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- Unmounting an ISO and mounting another one on the same drive letter now starts a new job right away; before, Engram did not notice the new disc until it was restarted. Unmounting removes the virtual drive letter outright, and Engram stopped checking a letter once it disappeared, so it still believed the first disc was in the drive. A drive letter that disappears now counts as an empty drive, the same as taking a disc out. (#769)
+
 - The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
 ### Changed
 
