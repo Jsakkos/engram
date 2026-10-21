@@ -70,6 +70,18 @@ describe('ImportSettingsDialog', () => {
         expect(screen.getByRole('button', { name: 'Apply 2 settings' })).toBeInTheDocument();
     });
 
+    it('warns that applying a missing path creates it here', () => {
+        // Saving runs ensure_paths_exist, so "a share that is not mounted yet"
+        // would be created on the local disk and rips would land there.
+        render(<ImportSettingsDialog file={FILE} preview={PREVIEW} onCancel={() => {}} onApplied={() => {}} />);
+        expect(
+            screen.getByText(
+                'These paths do not exist here. Applying one creates that folder on this machine, so tick it only if that is where you want it.',
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/not mounted yet/)).not.toBeInTheDocument();
+    });
+
     it('never shows a secret value, only that it will be replaced', () => {
         render(<ImportSettingsDialog file={FILE} preview={PREVIEW} onCancel={() => {}} onApplied={() => {}} />);
         expect(screen.getByText('will be replaced')).toBeInTheDocument();

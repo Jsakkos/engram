@@ -106,7 +106,9 @@ async def test_transfer_routes_refuse_lan_peer():
     await _seed(allow_lan_access=False, tmdb_api_key=TOKEN)
     transport = ASGITransport(app=app, client=("172.18.0.14", 50000))
     file = {"format": "engram-settings", "settings": {}}
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    # An IP-literal Host passes the keys-export Host check, so the 403 below can
+    # only come from the LAN gate.
+    async with AsyncClient(transport=transport, base_url="http://192.168.1.50") as ac:
         for resp in (
             await ac.get("/api/config/export", params={"include_secrets": "true"}),
             await ac.post("/api/config/import/preview", json=file),

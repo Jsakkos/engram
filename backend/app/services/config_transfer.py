@@ -20,7 +20,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app import __version__
-from app.core.paths import is_unc_path, normalize_user_path
+from app.core.paths import IS_WINDOWS, is_unc_path, normalize_user_path
 from app.services.config_service import SECRET_FIELDS, get_config, update_config
 
 __all__ = [
@@ -169,9 +169,20 @@ async def _validate_field(
 
 
 def _is_network_path(key: str, value: object) -> bool:
-    """A UNC path in a path field. Never probed during preview: touching it would
-    make Windows authenticate to whatever host an uploaded file names."""
-    return key in PATH_FIELDS and isinstance(value, str) and is_unc_path(normalize_user_path(value))
+    r"""A path field the preview must not touch. Probing a network location makes
+    Windows authenticate to whatever host an uploaded file names.
+
+    A UNC check alone is not enough: the NT namespace (``\??\UNC\host``) and
+    ``\Device\Mup`` reach the network with a single leading separator. So
+    anything rooted in a separator rather than a drive letter is left unchecked
+    on Windows, and a leading backslash (never a real POSIX path) everywhere.
+    """
+    if key not in PATH_FIELDS or not isinstance(value, str):
+        return False
+    path = normalize_user_path(value)
+    if is_unc_path(path) or path.startswith("\\"):
+        return True
+    return IS_WINDOWS and path.startswith("/")
 
 
 def _path_missing(key: str, value: object) -> bool:

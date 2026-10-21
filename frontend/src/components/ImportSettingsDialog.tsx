@@ -138,7 +138,7 @@ export default function ImportSettingsDialog({
                 'Not found on this machine',
                 groups.missing,
                 true,
-                'These paths do not exist here. Tick one only if it will exist, such as a share that is not mounted yet.',
+                'These paths do not exist here. Applying one creates that folder on this machine, so tick it only if that is where you want it.',
             )}
             {section(
                 'Network paths (not checked)',

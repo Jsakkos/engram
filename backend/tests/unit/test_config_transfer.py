@@ -366,3 +366,31 @@ async def test_local_path_rows_are_checked(tmp_path):
         await ct.preview_import(_file({"library_tv_path": str(tmp_path)})), "library_tv_path"
     )
     assert row["path_unchecked"] is False
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "BS??BSUNCBSattacker.exampleBSshare",  # NT namespace: no leading double backslash
+        "BSBS.BSUNCBSattacker.exampleBSshare",  # device namespace
+        "BSBS?BSUNCBSattacker.exampleBSshare",  # long-path prefix
+        "BSDeviceBSMupBSattacker.exampleBSshare",
+    ],
+)
+async def test_preview_never_probes_namespace_prefixed_paths(monkeypatch, path):
+    """Windows reaches the network through these spellings too, and none of them
+    starts with two separators, so a UNC check alone lets them through."""
+    import app.core.organizer as organizer
+
+    touched: list[str] = []
+    monkeypatch.setattr(ct.os.path, "exists", lambda p: touched.append(p) or False)
+    monkeypatch.setattr(
+        organizer, "check_library_writable", lambda p, **k: touched.append(str(p)) or None
+    )
+    await _seed()
+    path = path.replace("BS", chr(92))
+    preview = await ct.preview_import(_file({"staging_path": path}))
+    assert not any("attacker" in t for t in touched), touched
+    row = _row(preview, "staging_path")
+    assert row["path_unchecked"] is True
+    assert row["selected"] is False
