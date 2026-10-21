@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - Unmounting an ISO and mounting another one on the same drive letter now starts a new job right away; before, Engram did not notice the new disc until it was restarted. Unmounting removes the virtual drive letter outright, and Engram stopped checking a letter once it disappeared, so it still believed the first disc was in the drive. A drive letter that disappears now counts as an empty drive, the same as taking a disc out. (#769)
+- A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
 ## [0.41.0] - 2026-10-20
 
