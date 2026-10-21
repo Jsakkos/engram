@@ -66,6 +66,7 @@ nav:
     - Contributing Data: guide/contributing-data.md
     - LLM Episode Matcher: guide/llm-episode-matcher.md
   - Troubleshooting: troubleshooting.md
+  - Getting Help: getting-help.md
   - Deployment:
     - Docker (Linux): deployment/docker.md
   - Architecture:

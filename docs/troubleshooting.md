@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common setup and runtime issues, and how to resolve them. If something here doesn't cover your problem, ask on [Discord](https://discord.gg/G8fjjGswdc) or open an [issue](https://github.com/Jsakkos/engram/issues) — a [diagnostics bundle](#diagnostics-bundle) makes it much easier to help.
+Common setup and runtime issues, and how to resolve them. If something here doesn't cover your problem, ask **Trace**, the support bot in the [Engram Discord](https://discord.gg/G8fjjGswdc) (post in the `#ask-engram` forum, mention `@Trace`, or run `/bug`), or open an [issue](https://github.com/Jsakkos/engram/issues). A [diagnostics bundle](#diagnostics-bundle) makes it much easier to help. See [Getting Help & Reporting Issues](getting-help.md).
 
 ## FFmpeg not detected (Windows)
 
@@ -86,3 +86,5 @@ for that job.
 ## Diagnostics bundle
 
 When reporting a problem, attach a diagnostics bundle so the logs and environment come with it. From the dashboard, open a job's detail view and download its diagnostic `.zip`, or fetch the overall report from `GET /api/diagnostics/report`. Secrets (API keys, tokens) are redacted automatically.
+
+In Discord, drop the `.zip` into your thread with Trace: it reads the versions, job state and log errors for you, and attaches a summary to the GitHub issue when your report is filed. See [Attaching a diagnostics bundle](getting-help.md#attaching-a-diagnostics-bundle).
