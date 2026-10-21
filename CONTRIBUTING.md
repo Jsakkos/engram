@@ -59,8 +59,7 @@ foreman start
 Dependencies are installed from the lockfiles before the servers start: the backend runs `uv sync --locked`, and the frontend runs `npm ci` only when `package-lock.json` has changed since the last install (`scripts/ensure_frontend_deps.py`). Neither ever rewrites a lockfile.
 
 - The backend starts with `DEBUG=true` by default, which enables the `/api/simulate/*` endpoints. Set `DEBUG=false` to turn them off.
-- Ports and database come from the same environment variables as a manual start: `VITE_BACKEND_PORT` sets both the backend port and the frontend proxy target, `VITE_PORT` sets the dashboard port, and `DATABASE_URL` sets the database. A gitignored `.envrc` (direnv) is a convenient place for these.
-- Every backend polls the physical optical drive, whatever port it uses. Don't run two backends against a real disc at the same time.
+- If the default ports are taken, set `VITE_BACKEND_PORT` (backend port and the frontend's proxy target) and `VITE_PORT` (dashboard port). A gitignored `.envrc` (direnv) is a convenient place for these.
 - Stopping the runner stops both servers. Check that no `uvicorn` or `makemkvcon` processes are left behind.
 
 ## Code quality
