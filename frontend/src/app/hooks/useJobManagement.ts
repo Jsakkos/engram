@@ -416,9 +416,17 @@ export function useJobManagement(devMode: boolean = false) {
                     setJobs(prev => {
                         const exists = prev.some(j => j.id === message.job_id);
                         if (exists) {
-                            return prev.map(job =>
-                                job.id === message.job_id ? { ...job, ...message } : job
-                            );
+                            return prev.map(job => {
+                                if (job.id !== message.job_id) return job;
+                                const merged = { ...job, ...message };
+                                // A phase change is progress by definition; drop a stale stall
+                                // flag until the backend's next tick says otherwise (#718).
+                                if (message.state && message.state !== job.state && message.looks_stuck === undefined) {
+                                    merged.looks_stuck = false;
+                                    merged.stalled_for_seconds = null;
+                                }
+                                return merged;
+                            });
                         }
                         // Unknown job — trigger a (debounced) fetch so a burst
                         // of unknown updates collapses into a single refetch.

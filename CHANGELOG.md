@@ -4,11 +4,29 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
+
 ### Fixed
 
 - **Reassign** in History now lists every episode of the season. The picker was built only from episodes other tracks on the disc already held, so the one episode the disc was missing, the one a mis-filed track usually is, could never be chosen. It now reads the season's episode list, with episode titles, and falls back to a full numbered range when that list can't be loaded. (#770)
 
 - An episode track is no longer filed as an extra just because it is shorter than the show's listed runtime when other tracks of the same length on the disc already matched as episodes. Some shows list a 30-minute broadcast slot while the disc's episodes run 20 minutes, so a track that matching couldn't place on the first pass was then filed under Extras next to its matched siblings. Engram now keeps matching such a track, and sends it to review if it still can't be placed. (#770)
+- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
+### Changed
+
+- **Force advance** now only appears beside Cancel and Eject once a job looks stuck, meaning it has made no progress for three minutes. The backend reports this as `looks_stuck` / `stalled_for_seconds` on the job (REST and WebSocket), taken from the same activity clock the stale-job watchdog uses, and the button's tooltip says how long the job has been idle. On a healthy job Force stays one click away in a **More actions** menu. (#718)
+
+- The dashboard footer no longer shows made-up telemetry (`UNIT 07`, `BUFFER NOMINAL`, `CPU IDLE`...) or a platform-based `DRIVE READY`. The drive label now reflects the optical drives Engram detects (`2 DRIVES`, `1 DRIVE · BUSY` while a disc is being read, `IMPORT ONLY` when there are none), and the scrolling band reports the real ASR device with whether transcription is running, jobs per phase, and discs awaiting review. (#720)
+
+### Added
+
+- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
+
+### Fixed
+
+- The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
 
 - Re-identifying or naming a TV disc whose episodes were all filed no longer starts a second rip. Engram decided whether the disc had been ripped by looking for files in staging, which is empty once everything is filed, so the job went back to ripping a disc that had already left the drive. It now also checks the disc's tracks, and re-matches instead: filed episodes stay where they are, as with any re-match. (#774)
 
