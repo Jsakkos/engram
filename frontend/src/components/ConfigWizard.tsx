@@ -6,6 +6,7 @@ import { EngramSelect } from './ui/EngramSelect';
 import { SvActionButton } from '../app/components/synapse/SvActionButton';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
+import SettingsTransferSection from './SettingsTransferSection';
 import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { PathStatusHint } from './PathStatusHint';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
@@ -48,6 +49,8 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
     { key: 'metadata', label: 'Metadata & Subtitles', step: 3 },
     { key: 'sharing', label: 'Data Sharing', step: 4 },
     { key: 'preferences', label: 'Preferences', step: 5 },
+    // Settings mode only: the onboarding stepper stops at step 5 (STEP_LABELS).
+    { key: 'transfer', label: 'Import & Export', step: 6 },
 ];
 
 // DOM id of the GPU control wrapper, used as a deep-link scroll target.
@@ -230,6 +233,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // Settings mode can deep-link to a section; onboarding always starts at step 1.
     const [step, setStep] = useState(() => (!isOnboarding ? resolveSection(initialSection)?.step : undefined) ?? 1);
     const [isLoading, setIsLoading] = useState(true);
+    // Bumped after a settings import (#731) to re-run the config load below.
+    const [configReloadKey, setConfigReloadKey] = useState(0);
+    const [showOnboardingImport, setShowOnboardingImport] = useState(false);
     // A deep-linked control (e.g. the GPU toggle) to scroll into view once the
     // settings body has rendered. Consumed once.
     const pendingScrollAnchor = useRef<string | null>(
@@ -489,7 +495,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             }
         };
         loadConfig();
-    }, []);
+    }, [configReloadKey]);
 
     // Live Discord template validation, debounced. The real enforcement is
     // server-side (PUT /api/config re-validates before persisting) — this is
@@ -942,6 +948,28 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <p className="step-description">
                             Where should Engram save your ripped media?
                         </p>
+
+                        {isOnboarding && (
+                            <div className="form-group">
+                                {showOnboardingImport ? (
+                                    <SettingsTransferSection
+                                        importOnly
+                                        onImported={() => {
+                                            setShowOnboardingImport(false);
+                                            setConfigReloadKey((k) => k + 1);
+                                        }}
+                                    />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="transfer-link"
+                                        onClick={() => setShowOnboardingImport(true)}
+                                    >
+                                        Restoring from another install? Import a settings file
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         <div className="form-group">
                             <label htmlFor="stagingPath">Staging Directory</label>
@@ -2468,6 +2496,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 )}
                             </dl>
                         </div>
+                    </div>
+                );
+
+            case 6:
+                return (
+                    <div className="wizard-step">
+                        <h3 className="step-title">Import & Export</h3>
+                        <p className="step-description">
+                            Move your settings to another install, or restore them after a reinstall.
+                        </p>
+                        <SettingsTransferSection onImported={() => setConfigReloadKey((k) => k + 1)} />
                     </div>
                 );
 

@@ -90,6 +90,42 @@ Configuration is resolved in this priority order:
 2. **Environment variables** (or `.env` file) -- server-level settings only
 3. **Defaults** -- hardcoded in the `AppConfig` model
 
+## Moving Settings to Another Install
+
+**Settings > Import & Export** saves your configuration to a file and loads it on another install, for example when moving to a new machine, switching between the desktop build and Docker, or rebuilding after a lost database. First-run setup also offers **Restoring from another install? Import a settings file** on its first step.
+
+### Export
+
+**Download settings file** saves `engram-settings-YYYY-MM-DD.json` with your paths, preferences, thresholds, naming formats, Discord templates and toggles, and AI, TheDiscDB and OpenSubtitles choices.
+
+Keys and passwords (MakeMKV key, TMDB token, TheTVDB key, AI key, OpenSubtitles key and password, TheDiscDB key, Discord webhook) are left out unless you tick **Include keys and passwords**. The file is then named `...-with-keys.json`. It is not encrypted: anyone who has it can use those credentials, so store it like a password.
+
+An export with keys works only when the dashboard is opened as `localhost` or by IP address (for example `http://192.168.1.50:8000`). Opened under another host name, Engram refuses, because that is how a malicious web page would try to read the file through your browser. Export without keys works from any address.
+
+These are never exported or imported, because they belong to one install:
+
+- whether first-run setup is finished (the new install still walks you through setup, with the imported values filled in)
+- LAN access (switch it on deliberately on the machine it exposes)
+- consent to share fingerprints with the Engram network
+
+### Import
+
+Choose a settings file and Engram shows every setting in it before anything changes:
+
+| Group | Meaning | Ticked by default |
+|-------|---------|-------------------|
+| **Changes** | Differs from what this install has | Yes |
+| **Check before applying** | A server Engram sends keys or data to (TheDiscDB URL, local AI URL, fingerprint server, Discord webhook, of which only the host is shown) or a program it runs (MakeMKV, FFmpeg, fpcalc). A file from someone else could point these somewhere you did not choose | No |
+| **Not found on this machine** | A folder or program path that does not exist here. Applying a folder creates it on this machine, so tick it only if that is where you want it | No |
+| **Network paths (not checked)** | A `\\server\share` path. Engram does not open network paths from an imported file, so it cannot say whether the share is there | No |
+| **Invalid** | Fails the same checks as saving in Settings (a bad naming placeholder, an internal webhook address, an unwritable library folder); the reason is shown | Cannot be ticked |
+| **Unchanged** | Already the same here | No |
+| **Not recognized** | Not a setting this version imports (a newer Engram's setting, or one of the per-install settings above); skipped | No |
+
+Keys and passwords show as **will be replaced**, never as values. Settings the file does not mention are left as they are, and a blank key in the file never clears a stored one. **Apply** checks the ticked settings again and writes all of them or, if any is refused, none.
+
+Both export and import are reachable from the machine running Engram, and from other devices only when LAN access is on.
+
 ## Configuration Fields
 
 ### Paths

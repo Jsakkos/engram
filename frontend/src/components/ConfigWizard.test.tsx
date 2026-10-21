@@ -650,3 +650,62 @@ describe('ConfigWizard: TheTVDB key copy', () => {
         expect(screen.getByRole('link', { name: 'Episode data: TheTVDB' })).toBeInTheDocument();
     });
 });
+
+describe('ConfigWizard: settings export/import (#731)', () => {
+    it('adds an Import & Export section to settings mode only', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        fireEvent.click(within(nav).getByRole('button', { name: 'Import & Export' }));
+        expect(await screen.findByRole('button', { name: 'Download settings file' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Choose a settings file')).toBeInTheDocument();
+    });
+
+    it('keeps the onboarding stepper at five steps', async () => {
+        render(<ConfigWizard {...noop} />);
+        expect(await screen.findByLabelText(/^Step 5:/)).toBeInTheDocument();
+        expect(screen.queryByLabelText(/^Step 6:/)).not.toBeInTheDocument();
+    });
+
+    it('offers import, not export, on the first onboarding step', async () => {
+        render(<ConfigWizard {...noop} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Restoring from another install? Import a settings file' }));
+        expect(screen.getByLabelText('Choose a settings file')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Download settings file' })).not.toBeInTheDocument();
+    });
+
+    it('reloads the form from the server after an import is applied', async () => {
+        let tvPath = '/tv';
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = typeof input === 'string' ? input : input.toString();
+            const body = (() => {
+                if (url === '/api/config/import/preview')
+                    return {
+                        schema_version: 1, engram_version: '0.41.0', includes_secrets: false, warnings: [], unknown: [],
+                        fields: [{
+                            key: 'library_tv_path', status: 'change', current: '/tv', incoming: '/imported/tv',
+                            secret: false, path_missing: false, path_unchecked: false, needs_review: false, error: null, selected: true,
+                        }],
+                    };
+                if (url === '/api/config/import/apply') {
+                    tvPath = '/imported/tv';
+                    return { applied: ['library_tv_path'] };
+                }
+                if (url === '/api/config' && !init?.method)
+                    return { setup_complete: true, staging_path: '/staging', library_movies_path: '/movies', library_tv_path: tvPath };
+                return {};
+            })();
+            return Promise.resolve({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        expect(await screen.findByDisplayValue('/tv')).toBeInTheDocument();
+        fireEvent.click(within(screen.getByRole('navigation', { name: /settings sections/i })).getByRole('button', { name: 'Import & Export' }));
+        const file = new File([JSON.stringify({ format: 'engram-settings', settings: { library_tv_path: '/imported/tv' } })], 's.json');
+        fireEvent.change(await screen.findByLabelText('Choose a settings file'), { target: { files: [file] } });
+        fireEvent.click(await screen.findByRole('button', { name: 'Apply 1 setting' }));
+
+        fireEvent.click(within(screen.getByRole('navigation', { name: /settings sections/i })).getByRole('button', { name: 'Library Paths' }));
+        expect(await screen.findByDisplayValue('/imported/tv')).toBeInTheDocument();
+    });
+});
