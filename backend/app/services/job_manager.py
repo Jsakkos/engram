@@ -198,6 +198,22 @@ def _has_existing_backup(dest: Path) -> bool:
 # Create domain-specific event broadcaster
 event_broadcaster = EventBroadcaster(ws_manager)
 
+# A job that has made no progress for this long "looks stuck" (#718): the dashboard
+# then offers Force advance as a primary control. Deliberately far below the
+# per-phase watchdog timeouts (10-30 min), which auto-advance on their own; this
+# is the point at which a person watching would reasonably start to wonder.
+STUCK_AFTER_SECONDS = 180
+# Seconds between pushes of the stall signal to connected clients.
+STALL_TICK_SECONDS = 10.0
+# States the watchdog times; a stall is only meaningful in these.
+_STALL_WATCHED_STATES = (
+    JobState.IDENTIFYING,
+    JobState.BACKING_UP,
+    JobState.RIPPING,
+    JobState.MATCHING,
+    JobState.ORGANIZING,
+)
+
 # Create job state machine
 state_machine = JobStateMachine(event_broadcaster)
 
@@ -231,6 +247,9 @@ class JobManager:
         # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
         self._last_activity: dict[int, float] = {}
         self._watchdog_task: asyncio.Task | None = None
+        # Stall-signal push (#718): last looks_stuck value sent per job.
+        self._stall_task: asyncio.Task | None = None
+        self._stall_sent: dict[int, bool] = {}
         # Job ids whose in-flight task was cancelled BY US (reconcile_and_advance),
         # mapped to the reason. Cancellation is delivered at the target coroutine's
         # next await, so the entry is what lets its CancelledError handler tell an
@@ -411,6 +430,8 @@ class JobManager:
         # Start the stale-job watchdog
         if config.watchdog_enabled:
             self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+        # The stall signal is independent of the watchdog: it is advisory UI state.
+        self._stall_task = asyncio.create_task(self._stall_loop())
 
         logger.info(
             f"Job manager started (asr_device={_asr_runtime.device}, "
@@ -524,6 +545,15 @@ class JobManager:
                 # Expected: we just cancelled the watchdog loop above.
                 pass
             self._watchdog_task = None
+
+        if self._stall_task:
+            self._stall_task.cancel()
+            try:
+                await self._stall_task
+            except asyncio.CancelledError:
+                # Expected: we just cancelled the stall loop above.
+                pass
+            self._stall_task = None
 
         for job_id, task in self._active_jobs.items():
             task.cancel()
@@ -793,20 +823,25 @@ class JobManager:
                     )
                     return
 
-                staging_dir = (
-                    Path(db_config.staging_path).expanduser()
-                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                )
-
                 job = DiscJob(
                     drive_id=drive_letter,
                     volume_label=volume_label,
-                    staging_path=str(staging_dir),
                     state=JobState.IDENTIFYING,
                     content_hash=new_hash,
                 )
 
                 session.add(job)
+                # The staging directory carries the job id, assigned by this flush.
+                # A timestamp alone is per-second: two mounted ISOs announced at
+                # startup both got the same directory, and each job then matched
+                # and filed the other disc's rips (#768). The per-drive lock and
+                # cooldown above cannot help, because the two discs are in
+                # different drives.
+                await session.flush()
+                job.staging_path = str(
+                    Path(db_config.staging_path).expanduser()
+                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{job.id}"
+                )
                 await session.commit()
                 await session.refresh(job)
 
@@ -1694,6 +1729,68 @@ class JobManager:
         else:
             self._last_activity[job_id] = time.monotonic()
 
+    def stall_state(
+        self, job_id: int, state: JobState, now: float | None = None
+    ) -> tuple[int | None, bool]:
+        """(seconds since last progress, looks_stuck) for a job, from the watchdog clock.
+
+        ``(None, False)`` when the state is not one the watchdog times (resting or
+        terminal) or the clock has no reading yet; no signal is not a stall.
+        """
+        if state not in _STALL_WATCHED_STATES:
+            return None, False
+        last = self._last_activity.get(job_id)
+        if last is None:
+            return None, False
+        stalled = max(0, int((now if now is not None else time.monotonic()) - last))
+        return stalled, stalled >= STUCK_AFTER_SECONDS
+
+    async def _broadcast_stall_changes(self) -> None:
+        """Push stall state for watched jobs; send on change, and keep a stuck
+        job's duration fresh. A cleared flag is sent once, then goes quiet."""
+        if not self._last_activity and not self._stall_sent:
+            return
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscJob.id, DiscJob.state).where(DiscJob.state.in_(_STALL_WATCHED_STATES))
+            )
+            rows = result.all()
+        now = time.monotonic()
+        seen: set[int] = set()
+        for job_id, state in rows:
+            seen.add(job_id)
+            # A MATCHING job with tracks QUEUED/MATCHING is draining the global
+            # match queue, not stuck. The watchdog refreshes its clock for that,
+            # but only when enabled and on its own cadence, so do it here too.
+            if state == JobState.MATCHING and await self._has_pending_match_work(job_id):
+                self._last_activity[job_id] = now
+            stalled, stuck = self.stall_state(job_id, state, now)
+            if stuck or self._stall_sent.get(job_id, False) != stuck:
+                await ws_manager.broadcast(
+                    {
+                        "type": "job_update",
+                        "job_id": job_id,
+                        "looks_stuck": stuck,
+                        "stalled_for_seconds": stalled if stuck else None,
+                    }
+                )
+            self._stall_sent[job_id] = stuck
+        # A job that left the watched set (finished, parked in review) drops its
+        # flag with its state change; just forget it here.
+        for gone in set(self._stall_sent) - seen:
+            del self._stall_sent[gone]
+
+    async def _stall_loop(self) -> None:
+        """Periodically push the stall signal (#718)."""
+        while True:
+            await asyncio.sleep(STALL_TICK_SECONDS)
+            try:
+                await self._broadcast_stall_changes()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"Stall signal tick failed: {e}", exc_info=True)
+
     def _start_prewarm_on_review(self, job_id: int, state: JobState, from_state: JobState) -> None:
         """on_transition observer: prewarm transcripts when a job parks in review."""
         if state == JobState.REVIEW_NEEDED:
@@ -2010,7 +2107,12 @@ class JobManager:
             await self._dispatch_title_match(job_id, title_id, file_path)
 
     async def reconcile_and_advance(
-        self, job_id: int, *, reason: str = "forced", failure_message: str | None = None
+        self,
+        job_id: int,
+        *,
+        reason: str = "forced",
+        failure_message: str | None = None,
+        user_initiated: bool = False,
     ) -> bool:
         """Force a stuck job to its next resting state (watchdog + manual advance).
 
@@ -2023,6 +2125,11 @@ class JobManager:
         QUEUED is deliberately NOT in the active set below: a queued track is draining
         the global match semaphore, not stuck, so the watchdog must never force it to
         review (a genuinely hung *active* match is caught by the per-track timeout).
+        ``user_initiated`` (the Force button) adds one exception: a QUEUED title
+        with no match task behind it (``MatchingCoordinator.has_live_match``) is
+        orphaned, not draining, and nothing else will ever move it (#776). Titles
+        parked QUEUED behind an unanswered identity prompt have no task by design
+        and are still left for the answer to release.
 
         ``reason`` tags the affected titles' ``match_details`` (audit trail).
         ``failure_message`` is the *user-facing* wording for the job as a whole, used
@@ -2050,9 +2157,15 @@ class JobManager:
 
             result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
             staging = Path(job.staging_path) if job.staging_path else None
+            reap_orphaned_queued = user_initiated and job.identity_prompt_json is None
 
             for title in result.scalars().all():
-                if not title.is_selected or title.state not in active:
+                orphaned = (
+                    reap_orphaned_queued
+                    and title.state == TitleState.QUEUED
+                    and not self._matching.has_live_match(title.id)
+                )
+                if not title.is_selected or (title.state not in active and not orphaned):
                     continue
                 file_path = self._find_title_file(title, staging)
                 if file_path is not None:
