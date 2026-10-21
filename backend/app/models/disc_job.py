@@ -56,6 +56,11 @@ def any_title_ripped(titles: Iterable["DiscTitle"]) -> bool:
 
     Staging alone cannot answer this: once every track is organized into the
     library, staging is empty although the disc was ripped and ejected (#774).
+
+    A title interrupted mid-rip (RIPPING or FAILED, no file) counts as ripped,
+    the same rule ``start_rip_refusal`` applies: a resume must not start a
+    second full rip that the Start rip button would refuse. Such a job recovers
+    through per-title re-rip.
     """
     return any(
         t.state not in _PRE_RIP_TITLE_STATES or t.output_filename or t.organized_to for t in titles

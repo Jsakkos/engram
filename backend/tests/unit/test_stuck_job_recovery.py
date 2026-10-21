@@ -545,10 +545,34 @@ async def test_user_advance_spares_queued_title_with_live_match(tmp_path):
         assert (await _title(waiting)).state == TitleState.QUEUED
     finally:
         release.set()
-        await task
+        await asyncio.gather(task)
         matching._run_match_single_file = original
 
     assert not matching.has_live_match(waiting)
+
+
+@pytest.mark.asyncio
+async def test_match_cancelled_before_first_step_is_not_live(tmp_path):
+    """A match task cancelled before it ever runs (job cancel or eject right after
+    dispatch) must not keep its title counted as live, or Force could never clear it."""
+    matching = job_manager._matching
+    task = asyncio.create_task(matching.match_single_file(1, 77, tmp_path / "t.mkv"))
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert not matching.has_live_match(77)
+
+
+@pytest.mark.asyncio
+async def test_match_coroutine_never_scheduled_is_not_live(tmp_path):
+    matching = job_manager._matching
+    coro = matching.match_single_file(1, 78, tmp_path / "t.mkv")
+    assert matching.has_live_match(78)
+
+    coro.close()  # e.g. the caller raised before create_task
+
+    assert not matching.has_live_match(78)
 
 
 @pytest.mark.asyncio

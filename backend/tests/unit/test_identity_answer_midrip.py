@@ -621,6 +621,22 @@ class TestFullyFiledDiscIsNotRippedAgain:
         assert result["resume_action"] == "dispatch_matches"
         assert (await _get_job(job.id)).state == JobState.MATCHING
 
+    async def test_interrupted_rip_does_not_start_a_full_rip(self, ws_calls, tmp_path):
+        """A track that failed mid-rip left no file, but the rip did start: same
+        rule as start_rip_refusal (#710), so a resume never starts a second full
+        rip that the Start rip button would refuse."""
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED, staging=str(tmp_path), identity_prompt_json=None
+        )
+        await _add_title(job.id, 0, TitleState.FAILED)
+        await _add_title(job.id, 1, TitleState.PENDING)
+        coord = _coord()
+
+        result = await coord.re_identify(job.id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+        assert result["has_ripped"] is True
+        assert result["resume_action"] == "rerun_matching"
+
     async def test_pending_titles_with_empty_staging_still_rip(self, ws_calls, tmp_path):
         """Pre-rip review: titles never left PENDING, so a rip is still correct."""
         job = await _seed_job(
