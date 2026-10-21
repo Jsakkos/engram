@@ -586,7 +586,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             // Detection fills are not user edits, so they move the baseline too.
             // Otherwise merely visiting the Tools section would arm the discard prompt.
             const fillDetected = (field: 'makemkvPath' | 'ffmpegPath', path: string) => {
-                setConfig(prev => ({ ...prev, [field]: path }));
+                setConfig(prev => (prev[field] ? prev : { ...prev, [field]: path }));
                 setBaseline(prev => (prev && !prev[field] ? { ...prev, [field]: path } : prev));
             };
             if (data.makemkv.found && data.makemkv.path && !config.makemkvPath) {
