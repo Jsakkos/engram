@@ -87,6 +87,9 @@ export interface Job {
      * MANUAL ID provenance chip and the contextual "Edit ID" button label.
      */
     classification_source?: string;
+    /** Watchdog-derived stall signal (#718): no progress past the threshold. */
+    looks_stuck?: boolean;
+    stalled_for_seconds?: number | null;
 }
 
 export interface DiscTitle {
@@ -149,6 +152,9 @@ export interface JobUpdate {
     tmdb_degraded_reason?: string | null;
     /** "" clears a resolved prompt; absent means unchanged (walk-away Phase B). */
     identity_prompt_json?: string | null;
+    /** Pushed by the backend stall tick (#718) as a partial update without state. */
+    looks_stuck?: boolean;
+    stalled_for_seconds?: number | null;
 }
 
 export interface TitleUpdate {

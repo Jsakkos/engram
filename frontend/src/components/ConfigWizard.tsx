@@ -6,6 +6,7 @@ import { EngramSelect } from './ui/EngramSelect';
 import { SvActionButton } from '../app/components/synapse/SvActionButton';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
+import SettingsTransferSection from './SettingsTransferSection';
 import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { PathStatusHint } from './PathStatusHint';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
@@ -48,6 +49,8 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
     { key: 'metadata', label: 'Metadata & Subtitles', step: 3 },
     { key: 'sharing', label: 'Data Sharing', step: 4 },
     { key: 'preferences', label: 'Preferences', step: 5 },
+    // Settings mode only: the onboarding stepper stops at step 5 (STEP_LABELS).
+    { key: 'transfer', label: 'Import & Export', step: 6 },
 ];
 
 // DOM id of the GPU control wrapper, used as a deep-link scroll target.
@@ -161,6 +164,7 @@ interface ConfigData {
     stagingCleanupPolicy: string;
     stagingCleanupDays: number;
     extrasPolicy: string;
+    makemkvMinTitleLength: number;
     alwaysReview: boolean;
     backupBeforeRip: boolean;
     backupPath: string;
@@ -229,6 +233,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // Settings mode can deep-link to a section; onboarding always starts at step 1.
     const [step, setStep] = useState(() => (!isOnboarding ? resolveSection(initialSection)?.step : undefined) ?? 1);
     const [isLoading, setIsLoading] = useState(true);
+    // Bumped after a settings import (#731) to re-run the config load below.
+    const [configReloadKey, setConfigReloadKey] = useState(0);
+    const [showOnboardingImport, setShowOnboardingImport] = useState(false);
     // A deep-linked control (e.g. the GPU toggle) to scroll into view once the
     // settings body has rendered. Consumed once.
     const pendingScrollAnchor = useRef<string | null>(
@@ -256,6 +263,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         stagingCleanupPolicy: 'on_success',
         stagingCleanupDays: 7,
         extrasPolicy: 'keep',
+        makemkvMinTitleLength: 120,
         alwaysReview: false,
         backupBeforeRip: false,
         backupPath: '',
@@ -436,6 +444,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     stagingCleanupPolicy: data.staging_cleanup_policy || 'on_success',
                     stagingCleanupDays: data.staging_cleanup_days ?? 7,
                     extrasPolicy: data.extras_policy || 'keep',
+                    makemkvMinTitleLength: data.makemkv_min_title_length ?? 120,
                     alwaysReview: data.always_review ?? false,
                     backupBeforeRip: data.backup_before_rip ?? false,
                     backupPath: data.backup_path || '',
@@ -486,7 +495,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             }
         };
         loadConfig();
-    }, []);
+    }, [configReloadKey]);
 
     // Live Discord template validation, debounced. The real enforcement is
     // server-side (PUT /api/config re-validates before persisting) — this is
@@ -663,6 +672,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     staging_cleanup_policy: config.stagingCleanupPolicy,
                     staging_cleanup_days: config.stagingCleanupDays,
                     extras_policy: config.extrasPolicy,
+                    makemkv_min_title_length: config.makemkvMinTitleLength,
                     always_review: config.alwaysReview,
                     backup_before_rip: config.backupBeforeRip,
                     backup_path: config.backupPath,
@@ -938,6 +948,28 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <p className="step-description">
                             Where should Engram save your ripped media?
                         </p>
+
+                        {isOnboarding && (
+                            <div className="form-group">
+                                {showOnboardingImport ? (
+                                    <SettingsTransferSection
+                                        importOnly
+                                        onImported={() => {
+                                            setShowOnboardingImport(false);
+                                            setConfigReloadKey((k) => k + 1);
+                                        }}
+                                    />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="transfer-link"
+                                        onClick={() => setShowOnboardingImport(true)}
+                                    >
+                                        Restoring from another install? Import a settings file
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         <div className="form-group">
                             <label htmlFor="stagingPath">Staging Directory</label>
@@ -1961,6 +1993,24 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         </div>
 
                         <div className="form-group">
+                            <label htmlFor="makemkvMinTitleLength">Minimum Title Length (seconds)</label>
+                            <input
+                                id="makemkvMinTitleLength"
+                                type="number"
+                                min={0}
+                                max={3600}
+                                value={config.makemkvMinTitleLength}
+                                onChange={(e) => handleInputChange('makemkvMinTitleLength', Math.max(0, Math.min(3600, parseInt(e.target.value) || 0)))}
+                            />
+                            <span className="form-hint">
+                                MakeMKV ignores titles shorter than this. 120 is MakeMKV&apos;s default;
+                                lower it for discs whose specials run under two minutes. 0 shows every
+                                title, including menu loops and copy-protection playlists. Change it
+                                between discs, not while one is being ripped.
+                            </span>
+                        </div>
+
+                        <div className="form-group">
                             <label htmlFor="extrasPolicy">Extras Handling</label>
                             <EngramSelect
                                 id="extrasPolicy"
@@ -1968,12 +2018,14 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 onValueChange={(v) => handleInputChange('extrasPolicy', v)}
                                 options={[
                                     { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
-                                    { value: 'skip', label: 'Skip extras (don\'t rip short tracks, discard any others)' },
+                                    { value: 'skip', label: 'Skip extras (don\'t rip bonus tracks, discard any that slip through)' },
                                     { value: 'ask', label: 'Ask me (show in Review Queue)' },
                                 ]}
                             />
                             <span className="form-hint">
-                                How to handle bonus content that doesn&apos;t match any episode runtime.
+                                How to handle bonus content: TV tracks that match no episode runtime, and
+                                movie titles that aren&apos;t the main feature. A movie&apos;s feature-length
+                                cuts are always ripped.
                             </span>
                         </div>
 
@@ -2444,6 +2496,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 )}
                             </dl>
                         </div>
+                    </div>
+                );
+
+            case 6:
+                return (
+                    <div className="wizard-step">
+                        <h3 className="step-title">Import & Export</h3>
+                        <p className="step-description">
+                            Move your settings to another install, or restore them after a reinstall.
+                        </p>
+                        <SettingsTransferSection onImported={() => setConfigReloadKey((k) => k + 1)} />
                     </div>
                 );
 

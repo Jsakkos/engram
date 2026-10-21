@@ -103,6 +103,28 @@ _REVIEW_REASON_KEYS = ("error", "message", "forced_review")
 # auto-modal) — same UX as that established path.
 _FALLBACK_IDENTITY_REVIEW_REASON = NO_TITLE_REVIEW_REASON
 
+
+def _is_policy_skipped_extra(title: DiscTitle) -> bool:
+    """True when extras_policy "skip" discarded this movie extra (#773)."""
+    if not (title.is_extra and title.state == TitleState.COMPLETED and title.match_details):
+        return False
+    try:
+        details = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return (
+        isinstance(details, dict)
+        and details.get("auto_sorted") == "extras"
+        and details.get("action") == "skipped"
+    )
+
+
+# A movie disc held under extras_policy "ask" (#773). The movie review page keys
+# its notice on the extras in REVIEW, not on this wording.
+MOVIE_EXTRAS_REVIEW_REASON = (
+    "Bonus tracks found. Keep or discard each extra, then select the feature."
+)
+
 # Job-level failure wording that carries no diagnostic value on its own. A
 # force-advance may replace one of these with the specific reason it knows
 # (see _stamp_generic_failure_reason); anything else is left alone. "Cancelled
@@ -198,6 +220,22 @@ def _has_existing_backup(dest: Path) -> bool:
 # Create domain-specific event broadcaster
 event_broadcaster = EventBroadcaster(ws_manager)
 
+# A job that has made no progress for this long "looks stuck" (#718): the dashboard
+# then offers Force advance as a primary control. Deliberately far below the
+# per-phase watchdog timeouts (10-30 min), which auto-advance on their own; this
+# is the point at which a person watching would reasonably start to wonder.
+STUCK_AFTER_SECONDS = 180
+# Seconds between pushes of the stall signal to connected clients.
+STALL_TICK_SECONDS = 10.0
+# States the watchdog times; a stall is only meaningful in these.
+_STALL_WATCHED_STATES = (
+    JobState.IDENTIFYING,
+    JobState.BACKING_UP,
+    JobState.RIPPING,
+    JobState.MATCHING,
+    JobState.ORGANIZING,
+)
+
 # Create job state machine
 state_machine = JobStateMachine(event_broadcaster)
 
@@ -231,6 +269,9 @@ class JobManager:
         # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
         self._last_activity: dict[int, float] = {}
         self._watchdog_task: asyncio.Task | None = None
+        # Stall-signal push (#718): last looks_stuck value sent per job.
+        self._stall_task: asyncio.Task | None = None
+        self._stall_sent: dict[int, bool] = {}
         # Job ids whose in-flight task was cancelled BY US (reconcile_and_advance),
         # mapped to the reason. Cancellation is delivered at the target coroutine's
         # next await, so the entry is what lets its CancelledError handler tell an
@@ -411,6 +452,8 @@ class JobManager:
         # Start the stale-job watchdog
         if config.watchdog_enabled:
             self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+        # The stall signal is independent of the watchdog: it is advisory UI state.
+        self._stall_task = asyncio.create_task(self._stall_loop())
 
         logger.info(
             f"Job manager started (asr_device={_asr_runtime.device}, "
@@ -524,6 +567,15 @@ class JobManager:
                 # Expected: we just cancelled the watchdog loop above.
                 pass
             self._watchdog_task = None
+
+        if self._stall_task:
+            self._stall_task.cancel()
+            try:
+                await self._stall_task
+            except asyncio.CancelledError:
+                # Expected: we just cancelled the stall loop above.
+                pass
+            self._stall_task = None
 
         for job_id, task in self._active_jobs.items():
             task.cancel()
@@ -1698,6 +1750,68 @@ class JobManager:
             self._last_activity.pop(job_id, None)
         else:
             self._last_activity[job_id] = time.monotonic()
+
+    def stall_state(
+        self, job_id: int, state: JobState, now: float | None = None
+    ) -> tuple[int | None, bool]:
+        """(seconds since last progress, looks_stuck) for a job, from the watchdog clock.
+
+        ``(None, False)`` when the state is not one the watchdog times (resting or
+        terminal) or the clock has no reading yet; no signal is not a stall.
+        """
+        if state not in _STALL_WATCHED_STATES:
+            return None, False
+        last = self._last_activity.get(job_id)
+        if last is None:
+            return None, False
+        stalled = max(0, int((now if now is not None else time.monotonic()) - last))
+        return stalled, stalled >= STUCK_AFTER_SECONDS
+
+    async def _broadcast_stall_changes(self) -> None:
+        """Push stall state for watched jobs; send on change, and keep a stuck
+        job's duration fresh. A cleared flag is sent once, then goes quiet."""
+        if not self._last_activity and not self._stall_sent:
+            return
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscJob.id, DiscJob.state).where(DiscJob.state.in_(_STALL_WATCHED_STATES))
+            )
+            rows = result.all()
+        now = time.monotonic()
+        seen: set[int] = set()
+        for job_id, state in rows:
+            seen.add(job_id)
+            # A MATCHING job with tracks QUEUED/MATCHING is draining the global
+            # match queue, not stuck. The watchdog refreshes its clock for that,
+            # but only when enabled and on its own cadence, so do it here too.
+            if state == JobState.MATCHING and await self._has_pending_match_work(job_id):
+                self._last_activity[job_id] = now
+            stalled, stuck = self.stall_state(job_id, state, now)
+            if stuck or self._stall_sent.get(job_id, False) != stuck:
+                await ws_manager.broadcast(
+                    {
+                        "type": "job_update",
+                        "job_id": job_id,
+                        "looks_stuck": stuck,
+                        "stalled_for_seconds": stalled if stuck else None,
+                    }
+                )
+            self._stall_sent[job_id] = stuck
+        # A job that left the watched set (finished, parked in review) drops its
+        # flag with its state change; just forget it here.
+        for gone in set(self._stall_sent) - seen:
+            del self._stall_sent[gone]
+
+    async def _stall_loop(self) -> None:
+        """Periodically push the stall signal (#718)."""
+        while True:
+            await asyncio.sleep(STALL_TICK_SECONDS)
+            try:
+                await self._broadcast_stall_changes()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"Stall signal tick failed: {e}", exc_info=True)
 
     def _start_prewarm_on_review(self, job_id: int, state: JobState, from_state: JobState) -> None:
         """on_transition observer: prewarm transcripts when a job parks in review."""
@@ -4265,6 +4379,12 @@ class JobManager:
                 _selected = ripped_titles[0]
             _edition = _selected.edition if _selected else None
             _selected_id = _selected.id if _selected else None
+            # Extras discarded under extras_policy "skip" carry the policy's own
+            # marker (`_apply_movie_extras_policy`); their rips stay in staging
+            # rather than being swept into Extras/ by the organizer's folder scan
+            # (#773). The marker, not COMPLETED, is the signal: an extra left
+            # COMPLETED by an earlier pass is no skip decision.
+            _move_extras = not any(_is_policy_skipped_extra(t) for t in ripped_titles)
             # A choice already recorded on the title wins; otherwise the configured
             # default applies. "ask" (the default default) parks a conflict in review.
             _conflict = await _movie_conflict_strategy(
@@ -4297,6 +4417,7 @@ class JobManager:
                 edition=_edition,
                 already_clean=_already_clean,
                 conflict_resolution=_conflict,
+                move_extras=_move_extras,
             )
         else:
             organize_result = await asyncio.to_thread(
@@ -4305,6 +4426,7 @@ class JobManager:
                 detected_title or volume_label,
                 _tmdb_year,
                 _lib_path,
+                move_extras=_move_extras,
                 conflict_resolution=_conflict,
                 tmdb_id=_tmdb_id,
                 edition=_edition,
@@ -4481,12 +4603,19 @@ class JobManager:
         genuinely competing features (alternate cuts / obfuscation playlists)
         require a review.
 
+        The extras then follow ``extras_policy`` (#773): "keep" leaves them for the
+        organizer's ``Extras/``, "skip" completes them unorganized, and "ask"
+        parks the disc in review with each extra awaiting a keep/discard choice.
+
         Returns True when the job was sent to REVIEW_NEEDED (caller should stop).
         """
+        from app.services.config_service import get_config
+
         # job_id reaches this method from the /jobs/{job_id}/... review path param
         # (apply_review -> _run_ripping), so it is user-provided — sanitize before
         # logging to prevent CR/LF log forging (py/log-injection).
         safe_job = sanitize_log_value(job_id)
+        extras_policy = (await get_config()).extras_policy
         discdb_maps = self._matching.get_discdb_mappings(job_id)
         main_movie_idx = next((m.index for m in discdb_maps if m.title_type == "MainMovie"), None)
         if main_movie_idx is not None:
@@ -4499,7 +4628,10 @@ class JobManager:
                 f"Job {safe_job}: TheDiscDB auto-selected MainMovie "
                 f"title index {main_movie_idx}, skipping review"
             )
-            return False
+            extras = [dt for dt in ripped_titles if dt.is_extra]
+            return await self._apply_movie_extras_policy(
+                job, job_id, extras, extras_policy, session, needs_review=False
+            )
 
         decision = await self._resolve_movie_feature(job, ripped_titles)
 
@@ -4511,6 +4643,12 @@ class JobManager:
                 dt.is_selected = False
                 session.add(dt)
         await session.commit()
+
+        extras = [dt for dt in ripped_titles if dt.title_index in decision.extra_indices]
+        if await self._apply_movie_extras_policy(
+            job, job_id, extras, extras_policy, session, needs_review=decision.needs_review
+        ):
+            return True
 
         if decision.needs_review:
             reason = (
@@ -4532,6 +4670,62 @@ class JobManager:
             f"tagged {decision.extra_indices} as extras (no review)."
         )
         return False
+
+    async def _apply_movie_extras_policy(
+        self,
+        job: DiscJob,
+        job_id: int,
+        extras: list[DiscTitle],
+        extras_policy: str,
+        session,
+        *,
+        needs_review: bool,
+    ) -> bool:
+        """Settle a movie disc's non-feature titles per ``extras_policy`` (#773).
+
+        Mirrors ``MatchingCoordinator._handle_extras`` for TV: "skip" completes an
+        extra without organizing it (the rip stays in staging, like a skipped TV
+        extra), "ask" holds it in REVIEW so the reviewer keeps or discards it, and
+        "keep" leaves it for the organizer to file under ``Extras/``. Only titles
+        already ruled out as the feature reach here, so no policy can drop a cut.
+
+        Returns True when this parked the job in review itself (an "ask" disc whose
+        feature was otherwise settled). A disc that already needs a version pick
+        is parked by the caller with its own reason.
+        """
+        if extras_policy not in ("skip", "ask") or not extras:
+            return False
+
+        skip = extras_policy == "skip"
+        state = TitleState.COMPLETED if skip else TitleState.REVIEW
+        marker = {
+            "auto_sorted": "extras",
+            "action": "skipped" if skip else "review",
+            "reason": "Not the main feature",
+        }
+        for dt in extras:
+            dt.state = state
+            dt.is_extra = True
+            # Merged, not replaced, so earlier context (e.g. TheDiscDB's) survives.
+            dt.match_details = _merge_match_details(dt.match_details, marker)
+            session.add(dt)
+        await session.commit()
+        for dt in extras:
+            await ws_manager.broadcast_title_update(
+                job_id, dt.id, state.value, is_extra=True, match_details=dt.match_details
+            )
+        safe_job = sanitize_log_value(job_id)
+        logger.info(
+            f"Job {safe_job}: extras policy '{extras_policy}' applied to "
+            f"{len(extras)} non-feature title(s) {[dt.title_index for dt in extras]}"
+        )
+
+        if skip or needs_review:
+            return False
+        reason = MOVIE_EXTRAS_REVIEW_REASON
+        await state_machine.transition_to_review(job, session, reason=reason, broadcast=False)
+        await ws_manager.broadcast_job_update(job_id, JobState.REVIEW_NEEDED.value, error=reason)
+        return True
 
     async def _resolve_movie_feature(self, job: DiscJob, ripped_titles: list[DiscTitle]):
         """Decide which ripped title is the movie's main feature.
