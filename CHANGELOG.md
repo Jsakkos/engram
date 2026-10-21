@@ -8,6 +8,11 @@ All notable changes to Engram will be documented in this file.
 
 - **Minimum Title Length** in Settings sets MakeMKV's minimum title length (`--minlength`, 120 seconds by default, MakeMKV's own default). Lower it for discs whose specials run under two minutes, which MakeMKV otherwise hides from Engram entirely. The same value is used for every scan, rip and backup so title numbers stay consistent. (#771, thanks @tzimpel!)
 
+- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
+
+### Fixed
+
+- The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
 ### Fixed
 
 - The **Skip extras** setting now works on movie discs. It used to apply only to TV, so a movie disc ripped every bonus track and filed them all under `Extras/`. Now, when the disc is identified as a movie, titles that cannot be the feature are skipped before the rip (shown on the dashboard card with the reason, and UN-SKIP still works), and any that slip through are discarded rather than filed. Every feature-length cut is still ripped. **Ask me** now covers movies as well: the disc waits in review, where you discard the extras you don't want and keep the rest. (#773)
