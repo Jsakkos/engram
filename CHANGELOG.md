@@ -12,7 +12,6 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
-### Fixed
 
 - Re-identifying or naming a TV disc whose episodes were all filed no longer starts a second rip. Engram decided whether the disc had been ripped by looking for files in staging, which is empty once everything is filed, so the job went back to ripping a disc that had already left the drive. It now also checks the disc's tracks, and re-matches instead: filed episodes stay where they are, as with any re-match. (#774)
 
