@@ -10,7 +10,9 @@ All notable changes to Engram will be documented in this file.
 - Engram now saves a copy of its database before upgrading it. When it starts on a new version, or finds the database's layout needs updating, it first writes `engram.db.bak-<previous-version>-<timestamp>` next to `engram.db`, keeping the three newest copies, so a bad upgrade can no longer cost you your API keys, settings or job history. The copy is made with SQLite's own backup, so it includes writes not yet folded into the main file, and a startup that crashes partway through an upgrade keeps its original copy rather than replacing it on every retry. If the copy can't be written, Engram logs a warning and starts anyway. The Troubleshooting guide explains where to find the copies and how to restore one. (#730)
 - Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
 
-### Fixed
+- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
+
+- Unmounting an ISO and mounting another one on the same drive letter now starts a new job right away; before, Engram did not notice the new disc until it was restarted. Unmounting removes the virtual drive letter outright, and Engram stopped checking a letter once it disappeared, so it still believed the first disc was in the drive. A drive letter that disappears now counts as an empty drive, the same as taking a disc out. (#769)
 
 - The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
 ### Changed
@@ -19,11 +21,11 @@ All notable changes to Engram will be documented in this file.
 
 - The dashboard footer no longer shows made-up telemetry (`UNIT 07`, `BUFFER NOMINAL`, `CPU IDLE`...) or a platform-based `DRIVE READY`. The drive label now reflects the optical drives Engram detects (`2 DRIVES`, `1 DRIVE · BUSY` while a disc is being read, `IMPORT ONLY` when there are none), and the scrolling band reports the real ASR device with whether transcription is running, jobs per phase, and discs awaiting review. (#720)
 
-### Added
-
-- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
-
 ### Fixed
+
+- **Restart to Update** on Windows no longer fails at `move_install` on every update. Programs Engram starts inherit its working folder, which was the install folder, so a browser that Engram opened kept the install folder in use after Engram exited, and Windows refused to move it aside for the new version. Engram now moves off the install folder at startup, and the update helper retries a busy folder for up to 30 seconds before giving up. When it does give up, the notice names the folder and the reason Windows gave, the extra `engram.new-<version>` copy is no longer left beside the install, and copies left by earlier failed updates are removed on the next start. This takes effect from the update after the one that ships it: a version that is already failing still has to be replaced by hand once, and closing your browser first lets that go through. (#791)
+
+- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
 
 - The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
 
@@ -38,6 +40,9 @@ All notable changes to Engram will be documented in this file.
 
 - A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 - TV tracks whose only audio is another language are no longer matched to a random episode. Engram used to transcribe them as if they were English and file or suggest whatever episode the noise landed on. It now checks each ripped file's audio tracks first: a track with no English audio goes to review with a note naming the language (for example "This track's only audio is Japanese"), and the job's review reason counts them. When the disc itself had an English track that MakeMKV's language settings left out of the rip, the note says so. On discs with several audio tracks, Engram now always transcribes the English one instead of whichever track the disc marks as default. Matching in a show's own language is planned next. (#241, thanks @wintheriscomming!)
+### Added
+
+- Settings can be exported to a file and imported on another install, from **Settings > Import & Export** or the first step of setup. Keys and passwords stay out of the file unless you tick **Include keys and passwords**. Before anything changes, an import shows every setting it would apply, with paths missing on this machine unticked and invalid values explained, and it goes through the same checks as saving in Settings. Setup status, LAN access and fingerprint-sharing consent are never carried over. (#731)
 
 ## [0.41.0] - 2026-10-20
 
