@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Engram now saves a copy of its database before upgrading it. When it starts on a new version, or finds the database's layout needs updating, it first writes `engram.db.bak-<previous-version>-<timestamp>` next to `engram.db`, keeping the three newest copies, so a bad upgrade can no longer cost you your API keys, settings or job history. The copy is made with SQLite's own backup, so it includes writes not yet folded into the main file, and a startup that crashes partway through an upgrade keeps its original copy rather than replacing it on every retry. If the copy can't be written, Engram logs a warning and starts anyway. The Troubleshooting guide explains where to find the copies and how to restore one. (#730)
+
 ## [0.41.0] - 2026-10-20
 
 _Highlights: recover failed jobs from staging, Play-All tracks detected from the disc's own structure, import of MP4/TS files, and an external player for movie review._
