@@ -83,6 +83,21 @@ distinct from disc 4. If the field shows only `Disc 1`, the disc reported no vol
 and Engram has no better identity to use; naming the disc during identification fixes it
 for that job.
 
+## A track says its only audio is another language
+
+Engram identifies TV episodes by listening to the dialogue and comparing it with English
+subtitles. When every audio track in a ripped file is another language (an anime disc
+without an English dub, or a foreign-language bonus episode), Engram does not guess: the
+track goes to review with a note naming the language, and you assign the episode by hand.
+
+**The note says the disc also has English audio.** MakeMKV only rips the audio tracks its
+language settings select, so an English dub on the disc can be missing from the file. In
+MakeMKV, open **Preferences > Language** (or adjust the default track selection), add
+English, and re-rip the track.
+
+On a disc with several audio tracks, Engram always listens to the English one, whichever
+track the disc marks as the default.
+
 ## Diagnostics bundle
 
 When reporting a problem, attach a diagnostics bundle so the logs and environment come with it. From the dashboard, open a job's detail view and download its diagnostic `.zip`, or fetch the overall report from `GET /api/diagnostics/report`. Secrets (API keys, tokens) are redacted automatically.
