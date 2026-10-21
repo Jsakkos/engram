@@ -35,7 +35,7 @@ from app.core.tmdb_classifier import (
 )
 from app.database import async_session
 from app.models import DiscJob, JobState
-from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.models.disc_job import ContentType, DiscTitle, TitleState, any_title_ripped
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.identity_prompts import (
     IdentityResumeResult,
@@ -205,6 +205,19 @@ def _apply_manual_identity(analysis, manual: ManualIdentity) -> None:
     analysis.tmdb_degraded_reason = None
     analysis._tmdb_signal = None
     analysis._discdb_signal = None
+
+
+async def _disc_already_ripped(session, job) -> bool:
+    """Whether a parked job's disc was already ripped, so resuming must not rip.
+
+    Staged media alone misses a fully filed disc: organizing empties staging,
+    yet the disc was ripped and has left the drive (#774). The job's titles
+    still record it.
+    """
+    if _has_staged_media(job):
+        return True
+    titles = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
+    return any_title_ripped(titles.scalars())
 
 
 def _has_staged_media(job) -> bool:
@@ -1583,10 +1596,10 @@ class IdentificationCoordinator:
                 raise ValueError(f"Cannot set name on job in state: {job.state}")
 
             mid_rip = job.state == JobState.RIPPING
-            # Post-rip detection (mirrors re_identify): staged media files mean
-            # the disc already ripped (and was ejected at rip end) — resuming
-            # must route to matching/movie resolution, never a second rip.
-            has_ripped = not mid_rip and _has_staged_media(job)
+            # Post-rip detection (mirrors re_identify): a ripped disc was ejected
+            # at rip end, so resuming must route to matching/movie resolution,
+            # never a second rip.
+            has_ripped = not mid_rip and await _disc_already_ripped(session, job)
 
             job.detected_title = name
             job.content_type = ContentType(content_type_str)
@@ -1709,8 +1722,8 @@ class IdentificationCoordinator:
             _prev_title = job.detected_title
             _prev_tmdb_id = job.tmdb_id
 
-            # Check if files already exist in staging (post-rip)
-            has_ripped = _has_staged_media(job)
+            # Post-rip: staged files, or titles already ripped/filed (#774)
+            has_ripped = await _disc_already_ripped(session, job)
 
             # Update job metadata with user-corrected values
             job.detected_title = title
