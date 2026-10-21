@@ -11,6 +11,9 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
+### Fixed
+
+- A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
 ## [0.41.0] - 2026-10-20
 
