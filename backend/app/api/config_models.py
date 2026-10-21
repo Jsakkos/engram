@@ -7,7 +7,7 @@ without importing routes, which imports the services layer back.
 import asyncio
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ConfigUpdate(BaseModel):
@@ -15,6 +15,8 @@ class ConfigUpdate(BaseModel):
 
     makemkv_path: str | None = None
     makemkv_key: str | None = None
+    # MakeMKV --minlength in seconds (#771); an hour is far past any real special.
+    makemkv_min_title_length: int | None = Field(default=None, ge=0, le=3600)
     staging_path: str | None = None
     library_movies_path: str | None = None
     library_tv_path: str | None = None

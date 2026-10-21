@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { AlertTriangle, Trash2, LayoutGrid, List, Info, X } from "lucide-react";
 import { DiscCard, type DiscData } from "./components/DiscCard";
 import { CompactList } from "./components/CompactList";
+import { withoutIdentityReview } from "../types/adapters";
 import { useJobManagement } from "./hooks/useJobManagement";
+import { driveFooterLabel, telemetryItems } from "./footerStatus";
 import { useDiscFilters } from "./hooks/useDiscFilters";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useNotifications } from "./hooks/useNotifications";
@@ -83,6 +85,8 @@ function MainDashboard() {
   const [seasonPromptJob, setSeasonPromptJob] = useState<Job | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("expanded");
   const [platform, setPlatform] = useState<string | null>(null);
+  const [drives, setDrives] = useState<string[] | null>(null);
+  const [asr, setAsr] = useState<{ device: string } | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [tmdbConfigured, setTmdbConfigured] = useState(true);
   const [tmdbBannerDismissed, setTmdbBannerDismissed] = useState(false);
@@ -169,6 +173,25 @@ function MainDashboard() {
 
   // Job management with WebSocket
   const { jobs, titlesMap, isConnected, updateStatus, parkedDiscs, armedDrives, cancelJob, advanceJob, skipTrack, unskipTrack, retryJobFromStaging, ejectJob, clearFinished, setJobName, reIdentifyJob, disclosure, clearDisclosure } = useJobManagement(DEV_MODE);
+
+  // Footer facts (#720): the detected optical drives and the effective ASR device.
+  // Both are hardware/runtime facts that change rarely, so refresh on (re)connect
+  // rather than on every job update. null = not yet known (the footer omits it).
+  useEffect(() => {
+    if (!isConnected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [d, a] = await Promise.all([fetch('/api/drives'), fetch('/api/asr-status')]);
+        if (cancelled) return;
+        if (d.ok) setDrives(((await d.json()) as Array<{ drive_id: string }>).map((x) => x.drive_id));
+        if (a.ok) setAsr(await a.json());
+      } catch {
+        // Backend not reachable; the footer simply omits what it can't confirm.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isConnected]);
   useUpdateSuccessToast(updateStatus);
   const whatsNew = useWhatsNewModal(updateStatus, setupComplete);
   const [reIdentifyTarget, setReIdentifyTarget] = useState<Job | null>(null);
@@ -214,7 +237,12 @@ function MainDashboard() {
   }, [isConnected]);
 
   // Disc filtering and transformation
-  const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount, failedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
+  const { filter, setFilter, discsData, filteredDiscs: allFilteredDiscs, activeCount, completedCount, failedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
+  // Heuristic-only mode can never resolve a tmdb_id, so don't gate Review on one.
+  const filteredDiscs = useMemo(
+    () => (tmdbConfigured ? allFilteredDiscs : withoutIdentityReview(allFilteredDiscs)),
+    [allFilteredDiscs, tmdbConfigured],
+  );
 
   // Browser notifications for job state changes
   useNotifications(jobs);
@@ -1027,7 +1055,8 @@ function MainDashboard() {
         completedCount={completedCount}
         isConnected={isConnected}
         version={__APP_VERSION__}
-        driveLabel={platform === "win32" ? "DRIVE READY" : "STAGING IMPORT"}
+        driveLabel={driveFooterLabel(drives, jobs)}
+        telemetry={telemetryItems(jobs, asr)}
       />
     </SvAtmosphere>
   );

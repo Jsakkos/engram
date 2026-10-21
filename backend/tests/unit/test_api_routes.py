@@ -1196,3 +1196,127 @@ class TestJobVisibilityInvariant:
         """A typo'd filter must 422, not silently return everything."""
         response = await client.get("/api/jobs/history?state=nonsense")
         assert response.status_code == 422
+
+
+class TestHistoryStatsMatchTable:
+    """The History tiles and the History table must describe the same job set."""
+
+    async def test_default_stats_exclude_in_flight_jobs(self, client):
+        await _seed_job(state=JobState.COMPLETED)
+        await _seed_job(state=JobState.FAILED, content_type=ContentType.MOVIE)
+        await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_job(state=JobState.RIPPING)
+
+        rows = (await client.get("/api/jobs/history")).json()
+        stats = (await client.get("/api/jobs/stats")).json()
+
+        assert stats["total_jobs"] == len(rows) == 2
+        assert stats["tv_count"] == 1
+        assert stats["movie_count"] == 1
+
+    async def test_stats_follow_the_state_filter(self, client):
+        await _seed_job(state=JobState.COMPLETED)
+        await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_job(state=JobState.REVIEW_NEEDED)
+
+        stats = (await client.get("/api/jobs/stats?state=review_needed")).json()
+        assert stats["total_jobs"] == 2
+        assert stats["completed_jobs"] == 0
+
+    async def test_stats_include_all_states_backstop(self, client):
+        for state in (JobState.RIPPING, JobState.REVIEW_NEEDED, JobState.COMPLETED):
+            await _seed_job(state=state)
+
+        stats = (await client.get("/api/jobs/stats?include_all_states=true")).json()
+        assert stats["total_jobs"] == 3
+
+    async def test_stats_follow_content_type_and_query(self, client):
+        await _seed_job(state=JobState.COMPLETED, detected_title="Frasier")
+        await _seed_job(
+            state=JobState.COMPLETED, detected_title="Heat", content_type=ContentType.MOVIE
+        )
+
+        by_type = (await client.get("/api/jobs/stats?content_type=movie")).json()
+        assert by_type["total_jobs"] == 1 and by_type["movie_count"] == 1
+
+        by_q = (await client.get("/api/jobs/stats?q=fras")).json()
+        assert by_q["total_jobs"] == 1 and by_q["tv_count"] == 1
+
+    async def test_stats_titles_count_only_filtered_jobs(self, client):
+        done = await _seed_job(state=JobState.COMPLETED)
+        parked = await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_titles(done.id, 2)
+        await _seed_titles(parked.id, 3)
+
+        stats = (await client.get("/api/jobs/stats")).json()
+        assert stats["total_titles_ripped"] == 2
+
+
+class TestHistorySearch:
+    async def _ids(self, client, q):
+        response = await client.get("/api/jobs/history", params={"q": q})
+        assert response.status_code == 200
+        return {j["id"] for j in response.json()}
+
+    async def test_matches_label_title_and_tmdb_name_case_insensitively(self, client):
+        a = await _seed_job(state=JobState.COMPLETED, volume_label="ARRESTED_DEV_S1")
+        b = await _seed_job(state=JobState.COMPLETED, detected_title="Inception")
+        c = await _seed_job(state=JobState.COMPLETED, tmdb_name="The Matrix")
+        assert await self._ids(client, "arrested") == {a.id}
+        assert await self._ids(client, "INCEPT") == {b.id}
+        assert await self._ids(client, "matrix") == {c.id}
+
+    async def test_matches_error_text(self, client):
+        failed = await _seed_job(state=JobState.FAILED, error_message="Disc unreadable at sector 9")
+        await _seed_job(state=JobState.COMPLETED)
+        assert await self._ids(client, "unreadable") == {failed.id}
+
+    async def test_matches_matched_episode_code(self, client):
+        job = await _seed_job(state=JobState.COMPLETED, detected_title="Other")
+        other = await _seed_job(state=JobState.COMPLETED, detected_title="Else")
+        async with _unit_session_factory() as session:
+            session.add(
+                DiscTitle(
+                    job_id=job.id,
+                    title_index=0,
+                    duration_seconds=60,
+                    file_size_bytes=1,
+                    matched_episode="S02E07",
+                )
+            )
+            session.add(
+                DiscTitle(
+                    job_id=other.id,
+                    title_index=0,
+                    duration_seconds=60,
+                    file_size_bytes=1,
+                    matched_episode="S01E01",
+                )
+            )
+            await session.commit()
+        assert await self._ids(client, "s02e07") == {job.id}
+
+    async def test_like_wildcards_are_literal(self, client):
+        pct = await _seed_job(state=JobState.COMPLETED, volume_label="100%_DONE")
+        await _seed_job(state=JobState.COMPLETED, volume_label="PLAIN")
+        assert await self._ids(client, "%") == {pct.id}
+        assert await self._ids(client, "_") == {pct.id}
+
+    async def test_search_composes_with_state_and_pagination(self, client):
+        for i in range(3):
+            await _seed_job(state=JobState.COMPLETED, detected_title=f"Needle {i}")
+        await _seed_job(state=JobState.REVIEW_NEEDED, detected_title="Needle parked")
+
+        default = await client.get("/api/jobs/history", params={"q": "needle", "per_page": 2})
+        assert len(default.json()) == 2
+        page2 = await client.get(
+            "/api/jobs/history", params={"q": "needle", "per_page": 2, "page": 2}
+        )
+        assert len(page2.json()) == 1
+        parked = await client.get("/api/jobs/history?q=needle&state=review_needed")
+        assert len(parked.json()) == 1
+
+    async def test_blank_query_is_ignored(self, client):
+        await _seed_job(state=JobState.COMPLETED)
+        response = await client.get("/api/jobs/history", params={"q": "   "})
+        assert len(response.json()) == 1

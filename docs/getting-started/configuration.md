@@ -153,6 +153,12 @@ Both export and import are reachable from the machine running Engram, and from o
 | `matcher_min_confidence` | Minimum confidence to auto-accept an episode match | `0.6` |
 | `enable_gpu_acceleration` | Run transcription on an NVIDIA GPU (opt-in; downloads the CUDA runtime) | `false` |
 | `conflict_resolution_default` | File conflict handling | `"ask"` |
+| `makemkv_min_title_length` | MakeMKV's minimum title length, in seconds (`--minlength`) | `120` |
+
+`makemkv_min_title_length` is passed to MakeMKV on every scan, rip and backup.
+Titles shorter than it are hidden by MakeMKV and never reach Engram, so lower it
+(Settings, **Minimum Title Length**) if a disc's specials or featurettes run under
+two minutes. `0` shows every title, including menu loops and logos.
 
 `max_concurrent_matches` is the main matching-throughput knob. It's clamped to your hardware and
 takes effect on restart — see [Performance & Hardware](../guide/performance.md#concurrency-tuning)
@@ -280,6 +286,28 @@ Anything that slips through is still caught after ripping, when its length is ch
 against the episode runtimes and it is discarded as an extra.
 
 With `"keep"` or `"ask"`, every track is ripped so extras can be filed or reviewed.
+
+#### Movie discs
+
+The policy applies to movie discs too. Engram never drops a title that could be
+the movie itself: every feature-length cut (theatrical, extended, director's cut)
+is always ripped.
+
+| Policy | Before ripping | After ripping |
+|--------|----------------|---------------|
+| `"keep"` | Every title is ripped. | The feature is filed; every other title goes to the movie's `Extras/` folder. |
+| `"skip"` | Titles that cannot be the feature are skipped (see below). | Any non-feature title that was still ripped is discarded instead of filed. |
+| `"ask"` | Every title is ripped. | The disc waits in the Review Queue. Discard any extras you don't want, then **Select** the feature; the extras you kept go to `Extras/`. |
+
+Under `"skip"`, a title is skipped before ripping when:
+
+- **TheDiscDB** knows the disc and tags a different title as the main movie, or
+- it is shorter than the movie-length floor (`analyst_movie_min_duration`, 80
+  minutes by default) while at least one title on the disc is longer. A disc with
+  nothing that long (a short film) is ripped whole and sorted out afterwards.
+
+As with TV, skipped titles stay on the dashboard card with the reason and can be
+**UN-SKIP**ped until the rip reaches them.
 
 ### Import Watch Folder
 
