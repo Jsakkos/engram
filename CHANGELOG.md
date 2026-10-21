@@ -11,6 +11,7 @@ All notable changes to Engram will be documented in this file.
 - Force on a job stuck in Matching now clears a track left queued with no match running behind it. Force used to skip queued tracks, since they are normally waiting for a free match slot, so a track whose match had died kept the job in Matching for good. Tracks still waiting for a slot, or held until you answer a name or show question, are left alone, and the automatic stall check is unchanged. (#776)
 
 - **Re-match all** is refused for movie discs instead of running TV episode matching on the movie's tracks. The review page only offers it for TV, so this affected direct API calls. (#775)
+
 - A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
 ## [0.41.0] - 2026-10-20
