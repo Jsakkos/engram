@@ -2275,19 +2275,18 @@ async def _read_settings_body(request: Request) -> object:
         ) from None
 
 
-async def _require_trusted_host(request: Request) -> None:
+def _require_trusted_host(request: Request) -> None:
     """403 unless the Host header names this machine in a way DNS rebinding can't.
 
     A rebinding page reaches the loopback API under the attacker's own host name,
     and same-origin rules then let it read the response. That is harmless for a
     redacted response and not for an export carrying plaintext keys, so that one
-    response accepts only loopback names, IP literals (what LAN users type), and
-    the host of the configured ``dashboard_base_url``.
+    response accepts only loopback names and IP literals (what LAN users type).
+    No configured host name is trusted: ``dashboard_base_url`` is writable by the
+    same rebinding page through ``PUT /api/config``, so it cannot vouch.
     """
     import ipaddress
     from urllib.parse import urlsplit
-
-    from app.services.config_service import get_config as get_db_config
 
     host = (urlsplit(f"//{request.headers.get('host', '')}").hostname or "").lower()
     if host == "localhost" or host.endswith(".localhost"):
@@ -2297,16 +2296,11 @@ async def _require_trusted_host(request: Request) -> None:
         return
     except ValueError:
         pass
-    config = await get_db_config()
-    dashboard_host = urlsplit(config.dashboard_base_url or "").hostname
-    if dashboard_host and host == dashboard_host.lower():
-        return
     raise HTTPException(
         status_code=403,
         detail=(
             "Exporting keys and passwords is only allowed when the dashboard is opened "
-            "by IP address or localhost, or at the address set as the dashboard URL in "
-            "Settings > Notifications."
+            "by IP address or as localhost. Open it that way, or export without keys."
         ),
     )
 
@@ -2321,7 +2315,7 @@ async def export_settings(request: Request, include_secrets: bool = False) -> JS
     from app.services.config_transfer import build_export
 
     if include_secrets:
-        await _require_trusted_host(request)
+        _require_trusted_host(request)
     data = await build_export(include_secrets)
     suffix = "-with-keys" if include_secrets else ""
     filename = f"engram-settings-{datetime.now(UTC):%Y-%m-%d}{suffix}.json"

@@ -157,11 +157,14 @@ async def test_export_with_keys_allows_loopback_and_ip_hosts(client, host):
     assert resp.status_code == 200
 
 
-async def test_export_with_keys_allows_configured_dashboard_host(client):
-    await _seed(tmdb_api_key=TOKEN, dashboard_base_url="http://nas.local:5173")
+async def test_export_with_keys_ignores_configured_dashboard_host(client):
+    """dashboard_base_url is writable through PUT /api/config by the same
+    rebinding page, so it must not be able to vouch for a host name."""
+    await _seed(tmdb_api_key=TOKEN, dashboard_base_url="http://evil.example.com:5173")
     resp = await client.get(
         "/api/config/export",
         params={"include_secrets": "true"},
-        headers={"host": "nas.local:8000"},
+        headers={"host": "evil.example.com:8000"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 403
+    assert TOKEN not in resp.text
