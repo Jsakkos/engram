@@ -4,6 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from app.core.languages import language_name
 from app.matcher.srt_utils import SubtitleReader, clean_text, decode_utf16_bom, has_dialogue_cues
 
 _HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
@@ -23,8 +24,6 @@ AUDIO_LANGUAGE_ERROR_CODE = "audio_language_unsupported"
 
 def language_refusal_details(plan) -> dict:
     """match_details for a track the curator refused for its audio (an ``AudioPlan``)."""
-    from app.core.languages import language_name
-
     if plan.verdict == "no_audio":
         message = (
             "This track has no audio, so it could not be matched by its dialogue. "

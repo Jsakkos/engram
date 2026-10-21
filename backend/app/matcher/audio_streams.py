@@ -70,7 +70,12 @@ def follows_auto_pick(plan: AudioPlan) -> bool:
 
 
 def _auto_pick(streams: list[AudioStream]) -> int:
-    """ffmpeg's own choice: the default-flagged stream, else the most channels, first on ties."""
+    """ffmpeg's own choice: the default-flagged stream, else the most channels, first on ties.
+
+    Checked against real ffmpeg and fpcalc: a default-flagged mono track beats an
+    unflagged 5.1 one. ``test_auto_index_matches_real_ffmpeg_choice`` pins this
+    against whatever ffmpeg the test machine has.
+    """
     return max(streams, key=lambda s: (s.default, s.channels)).audio_index
 
 
@@ -96,6 +101,12 @@ def probe_audio_streams(path: Path) -> list[AudioStream] | None:
     return streams
 
 
+_PROBE_ENTRIES = (
+    "stream=index,channels:stream_tags=language,title:stream_disposition=default,comment,"
+    + "visual_impaired"
+)
+
+
 def _run_probe(path: Path) -> list[AudioStream] | None:
     cmd = [
         "ffprobe",
@@ -104,8 +115,7 @@ def _run_probe(path: Path) -> list[AudioStream] | None:
         "-select_streams",
         "a",
         "-show_entries",
-        "stream=index,channels:stream_tags=language,title"
-        ":stream_disposition=default,comment,visual_impaired",
+        _PROBE_ENTRIES,
         "-of",
         "json",
         str(path),

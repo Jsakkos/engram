@@ -2332,10 +2332,12 @@ class TestAudioLanguageRouting:
         assert json.loads(t.match_details)["message"] == before
 
     async def test_llm_fallback_skipped_for_foreign_audio(self, monkeypatch, tmp_path):
-        import app.services.matching_coordinator as mc
         from app.matcher.audio_streams import AudioPlan
 
-        monkeypatch.setattr(mc, "_plan_file_audio", lambda path: AudioPlan("foreign", None, ["ja"]))
+        monkeypatch.setattr(
+            "app.services.matching_coordinator._plan_file_audio",
+            lambda path: AudioPlan("foreign", None, ["ja"]),
+        )
         suggest = AsyncMock(return_value={"llm_suggestion": {"episode": 1}})
         monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
 

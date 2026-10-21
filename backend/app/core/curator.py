@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
+from app.core.security import sanitize_log_value
 from app.matcher.llm_episode_matcher import match_episode_via_llm
 from app.matcher.subtitle_utils import (
     AUDIO_LANGUAGE_ERROR_CODE,
@@ -475,8 +476,9 @@ class EpisodeCurator:
         plan = await asyncio.to_thread(self._matcher.audio_plan, file_path)
         if getattr(plan, "verdict", None) in ("foreign", "no_audio"):
             logger.info(
-                f"[Curator] {file_path.name}: no matchable audio ({plan.verdict}, "
-                f"languages {plan.languages}); routing to review without ASR"
+                f"[Curator] {sanitize_log_value(file_path.name)}: no matchable audio "
+                f"({plan.verdict}, languages {sanitize_log_value(plan.languages)}); "
+                "routing to review without ASR"
             )
             return self._fallback_result(file_path, match_details=language_refusal_details(plan))
 

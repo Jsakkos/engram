@@ -1,13 +1,18 @@
 """Audio-stream probe and plan (issue #241)."""
 
 import json
+import re
+import shutil
 import subprocess
 from types import SimpleNamespace
 
 import pytest
 
 import app.matcher.audio_streams as audio_streams
-from app.matcher.audio_streams import AudioStream, plan_audio, probe_audio_streams
+
+AudioStream = audio_streams.AudioStream
+plan_audio = audio_streams.plan_audio
+probe_audio_streams = audio_streams.probe_audio_streams
 
 
 def s(i, lang, *, title="", default=False, commentary=False, ch=2):
@@ -158,8 +163,51 @@ class TestPlanDetails:
         assert plan_audio(streams, "en").auto_index == 0
 
     def test_follows_auto_pick(self):
-        from app.matcher.audio_streams import follows_auto_pick
+        follows_auto_pick = audio_streams.follows_auto_pick
 
         assert follows_auto_pick(plan_audio([s(0, "en", default=True), s(1, "de")], "en"))
         assert not follows_auto_pick(plan_audio([s(0, "en"), s(1, "de", default=True)], "en"))
         assert follows_auto_pick(plan_audio(None, "en"))
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(
+    not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg not installed"
+)
+@pytest.mark.parametrize(
+    "dispositions",
+    [
+        ["-disposition:a:0", "default", "-disposition:a:1", "0"],  # default beats channels
+        ["-disposition:a:0", "0", "-disposition:a:1", "default"],
+        ["-disposition:a:0", "0", "-disposition:a:1", "0"],  # no default: most channels
+    ],
+)
+def test_auto_index_matches_real_ffmpeg_choice(tmp_path, dispositions):
+    """The cache-key and fingerprint guards rest on predicting ffmpeg's own pick."""
+    audio_streams._probe_memo.clear()
+    source = tmp_path / "two_audio.mkv"
+    made = subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "sine=f=440:d=2",
+            "-f", "lavfi", "-i", "sine=f=880:d=2,aformat=channel_layouts=5.1",
+            "-map", "0:a", "-map", "1:a", "-c:a", "pcm_s16le",
+            *dispositions, "-y", str(source),
+        ],
+        capture_output=True,
+        text=True,
+    )  # fmt: skip
+    if made.returncode != 0:
+        # CI can leave ffmpeg on PATH but unable to start (exit 127).
+        pytest.skip(f"ffmpeg present but unusable here (exit {made.returncode})")
+
+    mapping = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-i", str(source), "-vn", "-f", "null", "-"],
+        capture_output=True,
+        text=True,
+    ).stderr
+    chosen = re.search(r"Stream #0:(\d+) -> #0:0", mapping)
+    assert chosen, mapping
+
+    plan = plan_audio(probe_audio_streams(source), "en")
+    assert plan.auto_index == int(chosen.group(1))
