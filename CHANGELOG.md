@@ -7,6 +7,19 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - Engram now saves a copy of its database before upgrading it. When it starts on a new version, or finds the database's layout needs updating, it first writes `engram.db.bak-<previous-version>-<timestamp>` next to `engram.db`, keeping the three newest copies, so a bad upgrade can no longer cost you your API keys, settings or job history. The copy is made with SQLite's own backup, so it includes writes not yet folded into the main file, and a startup that crashes partway through an upgrade keeps its original copy rather than replacing it on every retry. If the copy can't be written, Engram logs a warning and starts anyway. The Troubleshooting guide explains where to find the copies and how to restore one. (#730)
+- Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
+
+### Fixed
+
+- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
+### Changed
+
+- **Force advance** now only appears beside Cancel and Eject once a job looks stuck, meaning it has made no progress for three minutes. The backend reports this as `looks_stuck` / `stalled_for_seconds` on the job (REST and WebSocket), taken from the same activity clock the stale-job watchdog uses, and the button's tooltip says how long the job has been idle. On a healthy job Force stays one click away in a **More actions** menu. (#718)
+
+- The dashboard footer no longer shows made-up telemetry (`UNIT 07`, `BUFFER NOMINAL`, `CPU IDLE`...) or a platform-based `DRIVE READY`. The drive label now reflects the optical drives Engram detects (`2 DRIVES`, `1 DRIVE · BUSY` while a disc is being read, `IMPORT ONLY` when there are none), and the scrolling band reports the real ASR device with whether transcription is running, jobs per phase, and discs awaiting review. (#720)
+
+### Added
+
 - **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
 
 ### Fixed
@@ -20,6 +33,7 @@ All notable changes to Engram will be documented in this file.
 - **Re-match all** is refused for movie discs instead of running TV episode matching on the movie's tracks. The review page only offers it for TV, so this affected direct API calls. (#775)
 
 - Two discs that start at the same moment no longer get mixed up. With several ISOs mounted when Engram starts, each virtual drive's disc began in the same second, and both jobs were given the same staging folder because its name only went down to the second. Both rips wrote into that one folder, so each job matched and filed the other disc's episodes (a Season 1 disc could come out labelled as Season 2). Every job now gets a staging folder of its own, named after the job. (#768)
+
 - A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
 ## [0.41.0] - 2026-10-20

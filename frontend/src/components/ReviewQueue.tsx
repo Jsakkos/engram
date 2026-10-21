@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Save, Package } from 'lucide-react';
+import { Save, Package, Keyboard } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
@@ -18,7 +18,12 @@ import { TvdbAttribution } from './ReviewQueue/TvdbAttribution';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
 import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
-import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dismissTvdbSuggestion, submitReviewBatch, rematchTitle } from '../api/client';
+import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dismissTvdbSuggestion, submitReviewBatch, rematchTitle, reIdentifyJob } from '../api/client';
+import { IdentityGate } from './ReviewQueue/IdentityGate';
+import { ShortcutsOverlay } from './ReviewQueue/ShortcutsOverlay';
+import { useReviewShortcuts } from './ReviewQueue/useReviewShortcuts';
+import type { ReviewShortcut } from './ReviewQueue/keymap';
+import { isIdentityUnresolved } from './ReviewQueue/identity';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { canStartRip, startRipErrorMessage } from './ReviewQueue/startRip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
@@ -116,12 +121,14 @@ function HeaderButton({
     onClick,
     disabled,
     icon,
+    ariaKeyShortcuts,
     children,
 }: {
     color: string;
     onClick: () => void;
     disabled?: boolean;
     icon?: ReactNode;
+    ariaKeyShortcuts?: string;
     children: ReactNode;
 }) {
     const base: CSSProperties = {
@@ -147,6 +154,7 @@ function HeaderButton({
         <button
             onClick={onClick}
             disabled={disabled}
+            aria-keyshortcuts={ariaKeyShortcuts}
             style={base}
             onMouseEnter={(e) => {
                 if (disabled) return;
@@ -186,6 +194,22 @@ function ReviewQueue() {
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
     const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
+    // null until /api/config answers; treated as configured so the identity
+    // step is never skipped on a slow or failed config fetch.
+    const [tmdbConfigured, setTmdbConfigured] = useState<boolean | null>(null);
+    const [identifyError, setIdentifyError] = useState<string | null>(null);
+    const [showShortcuts, setShowShortcuts] = useState(false);
+    // Set when a shortcut moved the selection, so focus follows it to the row
+    // (a click already has focus where it needs to be).
+    const focusRowRef = useRef(false);
+
+    // The show is not established, so episode assignment would target a roster
+    // nobody has chosen (#715). Held in a ref too so the websocket listener
+    // below, registered once per job, sees the live value.
+    const identityGated = !!job && isIdentityUnresolved(job, titles, { tmdbConfigured: tmdbConfigured ?? true });
+    const identityGatedRef = useRef(identityGated);
+    identityGatedRef.current = identityGated;
+    const refreshJobRef = useRef<() => Promise<void>>(async () => {});
 
     // Bulk multiselect — ids checked for bulk actions (independent of the
     // single inspected title). `lastBulkClickRef` anchors shift-click ranges.
@@ -273,6 +297,13 @@ function ReviewQueue() {
         const numericJobId = jobId ? parseInt(jobId) : null;
         if (numericJobId === null || Number.isNaN(numericJobId)) return;
         return addMessageListener((msg) => {
+            // Re-identify runs in the background. While the identity step is up
+            // there are no in-progress picks to lose, so reload the whole job
+            // when it changes and the gate lifts without leaving the page.
+            if (msg.type === 'job_update' && msg.job_id === numericJobId && identityGatedRef.current) {
+                void refreshJobRef.current();
+                return;
+            }
             if (msg.type !== 'title_update' || msg.job_id !== numericJobId) return;
             setTitles((prev) =>
                 prev.map((t) =>
@@ -300,6 +331,7 @@ function ReviewQueue() {
         fetch('/api/config')
             .then((r) => r.ok ? r.json() : null)
             .then((data) => {
+                if (data) setTmdbConfigured(data.tmdb_configured ?? !!data.tmdb_api_key);
                 if (data?.ai_episode_matching_enabled) {
                     setAiEpisodeMatchingEnabled(true);
                 }
@@ -532,6 +564,25 @@ function ReviewQueue() {
             setError(err instanceof Error ? err.message : 'Failed to save reviews');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    refreshJobRef.current = fetchJobDetails;
+
+    const handleIdentify = async (
+        title: string,
+        contentType: 'tv' | 'movie',
+        season?: number,
+        tmdbId?: number,
+    ) => {
+        if (!jobId) return;
+        setIdentifyError(null);
+        try {
+            await reIdentifyJob(parseInt(jobId), title, contentType, season, tmdbId);
+            await fetchJobDetails();
+        } catch (err) {
+            console.error('Failed to identify disc:', err);
+            setIdentifyError(err instanceof Error ? err.message : 'Failed to identify the disc. Please try again.');
         }
     };
 
@@ -777,6 +828,47 @@ function ReviewQueue() {
 
     const assignedCount = Object.keys(selectedEpisodes).length;
 
+    // --- Keyboard shortcuts (#716) ---
+    // Registered before the early returns below so hook order is stable; only
+    // live on the TV inspector layout, and not behind the identity step.
+    useReviewShortcuts(!!job && job.content_type !== 'movie' && !identityGated, (shortcut: ReviewShortcut) => {
+        // A save/process is committing the current picks; don't stage new ones under it.
+        const busy = isSaving || isProcessing;
+        switch (shortcut.type) {
+            case 'help':
+                setShowShortcuts((open) => !open);
+                return;
+            case 'move': {
+                if (activeTitles.length === 0) return;
+                const at = activeTitles.findIndex((t) => t.id === selectedTitle?.id);
+                const next = Math.min(activeTitles.length - 1, Math.max(0, (at < 0 ? 0 : at) + shortcut.delta));
+                focusRowRef.current = true;
+                setSelectedTitleId(activeTitles[next].id);
+                return;
+            }
+            case 'accept': {
+                const pick = candidates[shortcut.rank - 1];
+                if (!busy && selectedTitle && pick) handleEpisodeChange(selectedTitle.id, pick.episodeCode);
+                return;
+            }
+            case 'extra':
+                if (!busy && selectedTitle) handleTitleAction(selectedTitle.id, 'extra');
+                return;
+            case 'skip':
+                if (!busy && selectedTitle) handleTitleAction(selectedTitle.id, 'skip');
+                return;
+            case 'focusPicker':
+                document.querySelector<HTMLElement>('[data-review-picker]')?.focus();
+                return;
+        }
+    });
+
+    useEffect(() => {
+        if (!focusRowRef.current || selectedTitleId === null) return;
+        focusRowRef.current = false;
+        document.querySelector<HTMLElement>(`[data-title-row="${selectedTitleId}"]`)?.focus();
+    }, [selectedTitleId]);
+
     // --- Render ---
 
     if (isLoading) {
@@ -966,8 +1058,16 @@ function ReviewQueue() {
                 subtitle={subtitleText}
                 onBack={() => navigate('/')}
                 maxWidth={sv.layoutMaxWidth}
-                right={
+                right={identityGated ? undefined : (
                     <>
+                        <HeaderButton
+                            color={sv.inkDim}
+                            onClick={() => setShowShortcuts(true)}
+                            icon={<Keyboard size={12} />}
+                            ariaKeyShortcuts="?"
+                        >
+                            Keyboard shortcuts (?)
+                        </HeaderButton>
                         {canStartRip(job, titles) && (
                             <HeaderButton
                                 color={sv.cyan}
@@ -1007,7 +1107,7 @@ function ReviewQueue() {
                             {isRematching ? 'Re-matching…' : 'Re-match all'}
                         </HeaderButton>
                     </>
-                }
+                )}
             />
 
             {/* Content — w-full so the max-width cap engages inside
@@ -1038,6 +1138,18 @@ function ReviewQueue() {
                 {rematchNotice && <SvNotice tone="warn">› {rematchNotice}</SvNotice>}
                 {orderingError && <SvNotice tone="warn">› {orderingError}</SvNotice>}
 
+                {/* Identity step (#715): until the show is established there is no
+                    roster to assign against, so lead with identifying the disc and
+                    withhold the episode tools. */}
+                {identityGated && (
+                    <IdentityGate
+                        job={job}
+                        trackCount={titles.length}
+                        error={identifyError}
+                        onIdentify={handleIdentify}
+                    />
+                )}
+                {!identityGated && (<>
                 {/* Season picker (#370) — only when the job's season is unknown. */}
                 {job.detected_season == null && (
                     <div style={{ marginBottom: 24 }}>
@@ -1334,7 +1446,9 @@ function ReviewQueue() {
                         )}
                     </div>
                 </div>
+                </>)}
             </div>
+            {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
         </SvAtmosphere>
     );
 }
