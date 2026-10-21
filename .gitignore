@@ -117,3 +117,4 @@ backend/hooks/rthook_tvdb_generated.py
 
 # Local development
 .envrc
+.direnv/
