@@ -1,0 +1,314 @@
+{
+ "_source": "Hey Arnold! (TMDB 537) S3: TMDB /tv/{id}/season/3 and OpenSubtitles search (parent_tmdb_id, season_number, type=episode, languages=en), captured 2026-10-20. Release strings verbatim; other fields dropped.",
+ "season": 3,
+ "corpus_codes": [
+  "S03E01",
+  "S03E02",
+  "S03E03",
+  "S03E04",
+  "S03E05",
+  "S03E06",
+  "S03E07",
+  "S03E08",
+  "S03E09",
+  "S03E10",
+  "S03E11",
+  "S03E12",
+  "S03E13",
+  "S03E14",
+  "S03E15",
+  "S03E16",
+  "S03E17",
+  "S03E18",
+  "S03E19"
+ ],
+ "roster": [
+  {
+   "episode_number": 1,
+   "name": "Helga Blabs It All",
+   "air_date": "1998-08-31",
+   "runtime": 11
+  },
+  {
+   "episode_number": 2,
+   "name": "Harold the Butcher",
+   "air_date": "1998-08-31",
+   "runtime": 11
+  },
+  {
+   "episode_number": 3,
+   "name": "Dangerous Lumber",
+   "air_date": "1998-09-02",
+   "runtime": 11
+  },
+  {
+   "episode_number": 4,
+   "name": "Mr. Hyunh Goes Country",
+   "air_date": "1998-09-02",
+   "runtime": 11
+  },
+  {
+   "episode_number": 5,
+   "name": "Casa Paradiso",
+   "air_date": "1998-09-07",
+   "runtime": 11
+  },
+  {
+   "episode_number": 6,
+   "name": "Gerald's Tonsils",
+   "air_date": "1998-09-07",
+   "runtime": 11
+  },
+  {
+   "episode_number": 7,
+   "name": "Arnold's Room",
+   "air_date": "1998-09-09",
+   "runtime": 11
+  },
+  {
+   "episode_number": 8,
+   "name": "Helga vs. Big Patty",
+   "air_date": "1998-09-09",
+   "runtime": 11
+  },
+  {
+   "episode_number": 9,
+   "name": "Stinky Goes Hollywood",
+   "air_date": "1998-09-16",
+   "runtime": 11
+  },
+  {
+   "episode_number": 10,
+   "name": "Olga Gets Engaged",
+   "air_date": "1998-09-16",
+   "runtime": 11
+  },
+  {
+   "episode_number": 11,
+   "name": "Curly Snaps",
+   "air_date": "1998-09-23",
+   "runtime": 11
+  },
+  {
+   "episode_number": 12,
+   "name": "Preteen Scream",
+   "air_date": "1998-09-23",
+   "runtime": 11
+  },
+  {
+   "episode_number": 13,
+   "name": "Grandpa's Birthday",
+   "air_date": "1998-09-30",
+   "runtime": 11
+  },
+  {
+   "episode_number": 14,
+   "name": "Road Trip",
+   "air_date": "1998-09-30",
+   "runtime": 11
+  },
+  {
+   "episode_number": 15,
+   "name": "Sid's Revenge",
+   "air_date": "1998-10-07",
+   "runtime": 11
+  },
+  {
+   "episode_number": 16,
+   "name": "Roller Coaster",
+   "air_date": "1998-10-07",
+   "runtime": 11
+  },
+  {
+   "episode_number": 17,
+   "name": "The Aptitude Test",
+   "air_date": "1998-10-14",
+   "runtime": 11
+  },
+  {
+   "episode_number": 18,
+   "name": "Oskar Gets a Job",
+   "air_date": "1998-10-14",
+   "runtime": 11
+  },
+  {
+   "episode_number": 19,
+   "name": "Arnold Betrays Iggy",
+   "air_date": "1998-10-19",
+   "runtime": 11
+  },
+  {
+   "episode_number": 20,
+   "name": "Helga and the Nanny",
+   "air_date": "1998-10-19",
+   "runtime": 11
+  },
+  {
+   "episode_number": 21,
+   "name": "Career Day",
+   "air_date": "1998-10-21",
+   "runtime": 11
+  },
+  {
+   "episode_number": 22,
+   "name": "Hey Harold!",
+   "air_date": "1998-10-21",
+   "runtime": 11
+  },
+  {
+   "episode_number": 23,
+   "name": "Best Man",
+   "air_date": "1998-11-02",
+   "runtime": 11
+  },
+  {
+   "episode_number": 24,
+   "name": "Cool Party",
+   "air_date": "1998-11-02",
+   "runtime": 11
+  },
+  {
+   "episode_number": 25,
+   "name": "Arnold & Lila",
+   "air_date": "1998-11-04",
+   "runtime": 11
+  },
+  {
+   "episode_number": 26,
+   "name": "Grand Prix",
+   "air_date": "1998-11-04",
+   "runtime": 11
+  },
+  {
+   "episode_number": 27,
+   "name": "Arnold's Thanksgiving",
+   "air_date": "1998-11-18",
+   "runtime": 23
+  },
+  {
+   "episode_number": 28,
+   "name": "Helga's Show",
+   "air_date": "1998-11-25",
+   "runtime": 11
+  },
+  {
+   "episode_number": 29,
+   "name": "The Flood",
+   "air_date": "1998-11-25",
+   "runtime": 11
+  },
+  {
+   "episode_number": 30,
+   "name": "Phoebe Takes the Fall",
+   "air_date": "1998-12-07",
+   "runtime": 11
+  },
+  {
+   "episode_number": 31,
+   "name": "The Pig War",
+   "air_date": "1998-12-07",
+   "runtime": 11
+  },
+  {
+   "episode_number": 32,
+   "name": "Part Time Friends",
+   "air_date": "1998-12-07",
+   "runtime": 11
+  },
+  {
+   "episode_number": 33,
+   "name": "Biosquare",
+   "air_date": "1998-12-07",
+   "runtime": 11
+  },
+  {
+   "episode_number": 34,
+   "name": "Crabby Author",
+   "air_date": "1998-12-28",
+   "runtime": 11
+  },
+  {
+   "episode_number": 35,
+   "name": "Rich Kid",
+   "air_date": "1999-01-04",
+   "runtime": 11
+  },
+  {
+   "episode_number": 36,
+   "name": "Girl Trouble",
+   "air_date": "1999-01-04",
+   "runtime": 11
+  },
+  {
+   "episode_number": 37,
+   "name": "School Dance",
+   "air_date": "1999-01-04",
+   "runtime": 11
+  },
+  {
+   "episode_number": 38,
+   "name": "School Play",
+   "air_date": "1999-03-08",
+   "runtime": 24
+  }
+ ],
+ "releases": {
+  "1": [
+   "S03E01.Helga blabs it all.Harold the butcher"
+  ],
+  "2": [
+   "S03E02.dangerous lumber.Mr.Hyun goes county"
+  ],
+  "3": [
+   "S03E03.Casa Paradiso.Gerald's Tonsils"
+  ],
+  "4": [
+   "S03E04.Arnold's room.Helga vs. Big Patty"
+  ],
+  "5": [
+   "S03E05.Stinky goes Hollywood.Olga gets engaged"
+  ],
+  "6": [
+   "S03E06.Curly snaps.pre-teen scream"
+  ],
+  "7": [
+   "S03E07.Grandpa's birthday.Road Trip"
+  ],
+  "8": [
+   "S03E08.Sid's revenge.Roller coaster"
+  ],
+  "9": [
+   "S03E09.The aptitude test.Oskar gets a job"
+  ],
+  "10": [
+   "S03E10.Arnold Betrays iggy.Helga and the nanny"
+  ],
+  "11": [
+   "S03E11.Career day.Hey Harold"
+  ],
+  "12": [
+   "S03E12.Best man.Cool party"
+  ],
+  "13": [
+   "S03E13.Arnold . Lila.Grand prix"
+  ],
+  "14": [
+   "S03E14.Arnold's Thanksgiving"
+  ],
+  "15": [
+   "S03E15.Helga's show.The flood"
+  ],
+  "16": [
+   "S03E16.phoebe takes the fall.the pig war"
+  ],
+  "17": [
+   "S03E17.Crabby author.Rich kid"
+  ],
+  "18": [
+   "S03E18.Girl trouble.School dance"
+  ],
+  "19": [
+   "S03E19.School play"
+  ]
+ }
+}
