@@ -76,6 +76,21 @@ def conjoined_episode_count(title_minutes: float, runtimes: list[int]) -> int | 
     return None
 
 
+# TMDB runtimes are broadcast-slot lengths, and some shows' disc tracks run far
+# shorter than the slot: MXC lists every episode at 30 minutes while its DVD episode
+# tracks run ~20 (issue #770), so the runtime window filed an unmatched episode as an
+# extra beside six identical tracks that had matched. A track on THIS disc already
+# matched to an episode is direct evidence of what an episode track looks like here.
+# The window is tight because the evidence is exact, not nominal: featurettes and
+# recaps sit minutes away from episode length, not seconds.
+SIBLING_EPISODE_TOLERANCE_MIN = 2
+
+
+def matches_sibling_episode_duration(title_minutes: float, sibling_minutes: list[float]) -> bool:
+    """True if a track is as long as a track on the same disc that matched an episode."""
+    return any(abs(title_minutes - m) <= SIBLING_EPISODE_TOLERANCE_MIN for m in sibling_minutes)
+
+
 # --- Pre-rip short-title filter ------------------------------------------------
 #
 # Skipping a real episode before the rip is expensive (the disc is ejected after

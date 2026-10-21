@@ -28,6 +28,7 @@ from app.core.episode_runtime import (
     EPISODE_DURATION_UNDER_TOLERANCE_MIN,
     conjoined_episode_count,
     duration_matches_episode_runtime,
+    matches_sibling_episode_duration,
 )
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
@@ -59,6 +60,26 @@ STRICT_MIN_VOTES = 4
 # that filter keeps is judged by the same windows here.
 _duration_matches_episode_runtime = duration_matches_episode_runtime
 _conjoined_episode_count = conjoined_episode_count
+
+
+async def matched_episode_sibling_minutes(session, job_id: int, title_id: int) -> list[float]:
+    """Durations (minutes) of the job's OTHER tracks already matched to an episode.
+
+    Feeds ``matches_sibling_episode_duration``: the extras pre-filter must not call
+    a track an extra on runtime grounds when it is as long as tracks on the same
+    disc that are known episodes (#770).
+    """
+    result = await session.execute(
+        select(DiscTitle).where(DiscTitle.job_id == job_id, DiscTitle.id != title_id)
+    )
+    return [
+        t.duration_seconds / 60
+        for t in result.scalars().all()
+        if t.state in (TitleState.MATCHED, TitleState.COMPLETED)
+        and not t.is_extra
+        and t.duration_seconds
+        and parse_episode_code(t.matched_episode)
+    ]
 
 
 # Scan depth for a track the runtime pre-filter admitted as conjoined. A confident
@@ -1267,6 +1288,7 @@ class MatchingCoordinator:
             job_detected_title: str | None = None
             job_detected_season: int | None = None
             title_duration: float | None = None
+            sibling_minutes: list[float] = []
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
                 title = await session.get(DiscTitle, title_id)
@@ -1275,6 +1297,9 @@ class MatchingCoordinator:
                     job_detected_title = job.detected_title
                     job_detected_season = job.detected_season
                     title_duration = title.duration_seconds
+                    sibling_minutes = await matched_episode_sibling_minutes(
+                        session, job_id, title_id
+                    )
 
             if job_detected_season:
                 # No connection held across this (possibly networked) lookup.
@@ -1290,7 +1315,18 @@ class MatchingCoordinator:
                         # If so it is ADMITTED to matching, not filed: the
                         # positional vote runs decide what it actually holds.
                         conjoined_hint = _conjoined_episode_count(title_minutes, runtimes)
-                        if conjoined_hint:
+                        if matches_sibling_episode_duration(title_minutes, sibling_minutes):
+                            # TMDB's runtime is a broadcast slot; tracks on this very
+                            # disc that matched episodes are the better yardstick (#770).
+                            conjoined_hint = None
+                            logger.info(
+                                f"[MATCH] Title {sanitize_log_value(title_id)} "
+                                f"(Job {sanitize_log_value(job_id)}): duration "
+                                f"{title_minutes:.0f}min matches no TMDB runtime {runtimes} "
+                                f"but matches episodes already matched on this disc. "
+                                f"Proceeding with matching, not filing as an extra."
+                            )
+                        elif conjoined_hint:
                             # ids are sanitized because CodeQL traces them back to
                             # HTTP path params (py/log-injection). FastAPI coerces
                             # them to int so they cannot actually carry CR/LF, but
