@@ -413,7 +413,8 @@ def _apply_divergent_numbering_review(title: "DiscTitle") -> bool:
     and never reaches this branch. The matched code stays as the reviewer's
     pre-fill. Returns True if it held the title.
     """
-    if not title.matched_episode or title.state not in (TitleState.MATCHED, TitleState.REVIEW):
+    matched = getattr(title, "matched_episode", None)
+    if not matched or title.state not in (TitleState.MATCHED, TitleState.REVIEW):
         return False
     details = _title_details(title)
     if details.get("numbering_scheme") != SCHEME_DIVERGENT or details.get("error"):
@@ -423,7 +424,7 @@ def _apply_divergent_numbering_review(title: "DiscTitle") -> bool:
     details["message"] = (
         "The reference subtitles for this season are numbered differently from TMDB "
         "(usually by broadcast half-hour instead of by segment), so "
-        f"{title.matched_episode} may name the wrong episode. Check it and assign the "
+        f"{matched} may name the wrong episode. Check it and assign the "
         "TMDB episode(s) this track holds."
     )
     title.match_details = json.dumps(details)
