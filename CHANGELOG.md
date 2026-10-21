@@ -11,6 +11,7 @@ All notable changes to Engram will be documented in this file.
 - Force on a job stuck in Matching now clears a track left queued with no match running behind it. Force used to skip queued tracks, since they are normally waiting for a free match slot, so a track whose match had died kept the job in Matching for good. Tracks still waiting for a slot, or held until you answer a name or show question, are left alone, and the automatic stall check is unchanged. (#776)
 
 - **Re-match all** is refused for movie discs instead of running TV episode matching on the movie's tracks. The review page only offers it for TV, so this affected direct API calls. (#775)
+- A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
 ## [0.41.0] - 2026-10-20
 
@@ -23,6 +24,7 @@ _Highlights: recover failed jobs from staging, Play-All tracks detected from the
 - Manual import now accepts `.mp4`, `.m4v`, `.ts` and `.m2ts` files as well as `.mkv`. Files are filed unchanged and keep their own extension in the library (an MP4 lands as `Show - S01E01.mp4`), and an existing copy of the same episode in another container counts as a conflict instead of becoming a duplicate. Picking a `BDMV` folder, its `STREAM` folder or a single stream clip imports the whole disc backup through MakeMKV, because those clips are fragments, not titles.
 
 - Movie review now has the same **Open in player** and **Copy stream URL** buttons as TV review, so you can watch each feature-length title in VLC or MPV before picking which cut to keep.
+- A **Getting Help & Reporting Issues** guide covering Trace, the support bot in the Engram Discord: run `/bug` or `/feature` and it gathers the details, checks for an existing issue, and drafts a GitHub issue you file with one click; attach a job's diagnostics bundle and it reads the logs for you. The README, Troubleshooting and Contributing pages, and GitHub's new-issue page, now point there.
 
 ### Fixed
 
