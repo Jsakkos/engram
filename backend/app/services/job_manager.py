@@ -103,6 +103,22 @@ _REVIEW_REASON_KEYS = ("error", "message", "forced_review")
 # auto-modal) — same UX as that established path.
 _FALLBACK_IDENTITY_REVIEW_REASON = NO_TITLE_REVIEW_REASON
 
+
+def _is_policy_skipped_extra(title: DiscTitle) -> bool:
+    """True when extras_policy "skip" discarded this movie extra (#773)."""
+    if not (title.is_extra and title.state == TitleState.COMPLETED and title.match_details):
+        return False
+    try:
+        details = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return (
+        isinstance(details, dict)
+        and details.get("auto_sorted") == "extras"
+        and details.get("action") == "skipped"
+    )
+
+
 # A movie disc held under extras_policy "ask" (#773). The movie review page keys
 # its notice on the extras in REVIEW, not on this wording.
 MOVIE_EXTRAS_REVIEW_REASON = (
@@ -4250,12 +4266,12 @@ class JobManager:
                 _selected = ripped_titles[0]
             _edition = _selected.edition if _selected else None
             _selected_id = _selected.id if _selected else None
-            # Extras discarded under extras_policy "skip" were completed by
-            # `_resolve_multi_title_movie`; their rips stay in staging rather than
-            # being swept into Extras/ by the organizer's folder scan (#773).
-            _move_extras = not any(
-                t.is_extra and t.state == TitleState.COMPLETED for t in ripped_titles
-            )
+            # Extras discarded under extras_policy "skip" carry the policy's own
+            # marker (`_apply_movie_extras_policy`); their rips stay in staging
+            # rather than being swept into Extras/ by the organizer's folder scan
+            # (#773). The marker, not COMPLETED, is the signal: an extra left
+            # COMPLETED by an earlier pass is no skip decision.
+            _move_extras = not any(_is_policy_skipped_extra(t) for t in ripped_titles)
             # A choice already recorded on the title wins; otherwise the configured
             # default applies. "ask" (the default default) parks a conflict in review.
             _conflict = await _movie_conflict_strategy(
@@ -4569,22 +4585,21 @@ class JobManager:
 
         skip = extras_policy == "skip"
         state = TitleState.COMPLETED if skip else TitleState.REVIEW
-        details = json.dumps(
-            {
-                "auto_sorted": "extras",
-                "action": "skipped" if skip else "review",
-                "reason": "Not the main feature",
-            }
-        )
+        marker = {
+            "auto_sorted": "extras",
+            "action": "skipped" if skip else "review",
+            "reason": "Not the main feature",
+        }
         for dt in extras:
             dt.state = state
             dt.is_extra = True
-            dt.match_details = details
+            # Merged, not replaced, so earlier context (e.g. TheDiscDB's) survives.
+            dt.match_details = _merge_match_details(dt.match_details, marker)
             session.add(dt)
         await session.commit()
         for dt in extras:
             await ws_manager.broadcast_title_update(
-                job_id, dt.id, state.value, is_extra=True, match_details=details
+                job_id, dt.id, state.value, is_extra=True, match_details=dt.match_details
             )
         safe_job = sanitize_log_value(job_id)
         logger.info(

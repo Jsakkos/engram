@@ -1775,7 +1775,10 @@ class FinalizationCoordinator:
                         unselected_titles = []
                         # Extras held for a keep/discard choice (extras_policy "ask",
                         # #773) that the reviewer did not discard ride along into
-                        # Extras/ instead of being deleted with the other cuts.
+                        # Extras/ instead of being deleted with the other cuts. Only
+                        # `_apply_movie_extras_policy` puts a movie extra in REVIEW;
+                        # the frontend's `isHeldMovieExtra` (ReviewQueue/utils.ts)
+                        # uses the same is_extra + REVIEW test, keep them in step.
                         kept_extras: list[DiscTitle] = []
                         if not _has_file_exists(title.match_details):
                             cleanup_statement = select(DiscTitle).where(

@@ -302,6 +302,9 @@ def _build_backup_command(
         makemkv_path,
         "-r",
         NOSCAN,
+        # A backup copies the whole disc regardless. The flag rides along for
+        # consistency: what must match the scan is the later extract from the
+        # backup, which goes through _build_rip_commands with the same value.
         _minlength_flag(min_length),
         "--progress=-same",
         "--decrypt",

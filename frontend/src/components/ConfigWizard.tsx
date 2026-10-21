@@ -1976,7 +1976,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             />
                             <span className="form-hint">
                                 MakeMKV ignores titles shorter than this. 120 is MakeMKV&apos;s default;
-                                lower it for discs whose specials run under two minutes.
+                                lower it for discs whose specials run under two minutes. 0 shows every
+                                title, including menu loops and copy-protection playlists. Change it
+                                between discs, not while one is being ripped.
                             </span>
                         </div>
 

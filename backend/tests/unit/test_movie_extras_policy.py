@@ -159,6 +159,29 @@ class TestRipEndOrganize:
 
         assert organize.call_args.kwargs["move_extras"] is True
 
+    async def test_keep_files_extras_already_completed_by_an_earlier_pass(
+        self,
+        tmp_path,
+        monkeypatch,
+        policy,
+        job_manager_module,  # noqa: F811
+    ):
+        """Only the skip policy's own marker turns extras filing off: an extra left
+        COMPLETED by an earlier pass is not a skip decision."""
+        organize = _organize_ok(monkeypatch, tmp_path / "lib" / "Hairspray (2007).mkv")
+        job_id, _ = await _seed(
+            tmp_path,
+            state=JobState.RIPPING,
+            specs=[
+                (0, 117, TitleState.MATCHED, False, True),
+                (1, 15, TitleState.COMPLETED, True, True),
+            ],
+        )
+
+        await self._finalize(job_manager_module, job_id, tmp_path)
+
+        assert organize.call_args.kwargs["move_extras"] is True
+
     async def test_ask_parks_the_disc_for_review(
         self,
         tmp_path,
