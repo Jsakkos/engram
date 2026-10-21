@@ -264,6 +264,11 @@ class TitleInfo:
     segment_count: int = 0  # MakeMKV TINFO attr 25
     segment_map: str = ""  # e.g., "1,2,3" (MakeMKV TINFO attr 26)
     disc_title: str = ""  # e.g., "Show - Season 3_t00.mkv" (MakeMKV TINFO attr 27)
+    # Normalized language per audio / subtitle stream, in stream order (SINFO attr 3).
+    # None marks an untagged stream. Describes the DISC: MakeMKV's language
+    # preferences may leave streams out of the rip (issue #241).
+    audio_languages: list[str | None] = field(default_factory=list)
+    subtitle_languages: list[str | None] = field(default_factory=list)
 
 
 @dataclass
@@ -370,6 +375,50 @@ def select_movie_main_feature(
             "Please select the correct version (theatrical, extended, etc.)."
         ),
     )
+
+
+def find_movie_extras_before_rip(
+    titles: list[tuple[int, int]],
+    *,
+    min_feature_duration: int = MOVIE_MIN_FEATURE_DURATION,
+    main_movie_indices: set[int] | None = None,
+) -> dict[int, str]:
+    """Titles on a movie disc that cannot be the feature, safe to skip before ripping.
+
+    ``titles`` are ``(title_index, duration_seconds)`` pairs; returns
+    ``{title_index: reason}``. Deliberately narrower than
+    :func:`select_movie_main_feature`, which sees the ripped files' real sizes:
+    a title is skipped here only when no post-rip resolution could pick it.
+
+    * **TheDiscDB:** when the disc's mappings tag a ``MainMovie`` that is on this
+      disc, everything else goes (the same signal ``_resolve_multi_title_movie``
+      trusts without review).
+    * **Duration:** otherwise, only titles under the feature floor, and only when
+      some title clears it. ``select_movie_main_feature`` never picks a
+      sub-floor title while an eligible one exists, so alternate cuts and
+      obfuscation playlists (all feature length) are always kept. A disc with
+      nothing over the floor (a short film) is left whole for the post-rip pick.
+    """
+    present = {index for index, _ in titles}
+    tagged = (main_movie_indices or set()) & present
+    if tagged:
+        return {
+            index: "Not TheDiscDB's main feature for this disc"
+            for index, _ in titles
+            if index not in tagged
+        }
+
+    if not any((seconds or 0) >= min_feature_duration for _, seconds in titles):
+        return {}
+    floor_min = min_feature_duration // 60
+    return {
+        index: (
+            f"Bonus track ({(seconds or 0) // 60}m): shorter than the {floor_min}m "
+            f"minimum for a main feature"
+        )
+        for index, seconds in titles
+        if (seconds or 0) < min_feature_duration
+    }
 
 
 def _single_feature(titles: list[TitleInfo], feature: TitleInfo) -> MainFeatureDecision:

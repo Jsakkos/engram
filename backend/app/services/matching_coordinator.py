@@ -37,8 +37,18 @@ from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
 from app.database import async_session
+from app.matcher.audio_streams import (
+    AudioPlan,
+    follows_auto_pick,
+    plan_audio,
+    probe_audio_streams,
+)
 from app.matcher.numbering_scheme import SCHEME_DIVERGENT, SCHEME_TMDB_AIRED
-from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+from app.matcher.subtitle_utils import (
+    AUDIO_LANGUAGE_ERROR_CODE,
+    REFERENCES_UNREADABLE_ERROR_CODE,
+    language_refusal_details,
+)
 from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
@@ -248,6 +258,9 @@ _NON_REMATCHABLE_REVIEW_ERRORS = {
     # A deeper scan against the same half-hour corpus returns the same half-hour
     # number; only a person (or a crosswalked pack) can translate it.
     NUMBERING_DIVERGENT_ERROR_CODE,
+    # The track's audio is another language (or absent): a deeper scan of the same
+    # audio cannot change that (#241).
+    AUDIO_LANGUAGE_ERROR_CODE,
 } | set(RIP_FAILURE_ERROR_CODES)
 
 
@@ -390,13 +403,61 @@ def _apply_unreadable_references_review(title: "DiscTitle") -> bool:
     return True
 
 
+_RIP_LEFT_OUT_HINT = (
+    " The disc also has English audio, but MakeMKV's language settings left it out of the rip."
+)
+
+
+def _plan_file_audio(file_path: Path) -> AudioPlan:
+    """The English audio plan for a ripped file (same memoized probe the matcher uses)."""
+    return plan_audio(probe_audio_streams(file_path), "en")
+
+
+def _may_fingerprint(plan: AudioPlan) -> bool:
+    """Whether fpcalc on the whole file fingerprints the stream lookups now use.
+
+    fpcalc picks its own stream (the default-flagged one), while matching and the
+    chromaprint lookup windows use the planned stream. On a disc whose default
+    track is a dub they differ, and contributing would teach the shared network
+    the dub's fingerprint under an episode every lookup sends English for (#241).
+    """
+    return follows_auto_pick(plan)
+
+
+def _apply_language_review(title: "DiscTitle") -> bool:
+    """Park a title the curator refused for its audio. True if it did (issue #241).
+
+    The curator cannot see the disc scan, so the one fact only the database holds is
+    added here: when the scan listed English audio that the ripped file lacks,
+    MakeMKV's own language settings dropped it, and saying so is the actionable fix.
+    """
+    details = _title_details(title)
+    if details.get("error") != AUDIO_LANGUAGE_ERROR_CODE:
+        return False
+    title.state = TitleState.REVIEW
+    disc_languages = title.audio_language_list() or []
+    message = details.get("message") or ""
+    # What the file can be transcribed from: an English commentary is not English
+    # dialogue, so it must not suppress the hint. Older refusals lack the usable
+    # list; fall back to every stream.
+    file_languages = details.get("usable_audio_languages")
+    if file_languages is None:
+        file_languages = details.get("audio_languages") or []
+    if "en" in disc_languages and "en" not in file_languages and _RIP_LEFT_OUT_HINT not in message:
+        details["message"] = message + _RIP_LEFT_OUT_HINT
+        title.match_details = json.dumps(details)
+    return True
+
+
 def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -> str | None:
     """Apply the review routing that overrides a matcher result, most specific first.
 
-    Unusable references come first: with no usable corpus there is no vote
+    Unusable audio and unusable references come first: either way there is no vote
     evidence at all, so a runtime-based multi-episode message would bury the cause.
     Returns the error code the title was routed under, or None if it was not.
     """
+    if _apply_language_review(title):
+        return AUDIO_LANGUAGE_ERROR_CODE
     if _apply_unreadable_references_review(title):
         return REFERENCES_UNREADABLE_ERROR_CODE
     if _apply_multi_episode_review(title, conjoined_hint):
@@ -1307,15 +1368,26 @@ class MatchingCoordinator:
             # enabled, transcribe the ripped file (ASR) and match the transcript
             # against the TMDB synopsis — this needs no reference subtitles. Any
             # result is a REVIEW suggestion only (never auto-organized).
-            enriched = await self._llm_fallback_without_subtitles(
-                job_id, title_id, file_path, detected_title, detected_season
+            # The fallback transcribes in English too, so a track with no English
+            # audio skips it and is parked with the language reason (#241).
+            plan = await asyncio.to_thread(_plan_file_audio, file_path)
+            refused = plan.verdict in ("foreign", "no_audio")
+            enriched = (
+                None
+                if refused
+                else await self._llm_fallback_without_subtitles(
+                    job_id, title_id, file_path, detected_title, detected_season
+                )
             )
             async with async_session() as session:
                 title = await session.get(DiscTitle, title_id)
                 if title:
                     title.state = TitleState.REVIEW
                     title.match_confidence = 0.0
-                    if enriched:
+                    if refused:
+                        title.match_details = json.dumps(language_refusal_details(plan))
+                        _apply_language_review(title)
+                    elif enriched:
                         title.match_details = json.dumps(enriched)
                     else:
                         title.match_details = json.dumps(
@@ -1958,7 +2030,13 @@ class MatchingCoordinator:
 
                         cfg = await get_config()
                         fpcalc_path = await _resolve_fpcalc_path(cfg.fpcalc_path)
-                        if fpcalc_path:
+                        fingerprint_plan = await asyncio.to_thread(_plan_file_audio, file_path)
+                        if fpcalc_path and not _may_fingerprint(fingerprint_plan):
+                            logger.info(
+                                f"Skipping chromaprint for title {title.id}: the disc's "
+                                "default audio is not the stream matching used"
+                            )
+                        elif fpcalc_path:
                             ffmpeg_path = await _resolve_ffmpeg_path(cfg.ffmpeg_path)
                             extractor = ChromaprintExtractor(
                                 fpcalc_path=fpcalc_path, ffmpeg_path=ffmpeg_path

@@ -5,7 +5,7 @@ goes to review when 2+ titles genuinely qualify as the feature (alternate
 versions / obfuscation), not when it merely carries long extras.
 """
 
-from app.core.analyst import TitleInfo, select_movie_main_feature
+from app.core.analyst import TitleInfo, find_movie_extras_before_rip, select_movie_main_feature
 
 
 def _title(index: int, minutes: float, mbps: float, chapters: int = 12) -> TitleInfo:
@@ -120,3 +120,36 @@ class TestEdgeCases:
         decision = select_movie_main_feature(titles, runtime_minutes=None)
         assert decision.needs_review is False
         assert decision.feature_index == 1
+
+
+class TestExtrasBeforeRip:
+    """find_movie_extras_before_rip: the conservative pre-rip half of #773."""
+
+    def test_only_titles_under_the_floor_are_skipped(self):
+        reasons = find_movie_extras_before_rip(
+            [(0, 121 * 60), (1, 146 * 60), (2, 20 * 60), (3, 3 * 60)],
+            min_feature_duration=80 * 60,
+        )
+        assert sorted(reasons) == [2, 3]
+
+    def test_never_skips_a_title_the_feature_pick_could_choose(self):
+        """Whatever the post-rip pick lands on, the pre-rip rule kept it."""
+        titles = [_title(0, 121, 36), _title(1, 146, 35), _title(2, 95, 8), _title(3, 20, 19)]
+        decision = select_movie_main_feature(titles, runtime_minutes=None)
+        reasons = find_movie_extras_before_rip(
+            [(t.index, t.duration_seconds) for t in titles], min_feature_duration=80 * 60
+        )
+        assert not set(decision.candidate_indices) & set(reasons)
+
+    def test_no_feature_length_title_skips_nothing(self):
+        assert find_movie_extras_before_rip([(0, 62 * 60), (1, 8 * 60)]) == {}
+
+    def test_discdb_main_movie_wins_when_present(self):
+        reasons = find_movie_extras_before_rip(
+            [(0, 96 * 60), (1, 121 * 60), (2, 5 * 60)], main_movie_indices={1}
+        )
+        assert sorted(reasons) == [0, 2]
+
+    def test_discdb_main_movie_not_on_this_disc_is_ignored(self):
+        reasons = find_movie_extras_before_rip([(0, 121 * 60), (1, 5 * 60)], main_movie_indices={7})
+        assert sorted(reasons) == [1]

@@ -83,6 +83,43 @@ distinct from disc 4. If the field shows only `Disc 1`, the disc reported no vol
 and Engram has no better identity to use; naming the disc during identification fixes it
 for that job.
 
+## A track says its only audio is another language
+
+Engram identifies TV episodes by listening to the dialogue and comparing it with English
+subtitles. When every audio track in a ripped file is another language (an anime disc
+without an English dub, or a foreign-language bonus episode), Engram does not guess: the
+track goes to review with a note naming the language, and you assign the episode by hand.
+
+**The note says the disc also has English audio.** MakeMKV only rips the audio tracks its
+language settings select, so an English dub on the disc can be missing from the file. In
+MakeMKV, open **Preferences > Language** (or adjust the default track selection), add
+English, and re-rip the track.
+
+On a disc with several audio tracks, Engram always listens to the English one, whichever
+track the disc marks as the default.
+
+## Restoring the database after an upgrade
+
+Engram's database (`engram.db`) holds your settings and API keys (MakeMKV key, TMDB token, AI and OpenSubtitles keys) along with your job history. Each time Engram starts on a new version, or finds that the database's layout needs updating, it first saves a copy of the database next to it, named `engram.db.bak-<previous-version>-<timestamp>` (for example `engram.db.bak-0.41.0-20261020T153012.123456Z`). The first upgrade to a version with this feature names the copy `bak-unknown`, because no earlier version was recorded. Only the three newest copies are kept. The startup log says when a copy is made: `Backed up database to ... before migrating`.
+
+Where the database lives:
+
+| Install | Database |
+|---------|----------|
+| Packaged app (Windows, Linux, macOS) | `~/.engram/engram.db` (on Windows, `C:\Users\<you>\.engram\engram.db`) |
+| Docker | `/config/.engram/engram.db` inside the `/config` volume |
+| From source | `backend/engram.db` (or wherever `DATABASE_URL` points) |
+
+If an upgrade leaves Engram unable to start, or your settings look wrong afterwards, restore the copy:
+
+1. Stop Engram completely (quit the app, or stop your Engram container, for example `docker compose stop engram`).
+2. In the database folder, move `engram.db` aside, along with `engram.db-wal` and `engram.db-shm` if they exist. Keep them until you're sure the restore worked.
+3. Copy the backup you want (usually the newest) to `engram.db`.
+4. Delete `engram.db.version` so the next start treats the database as coming from the older version.
+5. Start the version of Engram that made the backup (the version is in its name). Starting a newer version will try the same upgrade again, so if the upgrade itself is the problem, stay on the older version and [report it](getting-help.md) with the startup log.
+
+If a backup can't be written (for example, the disk is full), Engram logs a warning and starts anyway.
+
 ## Diagnostics bundle
 
 When reporting a problem, attach a diagnostics bundle so the logs and environment come with it. From the dashboard, open a job's detail view and download its diagnostic `.zip`, or fetch the overall report from `GET /api/diagnostics/report`. Secrets (API keys, tokens) are redacted automatically.

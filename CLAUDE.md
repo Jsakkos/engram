@@ -268,6 +268,18 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   `matched_episode` parser is classified. TheTVDB's free tier requires the in-app attribution
   link (`TvdbAttribution.tsx`); the key ships via the `TVDB_API_KEY` secret. Spec:
   `docs/superpowers/specs/2026-10-08-thetvdb-episode-namespace-design.md`.
+- **The ripped file's audio decides ASR, not the disc scan (#241).** `app/matcher/audio_streams.py`
+  probes a file once (ffprobe, memoized) and `EpisodeMatcher.audio_plan` picks the stream:
+  `match` / `untagged` / `unprobed` transcribe (with `-map 0:a:<n>`; the stream ffmpeg would
+  pick by itself keeps the legacy cache keys, any other adds `#a<n>`), `foreign` / `no_audio`
+  make the curator refuse with `audio_language_unsupported` after the chromaprint prepass. The
+  prewarm reads the same plan. fpcalc fingerprints the whole file (its own stream pick), so
+  chromaprint extraction/contribution is skipped when that pick differs from the planned stream.
+  MakeMKV's language settings can drop disc tracks from the rip, so `DiscTitle.audio_languages`
+  (SINFO attr 3 at scan time) is evidence for the review message only. TINFO attr 28 is
+  MakeMKV's *metadata* language, not the audio language. Codes go through
+  `app/core/languages.py` (`fre`/`fra`, `ger`/`deu` both occur). Spec:
+  `docs/superpowers/specs/2026-10-20-non-english-content-design.md`.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
 - **A job's MakeMKV source is a value, not a drive.** `DiscSource`
   (`app/core/disc_source.py`) answers "is this a physical drive?" once, for eject, sentinel

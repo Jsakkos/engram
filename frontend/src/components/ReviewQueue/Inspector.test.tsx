@@ -221,6 +221,23 @@ describe('Inspector: review reason notice', () => {
         ).toBeInTheDocument();
     });
 
+    it('shows why a non-English track was not matched', () => {
+        const message =
+            "This track's only audio is Japanese, and Engram matches episodes by English dialogue, so it could not be matched automatically. Assign the episode by hand.";
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({
+                    error: 'audio_language_unsupported',
+                    audio_languages: ['ja'],
+                    message,
+                }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('only audio is Japanese')),
+        ).toBeInTheDocument();
+    });
+
     it('adds no notice when there is no message to show', () => {
         const plain = renderInspector({ title: makeTitle() });
         const baseline = plain.container.querySelectorAll('[data-testid="sv-notice"]').length;
