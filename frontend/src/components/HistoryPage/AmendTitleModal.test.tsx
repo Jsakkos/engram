@@ -39,4 +39,19 @@ describe("AmendTitleModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /apply/i }));
     expect(onSubmit).toHaveBeenCalledWith({ kind: "episode", episode_code: "S02E03" });
   });
+
+  it("labels options with roster episode names when given, else the bare number", () => {
+    render(
+      <AmendTitleModal
+        title={{ id: 1, matchedEpisode: "extra", titleIndex: 0 }}
+        season={1}
+        seasonEpisodes={[7, 8]}
+        episodeNames={{ 7: "Pilot Name", 8: "" }}
+        onSubmit={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByRole("option", { name: /S01E07 — Pilot Name/ })).toBeTruthy();
+    expect(screen.getByRole("option", { name: /S01E08 — Episode 8/ })).toBeTruthy();
+  });
 });

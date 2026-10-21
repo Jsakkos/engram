@@ -8,6 +8,8 @@ export interface AmendTitleModalProps {
   /** The disc/job's season — drives the episode codes, NOT the (possibly wrong) matched episode. */
   season: number;
   seasonEpisodes: number[];
+  /** Episode titles keyed by episode number, from the season roster when it loaded. */
+  episodeNames?: Record<number, string>;
   hasUploadedFingerprint?: boolean;
   onSubmit: (target: { kind: AmendKind; episode_code?: string }) => Promise<void>;
   onClose: () => void;
@@ -17,6 +19,7 @@ export function AmendTitleModal({
   title,
   season,
   seasonEpisodes,
+  episodeNames,
   hasUploadedFingerprint,
   onSubmit,
   onClose,
@@ -225,7 +228,7 @@ export function AmendTitleModal({
                         >
                           {seasonEpisodes.map((ep) => (
                             <option key={ep} value={ep}>
-                              S{seasonCode}E{String(ep).padStart(2, "0")} — Episode {ep}
+                              S{seasonCode}E{String(ep).padStart(2, "0")} — {episodeNames?.[ep] || `Episode ${ep}`}
                             </option>
                           ))}
                         </select>
