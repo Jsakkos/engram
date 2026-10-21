@@ -264,6 +264,11 @@ class TitleInfo:
     segment_count: int = 0  # MakeMKV TINFO attr 25
     segment_map: str = ""  # e.g., "1,2,3" (MakeMKV TINFO attr 26)
     disc_title: str = ""  # e.g., "Show - Season 3_t00.mkv" (MakeMKV TINFO attr 27)
+    # Normalized language per audio / subtitle stream, in stream order (SINFO attr 3).
+    # None marks an untagged stream. Describes the DISC: MakeMKV's language
+    # preferences may leave streams out of the rip (issue #241).
+    audio_languages: list[str | None] = field(default_factory=list)
+    subtitle_languages: list[str | None] = field(default_factory=list)
 
 
 @dataclass

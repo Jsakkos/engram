@@ -22,6 +22,7 @@ from pathlib import Path
 from app.core.analyst import TitleInfo
 from app.core.disc_source import NOSCAN, DiscSource, SourceKind
 from app.core.errors import MakeMKVLicenseError
+from app.core.languages import normalize_language
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -467,6 +468,11 @@ class BackupResult:
     # still has a usable backup at dest, but this run did not verify it: it is
     # whatever was on disk already.
     already_existed: bool = False
+
+
+# SINFO attr-1 (stream type) codes in MakeMKV robot output.
+_SINFO_AUDIO = "6202"
+_SINFO_SUBTITLES = "6203"
 
 
 class ScanTimeoutError(Exception):
@@ -2020,9 +2026,24 @@ class MakeMKVExtractor:
         """
         titles: dict[int, TitleInfo] = {}
         disc_name = ""
+        # (title, stream) -> {"type": SINFO attr-1 code, "lang": attr-3 value}. Filled
+        # per line and classified after the loop: attr order is not guaranteed.
+        streams: dict[tuple[int, int], dict[str, str]] = {}
 
         for line in output.split("\n"):
             line = line.strip()
+
+            # Stream info: SINFO:<title>,<stream>,<attr>,<code>,"<value>"
+            if line.startswith("SINFO:"):
+                match = re.match(r"SINFO:(\d+),(\d+),(\d+),(\d+),\"(.*)\"", line)
+                if match:
+                    key = (int(match.group(1)), int(match.group(2)))
+                    attr_id = int(match.group(3))
+                    if attr_id == 1:  # Stream type, keyed on its numeric code
+                        streams.setdefault(key, {})["type"] = match.group(4)
+                    elif attr_id == 3:  # Stream language code (ISO 639-2)
+                        streams.setdefault(key, {})["lang"] = match.group(5)
+                continue
 
             # Capture disc display name from CINFO attr 2
             if line.startswith("CINFO:"):
@@ -2080,8 +2101,19 @@ class MakeMKVExtractor:
                         title.segment_map = value
                     elif attr_id == 27:  # Suggested output filename (e.g., "Show - S3_t00.mkv")
                         title.disc_title = value
-                    elif attr_id == 28:  # Language code - good for filtering later
-                        pass
+                    # attr 28 is MakeMKV's METADATA language, not the audio language:
+                    # a title whose only audio is Osage still reports "eng" there. The
+                    # audio language comes from SINFO attr 3 above (issue #241).
+
+        for (title_idx, _stream_idx), stream in sorted(streams.items()):
+            title = titles.get(title_idx)
+            if title is None:
+                continue
+            lang = normalize_language(stream.get("lang"))
+            if stream.get("type") == _SINFO_AUDIO:
+                title.audio_languages.append(lang)
+            elif stream.get("type") == _SINFO_SUBTITLES:
+                title.subtitle_languages.append(lang)
 
         return list(titles.values()), disc_name
 

@@ -123,6 +123,10 @@ export interface DiscTitle {
     discdb_match_details?: string | null;
     discdb_flagged?: boolean;
     discdb_flag_reason?: string | null;
+    /** JSON list of the disc's audio stream languages (normalized codes, null = untagged). */
+    audio_languages?: string | null;
+    /** JSON list of the disc's subtitle stream languages. */
+    subtitle_languages?: string | null;
 }
 
 export interface DriveEvent {
