@@ -47,7 +47,12 @@ _DISC = [_ti(0, 38), _ti(1, 39), _ti(2, 40), _ti(3, 6), _ti(4, 10)]
 @pytest.fixture
 def short_env(gate_env, monkeypatch):  # noqa: F811
     """Configurable extras policy, stubbed TMDB runtimes, captured title updates."""
-    cfg = SimpleNamespace(extras_policy="skip", backup_before_rip=False, backup_path=None)
+    cfg = SimpleNamespace(
+        extras_policy="skip",
+        backup_before_rip=False,
+        backup_path=None,
+        analyst_movie_min_duration=80 * 60,
+    )
 
     async def fake_get_config():
         return cfg
@@ -100,11 +105,6 @@ class TestShortTitleSkip:
         titles = await _job_titles(job_id)
         assert all(t.state == TitleState.PENDING and t.is_selected for t in titles)
         short_env.runtimes.assert_not_called()
-
-    async def test_movie_disc_untouched(self, short_env):
-        job_id, _, _ = await _identify_tv(label="SOME_MOVIE", content_type=ContentType.MOVIE)
-        titles = await _job_titles(job_id)
-        assert not any(t.state == TitleState.SKIPPED for t in titles)
 
     async def test_untrusted_identity_uses_disc_evidence_only(self, short_env):
         """An uncorroborated identity's runtimes could be the wrong show's: they
@@ -162,3 +162,92 @@ class TestShortTitleSkip:
         restored = (await _job_titles(job_id))[3]
         assert restored.state == TitleState.PENDING
         assert restored.is_selected is True
+
+
+# A 2h feature, a 20-minute making-of and two short featurettes.
+_MOVIE_DISC = [_ti(0, 121), _ti(1, 20), _ti(2, 5), _ti(3, 3)]
+
+
+async def _identify_movie(disc=None, *, discdb=None, **kw):
+    job_id = await _seed_identifying_job("SOME_MOVIE")
+    analysis = _make_analysis(ContentType.MOVIE, "Some Movie", season=None, tmdb_id=99, **kw)
+    if kw.get("needs_review") and kw.get("review_reason") is None:
+        analysis.is_ambiguous_movie = True
+    coord = _bare_coord(analysis, disc or _MOVIE_DISC, "SOME_MOVIE")
+    if discdb is not None:
+        coord._get_discdb_mappings = lambda _job_id: discdb
+    await coord.identify_disc(job_id)
+    return job_id, coord
+
+
+@pytest.mark.unit
+class TestMovieExtrasSkip:
+    """#773: "skip" applies to movie discs, and never to a feature candidate."""
+
+    async def test_skip_policy_skips_titles_shorter_than_any_feature(self, short_env):
+        job_id, coord = await _identify_movie()
+
+        titles = await _job_titles(job_id)
+        assert [t.state for t in titles] == [TitleState.PENDING] + [TitleState.SKIPPED] * 3
+        assert [t.is_selected for t in titles] == [True, False, False, False]
+        details = json.loads(titles[1].match_details)
+        assert details["auto_skipped"] is True and details["skipped"] is True
+        assert "feature" in details["reason"]
+        coord._run_ripping.assert_awaited_once_with(job_id)
+        short_env.runtimes.assert_not_called()
+
+    @pytest.mark.parametrize("policy", ["keep", "ask"])
+    async def test_other_policies_rip_everything(self, short_env, policy):
+        short_env.cfg.extras_policy = policy
+        job_id, _ = await _identify_movie()
+
+        titles = await _job_titles(job_id)
+        assert all(t.state == TitleState.PENDING and t.is_selected for t in titles)
+
+    async def test_every_feature_length_cut_is_kept(self, short_env):
+        job_id, _ = await _identify_movie([_ti(0, 121), _ti(1, 146), _ti(2, 95), _ti(3, 4)])
+
+        titles = await _job_titles(job_id)
+        assert [t.state for t in titles] == [TitleState.PENDING] * 3 + [TitleState.SKIPPED]
+
+    async def test_short_film_with_no_feature_length_title_is_untouched(self, short_env):
+        """With nothing over the feature floor, which title is the film is a
+        post-rip question; nothing is skipped up front."""
+        job_id, _ = await _identify_movie([_ti(0, 62), _ti(1, 8)])
+
+        titles = await _job_titles(job_id)
+        assert not any(t.state == TitleState.SKIPPED for t in titles)
+
+    async def test_discdb_main_movie_decides(self, short_env):
+        """TheDiscDB's MainMovie tag is the strongest signal: even a long
+        documentary that is not tagged is skipped."""
+        discdb = [SimpleNamespace(index=1, title_type="MainMovie")]
+        job_id, _ = await _identify_movie([_ti(0, 96), _ti(1, 121), _ti(2, 5)], discdb=discdb)
+
+        titles = await _job_titles(job_id)
+        assert [t.state for t in titles] == [
+            TitleState.SKIPPED,
+            TitleState.PENDING,
+            TitleState.SKIPPED,
+        ]
+        assert "TheDiscDB" in json.loads(titles[0].match_details)["reason"]
+
+    async def test_ambiguous_movie_still_skips_short_titles(self, short_env):
+        job_id, coord = await _identify_movie(
+            [_ti(0, 121), _ti(1, 146), _ti(2, 5)], needs_review=True
+        )
+
+        titles = await _job_titles(job_id)
+        assert [t.state for t in titles] == [TitleState.PENDING] * 2 + [TitleState.SKIPPED]
+        coord._run_ripping.assert_awaited_once_with(job_id)
+
+    async def test_unsettled_content_type_is_untouched(self, short_env):
+        """A disc parked before the rip because movie-vs-TV is unclear may turn
+        out to be TV, where those short titles are episodes."""
+        job_id, _ = await _identify_movie(
+            needs_review=True, review_reason="TMDB says TV, heuristic says movie"
+        )
+
+        titles = await _job_titles(job_id)
+        assert not any(t.state == TitleState.SKIPPED for t in titles)
+        assert (await _reload_job(job_id)).state == JobState.REVIEW_NEEDED

@@ -6,6 +6,8 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
+- **Minimum Title Length** in Settings sets MakeMKV's minimum title length (`--minlength`, 120 seconds by default, MakeMKV's own default). Lower it for discs whose specials run under two minutes, which MakeMKV otherwise hides from Engram entirely. The same value is used for every scan, rip and backup so title numbers stay consistent. (#771, thanks @tzimpel!)
+- Engram now saves a copy of its database before upgrading it. When it starts on a new version, or finds the database's layout needs updating, it first writes `engram.db.bak-<previous-version>-<timestamp>` next to `engram.db`, keeping the three newest copies, so a bad upgrade can no longer cost you your API keys, settings or job history. The copy is made with SQLite's own backup, so it includes writes not yet folded into the main file, and a startup that crashes partway through an upgrade keeps its original copy rather than replacing it on every retry. If the copy can't be written, Engram logs a warning and starts anyway. The Troubleshooting guide explains where to find the copies and how to restore one. (#730)
 - Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
 
 - **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
@@ -26,6 +28,7 @@ All notable changes to Engram will be documented in this file.
 
 - The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
 
+- The **Skip extras** setting now works on movie discs. It used to apply only to TV, so a movie disc ripped every bonus track and filed them all under `Extras/`. Now, when the disc is identified as a movie, titles that cannot be the feature are skipped before the rip (shown on the dashboard card with the reason, and UN-SKIP still works), and any that slip through are discarded rather than filed. Every feature-length cut is still ripped. **Ask me** now covers movies as well: the disc waits in review, where you discard the extras you don't want and keep the rest. (#773)
 - Re-identifying or naming a TV disc whose episodes were all filed no longer starts a second rip. Engram decided whether the disc had been ripped by looking for files in staging, which is empty once everything is filed, so the job went back to ripping a disc that had already left the drive. It now also checks the disc's tracks, and re-matches instead: filed episodes stay where they are, as with any re-match. (#774)
 
 - Force on a job stuck in Matching now clears a track left queued with no match running behind it. Force used to skip queued tracks, since they are normally waiting for a free match slot, so a track whose match had died kept the job in Matching for good. Tracks still waiting for a slot, or held until you answer a name or show question, are left alone, and the automatic stall check is unchanged. (#776)
@@ -35,6 +38,9 @@ All notable changes to Engram will be documented in this file.
 - Two discs that start at the same moment no longer get mixed up. With several ISOs mounted when Engram starts, each virtual drive's disc began in the same second, and both jobs were given the same staging folder because its name only went down to the second. Both rips wrote into that one folder, so each job matched and filed the other disc's episodes (a Season 1 disc could come out labelled as Season 2). Every job now gets a staging folder of its own, named after the job. (#768)
 
 - A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
+### Added
+
+- Settings can be exported to a file and imported on another install, from **Settings > Import & Export** or the first step of setup. Keys and passwords stay out of the file unless you tick **Include keys and passwords**. Before anything changes, an import shows every setting it would apply, with paths missing on this machine unticked and invalid values explained, and it goes through the same checks as saving in Settings. Setup status, LAN access and fingerprint-sharing consent are never carried over. (#731)
 
 ## [0.41.0] - 2026-10-20
 
