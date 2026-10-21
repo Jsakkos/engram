@@ -68,6 +68,28 @@ export function titleDisplayName(title: DiscTitle): string {
 }
 
 /**
+ * A movie extra held for a keep/discard choice (extras policy "ask", #773). It
+ * is filed into Extras/ when the feature is selected unless discarded first.
+ */
+export function isHeldMovieExtra(title: DiscTitle): boolean {
+    return !!title.is_extra && title.state === 'review';
+}
+
+/**
+ * Titles the movie review lists. Extras the "skip" policy already discarded
+ * (before the rip, or after it) and titles the reviewer discarded here are
+ * settled and would only offer a misleading Select.
+ */
+export function movieReviewTitles(titles: DiscTitle[]): DiscTitle[] {
+    return titles.filter(
+        (t) =>
+            t.state !== 'skipped' &&
+            !(t.is_extra && t.state === 'completed') &&
+            t.matched_episode !== 'skip',
+    );
+}
+
+/**
  * Color a confidence score: green (auto-match), yellow (plausible), red (weak).
  */
 export function confidenceColor(confidence: number): string {

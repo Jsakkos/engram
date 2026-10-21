@@ -296,6 +296,7 @@ class ConfigResponse(BaseModel):
 
     makemkv_path: str
     makemkv_key: str
+    makemkv_min_title_length: int
     staging_path: str
     library_movies_path: str
     library_tv_path: str
@@ -409,6 +410,8 @@ class ConfigUpdate(BaseModel):
 
     makemkv_path: str | None = None
     makemkv_key: str | None = None
+    # MakeMKV --minlength in seconds (#771); an hour is far past any real special.
+    makemkv_min_title_length: int | None = Field(default=None, ge=0, le=3600)
     staging_path: str | None = None
     library_movies_path: str | None = None
     library_tv_path: str | None = None
@@ -1967,6 +1970,7 @@ async def get_config() -> ConfigResponse:
     return ConfigResponse(
         makemkv_path=config.makemkv_path,
         makemkv_key="***" if config.makemkv_key else "",  # Redacted
+        makemkv_min_title_length=config.makemkv_min_title_length,
         staging_path=config.staging_path,
         library_movies_path=config.library_movies_path,
         library_tv_path=config.library_tv_path,
@@ -3822,6 +3826,7 @@ async def _collect_environment() -> dict:
             "extras_policy": config.extras_policy,
             "always_review": config.always_review,
             "discdb_enabled": config.discdb_enabled,
+            "makemkv_min_title_length": config.makemkv_min_title_length,
         },
     }
 
