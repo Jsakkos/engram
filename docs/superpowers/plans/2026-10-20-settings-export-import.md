@@ -4,7 +4,7 @@
 
 **Goal:** Export the app configuration to a versioned JSON file (secrets opt-in) and import one back through the `PUT /api/config` validators, with a per-field preview (#731).
 
-**Architecture:** The PUT handler's validation body moves into a reusable `validate_config_update`. A new `app/services/config_transfer.py` owns the field sets, file building and per-field preview. Three thin routes in `routes.py` (gated by `require_localhost_or_lan`) call it. The frontend adds a "Backup & Transfer" settings section plus an `ImportSettingsDialog`, with an onboarding entry point.
+**Architecture:** The PUT handler's validation body moves into a reusable `validate_config_update`. A new `app/services/config_transfer.py` owns the field sets, file building and per-field preview. Three thin routes in `routes.py` (gated by `require_localhost_or_lan`) call it. The frontend adds an "Import & Export" settings section plus an `ImportSettingsDialog`, with an onboarding entry point.
 
 **Tech Stack:** FastAPI + Pydantic + SQLModel (backend, `uv run pytest`), React 19 + TS + vitest/RTL (frontend, `npm run test:unit`).
 
@@ -115,7 +115,7 @@ Per-field validation algorithm (`_validate_field(key, value) -> tuple[normalized
 
 **Files:**
 - Create: `frontend/src/components/settings/settingsTransfer.ts` (API helpers + key-to-label map), `frontend/src/components/ImportSettingsDialog.tsx`, `frontend/src/components/ImportSettingsDialog.test.tsx`, `frontend/src/components/SettingsTransferSection.tsx`, `frontend/src/components/SettingsTransferSection.test.tsx`
-- Modify: `frontend/src/components/ConfigWizard.tsx` (add `{ key: 'transfer', label: 'Backup & Transfer', step: 6 }` to `SETTINGS_SECTIONS` for settings mode only, render `SettingsTransferSection` at step 6; onboarding step 1 link; after apply re-run the existing load-config logic, extracted into a `reloadConfig()` callback)
+- Modify: `frontend/src/components/ConfigWizard.tsx` (add `{ key: 'transfer', label: 'Import & Export', step: 6 }` to `SETTINGS_SECTIONS` for settings mode only, render `SettingsTransferSection` at step 6; onboarding step 1 link; after apply re-run the existing load-config logic, extracted into a `reloadConfig()` callback)
 
 **Interfaces:**
 - Consumes: Task 3 endpoints.
@@ -142,7 +142,7 @@ Copy (exact): checkbox "Include keys and passwords"; warning "Anyone with this f
 - Modify: `frontend/src/components/ConfigWizard.tsx` (pass #794's dirty flag as `hasUnsavedEdits`), `docs/getting-started/configuration.md`, `CHANGELOG.md`
 
 - [ ] **Step 1:** If PR #794 has merged, `git fetch origin && git rebase origin/main`, resolve `ConfigWizard.tsx`, wire its dirty state into `hasUnsavedEdits`. If it has not merged, pass `false`, note it in the PR, and leave this step for a follow-up commit.
-- [ ] **Step 2:** Docs: add "Moving settings to another install" to `configuration.md` (export, keys opt-in and its warning, never-exported fields and why, preview statuses, missing paths unticked). CHANGELOG `[Unreleased]` → `### Added`: "Export and import settings from Settings > Backup & Transfer, with keys excluded unless you opt in and a preview of every change before it applies (#731)."
+- [ ] **Step 2:** Docs: add "Moving settings to another install" to `configuration.md` (export, keys opt-in and its warning, never-exported fields and why, preview statuses, missing paths unticked). CHANGELOG `[Unreleased]` → `### Added`: "Export and import settings from Settings > Import & Export, with keys excluded unless you opt in and a preview of every change before it applies (#731)."
 - [ ] **Step 3:** Live check: backend on 8250 with `DATABASE_URL=sqlite+aiosqlite:///./engram-731.db`, frontend `VITE_PORT=5423 VITE_BACKEND_PORT=8250`; export without and with keys, import into a fresh second DB, confirm preview groups and that applied settings show in Settings. Screenshot to `artifacts/`.
 - [ ] **Step 4:** Full backend unit tier in the background (`uv run pytest tests/unit -q`), ruff, frontend unit/lint/build. Kill ports 8250 and 5423 only.
 - [ ] **Step 5:** Commit, push, `gh pr create` with "Fixes #731", then comment `@claude please review this PR`.

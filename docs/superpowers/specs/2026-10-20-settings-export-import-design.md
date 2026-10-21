@@ -179,7 +179,7 @@ memory sink.
 
 ## Frontend
 
-- **Settings mode**: a sixth section, "Backup & Transfer", in `SETTINGS_SECTIONS`
+- **Settings mode**: a sixth section, "Import & Export", in `SETTINGS_SECTIONS`
   (settings-mode only; the onboarding stepper keeps its five steps). It holds:
   - **Export settings**: an "Include keys and passwords" checkbox (off), with a warning when
     ticked ("Anyone with this file can use your MakeMKV, TMDB, AI and Discord credentials.
