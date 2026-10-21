@@ -11,6 +11,7 @@ Platform restart strategies:
                logging every step to ~/.engram/update_helper.log
 """
 
+import asyncio
 import hashlib
 import os
 import platform
@@ -91,7 +92,8 @@ class UpdateChecker:
         self._consume_update_result_marker()
         self._prune_staging()
         if self._is_frozen and sys.platform == "win32":
-            self._sweep_stale_swap_dirs(Path(sys.executable).parent)
+            # Each leftover is a full build copy; delete off the event loop.
+            await asyncio.to_thread(self._sweep_stale_swap_dirs, Path(sys.executable).parent)
         skipped_version = await self._load_skipped_version()
         await self._check(skipped_version)
         await self._fetch_current_release_notes()
@@ -212,15 +214,23 @@ class UpdateChecker:
         """Turn the helper's failure marker into the dashboard's notice.
 
         Markers from helpers older than #791 carry no path or reason; those keep the
-        original wording.
+        original wording. Some steps (``wait_timeout``) have a reason but no path.
         """
         head = f"Update to {version} couldn't be applied automatically (step: {step})"
-        if not path:
-            return f"{head}. It'll retry on the next check, or download manually."
-        detail = f"{head}: {path}"
+        detail = head
+        if path:
+            detail += f": {path}"
         if reason:
             detail += f": {reason.rstrip('.')}"
-        if step == "move_install":
+        if step == "restore_failed":
+            # The previous install could not be moved back, so nothing will retry on
+            # its own: the user has to rename the .old dir (the path) back by hand.
+            return (
+                f"{detail}. The previous version was left in that folder. If Engram "
+                f"does not start, rename it back to its original name (drop the "
+                f"'.old-{version}' ending), or download manually."
+            )
+        if step == "move_install" and path:
             return (
                 f"{detail}. Another program is using that folder, often a browser or "
                 "terminal that was started from it. Close it (restarting the "
@@ -919,8 +929,7 @@ class UpdateChecker:
             ":restore_failed",
             'set "STEP=restore_failed"',
             'set "FAILPATH=%OLDDIR%"',
-            'echo [engram-update] could not restore; previous install left at "%OLDDIR%",'
-            ' new build at "%NEWDIR%" >> "%LOG%"',
+            'echo [engram-update] restore failed; kept "%OLDDIR%" and "%NEWDIR%" >> "%LOG%"',
             "goto relaunch_old",
             ":fail_no_swap",
             'echo [engram-update] could not move install aside; left untouched >> "%LOG%"',
@@ -935,10 +944,16 @@ class UpdateChecker:
             'echo result=failed>"%RESULT%"',
             'echo version=%VER%>>"%RESULT%"',
             'echo step=%STEP%>>"%RESULT%"',
+            # These two values come from outside the script (an install dir like
+            # `D:\R&D\engram`, a localized OS message), so they are written with delayed
+            # expansion: `!VAR!` expands after cmd has parsed `&`, `|`, `<`, `>` and `)`,
+            # so those characters land in the file instead of splitting the command.
             # Redirect first: a value ending in a digit would otherwise be read as a
-            # handle number (`...1>>file`) and silently drop out of the marker.
-            '>>"%RESULT%" echo path=%FAILPATH%',
-            '>>"%RESULT%" echo reason=%REASON%',
+            # handle number (`...1>>file`). `echo(` writes an empty value as `key=`.
+            "setlocal enabledelayedexpansion",
+            '>>"%RESULT%" echo(path=!FAILPATH!',
+            '>>"%RESULT%" echo(reason=!REASON!',
+            "endlocal",
             'start "" /D "%INSTALL%" "%EXE%" --updated',
             'echo [engram-update] done (rolled back) >> "%LOG%"',
             "endlocal",
@@ -954,7 +969,10 @@ class UpdateChecker:
             "set /a TRIES=0",
             ":retry_move_again",
             'move "%~1" "%~2" > "%MOVEOUT%" 2>&1',
-            "if not errorlevel 1 exit /b 0",
+            "if errorlevel 1 goto retry_move_busy",
+            'echo [engram-update] moved "%~1" to "%~2" >> "%LOG%"',
+            "exit /b 0",
+            ":retry_move_busy",
             'type "%MOVEOUT%" >> "%LOG%"',
             "set /a TRIES+=1",
             "if %TRIES% GEQ %MOVE_ATTEMPTS% goto retry_move_give_up",

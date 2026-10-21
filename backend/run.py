@@ -89,7 +89,10 @@ def _release_install_dir(*, frozen: bool) -> None:
     try:
         os.chdir(os.path.expanduser("~"))
     except OSError:
-        pass  # Best-effort: the update helper retries and reports a busy install dir
+        # Best-effort: the update helper retries and reports a busy install dir.
+        from loguru import logger
+
+        logger.debug("Could not move the working directory off the install dir", exc_info=True)
 
 
 def _schedule_browser_open(url: str, *, updated: bool) -> None:

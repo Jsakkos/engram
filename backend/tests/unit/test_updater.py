@@ -1576,9 +1576,14 @@ class TestSwapRetryAndDiagnosis:
     def test_failure_marker_names_path_and_reason(self):
         bat = self._bat()
         tail = bat[bat.index(":relaunch_old") :]
-        # Redirect-first so a reason ending in a digit can't be parsed as a handle number.
-        assert '>>"%RESULT%" echo path=%FAILPATH%' in tail
-        assert '>>"%RESULT%" echo reason=%REASON%' in tail
+        # Redirect-first so a reason ending in a digit can't be parsed as a handle number,
+        # and delayed expansion so a `&` in the value can't split the command.
+        block = 'setlocal enabledelayedexpansion\n>>"%RESULT%" echo(path=!FAILPATH!\n'
+        assert block + '>>"%RESULT%" echo(reason=!REASON!\nendlocal\n' in tail
+        assert "echo path=%FAILPATH%" not in bat and "echo reason=%REASON%" not in bat
+
+    def test_successful_moves_are_logged(self):
+        assert 'echo [engram-update] moved "%~1" to "%~2" >> "%LOG%"' in self._bat()
 
     def test_move_install_failure_names_the_install_dir(self):
         bat = self._bat()
@@ -1616,6 +1621,24 @@ class TestDescribeUpdateFailure:
         assert "D:\\engram" in msg
         assert "being used by another process" in msg
         assert "close" in msg.lower()  # tells the user what to do about it
+
+    def test_restore_failed_says_to_rename_the_old_dir_back(self):
+        msg = UpdateChecker._describe_update_failure(
+            "0.41.0", "restore_failed", "D:\\engram.old-0.41.0", "Access is denied."
+        )
+        assert "D:\\engram.old-0.41.0" in msg
+        assert "rename it back" in msg and ".old-0.41.0" in msg
+        assert "retry on the next check" not in msg  # nothing retries from this state
+
+    def test_reason_without_a_path_still_reaches_the_user(self):
+        msg = UpdateChecker._describe_update_failure(
+            "0.41.0", "wait_timeout", "", "Engram did not exit within 10s"
+        )
+        assert msg == (
+            "Update to 0.41.0 couldn't be applied automatically (step: wait_timeout): "
+            "Engram did not exit within 10s. It'll retry on the next check, or download "
+            "manually."
+        )
 
     def test_old_helper_marker_without_path_still_reads(self, tmp_path):
         """A marker written by an older helper (no path/reason) keeps the old wording."""
@@ -1661,6 +1684,19 @@ class TestSweepStaleSwapDirs:
         install = self._layout(tmp_path)
         UpdateChecker._sweep_stale_swap_dirs(install)
         assert (tmp_path / "engram.old-0.41.0").is_dir()
+
+    def test_skips_symlinks(self, tmp_path):
+        """A link named like a leftover must not lead rmtree into whatever it points at."""
+        install = self._layout(tmp_path)
+        target = tmp_path / "elsewhere"
+        (target / "keep").mkdir(parents=True)
+        link = tmp_path / "engram.new-link"
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlinks need extra privileges on this Windows host")
+        UpdateChecker._sweep_stale_swap_dirs(install)
+        assert link.is_symlink() and (target / "keep").is_dir()
 
     def test_missing_parent_is_a_noop(self, tmp_path):
         UpdateChecker._sweep_stale_swap_dirs(tmp_path / "nope" / "engram")
@@ -1717,7 +1753,7 @@ def test_windows_swap_retries_past_a_transient_holder(tmp_path):
     result = tmp_path / "update_result.txt"
 
     parent = subprocess.Popen([str(install / exe), "/c", "ping -n 60 127.0.0.1 >nul"])
-    holder = _t791_hold_cwd(install, 9)
+    holder = _t791_hold_cwd(install, 60)
     try:
         _t8_run_helper(
             UpdateChecker(),
@@ -1733,12 +1769,19 @@ def test_windows_swap_retries_past_a_transient_holder(tmp_path):
         )
         time.sleep(2)
         parent.terminate()
+        # Let go only once the helper has hit the lock, so the test can't pass by the
+        # holder exiting before the first rename.
+        hit = _t8_wait_for(
+            lambda: log.exists() and "is in use; retry" in log.read_text(errors="replace"),
+            timeout=60.0,
+        )
+        holder.terminate()
         ok = _t8_wait_for(lambda: result.exists(), timeout=60.0)
         log_text = log.read_text(errors="replace") if log.exists() else "<no log>"
+        assert hit, f"helper never hit the held install dir; helper log:\n{log_text}"
         assert ok, f"no result marker within 60s; helper log:\n{log_text}"
         text = result.read_text(errors="replace")
         assert "result=success" in text, f"{text}\n--- helper log ---\n{log_text}"
-        assert "is in use; retry" in log_text  # it really did hit the lock and retry
         assert (install / "VERSION.txt").read_text() == "NEW"
     finally:
         for proc in (parent, holder):
@@ -1748,13 +1791,16 @@ def test_windows_swap_retries_past_a_transient_holder(tmp_path):
 
 
 @windows_only
-def test_windows_swap_gives_up_on_a_persistent_holder_and_says_why(tmp_path):
+@pytest.mark.parametrize("parent_dir", ["app", "R&D (apps)"])
+def test_windows_swap_gives_up_on_a_persistent_holder_and_says_why(tmp_path, parent_dir):
     """The #791 failure: the holder never lets go. The install stays untouched, the
-    marker names the install dir and the OS reason, and no .new dir is left behind."""
+    marker names the install dir and the OS reason, and no .new dir is left behind.
+    The `&` and parens case pins that a path cmd would otherwise parse still reaches
+    the marker intact."""
     exe = "engram_t791b.exe"
     src = tmp_path / "stage" / "engram"
-    install = tmp_path / "app" / "engram"
-    new_dir = tmp_path / "app" / "engram.new-9.9.9"
+    install = tmp_path / parent_dir / "engram"
+    new_dir = tmp_path / parent_dir / "engram.new-9.9.9"
     _t8_make_build(src, exe, "NEW")
     _t8_make_build(install, exe, "OLD")
     log = tmp_path / "helper.log"
@@ -1768,7 +1814,7 @@ def test_windows_swap_gives_up_on_a_persistent_holder_and_says_why(tmp_path):
             src=src,
             install=install,
             new_dir=new_dir,
-            old_dir=tmp_path / "app" / "engram.old-9.9.9",
+            old_dir=tmp_path / parent_dir / "engram.old-9.9.9",
             log=log,
             result=result,
             exe=exe,
