@@ -8,22 +8,21 @@ All notable changes to Engram will be documented in this file.
 
 - Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
 
-### Fixed
+- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
 
-- Settings no longer throws away unsaved edits when you click outside it, and Escape now closes it. The close button, Escape and an outside click all go through one path: Settings closes at once when nothing has changed, and otherwise asks **Discard unsaved changes?** with **Keep editing** selected. The first-run setup wizard ignores Escape and outside clicks entirely. (#711)
-- The AI provider, API key and model fields in **Settings > Data Sharing > AI assistance** now show when either **AI-Powered Title Resolution** or **AI-Powered Episode Matching (TV)** is on. Before, a user who wanted only LLM episode matching could not reach them without also enabling title resolution. The episode-matching toggle now sits beside the title-resolution toggle, and the key hint names both features. (#546)
-- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
 ### Changed
 
 - **Force advance** now only appears beside Cancel and Eject once a job looks stuck, meaning it has made no progress for three minutes. The backend reports this as `looks_stuck` / `stalled_for_seconds` on the job (REST and WebSocket), taken from the same activity clock the stale-job watchdog uses, and the button's tooltip says how long the job has been idle. On a healthy job Force stays one click away in a **More actions** menu. (#718)
 
 - The dashboard footer no longer shows made-up telemetry (`UNIT 07`, `BUFFER NOMINAL`, `CPU IDLE`...) or a platform-based `DRIVE READY`. The drive label now reflects the optical drives Engram detects (`2 DRIVES`, `1 DRIVE · BUSY` while a disc is being read, `IMPORT ONLY` when there are none), and the scrolling band reports the real ASR device with whether transcription is running, jobs per phase, and discs awaiting review. (#720)
 
-### Added
-
-- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
-
 ### Fixed
+
+- Settings no longer throws away unsaved edits when you click outside it, and Escape now closes it. The close button, Escape and an outside click all go through one path: Settings closes at once when nothing has changed, and otherwise asks **Discard unsaved changes?** with **Keep editing** selected. The first-run setup wizard ignores Escape and outside clicks entirely. (#711)
+
+- The AI provider, API key and model fields in **Settings > Data Sharing > AI assistance** now show when either **AI-Powered Title Resolution** or **AI-Powered Episode Matching (TV)** is on. Before, a user who wanted only LLM episode matching could not reach them without also enabling title resolution. The episode-matching toggle now sits beside the title-resolution toggle, and the key hint names both features. (#546)
+
+- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
 
 - The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
 
