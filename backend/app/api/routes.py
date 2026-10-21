@@ -4707,6 +4707,13 @@ async def rematch_job(
             status_code=409,
             detail=f"Cannot re-match in state: {job.state.value}",
         )
+    # rerun_matching is TV episode matching; on a movie it would assign episode
+    # codes to feature tracks.
+    if job.content_type != ContentType.TV:
+        raise HTTPException(
+            status_code=409,
+            detail="Re-match applies only to TV discs",
+        )
 
     from app.services.job_manager import job_manager
 
