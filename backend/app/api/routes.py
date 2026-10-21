@@ -144,8 +144,24 @@ class JobResponse(BaseModel):
     # import from an MKV import (both carry drive_id "import"), and the one
     # that says whether a rip read the disc or the copy.
     source_spec: str | None = None
+    # Watchdog-derived stall signal (#718), computed per request from the job
+    # manager's activity clock. The WebSocket carries the same two keys via
+    # JobManager._broadcast_stall_changes, so REST and WS agree.
+    stalled_for_seconds: int | None = None
+    looks_stuck: bool = False
 
     model_config = {"from_attributes": True}
+
+
+def _job_response(job: DiscJob) -> JobResponse:
+    """Serialize a job with its live stall signal attached."""
+    from app.services.job_manager import job_manager
+
+    resp = JobResponse.model_validate(job)
+    stalled, stuck = job_manager.stall_state(job.id, job.state)
+    resp.stalled_for_seconds = stalled
+    resp.looks_stuck = stuck
+    return resp
 
 
 class TitleResponse(BaseModel):
@@ -280,6 +296,7 @@ class ConfigResponse(BaseModel):
 
     makemkv_path: str
     makemkv_key: str
+    makemkv_min_title_length: int
     staging_path: str
     library_movies_path: str
     library_tv_path: str
@@ -393,6 +410,8 @@ class ConfigUpdate(BaseModel):
 
     makemkv_path: str | None = None
     makemkv_key: str | None = None
+    # MakeMKV --minlength in seconds (#771); an hour is far past any real special.
+    makemkv_min_title_length: int | None = Field(default=None, ge=0, le=3600)
     staging_path: str | None = None
     library_movies_path: str | None = None
     library_tv_path: str | None = None
@@ -568,7 +587,7 @@ RECENT_TERMINAL_JOB_LIMIT = 10
 
 # Routes
 @router.get("/jobs", response_model=list[JobResponse])
-async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJob]:
+async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[JobResponse]:
     """List active disc jobs (excludes cleared/archived jobs).
 
     The dashboard is a recency window, but the cap applies to *finished* jobs
@@ -606,7 +625,64 @@ async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJo
         )
         .order_by(DiscJob.created_at.desc())
     )
-    return list(result.scalars().all())
+    return [_job_response(j) for j in result.scalars().all()]
+
+
+# Escape character for the History search LIKE patterns.
+_LIKE_ESCAPE = "\\"
+
+
+def _history_search_clause(q: str):
+    """Case-insensitive substring match across the text a user would search by.
+
+    Covers the volume label, detected and TMDB titles, the failure text, and
+    any title's matched episode code. ``%``, ``_`` and the escape character are
+    escaped so a query like ``100%`` is literal, not a wildcard.
+    """
+    escaped = q.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
+    escaped = escaped.replace("%", _LIKE_ESCAPE + "%").replace("_", _LIKE_ESCAPE + "_")
+    pattern = f"%{escaped}%"
+    episode_hit = (
+        select(DiscTitle.id)
+        .where(
+            DiscTitle.job_id == DiscJob.id,
+            DiscTitle.matched_episode.ilike(pattern, escape=_LIKE_ESCAPE),
+        )
+        .exists()
+    )
+    return or_(
+        DiscJob.volume_label.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.detected_title.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.tmdb_name.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.error_message.ilike(pattern, escape=_LIKE_ESCAPE),
+        episode_hit,
+    )
+
+
+def _history_filters(
+    state: JobState | None,
+    include_all_states: bool,
+    content_type: str | None,
+    q: str | None = None,
+) -> list:
+    """WHERE clauses defining the History job set.
+
+    The one definition shared by ``/jobs/history`` (the table) and
+    ``/jobs/stats`` (the tiles), so the two can never count different jobs.
+    Defaults to finished jobs (terminal states); an explicit ``state`` is
+    honoured for any state and ``include_all_states`` drops the state filter,
+    which is what keeps History the backstop for a long-parked review job.
+    """
+    clauses: list = []
+    if state is not None:
+        clauses.append(DiscJob.state == state)
+    elif not include_all_states:
+        clauses.append(DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
+    if content_type:
+        clauses.append(DiscJob.content_type == content_type)
+    if q and q.strip():
+        clauses.append(_history_search_clause(q.strip()))
+    return clauses
 
 
 @router.get("/jobs/history", response_model=list[HistoryJobResponse])
@@ -616,9 +692,13 @@ async def get_job_history(
     content_type: str | None = None,
     state: JobState | None = None,
     include_all_states: bool = False,
+    q: str | None = Query(None, max_length=200),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
     """Get job history with pagination and filtering.
+
+    ``q`` is a case-insensitive text search (label, titles, episode codes,
+    error text) applied before paging, so it spans every page.
 
     Defaults to finished jobs (completed/failed), which is what "history" means
     to a user. An explicit ``state`` is honoured for *any* state, and
@@ -626,14 +706,7 @@ async def get_job_history(
     history a guaranteed backstop: every job ever created is reachable from
     here, including a REVIEW_NEEDED job that has been parked for weeks.
     """
-    query = select(DiscJob)
-
-    if state is not None:
-        query = query.where(DiscJob.state == state)
-    elif not include_all_states:
-        query = query.where(DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
-    if content_type:
-        query = query.where(DiscJob.content_type == content_type)
+    query = select(DiscJob).where(*_history_filters(state, include_all_states, content_type, q))
 
     query = (
         query.order_by(DiscJob.completed_at.desc().nulls_last(), DiscJob.created_at.desc())
@@ -647,9 +720,20 @@ async def get_job_history(
 
 
 @router.get("/jobs/stats", response_model=StatsResponse)
-async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
-    """Get job analytics and statistics."""
-    all_jobs = await session.execute(select(DiscJob))
+async def get_job_stats(
+    content_type: str | None = None,
+    state: JobState | None = None,
+    include_all_states: bool = False,
+    q: str | None = Query(None, max_length=200),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Get job analytics for the same job set ``/jobs/history`` would list.
+
+    Takes the History filters so the summary tiles describe exactly the rows
+    the table shows (see ``_history_filters``), not every job ever created.
+    """
+    filters = _history_filters(state, include_all_states, content_type, q)
+    all_jobs = await session.execute(select(DiscJob).where(*filters))
     jobs = list(all_jobs.scalars().all())
 
     completed = [j for j in jobs if j.state == JobState.COMPLETED]
@@ -658,7 +742,11 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
     movie_jobs = [j for j in jobs if j.content_type == ContentType.MOVIE]
 
     # Total titles ripped
-    title_count_result = await session.execute(select(func.count(DiscTitle.id)))
+    title_count_result = await session.execute(
+        select(func.count(DiscTitle.id)).where(
+            DiscTitle.job_id.in_(select(DiscJob.id).where(*filters))
+        )
+    )
     total_titles = title_count_result.scalar() or 0
 
     # Avg processing time (for completed jobs with both timestamps)
@@ -686,7 +774,7 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
 
     # Recent 10 jobs
     recent_result = await session.execute(
-        select(DiscJob).order_by(DiscJob.created_at.desc()).limit(10)
+        select(DiscJob).where(*filters).order_by(DiscJob.created_at.desc()).limit(10)
     )
     recent = recent_result.scalars().all()
 
@@ -725,9 +813,9 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job(job: DiscJob = Depends(get_job_or_404)) -> DiscJob:
+async def get_job(job: DiscJob = Depends(get_job_or_404)) -> JobResponse:
     """Get a specific job by ID."""
-    return job
+    return _job_response(job)
 
 
 @router.get("/jobs/{job_id}/titles", response_model=list[TitleResponse])
@@ -1882,6 +1970,7 @@ async def get_config() -> ConfigResponse:
     return ConfigResponse(
         makemkv_path=config.makemkv_path,
         makemkv_key="***" if config.makemkv_key else "",  # Redacted
+        makemkv_min_title_length=config.makemkv_min_title_length,
         staging_path=config.staging_path,
         library_movies_path=config.library_movies_path,
         library_tv_path=config.library_tv_path,
@@ -3737,6 +3826,7 @@ async def _collect_environment() -> dict:
             "extras_policy": config.extras_policy,
             "always_review": config.always_review,
             "discdb_enabled": config.discdb_enabled,
+            "makemkv_min_title_length": config.makemkv_min_title_length,
         },
     }
 
