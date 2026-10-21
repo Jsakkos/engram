@@ -790,6 +790,6 @@ describe('ConfigWizard: AI provider and key are reachable per feature (#546)', (
 
     it('names both consumers in the key hint', async () => {
         await openAi({ ai_episode_matching_enabled: true });
-        expect(await screen.findByText(/title resolution and episode matching/i)).toBeInTheDocument();
+        expect(await screen.findByText(/title resolution.*episode matching/i)).toBeInTheDocument();
     });
 });

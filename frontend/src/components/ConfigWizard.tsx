@@ -371,6 +371,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         }
     }, [config.allowLanAccess, fetchNetworkInfo]);
 
+    // Either AI feature uses the one provider/key/model below, so the connection
+    // fields show when at least one of them is on (#546).
+    const aiProviderNeeded = config.aiIdentificationEnabled || config.aiEpisodeMatchingEnabled;
+
     // Populate the model dropdown whenever a local provider or its endpoint
     // changes. The fetch doubles as a reachability check, which is why the local
     // path does not need a separate Test button to tell the user their server is
@@ -383,7 +387,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // `cancelled` flag then guards the state update for a reply that lands after
     // the inputs changed again.
     useEffect(() => {
-        if (!config.aiIdentificationEnabled || !isLocalProvider(config.aiProvider)) {
+        if (!aiProviderNeeded || !isLocalProvider(config.aiProvider)) {
             setLocalModels({models: [], error: null});
             return;
         }
@@ -398,7 +402,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [config.aiIdentificationEnabled, config.aiProvider, config.aiLocalBaseUrl]);
+    }, [aiProviderNeeded, config.aiProvider, config.aiLocalBaseUrl]);
 
     // Load existing config on mount
     useEffect(() => {
@@ -1468,13 +1472,29 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 <span className="checkbox-text">
                                     <strong>AI-Powered Title Resolution</strong>
                                     <span className="checkbox-hint">
-                                        When TMDB lookup fails (obscure titles, abbreviations), use an LLM to identify the disc. Requires an API key below.
+                                        When TMDB lookup fails (obscure titles, abbreviations), use an LLM to identify the disc. Uses the provider and API key below.
                                     </span>
                                 </span>
                             </label>
                         </div>
 
-                        {config.aiIdentificationEnabled && (
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.aiEpisodeMatchingEnabled}
+                                    onChange={(e) => handleInputChange('aiEpisodeMatchingEnabled', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>AI-Powered Episode Matching (TV)</strong>
+                                    <span className="checkbox-hint">
+                                        When episode matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {aiProviderNeeded && (
                             <>
                                 <div className="wizard-grid">
                                 <div className="form-group">
@@ -1520,7 +1540,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         }}
                                     />
                                     <span className="form-hint">
-                                        API key for {providerLabel}. Used only when TMDB lookup fails.
+                                        API key for {providerLabel}. Used by title resolution (when TMDB lookup fails) and by episode matching.
                                     </span>
                                 </div>
                                 )}
@@ -1626,21 +1646,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         </span>
                                     </div>
                                 )}
-                                </div>
-                                <div className="form-group checkbox-group">
-                                    <label className="checkbox-label">
-                                        <input
-                                            type="checkbox"
-                                            checked={config.aiEpisodeMatchingEnabled}
-                                            onChange={(e) => handleInputChange('aiEpisodeMatchingEnabled', e.target.checked)}
-                                        />
-                                        <span className="checkbox-text">
-                                            <strong>AI-Powered Episode Matching (TV)</strong>
-                                            <span className="checkbox-hint">
-                                                When episode matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
-                                            </span>
-                                        </span>
-                                    </label>
                                 </div>
                             </>
                         )}

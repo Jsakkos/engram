@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - Settings no longer throws away unsaved edits when you click outside it, and Escape now closes it. The close button, Escape and an outside click all go through one path: Settings closes at once when nothing has changed, and otherwise asks **Discard unsaved changes?** with **Keep editing** selected. The first-run setup wizard ignores Escape and outside clicks entirely. (#711)
+- The AI provider, API key and model fields in **Settings > Data Sharing > AI assistance** now show when either **AI-Powered Title Resolution** or **AI-Powered Episode Matching (TV)** is on. Before, a user who wanted only LLM episode matching could not reach them without also enabling title resolution. The episode-matching toggle now sits beside the title-resolution toggle, and the key hint names both features. (#546)
 
 ## [0.41.0] - 2026-10-20
 
