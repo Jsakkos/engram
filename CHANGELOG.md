@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Re-identifying or naming a TV disc whose episodes were all filed no longer starts a second rip. Engram decided whether the disc had been ripped by looking for files in staging, which is empty once everything is filed, so the job went back to ripping a disc that had already left the drive. It now also checks the disc's tracks, and re-matches instead: filed episodes stay where they are, as with any re-match. (#774)
+
+- Force on a job stuck in Matching now clears a track left queued with no match running behind it. Force used to skip queued tracks, since they are normally waiting for a free match slot, so a track whose match had died kept the job in Matching for good. Tracks still waiting for a slot, or held until you answer a name or show question, are left alone, and the automatic stall check is unchanged. (#776)
+
+- **Re-match all** is refused for movie discs instead of running TV episode matching on the movie's tracks. The review page only offers it for TV, so this affected direct API calls. (#775)
+
 ## [0.41.0] - 2026-10-20
 
 _Highlights: recover failed jobs from staging, Play-All tracks detected from the disc's own structure, import of MP4/TS files, and an external player for movie review._
