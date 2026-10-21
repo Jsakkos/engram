@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { AlertTriangle, Trash2, LayoutGrid, List, Info, X } from "lucide-react";
 import { DiscCard, type DiscData } from "./components/DiscCard";
 import { CompactList } from "./components/CompactList";
+import { withoutIdentityReview } from "../types/adapters";
 import { useJobManagement } from "./hooks/useJobManagement";
 import { useDiscFilters } from "./hooks/useDiscFilters";
 import { useMediaQuery } from "./hooks/useMediaQuery";
@@ -214,7 +215,12 @@ function MainDashboard() {
   }, [isConnected]);
 
   // Disc filtering and transformation
-  const { filter, setFilter, discsData, filteredDiscs, activeCount, completedCount, failedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
+  const { filter, setFilter, discsData, filteredDiscs: allFilteredDiscs, activeCount, completedCount, failedCount } = useDiscFilters(jobs, titlesMap, DEV_MODE);
+  // Heuristic-only mode can never resolve a tmdb_id, so don't gate Review on one.
+  const filteredDiscs = useMemo(
+    () => (tmdbConfigured ? allFilteredDiscs : withoutIdentityReview(allFilteredDiscs)),
+    [allFilteredDiscs, tmdbConfigured],
+  );
 
   // Browser notifications for job state changes
   useNotifications(jobs);
