@@ -793,20 +793,25 @@ class JobManager:
                     )
                     return
 
-                staging_dir = (
-                    Path(db_config.staging_path).expanduser()
-                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                )
-
                 job = DiscJob(
                     drive_id=drive_letter,
                     volume_label=volume_label,
-                    staging_path=str(staging_dir),
                     state=JobState.IDENTIFYING,
                     content_hash=new_hash,
                 )
 
                 session.add(job)
+                # The staging directory carries the job id, assigned by this flush.
+                # A timestamp alone is per-second: two mounted ISOs announced at
+                # startup both got the same directory, and each job then matched
+                # and filed the other disc's rips (#768). The per-drive lock and
+                # cooldown above cannot help, because the two discs are in
+                # different drives.
+                await session.flush()
+                job.staging_path = str(
+                    Path(db_config.staging_path).expanduser()
+                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{job.id}"
+                )
                 await session.commit()
                 await session.refresh(job)
 
@@ -2010,7 +2015,12 @@ class JobManager:
             await self._dispatch_title_match(job_id, title_id, file_path)
 
     async def reconcile_and_advance(
-        self, job_id: int, *, reason: str = "forced", failure_message: str | None = None
+        self,
+        job_id: int,
+        *,
+        reason: str = "forced",
+        failure_message: str | None = None,
+        user_initiated: bool = False,
     ) -> bool:
         """Force a stuck job to its next resting state (watchdog + manual advance).
 
@@ -2023,6 +2033,11 @@ class JobManager:
         QUEUED is deliberately NOT in the active set below: a queued track is draining
         the global match semaphore, not stuck, so the watchdog must never force it to
         review (a genuinely hung *active* match is caught by the per-track timeout).
+        ``user_initiated`` (the Force button) adds one exception: a QUEUED title
+        with no match task behind it (``MatchingCoordinator.has_live_match``) is
+        orphaned, not draining, and nothing else will ever move it (#776). Titles
+        parked QUEUED behind an unanswered identity prompt have no task by design
+        and are still left for the answer to release.
 
         ``reason`` tags the affected titles' ``match_details`` (audit trail).
         ``failure_message`` is the *user-facing* wording for the job as a whole, used
@@ -2050,9 +2065,15 @@ class JobManager:
 
             result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
             staging = Path(job.staging_path) if job.staging_path else None
+            reap_orphaned_queued = user_initiated and job.identity_prompt_json is None
 
             for title in result.scalars().all():
-                if not title.is_selected or title.state not in active:
+                orphaned = (
+                    reap_orphaned_queued
+                    and title.state == TitleState.QUEUED
+                    and not self._matching.has_live_match(title.id)
+                )
+                if not title.is_selected or (title.state not in active and not orphaned):
                     continue
                 file_path = self._find_title_file(title, staging)
                 if file_path is not None:
