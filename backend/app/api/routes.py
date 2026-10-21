@@ -144,8 +144,24 @@ class JobResponse(BaseModel):
     # import from an MKV import (both carry drive_id "import"), and the one
     # that says whether a rip read the disc or the copy.
     source_spec: str | None = None
+    # Watchdog-derived stall signal (#718), computed per request from the job
+    # manager's activity clock. The WebSocket carries the same two keys via
+    # JobManager._broadcast_stall_changes, so REST and WS agree.
+    stalled_for_seconds: int | None = None
+    looks_stuck: bool = False
 
     model_config = {"from_attributes": True}
+
+
+def _job_response(job: DiscJob) -> JobResponse:
+    """Serialize a job with its live stall signal attached."""
+    from app.services.job_manager import job_manager
+
+    resp = JobResponse.model_validate(job)
+    stalled, stuck = job_manager.stall_state(job.id, job.state)
+    resp.stalled_for_seconds = stalled
+    resp.looks_stuck = stuck
+    return resp
 
 
 class TitleResponse(BaseModel):
@@ -568,7 +584,7 @@ RECENT_TERMINAL_JOB_LIMIT = 10
 
 # Routes
 @router.get("/jobs", response_model=list[JobResponse])
-async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJob]:
+async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[JobResponse]:
     """List active disc jobs (excludes cleared/archived jobs).
 
     The dashboard is a recency window, but the cap applies to *finished* jobs
@@ -606,7 +622,7 @@ async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJo
         )
         .order_by(DiscJob.created_at.desc())
     )
-    return list(result.scalars().all())
+    return [_job_response(j) for j in result.scalars().all()]
 
 
 # Escape character for the History search LIKE patterns.
@@ -794,9 +810,9 @@ async def get_job_stats(
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job(job: DiscJob = Depends(get_job_or_404)) -> DiscJob:
+async def get_job(job: DiscJob = Depends(get_job_or_404)) -> JobResponse:
     """Get a specific job by ID."""
-    return job
+    return _job_response(job)
 
 
 @router.get("/jobs/{job_id}/titles", response_model=list[TitleResponse])

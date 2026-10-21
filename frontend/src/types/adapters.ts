@@ -173,6 +173,8 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     tmdbDegradedReason: job.tmdb_degraded_reason || undefined,
     backupStatus: job.backup_status ?? undefined,
     backupStatusReason: job.backup_status_reason ?? undefined,
+    looksStuck: job.looks_stuck ?? false,
+    stalledForSeconds: job.stalled_for_seconds ?? null,
     identityReview,
     identitySource: job.classification_source,
     tmdbId: job.tmdb_id ?? null,
