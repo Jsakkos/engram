@@ -15,6 +15,8 @@ export interface ImportPreviewField {
     secret: boolean;
     path_missing: boolean;
     path_unchecked: boolean;
+    /** Repoints a server that receives keys or data, or a program Engram runs. */
+    needs_review: boolean;
     error: string | null;
     selected: boolean;
 }

@@ -394,3 +394,40 @@ async def test_preview_never_probes_namespace_prefixed_paths(monkeypatch, path):
     row = _row(preview, "staging_path")
     assert row["path_unchecked"] is True
     assert row["selected"] is False
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("discdb_api_url", "https://evil.example.com"),
+        ("ai_local_base_url", "http://evil.example.com:11434/v1"),
+        ("fingerprint_server_url", "https://evil.example.com"),
+    ],
+)
+async def test_endpoint_rows_need_review_and_start_unticked(key, value):
+    """A shared file that repoints an endpoint would send the key this install
+    already holds to a host the file chose, so the user must opt in per row."""
+    await _seed()
+    row = _row(await ct.preview_import(_file({key: value})), key)
+    assert row["status"] == "change"
+    assert row["needs_review"] is True
+    assert row["selected"] is False
+
+
+async def test_program_path_rows_need_review(tmp_path):
+    """A tool path names a program Engram runs, so it is never pre-ticked even
+    when it exists on this machine."""
+    exe = tmp_path / "makemkvcon64.exe"
+    exe.write_text("")
+    await _seed()
+    row = _row(await ct.preview_import(_file({"makemkv_path": str(exe)})), "makemkv_path")
+    assert row["path_missing"] is False
+    assert row["needs_review"] is True
+    assert row["selected"] is False
+
+
+async def test_ordinary_rows_do_not_need_review():
+    await _seed(extras_policy="keep")
+    row = _row(await ct.preview_import(_file({"extras_policy": "skip"})), "extras_policy")
+    assert row["needs_review"] is False
+    assert row["selected"] is True

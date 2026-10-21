@@ -69,7 +69,7 @@ describe('SettingsTransferSection', () => {
                 fields: [
                     {
                         key: 'extras_policy', status: 'change', current: 'keep', incoming: 'skip',
-                        secret: false, path_missing: false, path_unchecked: false, error: null, selected: true,
+                        secret: false, path_missing: false, path_unchecked: false, needs_review: false, error: null, selected: true,
                     },
                 ],
                 unknown: [],

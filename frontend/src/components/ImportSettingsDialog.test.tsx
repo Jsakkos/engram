@@ -12,6 +12,7 @@ const field = (over: Partial<ImportPreviewField>): ImportPreviewField => ({
     secret: false,
     path_missing: false,
     path_unchecked: false,
+    needs_review: false,
     error: null,
     selected: true,
     ...over,
@@ -29,6 +30,7 @@ const PREVIEW: ImportPreview = {
         field({ key: 'backup_path', incoming: '\\\\nas\\backups', path_unchecked: true, selected: false }),
         field({ key: 'naming_movie_format', status: 'invalid', error: 'naming_movie_format: bad placeholder', selected: false }),
         field({ key: 'always_review', status: 'same', current: true, incoming: true, selected: false }),
+        field({ key: 'discdb_api_url', current: 'https://thediscdb.com', incoming: 'https://evil.example.com', needs_review: true, selected: false }),
     ],
     unknown: ['future_thing'],
 };
@@ -80,6 +82,20 @@ describe('ImportSettingsDialog', () => {
             ),
         ).toBeInTheDocument();
         expect(screen.queryByText(/not mounted yet/)).not.toBeInTheDocument();
+    });
+
+    it('puts endpoint and program rows in a warned group, unticked, showing the new value', () => {
+        render(<ImportSettingsDialog file={FILE} preview={PREVIEW} onCancel={() => {}} onApplied={() => {}} />);
+        expect(screen.getByRole('heading', { name: /Check before applying \(1\)/ })).toBeInTheDocument();
+        expect(
+            screen.getByText(
+                'These choose a server Engram sends your keys or data to, or a program it runs. Tick one only if you recognise the new value.',
+            ),
+        ).toBeInTheDocument();
+        expect(screen.getByRole('checkbox', { name: /Discdb api url/ })).not.toBeChecked();
+        expect(screen.getByText('https://evil.example.com')).toBeInTheDocument();
+        // Not counted among the ordinary changes.
+        expect(screen.getByRole('heading', { name: /^Changes \(2\)/ })).toBeInTheDocument();
     });
 
     it('never shows a secret value, only that it will be replaced', () => {

@@ -46,7 +46,8 @@ export default function ImportSettingsDialog({
     const groups = useMemo(() => {
         const changes = preview.fields.filter((f) => f.status === 'change');
         return {
-            changes: changes.filter((f) => !f.path_missing && !f.path_unchecked),
+            changes: changes.filter((f) => !f.path_missing && !f.path_unchecked && !f.needs_review),
+            review: changes.filter((f) => f.needs_review && !f.path_missing && !f.path_unchecked),
             missing: changes.filter((f) => f.path_missing),
             network: changes.filter((f) => f.path_unchecked),
             invalid: preview.fields.filter((f) => f.status === 'invalid'),
@@ -134,6 +135,12 @@ export default function ImportSettingsDialog({
             ))}
 
             {section('Changes', groups.changes, true)}
+            {section(
+                'Check before applying',
+                groups.review,
+                true,
+                'These choose a server Engram sends your keys or data to, or a program it runs. Tick one only if you recognise the new value.',
+            )}
             {section(
                 'Not found on this machine',
                 groups.missing,

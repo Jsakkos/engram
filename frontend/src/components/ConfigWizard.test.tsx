@@ -683,7 +683,7 @@ describe('ConfigWizard: settings export/import (#731)', () => {
                         schema_version: 1, engram_version: '0.41.0', includes_secrets: false, warnings: [], unknown: [],
                         fields: [{
                             key: 'library_tv_path', status: 'change', current: '/tv', incoming: '/imported/tv',
-                            secret: false, path_missing: false, path_unchecked: false, error: null, selected: true,
+                            secret: false, path_missing: false, path_unchecked: false, needs_review: false, error: null, selected: true,
                         }],
                     };
                 if (url === '/api/config/import/apply') {

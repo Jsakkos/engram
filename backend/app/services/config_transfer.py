@@ -29,6 +29,7 @@ __all__ = [
     "MAX_IMPORT_BYTES",
     "NULLABLE_FIELDS",
     "PATH_FIELDS",
+    "REVIEW_FIELDS",
     "SCHEMA_VERSION",
     "SECRET_FIELDS",
     "ImportRejected",
@@ -64,6 +65,21 @@ PATH_FIELDS = frozenset(
         "backup_path",
         "discdb_export_path",
         "import_watch_path",
+        "makemkv_path",
+        "ffmpeg_path",
+        "fpcalc_path",
+    }
+)
+
+# Settings that choose a server Engram sends keys or data to, or a program it
+# runs. A shared file that changes one would pair this install's stored key
+# with a host the file picked, or swap in another executable, so these rows
+# are never pre-ticked: the user opts in to each after seeing the new value.
+REVIEW_FIELDS = frozenset(
+    {
+        "discdb_api_url",
+        "ai_local_base_url",
+        "fingerprint_server_url",
         "makemkv_path",
         "ffmpeg_path",
         "fpcalc_path",
@@ -225,8 +241,12 @@ async def preview_import(data: object) -> dict:
                 "secret": secret,
                 "path_missing": path_missing,
                 "path_unchecked": unchecked and not error,
+                "needs_review": key in REVIEW_FIELDS,
                 "error": error,
-                "selected": status == "change" and not path_missing and not unchecked,
+                "selected": status == "change"
+                and not path_missing
+                and not unchecked
+                and key not in REVIEW_FIELDS,
             }
         )
 

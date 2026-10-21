@@ -270,5 +270,10 @@ Made after an automated security review of the first backend commits, and during
 - **Network-path guard widened after the final review**: besides UNC, any value rooted in a
   backslash (the NT namespace and device paths, which reach the network with a single
   leading separator) and, on Windows, any value rooted in `/` is left unchecked.
+- **Endpoint and program rows are never pre-ticked** (`REVIEW_FIELDS`: `discdb_api_url`,
+  `ai_local_base_url`, `fingerprint_server_url`, `makemkv_path`, `ffmpeg_path`, `fpcalc_path`).
+  A shared file that repoints one would pair this install's stored key with a host the file
+  chose, or swap in another executable. They appear under "Check before applying" with the new
+  value shown, and the user opts in per row.
 - The "Not found on this machine" hint no longer suggests ticking a not-yet-mounted share:
   saving runs `ensure_paths_exist`, which would create that folder on the local disk.
