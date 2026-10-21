@@ -770,7 +770,7 @@ class TestExtractAudioChunkNoAudioStream:
         from app.matcher.episode_identification import NoAudioStreamError
 
         source = tmp_path / "C1_t06.mkv"
-        subprocess.run(
+        made = subprocess.run(
             [
                 "ffmpeg",
                 "-hide_banner",
@@ -787,9 +787,13 @@ class TestExtractAudioChunkNoAudioStream:
                 "-y",
                 str(source),
             ],
-            check=True,
             capture_output=True,
+            text=True,
         )
+        if made.returncode != 0:
+            # CI restores ffmpeg from an apt cache that can leave it on PATH but
+            # unable to start (exit 127, missing shared libraries).
+            pytest.skip(f"ffmpeg present but unusable here (exit {made.returncode})")
 
         matcher = self._matcher(tmp_path)
         with pytest.raises(NoAudioStreamError):
