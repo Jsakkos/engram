@@ -103,6 +103,28 @@ _REVIEW_REASON_KEYS = ("error", "message", "forced_review")
 # auto-modal) — same UX as that established path.
 _FALLBACK_IDENTITY_REVIEW_REASON = NO_TITLE_REVIEW_REASON
 
+
+def _is_policy_skipped_extra(title: DiscTitle) -> bool:
+    """True when extras_policy "skip" discarded this movie extra (#773)."""
+    if not (title.is_extra and title.state == TitleState.COMPLETED and title.match_details):
+        return False
+    try:
+        details = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return (
+        isinstance(details, dict)
+        and details.get("auto_sorted") == "extras"
+        and details.get("action") == "skipped"
+    )
+
+
+# A movie disc held under extras_policy "ask" (#773). The movie review page keys
+# its notice on the extras in REVIEW, not on this wording.
+MOVIE_EXTRAS_REVIEW_REASON = (
+    "Bonus tracks found. Keep or discard each extra, then select the feature."
+)
+
 # Job-level failure wording that carries no diagnostic value on its own. A
 # force-advance may replace one of these with the specific reason it knows
 # (see _stamp_generic_failure_reason); anything else is left alone. "Cancelled
@@ -4357,6 +4379,12 @@ class JobManager:
                 _selected = ripped_titles[0]
             _edition = _selected.edition if _selected else None
             _selected_id = _selected.id if _selected else None
+            # Extras discarded under extras_policy "skip" carry the policy's own
+            # marker (`_apply_movie_extras_policy`); their rips stay in staging
+            # rather than being swept into Extras/ by the organizer's folder scan
+            # (#773). The marker, not COMPLETED, is the signal: an extra left
+            # COMPLETED by an earlier pass is no skip decision.
+            _move_extras = not any(_is_policy_skipped_extra(t) for t in ripped_titles)
             # A choice already recorded on the title wins; otherwise the configured
             # default applies. "ask" (the default default) parks a conflict in review.
             _conflict = await _movie_conflict_strategy(
@@ -4389,6 +4417,7 @@ class JobManager:
                 edition=_edition,
                 already_clean=_already_clean,
                 conflict_resolution=_conflict,
+                move_extras=_move_extras,
             )
         else:
             organize_result = await asyncio.to_thread(
@@ -4397,6 +4426,7 @@ class JobManager:
                 detected_title or volume_label,
                 _tmdb_year,
                 _lib_path,
+                move_extras=_move_extras,
                 conflict_resolution=_conflict,
                 tmdb_id=_tmdb_id,
                 edition=_edition,
@@ -4573,12 +4603,19 @@ class JobManager:
         genuinely competing features (alternate cuts / obfuscation playlists)
         require a review.
 
+        The extras then follow ``extras_policy`` (#773): "keep" leaves them for the
+        organizer's ``Extras/``, "skip" completes them unorganized, and "ask"
+        parks the disc in review with each extra awaiting a keep/discard choice.
+
         Returns True when the job was sent to REVIEW_NEEDED (caller should stop).
         """
+        from app.services.config_service import get_config
+
         # job_id reaches this method from the /jobs/{job_id}/... review path param
         # (apply_review -> _run_ripping), so it is user-provided — sanitize before
         # logging to prevent CR/LF log forging (py/log-injection).
         safe_job = sanitize_log_value(job_id)
+        extras_policy = (await get_config()).extras_policy
         discdb_maps = self._matching.get_discdb_mappings(job_id)
         main_movie_idx = next((m.index for m in discdb_maps if m.title_type == "MainMovie"), None)
         if main_movie_idx is not None:
@@ -4591,7 +4628,10 @@ class JobManager:
                 f"Job {safe_job}: TheDiscDB auto-selected MainMovie "
                 f"title index {main_movie_idx}, skipping review"
             )
-            return False
+            extras = [dt for dt in ripped_titles if dt.is_extra]
+            return await self._apply_movie_extras_policy(
+                job, job_id, extras, extras_policy, session, needs_review=False
+            )
 
         decision = await self._resolve_movie_feature(job, ripped_titles)
 
@@ -4603,6 +4643,12 @@ class JobManager:
                 dt.is_selected = False
                 session.add(dt)
         await session.commit()
+
+        extras = [dt for dt in ripped_titles if dt.title_index in decision.extra_indices]
+        if await self._apply_movie_extras_policy(
+            job, job_id, extras, extras_policy, session, needs_review=decision.needs_review
+        ):
+            return True
 
         if decision.needs_review:
             reason = (
@@ -4624,6 +4670,62 @@ class JobManager:
             f"tagged {decision.extra_indices} as extras (no review)."
         )
         return False
+
+    async def _apply_movie_extras_policy(
+        self,
+        job: DiscJob,
+        job_id: int,
+        extras: list[DiscTitle],
+        extras_policy: str,
+        session,
+        *,
+        needs_review: bool,
+    ) -> bool:
+        """Settle a movie disc's non-feature titles per ``extras_policy`` (#773).
+
+        Mirrors ``MatchingCoordinator._handle_extras`` for TV: "skip" completes an
+        extra without organizing it (the rip stays in staging, like a skipped TV
+        extra), "ask" holds it in REVIEW so the reviewer keeps or discards it, and
+        "keep" leaves it for the organizer to file under ``Extras/``. Only titles
+        already ruled out as the feature reach here, so no policy can drop a cut.
+
+        Returns True when this parked the job in review itself (an "ask" disc whose
+        feature was otherwise settled). A disc that already needs a version pick
+        is parked by the caller with its own reason.
+        """
+        if extras_policy not in ("skip", "ask") or not extras:
+            return False
+
+        skip = extras_policy == "skip"
+        state = TitleState.COMPLETED if skip else TitleState.REVIEW
+        marker = {
+            "auto_sorted": "extras",
+            "action": "skipped" if skip else "review",
+            "reason": "Not the main feature",
+        }
+        for dt in extras:
+            dt.state = state
+            dt.is_extra = True
+            # Merged, not replaced, so earlier context (e.g. TheDiscDB's) survives.
+            dt.match_details = _merge_match_details(dt.match_details, marker)
+            session.add(dt)
+        await session.commit()
+        for dt in extras:
+            await ws_manager.broadcast_title_update(
+                job_id, dt.id, state.value, is_extra=True, match_details=dt.match_details
+            )
+        safe_job = sanitize_log_value(job_id)
+        logger.info(
+            f"Job {safe_job}: extras policy '{extras_policy}' applied to "
+            f"{len(extras)} non-feature title(s) {[dt.title_index for dt in extras]}"
+        )
+
+        if skip or needs_review:
+            return False
+        reason = MOVIE_EXTRAS_REVIEW_REASON
+        await state_machine.transition_to_review(job, session, reason=reason, broadcast=False)
+        await ws_manager.broadcast_job_update(job_id, JobState.REVIEW_NEEDED.value, error=reason)
+        return True
 
     async def _resolve_movie_feature(self, job: DiscJob, ripped_titles: list[DiscTitle]):
         """Decide which ripped title is the movie's main feature.
