@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Save, Package } from 'lucide-react';
+import { Save, Package, Keyboard } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
@@ -20,6 +20,9 @@ import { Inspector } from './ReviewQueue/Inspector';
 import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
 import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dismissTvdbSuggestion, submitReviewBatch, rematchTitle, reIdentifyJob } from '../api/client';
 import { IdentityGate } from './ReviewQueue/IdentityGate';
+import { ShortcutsOverlay } from './ReviewQueue/ShortcutsOverlay';
+import { useReviewShortcuts } from './ReviewQueue/useReviewShortcuts';
+import type { ReviewShortcut } from './ReviewQueue/keymap';
 import { isIdentityUnresolved } from './ReviewQueue/identity';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
 import { canStartRip, startRipErrorMessage } from './ReviewQueue/startRip';
@@ -118,12 +121,14 @@ function HeaderButton({
     onClick,
     disabled,
     icon,
+    ariaKeyShortcuts,
     children,
 }: {
     color: string;
     onClick: () => void;
     disabled?: boolean;
     icon?: ReactNode;
+    ariaKeyShortcuts?: string;
     children: ReactNode;
 }) {
     const base: CSSProperties = {
@@ -149,6 +154,7 @@ function HeaderButton({
         <button
             onClick={onClick}
             disabled={disabled}
+            aria-keyshortcuts={ariaKeyShortcuts}
             style={base}
             onMouseEnter={(e) => {
                 if (disabled) return;
@@ -192,6 +198,10 @@ function ReviewQueue() {
     // step is never skipped on a slow or failed config fetch.
     const [tmdbConfigured, setTmdbConfigured] = useState<boolean | null>(null);
     const [identifyError, setIdentifyError] = useState<string | null>(null);
+    const [showShortcuts, setShowShortcuts] = useState(false);
+    // Set when a shortcut moved the selection, so focus follows it to the row
+    // (a click already has focus where it needs to be).
+    const focusRowRef = useRef(false);
 
     // The show is not established, so episode assignment would target a roster
     // nobody has chosen (#715). Held in a ref too so the websocket listener
@@ -818,6 +828,45 @@ function ReviewQueue() {
 
     const assignedCount = Object.keys(selectedEpisodes).length;
 
+    // --- Keyboard shortcuts (#716) ---
+    // Registered before the early returns below so hook order is stable; only
+    // live on the TV inspector layout, and not behind the identity step.
+    useReviewShortcuts(!!job && job.content_type !== 'movie' && !identityGated, (shortcut: ReviewShortcut) => {
+        switch (shortcut.type) {
+            case 'help':
+                setShowShortcuts((open) => !open);
+                return;
+            case 'move': {
+                if (activeTitles.length === 0) return;
+                const at = activeTitles.findIndex((t) => t.id === selectedTitle?.id);
+                const next = Math.min(activeTitles.length - 1, Math.max(0, (at < 0 ? 0 : at) + shortcut.delta));
+                focusRowRef.current = true;
+                setSelectedTitleId(activeTitles[next].id);
+                return;
+            }
+            case 'accept': {
+                const pick = candidates[shortcut.rank - 1];
+                if (selectedTitle && pick) handleEpisodeChange(selectedTitle.id, pick.episodeCode);
+                return;
+            }
+            case 'extra':
+                if (selectedTitle) handleTitleAction(selectedTitle.id, 'extra');
+                return;
+            case 'skip':
+                if (selectedTitle) handleTitleAction(selectedTitle.id, 'skip');
+                return;
+            case 'focusPicker':
+                document.querySelector<HTMLElement>('[data-review-picker]')?.focus();
+                return;
+        }
+    });
+
+    useEffect(() => {
+        if (!focusRowRef.current || selectedTitleId === null) return;
+        focusRowRef.current = false;
+        document.querySelector<HTMLElement>(`[data-title-row="${selectedTitleId}"]`)?.focus();
+    }, [selectedTitleId]);
+
     // --- Render ---
 
     if (isLoading) {
@@ -1009,6 +1058,14 @@ function ReviewQueue() {
                 maxWidth={sv.layoutMaxWidth}
                 right={identityGated ? undefined : (
                     <>
+                        <HeaderButton
+                            color={sv.inkDim}
+                            onClick={() => setShowShortcuts(true)}
+                            icon={<Keyboard size={12} />}
+                            ariaKeyShortcuts="?"
+                        >
+                            Keyboard shortcuts (?)
+                        </HeaderButton>
                         {canStartRip(job, titles) && (
                             <HeaderButton
                                 color={sv.cyan}
@@ -1389,6 +1446,7 @@ function ReviewQueue() {
                 </div>
                 </>)}
             </div>
+            {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
         </SvAtmosphere>
     );
 }
