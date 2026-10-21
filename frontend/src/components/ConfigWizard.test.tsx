@@ -650,3 +650,205 @@ describe('ConfigWizard: TheTVDB key copy', () => {
         expect(screen.getByRole('link', { name: 'Episode data: TheTVDB' })).toBeInTheDocument();
     });
 });
+
+describe('ConfigWizard: closing with unsaved edits (#711)', () => {
+    async function openSettings(isOnboarding = false) {
+        const onClose = vi.fn();
+        const utils = render(<ConfigWizard onClose={onClose} onComplete={vi.fn()} isOnboarding={isOnboarding} />);
+        const staging = await screen.findByLabelText('Staging Directory');
+        // Wait for the loaded config to land so the baseline is the server value.
+        await waitFor(() => expect(staging).toHaveValue('/staging'));
+        return { onClose, staging, ...utils };
+    }
+    const backdrop = () => screen.getByRole('dialog', { name: /settings|setup wizard/i });
+
+    it('Escape closes at once when nothing has changed', async () => {
+        const { onClose } = await openSettings();
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('an outside click closes at once when nothing has changed', async () => {
+        const { onClose } = await openSettings();
+        fireEvent.click(backdrop());
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not count merely opening a section as an edit', async () => {
+        const { onClose } = await openSettings();
+        const nav = screen.getByRole('navigation', { name: /settings sections/i });
+        fireEvent.click(within(nav).getByRole('button', { name: 'Tools & License' }));
+        // Entering Tools runs auto-detection; wait for it to settle.
+        await waitFor(() =>
+            expect(
+                (fetch as unknown as Mock).mock.calls.some((c) => String(c[0]).includes('/api/detect-tools')),
+            ).toBe(true),
+        );
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['Escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+        ['the backdrop', () => fireEvent.click(backdrop())],
+        ['the close button', () => fireEvent.click(screen.getByRole('button', { name: 'Close settings' }))],
+    ])('asks before discarding when %s is used with unsaved edits', async (_name, dismiss) => {
+        const { onClose, staging } = await openSettings();
+        fireEvent.change(staging, { target: { value: '/elsewhere' } });
+        dismiss();
+
+        expect(onClose).not.toHaveBeenCalled();
+        const confirm = await screen.findByRole('dialog', { name: /discard unsaved changes/i });
+        expect(within(confirm).getByRole('button', { name: 'Keep editing' })).toHaveFocus();
+    });
+
+    it('Keep editing dismisses the prompt and preserves the edit', async () => {
+        const { onClose, staging } = await openSettings();
+        fireEvent.change(staging, { target: { value: '/elsewhere' } });
+        fireEvent.click(backdrop());
+        fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
+
+        await waitFor(() =>
+            expect(screen.queryByRole('dialog', { name: /discard unsaved changes/i })).not.toBeInTheDocument(),
+        );
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByLabelText('Staging Directory')).toHaveValue('/elsewhere');
+    });
+
+    it('Escape on the prompt keeps editing rather than closing Settings', async () => {
+        const { onClose, staging } = await openSettings();
+        fireEvent.change(staging, { target: { value: '/elsewhere' } });
+        fireEvent.keyDown(document, { key: 'Escape' });
+        await screen.findByRole('dialog', { name: /discard unsaved changes/i });
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        await waitFor(() =>
+            expect(screen.queryByRole('dialog', { name: /discard unsaved changes/i })).not.toBeInTheDocument(),
+        );
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('Discard closes Settings', async () => {
+        const { onClose, staging } = await openSettings();
+        fireEvent.change(staging, { target: { value: '/elsewhere' } });
+        fireEvent.keyDown(document, { key: 'Escape' });
+        fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('reverting an edit by hand makes the form clean again', async () => {
+        const { onClose, staging } = await openSettings();
+        fireEvent.change(staging, { target: { value: '/elsewhere' } });
+        fireEvent.change(staging, { target: { value: '/staging' } });
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('the first-run wizard ignores Escape and outside clicks, even with edits', async () => {
+        const { onClose, staging } = await openSettings(true);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        fireEvent.click(backdrop());
+        fireEvent.change(staging, { target: { value: '/elsewhere' } });
+        fireEvent.keyDown(document, { key: 'Escape' });
+        fireEvent.click(backdrop());
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog', { name: /discard unsaved changes/i })).not.toBeInTheDocument();
+    });
+});
+
+describe('ConfigWizard: AI provider and key are reachable per feature (#546)', () => {
+    async function openAi(overrides: Record<string, unknown>) {
+        mockApi(overrides);
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="sharing" />);
+        fireEvent.click(await screen.findByText('AI assistance'));
+    }
+
+    it('shows provider and key when only episode matching is enabled', async () => {
+        await openAi({ ai_episode_matching_enabled: true, ai_identification_enabled: false });
+        expect(await screen.findByLabelText('AI Provider')).toBeInTheDocument();
+        expect(screen.getByLabelText(/Anthropic API Key/i)).toBeInTheDocument();
+    });
+
+    it('lets a user turn on episode matching without enabling title resolution first', async () => {
+        await openAi({});
+        expect(screen.queryByLabelText('AI Provider')).not.toBeInTheDocument();
+        fireEvent.click(await screen.findByRole('checkbox', { name: /AI-Powered Episode Matching/i }));
+        expect(await screen.findByLabelText('AI Provider')).toBeInTheDocument();
+    });
+
+    it('hides provider and key when neither feature is on', async () => {
+        await openAi({});
+        await screen.findByRole('checkbox', { name: /AI-Powered Episode Matching/i });
+        expect(screen.queryByLabelText('AI Provider')).not.toBeInTheDocument();
+    });
+
+    it('keeps the provider fields while at least one feature stays on', async () => {
+        await openAi({ ai_identification_enabled: true, ai_episode_matching_enabled: true });
+        fireEvent.click(await screen.findByRole('checkbox', { name: /AI-Powered Title Resolution/i }));
+        expect(screen.getByLabelText('AI Provider')).toBeInTheDocument();
+    });
+
+    it('names both consumers in the key hint', async () => {
+        await openAi({ ai_episode_matching_enabled: true });
+        expect(await screen.findByText(/title resolution.*episode matching/i)).toBeInTheDocument();
+    });
+});
+
+describe('ConfigWizard: settings export/import (#731)', () => {
+    it('adds an Import & Export section to settings mode only', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        fireEvent.click(within(nav).getByRole('button', { name: 'Import & Export' }));
+        expect(await screen.findByRole('button', { name: 'Download settings file' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Choose a settings file')).toBeInTheDocument();
+    });
+
+    it('keeps the onboarding stepper at five steps', async () => {
+        render(<ConfigWizard {...noop} />);
+        expect(await screen.findByLabelText(/^Step 5:/)).toBeInTheDocument();
+        expect(screen.queryByLabelText(/^Step 6:/)).not.toBeInTheDocument();
+    });
+
+    it('offers import, not export, on the first onboarding step', async () => {
+        render(<ConfigWizard {...noop} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Restoring from another install? Import a settings file' }));
+        expect(screen.getByLabelText('Choose a settings file')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Download settings file' })).not.toBeInTheDocument();
+    });
+
+    it('reloads the form from the server after an import is applied', async () => {
+        let tvPath = '/tv';
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = typeof input === 'string' ? input : input.toString();
+            const body = (() => {
+                if (url === '/api/config/import/preview')
+                    return {
+                        schema_version: 1, engram_version: '0.41.0', includes_secrets: false, warnings: [], unknown: [],
+                        fields: [{
+                            key: 'library_tv_path', status: 'change', current: '/tv', incoming: '/imported/tv',
+                            secret: false, path_missing: false, path_unchecked: false, needs_review: false, error: null, selected: true,
+                        }],
+                    };
+                if (url === '/api/config/import/apply') {
+                    tvPath = '/imported/tv';
+                    return { applied: ['library_tv_path'] };
+                }
+                if (url === '/api/config' && !init?.method)
+                    return { setup_complete: true, staging_path: '/staging', library_movies_path: '/movies', library_tv_path: tvPath };
+                return {};
+            })();
+            return Promise.resolve({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        expect(await screen.findByDisplayValue('/tv')).toBeInTheDocument();
+        fireEvent.click(within(screen.getByRole('navigation', { name: /settings sections/i })).getByRole('button', { name: 'Import & Export' }));
+        const file = new File([JSON.stringify({ format: 'engram-settings', settings: { library_tv_path: '/imported/tv' } })], 's.json');
+        fireEvent.change(await screen.findByLabelText('Choose a settings file'), { target: { files: [file] } });
+        fireEvent.click(await screen.findByRole('button', { name: 'Apply 1 setting' }));
+
+        fireEvent.click(within(screen.getByRole('navigation', { name: /settings sections/i })).getByRole('button', { name: 'Library Paths' }));
+        expect(await screen.findByDisplayValue('/imported/tv')).toBeInTheDocument();
+    });
+});

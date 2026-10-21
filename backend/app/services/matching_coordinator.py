@@ -4,11 +4,14 @@ Extracted from JobManager to isolate matching concerns.
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import re
 import time
+import weakref
 from collections import defaultdict
+from collections.abc import Coroutine
 from datetime import UTC
 from enum import StrEnum
 from pathlib import Path
@@ -28,13 +31,24 @@ from app.core.episode_runtime import (
     EPISODE_DURATION_UNDER_TOLERANCE_MIN,
     conjoined_episode_count,
     duration_matches_episode_runtime,
+    matches_sibling_episode_duration,
 )
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
 from app.database import async_session
+from app.matcher.audio_streams import (
+    AudioPlan,
+    follows_auto_pick,
+    plan_audio,
+    probe_audio_streams,
+)
 from app.matcher.numbering_scheme import SCHEME_DIVERGENT, SCHEME_TMDB_AIRED
-from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+from app.matcher.subtitle_utils import (
+    AUDIO_LANGUAGE_ERROR_CODE,
+    REFERENCES_UNREADABLE_ERROR_CODE,
+    language_refusal_details,
+)
 from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
@@ -59,6 +73,26 @@ STRICT_MIN_VOTES = 4
 # that filter keeps is judged by the same windows here.
 _duration_matches_episode_runtime = duration_matches_episode_runtime
 _conjoined_episode_count = conjoined_episode_count
+
+
+async def matched_episode_sibling_minutes(session, job_id: int, title_id: int) -> list[float]:
+    """Durations (minutes) of the job's OTHER tracks already matched to an episode.
+
+    Feeds ``matches_sibling_episode_duration``: the extras pre-filter must not call
+    a track an extra on runtime grounds when it is as long as tracks on the same
+    disc that are known episodes (#770).
+    """
+    result = await session.execute(
+        select(DiscTitle).where(DiscTitle.job_id == job_id, DiscTitle.id != title_id)
+    )
+    return [
+        t.duration_seconds / 60
+        for t in result.scalars().all()
+        if t.state in (TitleState.MATCHED, TitleState.COMPLETED)
+        and not t.is_extra
+        and t.duration_seconds
+        and parse_episode_code(t.matched_episode)
+    ]
 
 
 # Scan depth for a track the runtime pre-filter admitted as conjoined. A confident
@@ -235,6 +269,9 @@ _NON_REMATCHABLE_REVIEW_ERRORS = {
     # The matcher refused the title: too few reference subtitles held any text. A
     # deeper scan against the same references cannot change that.
     REFERENCES_UNREADABLE_ERROR_CODE,
+    # The track's audio is another language (or absent): a deeper scan of the same
+    # audio cannot change that (#241).
+    AUDIO_LANGUAGE_ERROR_CODE,
 } | set(RIP_FAILURE_ERROR_CODES)
 
 
@@ -377,13 +414,61 @@ def _apply_unreadable_references_review(title: "DiscTitle") -> bool:
     return True
 
 
+_RIP_LEFT_OUT_HINT = (
+    " The disc also has English audio, but MakeMKV's language settings left it out of the rip."
+)
+
+
+def _plan_file_audio(file_path: Path) -> AudioPlan:
+    """The English audio plan for a ripped file (same memoized probe the matcher uses)."""
+    return plan_audio(probe_audio_streams(file_path), "en")
+
+
+def _may_fingerprint(plan: AudioPlan) -> bool:
+    """Whether fpcalc on the whole file fingerprints the stream lookups now use.
+
+    fpcalc picks its own stream (the default-flagged one), while matching and the
+    chromaprint lookup windows use the planned stream. On a disc whose default
+    track is a dub they differ, and contributing would teach the shared network
+    the dub's fingerprint under an episode every lookup sends English for (#241).
+    """
+    return follows_auto_pick(plan)
+
+
+def _apply_language_review(title: "DiscTitle") -> bool:
+    """Park a title the curator refused for its audio. True if it did (issue #241).
+
+    The curator cannot see the disc scan, so the one fact only the database holds is
+    added here: when the scan listed English audio that the ripped file lacks,
+    MakeMKV's own language settings dropped it, and saying so is the actionable fix.
+    """
+    details = _title_details(title)
+    if details.get("error") != AUDIO_LANGUAGE_ERROR_CODE:
+        return False
+    title.state = TitleState.REVIEW
+    disc_languages = title.audio_language_list() or []
+    message = details.get("message") or ""
+    # What the file can be transcribed from: an English commentary is not English
+    # dialogue, so it must not suppress the hint. Older refusals lack the usable
+    # list; fall back to every stream.
+    file_languages = details.get("usable_audio_languages")
+    if file_languages is None:
+        file_languages = details.get("audio_languages") or []
+    if "en" in disc_languages and "en" not in file_languages and _RIP_LEFT_OUT_HINT not in message:
+        details["message"] = message + _RIP_LEFT_OUT_HINT
+        title.match_details = json.dumps(details)
+    return True
+
+
 def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -> str | None:
     """Apply the review routing that overrides a matcher result, most specific first.
 
-    Unusable references come first: with no usable corpus there is no vote
+    Unusable audio and unusable references come first: either way there is no vote
     evidence at all, so a runtime-based multi-episode message would bury the cause.
     Returns the error code the title was routed under, or None if it was not.
     """
+    if _apply_language_review(title):
+        return AUDIO_LANGUAGE_ERROR_CODE
     if _apply_unreadable_references_review(title):
         return REFERENCES_UNREADABLE_ERROR_CODE
     if _apply_multi_episode_review(title, conjoined_hint):
@@ -620,6 +705,12 @@ class MatchingCoordinator:
         self._subtitle_ready: dict[int, asyncio.Event] = {}
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._match_semaphore: asyncio.Semaphore | None = None
+        # Match coroutines built per title id (see has_live_match). A QUEUED
+        # title with an unfinished one is waiting on _match_semaphore; one
+        # without is orphaned (#776). A set, since a re-match can overlap the
+        # tail of the previous match for the same title; weak, so a coroutine
+        # nobody scheduled does not pin its title as live.
+        self._live_matches: defaultdict[int, weakref.WeakSet] = defaultdict(weakref.WeakSet)
 
         # Cross-coordinator callbacks
         self._check_job_completion: callable = None
@@ -1009,7 +1100,7 @@ class MatchingCoordinator:
             lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
         )
 
-    async def match_single_file(
+    def match_single_file(
         self,
         job_id: int,
         title_id: int,
@@ -1017,8 +1108,14 @@ class MatchingCoordinator:
         num_points: int | None = None,
         min_vote_count: int | None = None,
         advisory: bool = False,
-    ) -> None:
+    ) -> Coroutine[None, None, None]:
         """Run matching for a single ripped file, tagging logs with the job id.
+
+        A plain function returning the match coroutine, so the title counts as
+        having a live match from the moment a caller builds the coroutine for
+        ``create_task``, not from the task's first step (see ``has_live_match``).
+        Every match task in the app is built here, which is what makes the
+        registry complete.
 
         Self-tags so every matching log line carries ``job=<id>`` regardless of
         how this is reached — task spawn, direct ``await`` from an API handler
@@ -1032,10 +1129,39 @@ class MatchingCoordinator:
         after the subtitle-ready wait, because imports and ``rerun_matching``
         dispatch matches before ``decide_job_namespace`` has committed.
         """
+        coro = self._tracked_match(
+            job_id, title_id, file_path, num_points, min_vote_count, advisory
+        )
+        # Drop titles whose matches are all gone, so the map stays bounded.
+        for tid in [tid for tid, coros in self._live_matches.items() if not coros]:
+            del self._live_matches[tid]
+        self._live_matches[title_id].add(coro)
+        return coro
+
+    async def _tracked_match(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None,
+        min_vote_count: int | None,
+        advisory: bool,
+    ) -> None:
         with job_log_context(job_id):
             await self._run_match_single_file(
                 job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
             )
+
+    def has_live_match(self, title_id: int) -> bool:
+        """Whether a match task exists for this title, running or waiting for a slot.
+
+        Read from the coroutines themselves rather than a counter kept by their
+        body: one cancelled before its first step, or closed without ever being
+        scheduled, never runs its body but does end ``CORO_CLOSED``, and one
+        that is dropped unscheduled is garbage-collected out of the weak set.
+        """
+        coros = self._live_matches.get(title_id, ())
+        return any(inspect.getcoroutinestate(c) != inspect.CORO_CLOSED for c in coros)
 
     async def _llm_fallback_without_subtitles(
         self,
@@ -1203,15 +1329,26 @@ class MatchingCoordinator:
             # enabled, transcribe the ripped file (ASR) and match the transcript
             # against the TMDB synopsis — this needs no reference subtitles. Any
             # result is a REVIEW suggestion only (never auto-organized).
-            enriched = await self._llm_fallback_without_subtitles(
-                job_id, title_id, file_path, detected_title, detected_season
+            # The fallback transcribes in English too, so a track with no English
+            # audio skips it and is parked with the language reason (#241).
+            plan = await asyncio.to_thread(_plan_file_audio, file_path)
+            refused = plan.verdict in ("foreign", "no_audio")
+            enriched = (
+                None
+                if refused
+                else await self._llm_fallback_without_subtitles(
+                    job_id, title_id, file_path, detected_title, detected_season
+                )
             )
             async with async_session() as session:
                 title = await session.get(DiscTitle, title_id)
                 if title:
                     title.state = TitleState.REVIEW
                     title.match_confidence = 0.0
-                    if enriched:
+                    if refused:
+                        title.match_details = json.dumps(language_refusal_details(plan))
+                        _apply_language_review(title)
+                    elif enriched:
                         title.match_details = json.dumps(enriched)
                     else:
                         title.match_details = json.dumps(
@@ -1267,6 +1404,7 @@ class MatchingCoordinator:
             job_detected_title: str | None = None
             job_detected_season: int | None = None
             title_duration: float | None = None
+            sibling_minutes: list[float] = []
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
                 title = await session.get(DiscTitle, title_id)
@@ -1275,6 +1413,9 @@ class MatchingCoordinator:
                     job_detected_title = job.detected_title
                     job_detected_season = job.detected_season
                     title_duration = title.duration_seconds
+                    sibling_minutes = await matched_episode_sibling_minutes(
+                        session, job_id, title_id
+                    )
 
             if job_detected_season:
                 # No connection held across this (possibly networked) lookup.
@@ -1290,7 +1431,18 @@ class MatchingCoordinator:
                         # If so it is ADMITTED to matching, not filed: the
                         # positional vote runs decide what it actually holds.
                         conjoined_hint = _conjoined_episode_count(title_minutes, runtimes)
-                        if conjoined_hint:
+                        if matches_sibling_episode_duration(title_minutes, sibling_minutes):
+                            # TMDB's runtime is a broadcast slot; tracks on this very
+                            # disc that matched episodes are the better yardstick (#770).
+                            conjoined_hint = None
+                            logger.info(
+                                f"[MATCH] Title {sanitize_log_value(title_id)} "
+                                f"(Job {sanitize_log_value(job_id)}): duration "
+                                f"{title_minutes:.0f}min matches no TMDB runtime {runtimes} "
+                                f"but matches episodes already matched on this disc. "
+                                f"Proceeding with matching, not filing as an extra."
+                            )
+                        elif conjoined_hint:
                             # ids are sanitized because CodeQL traces them back to
                             # HTTP path params (py/log-injection). FastAPI coerces
                             # them to int so they cannot actually carry CR/LF, but
@@ -1854,7 +2006,13 @@ class MatchingCoordinator:
 
                         cfg = await get_config()
                         fpcalc_path = await _resolve_fpcalc_path(cfg.fpcalc_path)
-                        if fpcalc_path:
+                        fingerprint_plan = await asyncio.to_thread(_plan_file_audio, file_path)
+                        if fpcalc_path and not _may_fingerprint(fingerprint_plan):
+                            logger.info(
+                                f"Skipping chromaprint for title {title.id}: the disc's "
+                                "default audio is not the stream matching used"
+                            )
+                        elif fpcalc_path:
                             ffmpeg_path = await _resolve_ffmpeg_path(cfg.ffmpeg_path)
                             extractor = ChromaprintExtractor(
                                 fpcalc_path=fpcalc_path, ffmpeg_path=ffmpeg_path

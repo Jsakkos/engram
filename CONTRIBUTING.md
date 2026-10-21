@@ -2,6 +2,8 @@
 
 Have a question or want to talk through an idea before you start? Join us on [Discord](https://discord.gg/G8fjjGswdc) — it's the quickest way to reach the maintainers and other contributors.
 
+Found a bug or have a feature idea but don't plan to work on it yourself? Run `/bug` or `/feature` in the Discord server and **Trace**, the support bot, will help turn it into a GitHub issue. See [Getting Help & Reporting Issues](https://jsakkos.github.io/engram/getting-help/).
+
 ## Local development setup
 
 ### Prerequisites

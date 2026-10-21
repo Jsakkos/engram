@@ -372,9 +372,17 @@ class DriveMonitor:
         before firing an event. This prevents spurious events from disc
         spinup flickering (GetVolumeInformationW can fail temporarily
         while the drive spins up, causing false "removed" events).
+
+        A tracked drive that has dropped out of the enumeration counts as empty.
+        Unmounting an ISO in Windows removes its virtual drive letter outright;
+        walking only the enumerated drives left that letter's state at "disc
+        present", so the next ISO mounted on the same letter never fired
+        "inserted" (#769).
         """
-        for drive in get_optical_drives():
-            current_state = is_disc_present(drive)
+        present_drives = get_optical_drives()
+        vanished = [d for d in self._drive_states if d not in present_drives]
+        for drive in [*present_drives, *vanished]:
+            current_state = drive in present_drives and is_disc_present(drive)
             previous_state = self._drive_states.get(drive, False)
 
             if current_state != previous_state:

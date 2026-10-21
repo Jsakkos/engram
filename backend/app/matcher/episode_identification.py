@@ -19,6 +19,12 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
+from app.matcher.audio_streams import (
+    AudioPlan,
+    follows_auto_pick,
+    plan_audio,
+    probe_audio_streams,
+)
 from app.matcher.multi_episode import decompose_vote_runs
 from app.matcher.numbering_scheme import SCHEME_UNKNOWN, VALID_SCHEMES, usable_count
 from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
@@ -36,6 +42,75 @@ console = Console()
 # Nested scan-point lattice levels: n_k = 9 * 2**k + 1. Level k+1 inserts the
 # midpoint of every level-k gap, so each level is a strict subset of all deeper ones.
 _SCAN_LATTICE_LEVELS = (10, 19, 37, 73, 145)
+
+# How many trailing stderr lines an ffmpeg failure carries into the log.
+_FFMPEG_STDERR_TAIL_LINES = 3
+
+
+class NoAudioStreamError(RuntimeError):
+    """The source file has no audio stream, so there is nothing to transcribe.
+
+    MakeMKV can write a title without its audio (e.g. a lone foreign-language
+    track its selection rules skipped). ffmpeg then refuses the audio-only
+    output with EINVAL, which Windows reports as return code 4294967274 (#793).
+    Every chunk of such a file fails the same way, so callers stop scanning it.
+    """
+
+
+def _stderr_tail(stderr: str | None, lines: int = _FFMPEG_STDERR_TAIL_LINES) -> str:
+    """The last non-empty stderr lines, joined onto one line.
+
+    ffmpeg prints its version banner first and the actual error last, so the
+    head says nothing. One line also keeps the whole message inside the
+    ``job=<id>``-tagged log line the diagnostics bundle collects.
+    """
+    tail = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    return " | ".join(tail[-lines:])
+
+
+def _file_identity(path: str) -> tuple:
+    """(path, mtime_ns, size): changes when the file at ``path`` is rewritten.
+
+    On coarse-mtime filesystems (FAT/exFAT, 2 s) a same-size rewrite inside that
+    window keeps the old identity; an accepted edge for a per-matcher memo.
+    """
+    try:
+        st = Path(path).stat()
+    except OSError:
+        return (path, None, None)
+    return (path, st.st_mtime_ns, st.st_size)
+
+
+def has_audio_stream(video_file) -> bool | None:
+    """Whether ``video_file`` has at least one audio stream; None if ffprobe can't tell."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a",
+                "-show_entries",
+                "stream=index",
+                "-of",
+                "csv=p=0",
+                str(video_file),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug(f"ffprobe audio-stream check failed for {video_file}: {e}")
+        return None
+    if result.returncode != 0:
+        logger.debug(
+            f"ffprobe audio-stream check failed for {video_file} "
+            f"(return code {result.returncode}): {_stderr_tail(result.stderr)}"
+        )
+        return None
+    return bool(result.stdout.strip())
 
 
 def snap_to_lattice_level(num_points) -> int:
@@ -1114,6 +1189,9 @@ class EpisodeMatcher:
         self._max_tfidf_cache = MAX_TFIDF_CACHE
         # Cache for extracted audio chunks (cleared per identify_episode call)
         self.audio_chunks = {}
+        # Sources (by _file_identity) found to have no audio stream: later chunks
+        # of the same file raise NoAudioStreamError without spawning ffmpeg again.
+        self._no_audio_sources: set[tuple] = set()
         # Cache for ASR transcripts, keyed by (resolved_source, start, duration).
         # Unlike audio_chunks this PERSISTS across identify_episode calls so the
         # season-unknown path (one call per candidate season) reuses Whisper output
@@ -1147,9 +1225,47 @@ class EpisodeMatcher:
         """Canonical source-path form shared by chunk hash + in-memory cache key."""
         return str(Path(mkv_file).resolve())
 
+    def audio_plan(self, video_file, language: str = "en") -> AudioPlan:
+        """Which audio stream of ``video_file`` to transcribe for ``language`` (issue #241).
+
+        Lives on the matcher so extraction, every transcript cache and the prewarm
+        (which drives this same class) can never disagree about the stream. The
+        ffprobe answer is memoized per file in ``audio_streams``.
+        """
+        return plan_audio(probe_audio_streams(Path(video_file)), language)
+
+    def _audio_stream_index(self, video_file) -> int | None:
+        """The planned audio-relative stream index, or None to let ffmpeg pick."""
+        stream = self.audio_plan(video_file).stream
+        return stream.audio_index if stream is not None else None
+
+    def _stream_suffix(self, video_file) -> str:
+        """``#a<n>`` when transcribing a stream ffmpeg would not have picked, else "".
+
+        Transcripts cached before streams were chosen explicitly are of ffmpeg's own
+        pick, so they keep the plain key and still hit only when the plan agrees
+        with that pick. Any other stream gets its own key, so a cached transcript of
+        a dub is never reused for the English track.
+        """
+        plan = self.audio_plan(video_file)
+        if follows_auto_pick(plan):
+            return ""
+        return f"#a{plan.stream.audio_index}"
+
+    def _source_key(self, mkv_file) -> str:
+        """Resolved source path plus the stream suffix: the L1 chunk/transcript key."""
+        return self._resolve_source(mkv_file) + self._stream_suffix(mkv_file)
+
+    def transcript_file_key(self, video_file) -> str | None:
+        """Persistent (L2) transcript key: ``file_key_for`` plus the stream suffix."""
+        file_key = transcript_store.file_key_for(video_file)
+        if file_key is None:
+            return None
+        return file_key + self._stream_suffix(video_file)
+
     def _chunk_path(self, mkv_file, start_time, duration):
         """Hash resolved source path into the filename so concurrent threads don't collide."""
-        src_hash = hashlib.sha1(self._resolve_source(mkv_file).encode("utf-8")).hexdigest()[:16]
+        src_hash = hashlib.sha1(self._source_key(mkv_file).encode("utf-8")).hexdigest()[:16]
         return self.temp_dir / f"chunk_{src_hash}_{start_time}_{duration}.wav"
 
     def _transcription_key(self, mkv_file, start_time, duration) -> tuple:
@@ -1159,7 +1275,7 @@ class EpisodeMatcher:
         fallback share one transcript cache without colliding (chunks start >= 300s
         with a 30s duration; the full-file pass uses start=0 with the file duration).
         """
-        return (self._resolve_source(mkv_file), start_time, duration)
+        return (self._source_key(mkv_file), start_time, duration)
 
     def _remember_transcription(self, key: tuple, text: str) -> None:
         """Store an ASR transcript, bounding the cache.
@@ -1226,7 +1342,7 @@ class EpisodeMatcher:
             return text
 
         if file_key is None:
-            file_key = transcript_store.file_key_for(video_file)
+            file_key = self.transcript_file_key(video_file)
         if model_key is None:
             model_key = self._model_key_for(model)
 
@@ -1252,22 +1368,33 @@ class EpisodeMatcher:
     def extract_audio_chunk(self, mkv_file, start_time, duration=None):
         """Extract a chunk of audio from MKV file with caching."""
         duration = duration or self.chunk_duration
-        # Resolve once so cache_key matches what _chunk_path hashes.
-        cache_key = (self._resolve_source(mkv_file), start_time, duration)
+        # Same source key _chunk_path hashes (it carries the planned stream).
+        cache_key = (self._source_key(mkv_file), start_time, duration)
 
         if cache_key in self.audio_chunks:
             return self.audio_chunks[cache_key]
+        # Keyed on the file's identity, not just its path, so a re-rip that
+        # rewrites the same staging file (with its audio this time) is retried.
+        source_identity = _file_identity(cache_key[0])
+        if source_identity in self._no_audio_sources:
+            raise NoAudioStreamError(f"{mkv_file} has no audio track to transcribe")
 
         chunk_path = self._chunk_path(mkv_file, start_time, duration)
         if not chunk_path.exists():
+            # Name the stream explicitly: left to itself ffmpeg takes the
+            # default-flagged track, which on a dub disc can be the wrong language.
+            stream_index = self._audio_stream_index(mkv_file)
+            stream_map = ["-map", f"0:a:{stream_index}"] if stream_index is not None else []
             cmd = [
                 "ffmpeg",
+                "-hide_banner",
                 "-ss",
                 str(start_time),
                 "-t",
                 str(duration),
                 "-i",
                 str(mkv_file),
+                *stream_map,
                 "-vn",  # Disable video
                 "-sn",  # Disable subtitles
                 "-dn",  # Disable data streams
@@ -1288,9 +1415,21 @@ class EpisodeMatcher:
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=duration + 30)
 
                 if result.returncode != 0:
+                    # A file with no audio fails every chunk the same way; say so
+                    # once and remember it rather than logging ten opaque errors.
+                    if has_audio_stream(mkv_file) is False:
+                        self._no_audio_sources.add(source_identity)
+                        error_msg = (
+                            f"{mkv_file} has no audio track to transcribe; skipping "
+                            "audio matching for it (MakeMKV may have left out a track "
+                            "its language selection excluded)"
+                        )
+                        logger.warning(error_msg)
+                        raise NoAudioStreamError(error_msg)
                     error_msg = f"FFmpeg failed with return code {result.returncode}"
-                    if result.stderr:
-                        error_msg += f". Error: {result.stderr.strip()}"
+                    tail = _stderr_tail(result.stderr)
+                    if tail:
+                        error_msg += f". Error: {tail}"
                     logger.error(error_msg)
                     logger.debug(f"FFmpeg command: {' '.join(cmd)}")
                     raise RuntimeError(error_msg)
@@ -1313,6 +1452,9 @@ class EpisodeMatcher:
                 error_msg = f"FFmpeg timed out while extracting audio from {mkv_file}"
                 logger.error(error_msg)
                 raise RuntimeError(error_msg) from e
+
+            except NoAudioStreamError:
+                raise
 
             except Exception as e:
                 error_msg = f"Failed to extract audio from {mkv_file}: {str(e)}"
@@ -1624,7 +1766,7 @@ class EpisodeMatcher:
             # compute path re-extracts instead of returning a dangling path
             # (same hygiene as TranscriptionPrewarmer._transcribe_span).
             if temp_files:
-                self.audio_chunks.pop((self._resolve_source(video_file), 0, duration), None)
+                self.audio_chunks.pop((self._source_key(video_file), 0, duration), None)
 
         if len(full) < 50:
             logger.info(f"transcribe_full: too little text ({len(full)} chars) for {video_file}")
@@ -1924,7 +2066,7 @@ class EpisodeMatcher:
             model = get_cached_model(model_config)
             # L2 transcript-cache identity, computed ONCE per call (one stat, one
             # key derivation) and passed into every chunk lookup below.
-            l2_file_key = transcript_store.file_key_for(video_file)
+            l2_file_key = self.transcript_file_key(video_file)
             l2_model_key = self._model_key_for(model)
 
             if progress_callback:
@@ -2007,6 +2149,10 @@ class EpisodeMatcher:
                                 f"runner-up={runner:.3f})"
                             )
 
+                except NoAudioStreamError:
+                    # Every remaining chunk would fail the same way.
+                    logger.info(f"Stopping chunk scan of {Path(video_file).name}: no audio track")
+                    break
                 except Exception as e:
                     logger.warning(
                         f"Error processing chunk {i}/{len(scan_points)} at {start_time}s: {e}"

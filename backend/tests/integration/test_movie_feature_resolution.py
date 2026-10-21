@@ -6,6 +6,7 @@ This is the path that previously flagged Marty Supreme as "Multiple versions
 ripped" because every ripped title counted as a candidate.
 """
 
+import json
 import types
 from unittest.mock import AsyncMock, MagicMock
 
@@ -38,8 +39,10 @@ async def session():
         await engine.dispose()
 
 
-def _cfg():
-    return types.SimpleNamespace(analyst_movie_min_duration=4800, tmdb_api_key="test_key")
+def _cfg(extras_policy="keep"):
+    return types.SimpleNamespace(
+        analyst_movie_min_duration=4800, tmdb_api_key="test_key", extras_policy=extras_policy
+    )
 
 
 async def _make_movie_job(session, title_specs):
@@ -129,3 +132,74 @@ async def test_discdb_mainmovie_skips_review(jm, session, mocker):
     assert job.state == JobState.RIPPING
     assert titles[1].is_selected and titles[1].is_extra is False
     assert all(t.is_extra and t.is_selected is False for t in (titles[0], titles[2]))
+
+
+# --- extras_policy on the movie path (#773) ---
+
+
+def _use_policy(mocker, policy):
+    mocker.patch("app.services.config_service.get_config", new=AsyncMock(return_value=_cfg(policy)))
+
+
+async def test_skip_policy_discards_extras_instead_of_filing_them(jm, session, mocker):
+    """Under "skip" the bonus tracks are completed as skipped, never organized."""
+    _use_policy(mocker, "skip")
+    mocker.patch("app.matcher.tmdb_client.fetch_movie_runtime", return_value=149)
+    job, titles = await _make_movie_job(session, [(149.7, 38), (20, 19), (4, 17)])
+
+    sent_to_review = await jm._resolve_multi_title_movie(job, job.id, titles, session)
+
+    assert sent_to_review is False
+    assert titles[0].state == TitleState.MATCHED and titles[0].is_selected
+    for extra in titles[1:]:
+        assert extra.is_extra and extra.state == TitleState.COMPLETED
+        assert extra.organized_to is None
+        assert json.loads(extra.match_details)["action"] == "skipped"
+
+
+async def test_skip_policy_applies_to_discdb_main_movie(jm, session, mocker):
+    _use_policy(mocker, "skip")
+    jm._matching.get_discdb_mappings = MagicMock(
+        return_value=[types.SimpleNamespace(index=1, title_type="MainMovie")]
+    )
+    job, titles = await _make_movie_job(session, [(95, 30), (149, 38), (4, 18)])
+
+    assert await jm._resolve_multi_title_movie(job, job.id, titles, session) is False
+    assert titles[1].state == TitleState.MATCHED
+    assert all(t.state == TitleState.COMPLETED for t in (titles[0], titles[2]))
+
+
+async def test_skip_policy_keeps_every_cut_on_a_multi_cut_disc(jm, session, mocker):
+    """Never skip the feature: competing cuts still go to review; only the extra goes."""
+    _use_policy(mocker, "skip")
+    mocker.patch("app.matcher.tmdb_client.fetch_movie_runtime", return_value=120)
+    job, titles = await _make_movie_job(session, [(120, 36), (145, 35), (5, 18)])
+
+    assert await jm._resolve_multi_title_movie(job, job.id, titles, session) is True
+    assert job.state == JobState.REVIEW_NEEDED
+    assert titles[0].state == TitleState.MATCHED and titles[1].state == TitleState.MATCHED
+    assert titles[2].state == TitleState.COMPLETED
+
+
+async def test_ask_policy_sends_extras_to_review(jm, session, mocker):
+    """Under "ask" the extras go to review as extras, like a TV disc's."""
+    _use_policy(mocker, "ask")
+    mocker.patch("app.matcher.tmdb_client.fetch_movie_runtime", return_value=149)
+    job, titles = await _make_movie_job(session, [(149.7, 38), (20, 19), (4, 17)])
+
+    sent_to_review = await jm._resolve_multi_title_movie(job, job.id, titles, session)
+
+    assert sent_to_review is True
+    assert job.state == JobState.REVIEW_NEEDED
+    assert titles[0].is_selected and titles[0].state == TitleState.MATCHED
+    for extra in titles[1:]:
+        assert extra.is_extra and extra.state == TitleState.REVIEW
+        assert json.loads(extra.match_details)["action"] == "review"
+
+
+async def test_keep_policy_leaves_extras_to_the_organizer(jm, session, mocker):
+    mocker.patch("app.matcher.tmdb_client.fetch_movie_runtime", return_value=149)
+    job, titles = await _make_movie_job(session, [(149.7, 38), (20, 19)])
+
+    assert await jm._resolve_multi_title_movie(job, job.id, titles, session) is False
+    assert titles[1].is_extra and titles[1].state == TitleState.MATCHED

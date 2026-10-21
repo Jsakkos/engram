@@ -297,6 +297,56 @@ class TestParseDiscInfo:
 
 
 @pytest.mark.unit
+class TestParseStreamLanguages:
+    """SINFO stream languages (issue #241), from trimmed real scan logs."""
+
+    SCAN = "\n".join(
+        [
+            # Killers of the Flower Moon disc 2, title 2: TINFO 28 says "eng" (the
+            # metadata language) while the only audio stream is Osage.
+            'TINFO:2,9,0,"0:33:10"',
+            'TINFO:2,28,0,"eng"',
+            'SINFO:2,0,1,6201,"Video"',
+            'SINFO:2,1,1,6202,"Audio"',
+            'SINFO:2,1,3,0,"osa"',
+            'SINFO:2,2,1,6203,"Subtitles"',
+            'SINFO:2,2,3,0,"eng"',
+            # DVD-style title: the first audio stream carries no attr 3 at all.
+            'TINFO:5,9,0,"0:06:36"',
+            'SINFO:5,1,1,6202,"Audio"',
+            'SINFO:5,2,1,6202,"Audio"',
+            'SINFO:5,2,3,0,"fre"',
+            'SINFO:5,3,1,6203,"Subtitles"',
+            'SINFO:5,3,3,0,"ger"',
+        ]
+    )
+
+    def test_parse_disc_info_collects_stream_languages(self):
+        titles, _ = _extractor()._parse_disc_info(self.SCAN)
+        by_idx = {t.index: t for t in titles}
+        assert by_idx[2].audio_languages == ["osa"]  # TINFO 28 "eng" ignored
+        assert by_idx[2].subtitle_languages == ["en"]
+        assert by_idx[5].audio_languages == [None, "fr"]  # untagged slot kept
+        assert by_idx[5].subtitle_languages == ["de"]
+
+    def test_sinfo_attr3_before_type_line_is_still_classified(self):
+        # attr order is not guaranteed; classify at end of parse, not per line
+        titles, _ = _extractor()._parse_disc_info(
+            'TINFO:0,9,0,"0:22:00"\nSINFO:0,1,3,0,"jpn"\nSINFO:0,1,1,6202,"Audio"'
+        )
+        assert titles[0].audio_languages == ["ja"]
+
+    def test_title_without_sinfo_has_empty_lists(self):
+        titles, _ = _extractor()._parse_disc_info('TINFO:0,9,0,"0:22:00"')
+        assert titles[0].audio_languages == []
+        assert titles[0].subtitle_languages == []
+
+    def test_sinfo_without_tinfo_creates_no_title(self):
+        titles, _ = _extractor()._parse_disc_info('SINFO:3,1,1,6202,"Audio"\nSINFO:3,1,3,0,"jpn"')
+        assert titles == []
+
+
+@pytest.mark.unit
 class TestParseDuration:
     @pytest.mark.parametrize(
         "value, expected",

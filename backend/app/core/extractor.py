@@ -22,6 +22,7 @@ from pathlib import Path
 from app.core.analyst import TitleInfo
 from app.core.disc_source import NOSCAN, DiscSource, SourceKind
 from app.core.errors import MakeMKVLicenseError
+from app.core.languages import normalize_language
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -219,11 +220,26 @@ def _files_to_ignore(output_dir: Path, title_indices: list[int] | None) -> set[s
     return ignore
 
 
+# MakeMKV's own default for ``--minlength``: titles shorter than this many seconds
+# are hidden from a scan and never ripped. Configurable as
+# ``AppConfig.makemkv_min_title_length`` (#771) for discs whose specials run short.
+DEFAULT_MIN_TITLE_LENGTH = 120
+
+
+def _minlength_flag(min_length: int) -> str:
+    """The ``--minlength`` switch. Every scan, rip and backup carries the same one:
+    MakeMKV numbers titles AFTER this filter, so a scan and a rip run with different
+    minimums would disagree about which title index is which."""
+    return f"--minlength={int(min_length)}"
+
+
 def _build_rip_commands(
     makemkv_path: str,
     drive_spec: str,
     output_dir: str,
     title_indices: list[int] | None,
+    *,
+    min_length: int = DEFAULT_MIN_TITLE_LENGTH,
 ) -> list[tuple[int | None, list[str]]]:
     """Build ``(title_index, argv)`` rip commands.
 
@@ -232,15 +248,25 @@ def _build_rip_commands(
     otherwise each command carries the specific title index so the rip loop can
     consult the live skip-set before starting it.
     """
-    base = [makemkv_path, "-r", NOSCAN, "--progress=-same", "mkv", drive_spec]
+    base = [
+        makemkv_path,
+        "-r",
+        NOSCAN,
+        _minlength_flag(min_length),
+        "--progress=-same",
+        "mkv",
+        drive_spec,
+    ]
     if not title_indices:
         return [(None, [*base, "all", output_dir])]
     return [(idx, [*base, str(idx), output_dir]) for idx in title_indices]
 
 
-def _build_scan_command(makemkv_path: str, source_spec: str) -> list[str]:
+def _build_scan_command(
+    makemkv_path: str, source_spec: str, *, min_length: int = DEFAULT_MIN_TITLE_LENGTH
+) -> list[str]:
     """Build the argv for a robot-mode disc scan."""
-    return [makemkv_path, "-r", NOSCAN, "info", source_spec]
+    return [makemkv_path, "-r", NOSCAN, _minlength_flag(min_length), "info", source_spec]
 
 
 # PRGV:current,total,max is MakeMKV's global progress line. `current` is the
@@ -255,7 +281,13 @@ _PRGV_RE = re.compile(r"^PRGV:(\d+),(\d+),(\d+)")
 _MSG_TEXT_RE = re.compile(r'^MSG:\d+,\d+,\d+,"([^"]*)"')
 
 
-def _build_backup_command(makemkv_path: str, source_spec: str, dest: str) -> list[str]:
+def _build_backup_command(
+    makemkv_path: str,
+    source_spec: str,
+    dest: str,
+    *,
+    min_length: int = DEFAULT_MIN_TITLE_LENGTH,
+) -> list[str]:
     """Build the argv for a full decrypted disc backup.
 
     ``makemkvcon backup`` accepts only a ``disc:N`` source, never ``dev:`` and
@@ -271,6 +303,10 @@ def _build_backup_command(makemkv_path: str, source_spec: str, dest: str) -> lis
         makemkv_path,
         "-r",
         NOSCAN,
+        # A backup copies the whole disc regardless. The flag rides along for
+        # consistency: what must match the scan is the later extract from the
+        # backup, which goes through _build_rip_commands with the same value.
+        _minlength_flag(min_length),
         "--progress=-same",
         "--decrypt",
         "backup",
@@ -432,6 +468,11 @@ class BackupResult:
     # still has a usable backup at dest, but this run did not verify it: it is
     # whatever was on disk already.
     already_existed: bool = False
+
+
+# SINFO attr-1 (stream type) codes in MakeMKV robot output.
+_SINFO_AUDIO = "6202"
+_SINFO_SUBTITLES = "6203"
 
 
 class ScanTimeoutError(Exception):
@@ -781,8 +822,11 @@ def _delete_partials_at_abort(
 class MakeMKVExtractor:
     """Wrapper for MakeMKV command-line interface."""
 
-    def __init__(self, makemkv_path: Path | None = None) -> None:
+    def __init__(
+        self, makemkv_path: Path | None = None, *, min_title_length: int | None = None
+    ) -> None:
         self._makemkv_path_override = makemkv_path
+        self._min_title_length_override = min_title_length
         # Per-job process tracking for multi-drive cancel isolation.
         # Each running job registers its subprocess here so cancel() only
         # terminates the correct process.
@@ -820,6 +864,16 @@ class MakeMKVExtractor:
         from app.services.config_service import get_config_sync
 
         return Path(get_config_sync().makemkv_path)
+
+    @property
+    def min_title_length(self) -> int:
+        """MakeMKV ``--minlength`` in seconds, read from config unless set explicitly."""
+        if self._min_title_length_override is not None:
+            return self._min_title_length_override
+        from app.services.config_service import get_config_sync
+
+        configured = get_config_sync().makemkv_min_title_length
+        return DEFAULT_MIN_TITLE_LENGTH if configured is None else configured
 
     def _get_source_lock(self, source: DiscSource | str) -> asyncio.Lock:
         """Get or create the per-source lock serializing MakeMKV operations.
@@ -884,7 +938,9 @@ class MakeMKVExtractor:
         """Internal scan implementation (caller must hold the source lock)."""
         source_spec = _to_source_spec(source)
 
-        cmd = _build_scan_command(str(self.makemkv_path), source_spec)
+        cmd = _build_scan_command(
+            str(self.makemkv_path), source_spec, min_length=self.min_title_length
+        )
 
         start = time.monotonic()
         logger.info(f"Scanning disc: {' '.join(cmd)}")
@@ -1034,6 +1090,7 @@ class MakeMKVExtractor:
             source_spec,
             str(output_dir),
             title_indices,
+            min_length=self.min_title_length,
         )
         if not title_indices:
             logger.info("Ripping ALL titles")
@@ -1765,7 +1822,12 @@ class MakeMKVExtractor:
         # Built before the lock is taken: an unusable source is a caller bug,
         # and there is no reason to make it queue behind a live drive operation.
         try:
-            cmd = _build_backup_command(str(self.makemkv_path), spec, str(dest) + ".partial")
+            cmd = _build_backup_command(
+                str(self.makemkv_path),
+                spec,
+                str(dest) + ".partial",
+                min_length=self.min_title_length,
+            )
         except ValueError as e:
             logger.error(f"Job {safe_job}: cannot back up from {safe_spec}: {e}")
             return BackupResult(success=False, error_message=str(e))
@@ -1964,9 +2026,24 @@ class MakeMKVExtractor:
         """
         titles: dict[int, TitleInfo] = {}
         disc_name = ""
+        # (title, stream) -> {"type": SINFO attr-1 code, "lang": attr-3 value}. Filled
+        # per line and classified after the loop: attr order is not guaranteed.
+        streams: dict[tuple[int, int], dict[str, str]] = {}
 
         for line in output.split("\n"):
             line = line.strip()
+
+            # Stream info: SINFO:<title>,<stream>,<attr>,<code>,"<value>"
+            if line.startswith("SINFO:"):
+                match = re.match(r"SINFO:(\d+),(\d+),(\d+),(\d+),\"(.*)\"", line)
+                if match:
+                    key = (int(match.group(1)), int(match.group(2)))
+                    attr_id = int(match.group(3))
+                    if attr_id == 1:  # Stream type, keyed on its numeric code
+                        streams.setdefault(key, {})["type"] = match.group(4)
+                    elif attr_id == 3:  # Stream language code (ISO 639-2)
+                        streams.setdefault(key, {})["lang"] = match.group(5)
+                continue
 
             # Capture disc display name from CINFO attr 2
             if line.startswith("CINFO:"):
@@ -2024,8 +2101,19 @@ class MakeMKVExtractor:
                         title.segment_map = value
                     elif attr_id == 27:  # Suggested output filename (e.g., "Show - S3_t00.mkv")
                         title.disc_title = value
-                    elif attr_id == 28:  # Language code - good for filtering later
-                        pass
+                    # attr 28 is MakeMKV's METADATA language, not the audio language:
+                    # a title whose only audio is Osage still reports "eng" there. The
+                    # audio language comes from SINFO attr 3 above (issue #241).
+
+        for (title_idx, _stream_idx), stream in sorted(streams.items()):
+            title = titles.get(title_idx)
+            if title is None:
+                continue
+            lang = normalize_language(stream.get("lang"))
+            if stream.get("type") == _SINFO_AUDIO:
+                title.audio_languages.append(lang)
+            elif stream.get("type") == _SINFO_SUBTITLES:
+                title.subtitle_languages.append(lang)
 
         return list(titles.values()), disc_name
 

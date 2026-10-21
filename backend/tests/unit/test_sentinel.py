@@ -333,6 +333,73 @@ class TestNotifyEjectedBehavior:
 
 
 @pytest.mark.unit
+class TestVanishingDrive:
+    """A drive letter that disappears is a drive with no disc in it (#769).
+
+    Unmounting an ISO in Windows removes its virtual drive letter outright, so
+    the letter drops out of get_optical_drives(). The poll used to walk only the
+    enumerated drives, so the letter's last state (disc present) was never
+    revisited, and the next ISO mounted on the same letter looked like
+    present -> present: no 'inserted' event until Engram restarted.
+    """
+
+    async def _poll(self, monitor, drives, present, label="", polls=2):
+        with (
+            patch.object(sentinel, "get_optical_drives", return_value=drives),
+            patch.object(sentinel, "is_disc_present", return_value=present),
+            patch.object(sentinel, "get_volume_label", return_value=label),
+        ):
+            for _ in range(polls):
+                await monitor._check_drives()
+
+    async def test_remount_on_same_letter_fires_inserted(self):
+        monitor, notify = _make_monitor()
+        monitor._drive_states = {"H:": True}  # first ISO mounted and ripped
+
+        await self._poll(monitor, drives=[], present=False)  # unmounted: H: is gone
+        notify.reset_mock()
+        await self._poll(monitor, drives=["H:"], present=True, label="SHOW_S1D2")
+
+        notify.assert_awaited_once_with("inserted", "H:", "SHOW_S1D2")
+
+    async def test_vanished_drive_fires_removed_once(self):
+        """Same contract as a physical removal: debounced, then reported once."""
+        monitor, notify = _make_monitor()
+        monitor._drive_states = {"H:": True}
+
+        await self._poll(monitor, drives=[], present=False, polls=1)
+        notify.assert_not_called()
+
+        await self._poll(monitor, drives=[], present=False, polls=3)
+        notify.assert_awaited_once_with("removed", "H:", "")
+        assert monitor._drive_states["H:"] is False
+
+    async def test_vanished_drive_is_not_probed(self):
+        """A letter that is no longer a drive must not be queried for a disc."""
+        monitor, _ = _make_monitor()
+        monitor._drive_states = {"H:": True, "E:": False}
+
+        with (
+            patch.object(sentinel, "get_optical_drives", return_value=["E:"]),
+            patch.object(sentinel, "is_disc_present", return_value=False) as present,
+            patch.object(sentinel, "get_volume_label", return_value=""),
+        ):
+            await monitor._check_drives()
+
+        present.assert_called_once_with("E:")
+
+    async def test_one_poll_flicker_out_of_enumeration_fires_nothing(self):
+        monitor, notify = _make_monitor()
+        monitor._drive_states = {"H:": True}
+
+        await self._poll(monitor, drives=[], present=False, polls=1)
+        await self._poll(monitor, drives=["H:"], present=True, polls=2)
+
+        notify.assert_not_called()
+        assert monitor._drive_states["H:"] is True
+
+
+@pytest.mark.unit
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only ctypes paths")
 class TestWindowsReaders:
     """ctypes Windows paths — only exercised on win32."""

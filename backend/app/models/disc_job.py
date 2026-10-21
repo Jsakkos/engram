@@ -1,5 +1,6 @@
 """DiscJob model - the core state machine for disc processing."""
 
+import json
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -49,6 +50,22 @@ class TitleState(StrEnum):
 
 # Title states that mean "MakeMKV has not touched this track yet".
 _PRE_RIP_TITLE_STATES = frozenset({TitleState.PENDING, TitleState.SKIPPED})
+
+
+def any_title_ripped(titles: Iterable["DiscTitle"]) -> bool:
+    """Whether MakeMKV has produced any of these titles, filed or not.
+
+    Staging alone cannot answer this: once every track is organized into the
+    library, staging is empty although the disc was ripped and ejected (#774).
+
+    A title interrupted mid-rip (RIPPING or FAILED, no file) counts as ripped,
+    the same rule ``start_rip_refusal`` applies: a resume must not start a
+    second full rip that the Start rip button would refuse. Such a job recovers
+    through per-title re-rip.
+    """
+    return any(
+        t.state not in _PRE_RIP_TITLE_STATES or t.output_filename or t.organized_to for t in titles
+    )
 
 
 def start_rip_refusal(job: "DiscJob", titles: Iterable["DiscTitle"]) -> str | None:
@@ -282,6 +299,14 @@ class DiscTitle(SQLModel, table=True):
     segment_count: int = 0
     segment_map: str | None = None  # e.g., "1,2,3"
 
+    # Disc stream languages from the MakeMKV scan (SINFO attr 3), JSON lists of
+    # normalized codes in stream order, null for an untagged stream (issue #241).
+    # None = not known (legacy rows, imports). They describe the DISC: the ripped
+    # file decides what can be transcribed, because MakeMKV's language settings
+    # may leave streams out. Evidence for review messages, not routing authority.
+    audio_languages: str | None = Field(default=None)
+    subtitle_languages: str | None = Field(default=None)
+
     # Organization tracking
     organized_from: str | None = None  # Source filename
     organized_to: str | None = None  # Destination path
@@ -304,3 +329,13 @@ class DiscTitle(SQLModel, table=True):
     # stays CANONICAL (aired order); these only describe the filename projection.
     episode_ordering: str | None = Field(default=None)  # e.g. "dvd"; None = aired/default
     episode_group_id: str | None = Field(default=None)  # TMDB group id used, if any
+
+    def audio_language_list(self) -> list[str | None] | None:
+        """The scan's audio languages, or None when unknown or unreadable."""
+        try:
+            parsed = json.loads(self.audio_languages) if self.audio_languages else None
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not isinstance(parsed, list) or not all(v is None or isinstance(v, str) for v in parsed):
+            return None
+        return parsed
