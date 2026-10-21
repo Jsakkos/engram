@@ -664,6 +664,48 @@ def _season_episode_titles(show_id: str, season: int, tmdb_api_key: str) -> dict
     return {e["episode_number"]: e["name"] for e in episodes if e.get("episode_number") is not None}
 
 
+def season_release_titles(show_id: str, season: int) -> dict[int, list[str]] | None:
+    """Every OpenSubtitles ``release`` string for a season, grouped by episode number.
+
+    Evidence for the pack builder's half-hour to segment crosswalk (#760): a
+    release name often carries the episode titles actually in the file
+    (``S02E06.Ransom.Ms.Perfect``) even when the feature metadata names a
+    different, TMDB-aligned episode. One search call; nothing is downloaded, so no
+    download quota is spent. None when the API is unavailable or the search fails,
+    which the caller treats as "no title evidence", not as an error.
+    """
+    from app.services.config_service import get_config_sync
+
+    client, reason = _os_client_and_reason(get_config_sync())
+    if client is None:
+        logger.debug(f"No OpenSubtitles release titles for tmdb {show_id} S{season:02d}: {reason}")
+        return None
+    try:
+        response = os_api_call(
+            client.search,
+            parent_tmdb_id=show_id,
+            season_number=season,
+            languages="en",
+            type="episode",
+            max_attempts=4,
+            base_delay=1.0,
+        )
+    except Exception as e:
+        logger.warning(
+            f"OpenSubtitles release-title search failed for tmdb {show_id} S{season:02d}: {e}",
+            exc_info=True,
+        )
+        return None
+
+    releases: dict[int, list[str]] = {}
+    for subtitle in response.data or []:
+        episode = getattr(subtitle, "episode_number", None)
+        if not episode or getattr(subtitle, "season_number", None) != season:
+            continue
+        releases.setdefault(episode, []).append(getattr(subtitle, "release", None) or "")
+    return releases
+
+
 def download_subtitles(
     show_name: str, season: int, *, tmdb_id: int | None = None, use_precomputed: bool = True
 ) -> dict:
