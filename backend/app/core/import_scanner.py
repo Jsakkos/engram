@@ -1,7 +1,8 @@
 """Recursive scanner for manual media import.
 
-Given a folder (or a single .mkv file) chosen by the user, walk the tree, find
-every .mkv at any depth, and group the files into import units keyed by
+Given a folder (or a single video file) chosen by the user, walk the tree, find
+every importable video file (see ``app.core.media_formats``) at any depth, and
+group the files into import units keyed by
 (show, season). Intermediate folders that are not "Season NN" (for example
 "Disc 1") are transparent: we recurse through them and roll their files up into
 the inferred season.
@@ -18,6 +19,8 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from app.core.media_formats import is_importable_video
 
 # Matches "Season 1", "season 01", "Season 12", etc. (mirrors the old watcher).
 _SEASON_RE = re.compile(r"^[Ss]eason\s*0*(\d+)$")
@@ -81,6 +84,26 @@ def is_disc_image_dir(path: Path) -> bool:
         return False
 
 
+def enclosing_disc_backup(path: Path) -> Path | None:
+    """The disc backup ``path`` lies inside (at or below its BDMV/VIDEO_TS), or None.
+
+    A ``.m2ts`` under ``BDMV/STREAM`` is one stream clip, not a title: the
+    playlist (``.mpls``) decides which clips, in which order, make an episode,
+    and seamless-branching discs reuse clips across titles. Importing the clips
+    would file fragments and menu loops. The backup that holds them is what
+    MakeMKV can extract properly, so a pick anywhere inside one (the BDMV folder,
+    STREAM, or a single clip) is redirected to the backup root.
+    """
+    for p in (path, *path.parents):
+        if p.name.upper() in _DISC_IMAGE_MARKERS and p.parent != p:
+            try:
+                if p.is_dir():
+                    return p.parent
+            except OSError:
+                return None
+    return None
+
+
 def _dir_size_bounded(root: Path) -> int:
     """Best-effort recursive size of a directory, capped to stay interactive.
 
@@ -120,7 +143,7 @@ class ImportScan:
     truncated: bool = False
     # Disc backup folders (BDMV/VIDEO_TS) and .iso files found in the tree. These
     # are scanned and extracted through the normal pipeline rather than filed, so
-    # they are kept separate from `units` (which are ready-made MKVs to move).
+    # they are kept separate from `units` (which are ready-made videos to move).
     disc_images: list[DiscImageUnit] = field(default_factory=list)
     # True when the picked folder is a single title (holds media / Season / Disc
     # directly) rather than a parent-of-shows/library folder. Drives in-place
@@ -188,7 +211,7 @@ def _season_from_path(file: Path, root: Path) -> int | None:
 
 
 def _iter_mkvs(root: Path) -> tuple[list[Path], list[DiscImageUnit], bool]:
-    """Recursively collect .mkv files under root, bounded by count and depth.
+    """Recursively collect importable video files under root, bounded by count and depth.
 
     Skips symlinked directories and any file whose resolved path escapes root,
     so a crafted symlink cannot surface outside files or cause a loop. A
@@ -231,7 +254,7 @@ def _iter_mkvs(root: Path) -> tuple[list[Path], list[DiscImageUnit], bool]:
                     if name_lower.endswith(".iso"):
                         disc_images.append(DiscImageUnit(p, p.name, "iso", _safe_size(p)))
                         continue
-                    if not name_lower.endswith(".mkv"):
+                    if not is_importable_video(name_lower):
                         continue
                     try:
                         if not p.resolve().is_relative_to(root_resolved):
@@ -247,8 +270,17 @@ def _iter_mkvs(root: Path) -> tuple[list[Path], list[DiscImageUnit], bool]:
 
 
 def scan(path: Path) -> ImportScan:
-    """Scan a folder or single .mkv file into import units."""
+    """Scan a folder or single video file into import units."""
     path = Path(path).expanduser()
+
+    # A pick inside a disc backup (BDMV, BDMV/STREAM, or one .m2ts clip) is the
+    # backup itself, extracted through MakeMKV, never a pile of stream clips.
+    backup_root = enclosing_disc_backup(path)
+    if backup_root is not None:
+        image = DiscImageUnit(
+            backup_root, backup_root.name, "backup", _dir_size_bounded(backup_root)
+        )
+        return ImportScan(backup_root, [], [], 0, 0, False, disc_images=[image])
 
     # Single-file target: one flat unit; show derived from the parent folder.
     if path.is_file():
@@ -256,7 +288,7 @@ def scan(path: Path) -> ImportScan:
             size = _safe_size(path)
             image = DiscImageUnit(path, path.name, "iso", size)
             return ImportScan(path.parent, [], [], 0, 0, False, disc_images=[image])
-        if path.suffix.lower() != ".mkv":
+        if not is_importable_video(path):
             return ImportScan(path.parent, [], [], 0, 0, False)
         size = _safe_size(path)
         show, season = _split_show_season(path.parent.name)
