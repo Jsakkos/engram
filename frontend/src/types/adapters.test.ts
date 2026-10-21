@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { transformJobToDiscData } from './adapters';
+import { transformJobToDiscData, withoutIdentityReview } from './adapters';
 import type { DiscTitle, Job, TitleState } from './index';
 
 /** Minimal valid Job; override only the fields a test cares about. */
@@ -330,5 +330,24 @@ describe('transformJobToDiscData: auto-skipped short tracks', () => {
       makeTitle('pending', 1, { match_details: AUTO }),
     ]);
     expect(disc.tracks?.[0].autoSkipReason).toBeUndefined();
+  });
+});
+
+describe('withoutIdentityReview — heuristic-only mode', () => {
+  const identityDisc = transformJobToDiscData(
+    makeJob({ tmdb_id: null }),
+    [makeTitle('pending', 1)],
+  );
+
+  it('clears identityReview so the card offers Review when TMDB is not configured', () => {
+    expect(identityDisc.identityReview).toBe(true);
+    const [relaxed] = withoutIdentityReview([identityDisc]);
+    expect(relaxed.identityReview).toBe(false);
+  });
+
+  it('leaves discs untouched (same reference) when none carry identityReview', () => {
+    const plain = { ...identityDisc, identityReview: false };
+    const input = [plain];
+    expect(withoutIdentityReview(input)[0]).toBe(plain);
   });
 });

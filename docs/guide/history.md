@@ -10,14 +10,14 @@ At the top of the page, six stat cards summarize your archival activity:
 
 | Stat | Description | Color |
 |------|-------------|-------|
-| **Total Jobs** | Count of all completed and failed jobs | Cyan |
+| **Total Jobs** | Count of the jobs in the current view | Cyan |
 | **Completed** | Successfully archived jobs | Green |
 | **Failed** | Jobs that ended in error | Red |
 | **TV Shows** | Jobs classified as TV content | Amber |
 | **Movies** | Jobs classified as movie content | Magenta |
 | **Avg Time** | Average processing time across all jobs | Violet |
 
-These stats are fetched from the `GET /api/jobs/stats` endpoint and reflect the entire job history, not just the current page.
+These stats are fetched from the `GET /api/jobs/stats` endpoint and describe the same set of jobs as the table (every page, with the current filters applied), so the tiles and the rows always agree.
 
 ## Common Errors
 
@@ -37,6 +37,8 @@ Two dropdown filters are available above the history table:
 
 - **Content type** -- filter by All Types, TV, or Movie.
 - **State** -- filter by All States, Completed, or Failed.
+
+A **search box** next to the filters matches the volume label, the detected or TMDB title, matched episode codes (for example `S02E07`) and error text, case-insensitively, across every page. The search is kept in the page URL (`/history?q=frasier`), so it can be bookmarked and survives opening a job's detail panel; clearing the box restores the full view. The stat cards follow the search too.
 
 Changing either filter resets the page back to 1. Filters are applied server-side for efficiency.
 
