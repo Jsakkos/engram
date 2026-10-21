@@ -2033,12 +2033,17 @@ async def get_network_info(request: Request) -> NetworkInfoResponse:
     )
 
 
-async def validate_config_update(update_data: dict) -> dict:
+async def validate_config_update(update_data: dict, *, probe_paths: bool = True) -> dict:
     """Validate and normalize a config update the way ``PUT /api/config`` does.
 
     Raises ``HTTPException`` with the same status and detail PUT always has, and
     returns the normalized dict. Shared with settings import (#731) so a file
     cannot get past a check the Settings form is held to.
+
+    ``probe_paths=False`` skips the library writability probe, the one check
+    that touches the filesystem. The settings-import preview passes it for a
+    network path from an uploaded file, so merely previewing a crafted file
+    cannot make Windows authenticate to the host it names.
     """
     # Validate fingerprint_server_url against SSRF before persisting
     if update_data.get("fingerprint_server_url"):
@@ -2176,7 +2181,7 @@ async def validate_config_update(update_data: dict) -> dict:
     # must not create directories as a side effect, and a path on a share that
     # is not mounted yet is not an error to save.
     _path_fields = ("library_movies_path", "library_tv_path", "staging_path")
-    if any(update_data.get(f) for f in _path_fields):
+    if probe_paths and any(update_data.get(f) for f in _path_fields):
         _current = await get_current_config()
         for field in _path_fields:
             new_value = update_data.get(field)
@@ -2253,6 +2258,12 @@ async def _read_settings_body(request: Request) -> object:
     """The JSON body of a settings-import request, size-capped (#731)."""
     from app.services.config_transfer import MAX_IMPORT_BYTES
 
+    # Parsed only when declared JSON, as FastAPI does for its own body params: a
+    # cross-site form or text/plain POST needs no CORS preflight, so accepting
+    # one would let any web page the user visits rewrite their settings.
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(status_code=415, detail="Send the settings file as application/json.")
     body = await request.body()
     if len(body) > MAX_IMPORT_BYTES:
         raise HTTPException(status_code=413, detail="The settings file is too large.")
@@ -2264,8 +2275,44 @@ async def _read_settings_body(request: Request) -> object:
         ) from None
 
 
+async def _require_trusted_host(request: Request) -> None:
+    """403 unless the Host header names this machine in a way DNS rebinding can't.
+
+    A rebinding page reaches the loopback API under the attacker's own host name,
+    and same-origin rules then let it read the response. That is harmless for a
+    redacted response and not for an export carrying plaintext keys, so that one
+    response accepts only loopback names, IP literals (what LAN users type), and
+    the host of the configured ``dashboard_base_url``.
+    """
+    import ipaddress
+    from urllib.parse import urlsplit
+
+    from app.services.config_service import get_config as get_db_config
+
+    host = (urlsplit(f"//{request.headers.get('host', '')}").hostname or "").lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        return
+    try:
+        ipaddress.ip_address(host)
+        return
+    except ValueError:
+        pass
+    config = await get_db_config()
+    dashboard_host = urlsplit(config.dashboard_base_url or "").hostname
+    if dashboard_host and host == dashboard_host.lower():
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            "Exporting keys and passwords is only allowed when the dashboard is opened "
+            "by IP address or localhost, or at the address set as the dashboard URL in "
+            "Settings > Notifications."
+        ),
+    )
+
+
 @router.get("/config/export", dependencies=[Depends(require_localhost_or_lan)])
-async def export_settings(include_secrets: bool = False) -> JSONResponse:
+async def export_settings(request: Request, include_secrets: bool = False) -> JSONResponse:
     """Download the configuration as a settings file (#731).
 
     Keys and passwords are left out unless ``include_secrets`` is set. The flag
@@ -2273,6 +2320,8 @@ async def export_settings(include_secrets: bool = False) -> JSONResponse:
     """
     from app.services.config_transfer import build_export
 
+    if include_secrets:
+        await _require_trusted_host(request)
     data = await build_export(include_secrets)
     suffix = "-with-keys" if include_secrets else ""
     filename = f"engram-settings-{datetime.now(UTC):%Y-%m-%d}{suffix}.json"

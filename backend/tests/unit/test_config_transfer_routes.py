@@ -20,7 +20,7 @@ async def _seed(**fields) -> None:
 
 @pytest.fixture
 async def client():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://localhost") as ac:
         yield ac
 
 
@@ -69,7 +69,11 @@ async def test_preview_wrong_format_400(client):
 
 async def test_preview_oversize_413(client):
     big = {"format": "engram-settings", "settings": {"x": "a" * 300_000}}
-    resp = await client.post("/api/config/import/preview", content=json.dumps(big).encode())
+    resp = await client.post(
+        "/api/config/import/preview",
+        content=json.dumps(big).encode(),
+        headers={"content-type": "application/json"},
+    )
     assert resp.status_code == 413
 
 
@@ -110,3 +114,54 @@ async def test_transfer_routes_refuse_lan_peer():
         ):
             assert resp.status_code == 403
             assert TOKEN not in resp.text
+
+
+@pytest.mark.parametrize("path", ["/api/config/import/preview", "/api/config/import/apply"])
+async def test_import_requires_json_content_type(client, path):
+    """A cross-site form or text/plain POST needs no CORS preflight, so the body
+    must not be parsed unless it is declared JSON (FastAPI's own CSRF stance)."""
+    await _seed(extras_policy="keep")
+    file = {"format": "engram-settings", "settings": {"extras_policy": "skip"}}
+    body = file if path.endswith("preview") else {"file": file, "keys": ["extras_policy"]}
+    resp = await client.post(
+        path, content=json.dumps(body).encode(), headers={"content-type": "text/plain"}
+    )
+    assert resp.status_code == 415
+    assert (await client.get("/api/config")).json()["extras_policy"] == "keep"
+
+
+async def test_export_with_keys_refuses_foreign_host_name(client):
+    """DNS rebinding reaches the loopback API under the attacker's host name, so
+    the one response that carries plaintext keys checks the Host header."""
+    await _seed(tmdb_api_key=TOKEN)
+    resp = await client.get(
+        "/api/config/export",
+        params={"include_secrets": "true"},
+        headers={"host": "evil.example.com:8000"},
+    )
+    assert resp.status_code == 403
+    assert TOKEN not in resp.text
+    # Without keys there is nothing to steal, so any host may export.
+    resp = await client.get("/api/config/export", headers={"host": "evil.example.com:8000"})
+    assert resp.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "host", ["localhost:8000", "127.0.0.1:8000", "192.168.1.50:8000", "[::1]:8000"]
+)
+async def test_export_with_keys_allows_loopback_and_ip_hosts(client, host):
+    await _seed(tmdb_api_key=TOKEN)
+    resp = await client.get(
+        "/api/config/export", params={"include_secrets": "true"}, headers={"host": host}
+    )
+    assert resp.status_code == 200
+
+
+async def test_export_with_keys_allows_configured_dashboard_host(client):
+    await _seed(tmdb_api_key=TOKEN, dashboard_base_url="http://nas.local:5173")
+    resp = await client.get(
+        "/api/config/export",
+        params={"include_secrets": "true"},
+        headers={"host": "nas.local:8000"},
+    )
+    assert resp.status_code == 200

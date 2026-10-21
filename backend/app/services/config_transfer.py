@@ -20,6 +20,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app import __version__
+from app.core.paths import is_unc_path, normalize_user_path
 from app.services.config_service import SECRET_FIELDS, get_config, update_config
 
 __all__ = [
@@ -149,7 +150,9 @@ def _is_absent(key: str, value: object) -> bool:
     return key in SECRET_FIELDS and isinstance(value, str) and not value.strip()
 
 
-async def _validate_field(key: str, value: object) -> tuple[object, str | None]:
+async def _validate_field(
+    key: str, value: object, *, probe_paths: bool = True
+) -> tuple[object, str | None]:
     """``(normalized, None)`` or ``(None, error)``, using PUT's own checks."""
     from app.api.routes import validate_config_update
 
@@ -159,10 +162,16 @@ async def _validate_field(key: str, value: object) -> tuple[object, str | None]:
         # msg only: the full error repr echoes the input, which may be a secret.
         return None, f"{key}: {exc.errors()[0]['msg']}"
     try:
-        normalized = await validate_config_update({key: coerced})
+        normalized = await validate_config_update({key: coerced}, probe_paths=probe_paths)
     except HTTPException as exc:
         return None, str(exc.detail)
     return normalized.get(key, coerced), None
+
+
+def _is_network_path(key: str, value: object) -> bool:
+    """A UNC path in a path field. Never probed during preview: touching it would
+    make Windows authenticate to whatever host an uploaded file names."""
+    return key in PATH_FIELDS and isinstance(value, str) and is_unc_path(normalize_user_path(value))
 
 
 def _path_missing(key: str, value: object) -> bool:
@@ -187,12 +196,15 @@ async def preview_import(data: object) -> dict:
             continue
         secret = key in SECRET_FIELDS
         current = getattr(config, key, None)
-        normalized, error = await _validate_field(key, raw)
+        unchecked = _is_network_path(key, raw)
+        normalized, error = await _validate_field(key, raw, probe_paths=not unchecked)
+        path_missing = False
         if error:
-            status, path_missing = "invalid", False
+            status = "invalid"
         else:
             status = "same" if normalized == current else "change"
-            path_missing = await asyncio.to_thread(_path_missing, key, normalized)
+            if not unchecked:
+                path_missing = await asyncio.to_thread(_path_missing, key, normalized)
         fields.append(
             {
                 "key": key,
@@ -201,8 +213,9 @@ async def preview_import(data: object) -> dict:
                 "incoming": "***" if secret else (raw if error else normalized),
                 "secret": secret,
                 "path_missing": path_missing,
+                "path_unchecked": unchecked and not error,
                 "error": error,
-                "selected": status == "change" and not path_missing,
+                "selected": status == "change" and not path_missing and not unchecked,
             }
         )
 
