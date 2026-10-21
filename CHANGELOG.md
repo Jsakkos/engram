@@ -9,6 +9,7 @@ All notable changes to Engram will be documented in this file.
 - **Reassign** in History now lists every episode of the season. The picker was built only from episodes other tracks on the disc already held, so the one episode the disc was missing, the one a mis-filed track usually is, could never be chosen. It now reads the season's episode list, with episode titles, and falls back to a full numbered range when that list can't be loaded. (#770)
 
 - An episode track is no longer filed as an extra just because it is shorter than the show's listed runtime when other tracks of the same length on the disc already matched as episodes. Some shows list a 30-minute broadcast slot while the disc's episodes run 20 minutes, so a track that matching couldn't place on the first pass was then filed under Extras next to its matched siblings. Engram now keeps matching such a track, and sends it to review if it still can't be placed. (#770)
+- A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
 ## [0.41.0] - 2026-10-20
 
@@ -21,6 +22,7 @@ _Highlights: recover failed jobs from staging, Play-All tracks detected from the
 - Manual import now accepts `.mp4`, `.m4v`, `.ts` and `.m2ts` files as well as `.mkv`. Files are filed unchanged and keep their own extension in the library (an MP4 lands as `Show - S01E01.mp4`), and an existing copy of the same episode in another container counts as a conflict instead of becoming a duplicate. Picking a `BDMV` folder, its `STREAM` folder or a single stream clip imports the whole disc backup through MakeMKV, because those clips are fragments, not titles.
 
 - Movie review now has the same **Open in player** and **Copy stream URL** buttons as TV review, so you can watch each feature-length title in VLC or MPV before picking which cut to keep.
+- A **Getting Help & Reporting Issues** guide covering Trace, the support bot in the Engram Discord: run `/bug` or `/feature` and it gathers the details, checks for an existing issue, and drafts a GitHub issue you file with one click; attach a job's diagnostics bundle and it reads the logs for you. The README, Troubleshooting and Contributing pages, and GitHub's new-issue page, now point there.
 
 ### Fixed
 
