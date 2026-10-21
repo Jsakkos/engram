@@ -9,7 +9,10 @@ interface Props {
   version: string;
   /** Optional drive descriptor — e.g. "DRIVE E:" or "DRIVE OFFLINE". */
   driveLabel?: string;
-  /** Optional override of the telemetry strip strings. */
+  /**
+   * Telemetry strip strings. Must come from real signals; the bar renders an
+   * empty spacer rather than filler when none are known (#720).
+   */
   telemetry?: string[];
 }
 
@@ -49,17 +52,6 @@ export function SvStatusBar({
     zIndex: 20,
   };
 
-  // Ambient-only band: WS / version / drive are already shown as left & right
-  // pills, so they're omitted here to avoid simultaneous duplication.
-  const defaultTelemetry = [
-    "UNIT 07",
-    "SESSION 01",
-    "BUFFER NOMINAL",
-    "THERMAL NOMINAL",
-    "CPU IDLE",
-    "GPU IDLE",
-  ];
-
   return (
     <footer style={root} data-testid="sv-statusbar">
       {/* Left: live counts + drive */}
@@ -70,7 +62,11 @@ export function SvStatusBar({
       </div>
 
       {/* Center: scrolling telemetry */}
-      <SvTelemetryBand items={telemetry ?? defaultTelemetry} />
+      {telemetry && telemetry.length > 0 ? (
+        <SvTelemetryBand items={telemetry} />
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
 
       {/* Right: WS state + version */}
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
