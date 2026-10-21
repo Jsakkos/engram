@@ -233,6 +233,18 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   form; roster coverage counts the track against every episode it claims. The DiscDB export
   publishes the range form too (`"1-2"`), which is TheDiscDB's own convention for a combined
   title — not the first episode alone.
+- **Half-hour packs are translated, not trusted (#760)**: the subtitle pack numbers
+  segment-format seasons by broadcast half-hour (IMDb/OpenSubtitles numbering) under TMDB-looking
+  codes, so pack `S02E06` can be TMDB `S02E11-E12`. Such seasons carry `scheme: "divergent"` and,
+  when the builder could derive one, a `crosswalk` (corpus code to TMDB code) in the manifest
+  marker; derivation lives in `app/matcher/numbering_crosswalk.py` (release-title anchors that
+  must be unanimous across a feature's uploads, plus TMDB air-date gap fill). Every reader of
+  precomputed codes goes through `translate_codes` (`precomputed_episode_codes`,
+  `_load_precomputed_season`), which drops unmapped references; `stamp_numbering` then records
+  `tmdb_aired` + `numbering_crosswalk`. The scheme stays `divergent` so older clients are
+  unaffected (no `CACHE_FORMAT_VERSION` bump). Divergent seasons are never gap-healed or grafted
+  from scraped SRTs, and a divergent match with no crosswalk is held as `numbering_divergent`.
+  Spec: `docs/superpowers/specs/2026-10-20-multipart-episode-matching-design.md`.
 - **A job's episode numbering is a value: `DiscJob.episode_namespace` (`tmdb` | `tvdb`).**
   TMDB aired order is the identity unless a job opts into TheTVDB official order (per show,
   via the review-page suggestion when the two catalogues disagree, e.g. Justice League S1:

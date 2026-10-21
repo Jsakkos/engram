@@ -2,7 +2,7 @@
 
 - **Issue:** [Jsakkos/engram#760](https://github.com/Jsakkos/engram/issues/760) (Hey Arnold! S2 Disc 2, job 100)
 - **Date:** 2026-10-20
-- **Status:** draft, awaiting maintainer approval
+- **Status:** approved 2026-10-20 (auto-file crosswalked combined matches; hold uncrosswalked divergent matches; maintainer redeploys the nightly builder); implemented on branch `claude/760-multipart-episodes-f0571a`
 - **Builds on:** `2026-09-20-subtitle-cache-numbering-scheme-design.md`, which recorded the
   `divergent` marker and explicitly deferred "mapping half-hour *k* to its canonical segments".
   This spec is that deferred piece.
