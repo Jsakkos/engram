@@ -5,7 +5,7 @@ lists of normalized codes (issue #241). Mirrors the database.py reconciler path
 used by frozen builds (which skip Alembic); the two must stay in agreement.
 
 Revision ID: a4c8e2f1b9d7
-Revises: b7d1e4a9c2f3
+Revises: 5c2d8e1f4a7b
 Create Date: 2026-10-20 00:00:00.000000
 
 """
@@ -19,7 +19,7 @@ from app.migration_guards import add_column_if_missing
 
 # revision identifiers, used by Alembic.
 revision: str = "a4c8e2f1b9d7"
-down_revision: str | Sequence[str] | None = "b7d1e4a9c2f3"
+down_revision: str | Sequence[str] | None = "5c2d8e1f4a7b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

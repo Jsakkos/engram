@@ -673,9 +673,14 @@ class TestExtractAudioChunkNoAudioStream:
     """
 
     def _matcher(self, tmp_path):
+        from app.matcher.audio_streams import AudioPlan
         from app.matcher.episode_identification import EpisodeMatcher
 
-        return EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show", model_name="tiny")
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show", model_name="tiny")
+        # These tests pin extract_audio_chunk's own ffmpeg/ffprobe sequence; the
+        # #241 stream plan probes separately and is covered in its own tests.
+        matcher.audio_plan = lambda *a, **k: AudioPlan("unprobed")
+        return matcher
 
     def test_audio_less_source_raises_no_audio_stream_error(self, tmp_path):
         from app.matcher.episode_identification import NoAudioStreamError
