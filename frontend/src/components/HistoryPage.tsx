@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, amendTitle } from "../api/client";
 import { AmendTitleModal } from "./HistoryPage/AmendTitleModal";
+import { FailedJobRecovery } from "./HistoryPage/FailedJobRecovery";
+import { titleStateBadge } from "./HistoryPage/titleState";
 import { parseEpisodeCode } from "./ReviewQueue/coverage";
 import { TvdbAttribution } from "./ReviewQueue/TvdbAttribution";
 import {
@@ -23,7 +25,7 @@ import {
 import { IcoMovie, IcoTv, IcoError, IcoDisc } from "../app/components/icons";
 import { FEATURES } from "../config/constants";
 import { ROUTES, historyDetailPath } from "../config/routes";
-import { SvActionButton, SvAtmosphere, SvBadge, type SvBadgeState, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
+import { SvActionButton, SvAtmosphere, SvBadge, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
 import BugReportModal from "./BugReportModal";
 import { ALL_JOBS_FILTER, buildHistoryQuery } from "./historyQuery";
 import { historyBadgeState, historyTimelineLabel } from "./historyState";
@@ -358,17 +360,8 @@ function ConfidenceBar({ value }: { value: number }) {
   );
 }
 
-function TitleStateBadge({ state }: { state: string }) {
-  const map: Record<string, { state: SvBadgeState; label: string }> = {
-    completed: { state: "complete", label: "OK" },
-    failed:    { state: "error",    label: "FAIL" },
-    matched:   { state: "matched",  label: "MATCHED" },
-    review:    { state: "review",   label: "REVIEW" },
-    pending:   { state: "queued",   label: "PENDING" },
-    ripping:   { state: "ripping",  label: "RIPPING" },
-    matching:  { state: "matching", label: "MATCHING" },
-  };
-  const m = map[state] ?? { state: "idle" as SvBadgeState, label: state.toUpperCase() };
+function TitleStateBadge({ state, jobState }: { state: string; jobState?: string }) {
+  const m = titleStateBadge(state, jobState);
   return <SvBadge state={m.state} size="sm" dot={false}>{m.label}</SvBadge>;
 }
 
@@ -753,7 +746,7 @@ function JobDetailPanel({
                         )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <TitleStateBadge state={t.state} />
+                        <TitleStateBadge state={t.state} jobState={detail.state} />
                         {detail.state === "completed" && (
                           <button
                             type="button"
@@ -868,6 +861,8 @@ function JobDetailPanel({
               </div>
             </div>
           )}
+
+          {detail.state === "failed" && <FailedJobRecovery jobId={detail.id} />}
 
           {/* Bug Report for this specific job */}
           <div style={{ paddingTop: 8, borderTop: `1px solid ${sv.line}` }}>

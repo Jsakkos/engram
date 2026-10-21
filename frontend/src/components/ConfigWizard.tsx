@@ -333,6 +333,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     const [tmdbContinueAnyway, setTmdbContinueAnyway] = useState(false);
     const [tmdbGatePrompted, setTmdbGatePrompted] = useState(false);
     const [showBootstrapFlow, setShowBootstrapFlow] = useState(false);
+    // "Custom" is a choice, not something derivable from the formats: picking it while
+    // the formats still equal a preset must stick, or the select snaps back to the preset.
+    // Deliberately sticky: typing a preset-equal format keeps "Custom" until a preset is picked.
+    const [customNamingChosen, setCustomNamingChosen] = useState(false);
+    const namingSelection = customNamingChosen
+        ? 'custom'
+        : (NAMING_PRESETS.find(
+              (p) =>
+                  p.seasonFormat === config.namingSeasonFormat &&
+                  p.episodeFormat === config.namingEpisodeFormat,
+          )?.id ?? 'custom');
 
     const totalSteps = STEP_LABELS.length;
 
@@ -1970,15 +1981,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             <label htmlFor="namingConvention">Naming Convention</label>
                             <EngramSelect
                                 id="namingConvention"
-                                value={
-                                    NAMING_PRESETS.find(
-                                        (p) =>
-                                            p.seasonFormat === config.namingSeasonFormat &&
-                                            p.episodeFormat === config.namingEpisodeFormat,
-                                    )?.id ?? 'custom'
-                                }
+                                value={namingSelection}
                                 onValueChange={(v) => {
                                     const preset = NAMING_PRESETS.find((p) => p.id === v);
+                                    setCustomNamingChosen(!preset);
                                     if (preset) {
                                         handleInputChange('namingSeasonFormat', preset.seasonFormat);
                                         handleInputChange('namingEpisodeFormat', preset.episodeFormat);
@@ -2014,7 +2020,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             </span>
                         </div>
 
-                        {!NAMING_PRESETS.some((p) => p.seasonFormat === config.namingSeasonFormat) && (
+                        {namingSelection === 'custom' && (
                             <>
                                 <div className="form-group">
                                     <label htmlFor="namingSeasonFormat">Season Folder Format</label>

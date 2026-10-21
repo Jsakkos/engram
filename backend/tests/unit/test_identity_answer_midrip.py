@@ -524,3 +524,55 @@ class TestResumeMoviePostRip:
 
         resolve.assert_awaited_once()
         organize.assert_not_called()
+
+
+@pytest.mark.unit
+class TestPostRipDetectionSeesImportedContainers:
+    """An imported .mp4/.ts job is post-rip: answering it must never start a rip."""
+
+    async def test_re_identify_mp4_only_staging_job_reruns_matching(self, ws_calls, tmp_path):
+        (tmp_path / "Frasier - 01.mp4").write_text("")
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED, staging=str(tmp_path), identity_prompt_json=None
+        )
+        coord = _coord()
+
+        result = await coord.re_identify(job.id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+        assert result["has_ripped"] is True
+        assert result["resume_action"] == "rerun_matching"
+        assert (await _get_job(job.id)).state == JobState.MATCHING
+
+    async def test_set_name_on_ts_staging_job_goes_to_matching(self, ws_calls, tmp_path):
+        (tmp_path / "recording.ts").write_text("")
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED,
+            staging=str(tmp_path),
+            identity_prompt_json=None,
+            review_reason="Disc label unreadable",
+        )
+        coord = _coord()
+
+        result = await coord.set_name_and_resume(job.id, "Eureka", "tv", season=1)
+
+        assert result["resume_action"] == "dispatch_matches"
+        assert (await _get_job(job.id)).state == JobState.MATCHING
+
+    async def test_manifest_files_in_subfolders_count_as_staged(self, ws_calls, tmp_path):
+        # A multi-disc import's staging_path is the files' common ancestor, which
+        # holds no media itself: the manifest is what says the files exist.
+        f = tmp_path / "Disc 1" / "e1.mp4"
+        f.parent.mkdir()
+        f.write_text("")
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED,
+            staging=str(tmp_path),
+            identity_prompt_json=None,
+            import_manifest_json=json.dumps({"root": str(tmp_path), "files": [str(f)]}),
+        )
+        coord = _coord()
+
+        result = await coord.re_identify(job.id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+        assert result["has_ripped"] is True
+        assert result["resume_action"] == "rerun_matching"

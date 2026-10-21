@@ -1,5 +1,6 @@
 /**
- * Action buttons for the disc card (Cancel, Re-Identify, Review Needed).
+ * Action buttons for the disc card (Cancel, Re-Identify, Review Needed, and
+ * Retry from staging on a failed job).
  *
  * Synapse v2 vocabulary: monospace + uppercase labels, 1px tinted borders,
  * sharp 90° corners, sv-token glow on hover. All three buttons share a
@@ -129,6 +130,9 @@ interface ActionButtonsProps {
      *  relabels the button "Edit ID" instead of "Wrong title?" so it reads as
      *  a routine edit, not a correction of a mistake. */
     manualIdentity?: boolean;
+    /** Failed job whose staging folder still holds ripped files: re-run them
+     *  through import as a new job (#713). Only passed when a retry is possible. */
+    onRetryFromStaging?: () => void;
 }
 
 // States where Force-advance makes sense (job is actively processing).
@@ -264,14 +268,16 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, t
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onEject, isImport = false, emphasizeReIdentify = false, manualIdentity = false }: ActionButtonsProps) {
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onEject, isImport = false, emphasizeReIdentify = false, manualIdentity = false, onRetryFromStaging }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
     const showEject = !!onEject && EJECTABLE_STATES.includes(state) && !isImport;
+    const showRetry = !!onRetryFromStaging && state === "error";
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
     const [showEjectModal, setShowEjectModal] = useState(false);
+    const [showRetryModal, setShowRetryModal] = useState(false);
 
     const handleCancel = (e: MouseEvent) => {
         e.stopPropagation();
@@ -327,8 +333,34 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     onDismiss={() => setShowEjectModal(false)}
                 />
             )}
+            {showRetryModal && (
+                <ConfirmModal
+                    titleId="retry-modal-title"
+                    title="Retry from staging?"
+                    body="The files this job already ripped run through import again as a new job, keeping its title and season. The disc is not needed, and this failed job stays in History."
+                    confirmLabel="Retry"
+                    dismissLabel="Not now"
+                    confirmTone="cyan"
+                    onConfirm={() => { setShowRetryModal(false); onRetryFromStaging!(); }}
+                    onDismiss={() => setShowRetryModal(false)}
+                />
+            )}
         </AnimatePresence>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {showRetry && (
+                <ToneButton
+                    tone={CYAN}
+                    onClick={(e) => { e.stopPropagation(); setShowRetryModal(true); }}
+                    title="Retry this job from the files left in staging"
+                    ariaLabel="Retry from staging"
+                    paddingX={10}
+                    testId="retry-from-staging-button"
+                >
+                    <IcoRetry size={12} />
+                    <span style={{ fontSize: 10 }}>Retry</span>
+                </ToneButton>
+            )}
+
             {showCancel && (
                 <ToneButton
                     tone={RED}

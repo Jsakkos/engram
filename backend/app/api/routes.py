@@ -35,6 +35,12 @@ from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.episode_codes import parse_episode_code
 from app.core.errors import AIProviderError
+from app.core.media_formats import (
+    IMPORTABLE_VIDEO_EXTENSIONS,
+    is_importable_video,
+    list_video_files,
+    media_type_for,
+)
 from app.core.security import (
     is_allowed_image_url,
     is_within_configured_roots,
@@ -55,7 +61,7 @@ from app.matcher.manual_subtitle_import import (
 )
 from app.matcher.tmdb_client import get_number_of_seasons
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
-from app.models.disc_job import ContentType, DiscTitle
+from app.models.disc_job import ContentType, DiscTitle, start_rip_refusal
 from app.services.identity_prompts import BLOCKING_KINDS
 from app.services.import_guard import ImportBlock
 
@@ -1246,16 +1252,128 @@ async def get_job_detail(
 
 
 @router.post("/jobs/{job_id}/start")
-async def start_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
+async def start_job(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
     """Start ripping a disc."""
     if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
         raise HTTPException(status_code=400, detail=f"Cannot start job in state: {job.state}")
 
+    # REVIEW_NEEDED is also the state of a post-rip review, where the disc has
+    # usually left the drive; a full rip from there re-rips it (#710).
+    titles = (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))).scalars()
+    refusal = start_rip_refusal(job, titles)
+    if refusal:
+        raise HTTPException(status_code=409, detail=refusal)
+
     # Import here to avoid circular imports
     from app.services.job_manager import job_manager
 
-    await job_manager.start_ripping(job.id)
+    try:
+        await job_manager.start_ripping(job.id)
+    except ValueError as e:
+        # start_ripping re-checks in its own session; a state change between the
+        # two checks (a double click, say) is still a conflict, not a 500.
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return {"status": "started", "job_id": job.id}
+
+
+async def _assess_recovery(job: DiscJob, session: AsyncSession):
+    from app.services.failed_job_recovery import assess_staging_recovery
+
+    titles = (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))).scalars()
+    return await asyncio.to_thread(assess_staging_recovery, job, list(titles))
+
+
+@router.get("/jobs/{job_id}/recovery")
+async def get_job_recovery(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """What a failed job can still do: retry from staging, and why not (#713)."""
+    recovery = await _assess_recovery(job, session)
+    return {
+        "job_id": job.id,
+        "staging_path": recovery.staging_path,
+        "staging_exists": recovery.staging_exists,
+        "file_count": len(recovery.files),
+        "can_retry": recovery.can_retry,
+        "reason": recovery.reason,
+    }
+
+
+@router.post(
+    "/jobs/{job_id}/retry-from-staging",
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def retry_job_from_staging(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Run a failed job's ripped files through the import pipeline as a new job.
+
+    The failed job stays FAILED; the retry is a separate job pre-filled with its
+    identity. It reads only files already in staging, never the disc.
+    """
+    from app.services.job_manager import job_manager
+
+    recovery = await _assess_recovery(job, session)
+    if not recovery.can_retry:
+        raise HTTPException(status_code=409, detail=recovery.reason)
+
+    content_type = job.content_type.value if job.content_type else "unknown"
+    result = await job_manager.create_job_from_staging(
+        staging_path=recovery.staging_path,
+        volume_label=job.volume_label or "",
+        content_type=content_type,
+        detected_title=job.detected_title,
+        detected_season=job.detected_season,
+        destination_mode=job.destination_mode or "library",
+        # A retried disc rip must not carry the drive letter (the retry never
+        # touches the drive), and must not be "import" either: cleanup treats an
+        # import's staging as the user's own source folder and never deletes it.
+        drive_id="import" if job.drive_id == "import" else "staging",
+        import_manifest=recovery.retry_manifest,
+    )
+    if result.job_id is None:
+        ids = ", ".join(f"#{i}" for i in result.blocking_job_ids)
+        detail = (
+            f"Job {ids} is already processing this staging folder."
+            if result.block is ImportBlock.IN_FLIGHT
+            else f"Job {ids} already imported this staging folder."
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    logger.info(
+        "Retried failed job %s from staging as job %s",
+        sanitize_log_value(job.id),
+        sanitize_log_value(result.job_id),
+    )
+    return {"job_id": result.job_id, "retried_from": job.id}
+
+
+@router.post("/jobs/{job_id}/open-staging", dependencies=[Depends(require_localhost)])
+async def open_job_staging(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """Open a job's staging folder in the host's file manager.
+
+    Host-only: a LAN peer would be opening a window on someone else's screen.
+    The path is read from the job row, never from the request.
+    """
+    from app.services import failed_job_recovery
+
+    staging = Path(job.staging_path) if job.staging_path else None
+    if staging is None or not await asyncio.to_thread(staging.is_dir):
+        raise HTTPException(status_code=404, detail="The staging folder no longer exists")
+    try:
+        await asyncio.to_thread(failed_job_recovery.open_in_file_manager, staging)
+    except OSError as exc:
+        logger.warning(
+            "Could not open staging folder for job %s: %s",
+            sanitize_log_value(job.id),
+            sanitize_log_value(str(exc)),
+        )
+        raise HTTPException(status_code=500, detail="Could not open the folder") from exc
+    return {"status": "opened", "job_id": job.id}
 
 
 @router.post("/jobs/{job_id}/cancel")
@@ -2560,10 +2678,8 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
         )
 
     # --- Collect all media files, skipping Extras ---
-    _MEDIA_EXTENSIONS = {".mkv", ".mp4", ".m2ts"}
-
     all_media: set[Path] = set()
-    for ext in _MEDIA_EXTENSIONS:
+    for ext in IMPORTABLE_VIDEO_EXTENSIONS:
         for p in root.rglob(f"*{ext}"):
             # rglob follows symlinks; skip any hit whose real path escapes the
             # scanned tree so a crafted symlink can't surface outside files.
@@ -3146,12 +3262,15 @@ async def import_browse(path: str = "") -> dict:
     and from LAN peers only when the user has enabled allow_lan_access (so
     headless/Docker deployments accessed from another device can import). Returns
     directory names with a shallow direct-child
-    MKV count, plus selectable .mkv files. Never returns file contents. Empty
+    video count, plus selectable video files (``app.core.media_formats``). The
+    wire names ``mkv_count`` and ``type: "mkv"`` predate non-MKV import and are
+    kept for compatibility; they cover every importable container. Never returns
+    file contents. Empty
     path returns the drive roots (Windows) or / and home (POSIX).
 
     A directory holding BDMV/VIDEO_TS and a .iso file are reported as their own
     types: they are scanned and extracted through the normal pipeline rather
-    than filed like ready-made MKVs.
+    than filed like ready-made videos.
     """
     from app.core import import_scanner
 
@@ -3189,14 +3308,14 @@ async def import_browse(path: str = "") -> dict:
                     count = 0
                     try:
                         for f in os.scandir(entry.path):
-                            if f.is_file(follow_symlinks=False) and f.name.lower().endswith(".mkv"):
+                            if f.is_file(follow_symlinks=False) and is_importable_video(f.name):
                                 count += 1
                     except OSError:
                         count = 0
                     entries.append(
                         {"name": entry.name, "path": entry.path, "type": "dir", "mkv_count": count}
                     )
-                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".mkv"):
+                elif entry.is_file(follow_symlinks=False) and is_importable_video(entry.name):
                     entries.append({"name": entry.name, "path": entry.path, "type": "mkv"})
                 elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".iso"):
                     entries.append({"name": entry.name, "path": entry.path, "type": "iso"})
@@ -3278,7 +3397,9 @@ async def import_start(req: ImportStartRequest) -> ImportStartResponse:
 
     scan = await asyncio.to_thread(import_scanner.scan, p)
     if not scan.units and not scan.disc_images:
-        raise HTTPException(status_code=400, detail="No MKV files or disc backups found to import")
+        raise HTTPException(
+            status_code=400, detail="No video files or disc backups found to import"
+        )
 
     root_str = str(scan.root)
     force_keys = set(req.force_keys)
@@ -3395,7 +3516,7 @@ class StagingImportRequest(BaseModel):
 
 @router.post("/staging/import")
 async def import_from_staging(request: StagingImportRequest) -> dict:
-    """Import pre-ripped MKV files from a staging directory.
+    """Import pre-ripped video files from a staging directory.
 
     Creates a real job that skips the ripping phase and proceeds
     directly to identification, matching, and organization.
@@ -3414,9 +3535,11 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
             status_code=404, detail=f"Staging directory not found: {request.staging_path}"
         )
 
-    mkv_files = sorted(staging_dir.glob("*.mkv"))
-    if not mkv_files:
-        raise HTTPException(status_code=404, detail=f"No MKV files found in {request.staging_path}")
+    video_files = list_video_files(staging_dir)
+    if not video_files:
+        raise HTTPException(
+            status_code=404, detail=f"No video files found in {request.staging_path}"
+        )
 
     result = await job_manager.create_job_from_staging(
         staging_path=str(staging_dir),
@@ -3434,10 +3557,10 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
             "job_id": None,
             "reason": result.block.value,
             "blocking_job_ids": list(result.blocking_job_ids),
-            "titles_count": len(mkv_files),
+            "titles_count": len(video_files),
         }
 
-    return {"status": "created", "job_id": result.job_id, "titles_count": len(mkv_files)}
+    return {"status": "created", "job_id": result.job_id, "titles_count": len(video_files)}
 
 
 @router.get("/staging/orphaned")
@@ -4515,14 +4638,15 @@ async def stream_title_media(
 ) -> FileResponse:
     """Stream a ripped track for playback in an external player.
 
-    Serves the raw MKV untouched. Browsers cannot decode it (MKV container,
-    MPEG-2/HEVC video, DTS/TrueHD/AC3 audio), so this is consumed by VLC/MPV
+    Serves the raw file untouched (a rip is MKV; a manual import may be MP4 or
+    a transport stream). Browsers cannot decode disc-native codecs (MPEG-2/HEVC
+    video, DTS/TrueHD/AC3 audio), so this is consumed by VLC/MPV
     and friends via the companion playlist endpoint, not by a <video> element.
     Starlette's FileResponse implements Range/206/416, so seeking works without
     any handling here.
     """
     path = await _resolve_title_media_path(job, title_id, session)
-    return FileResponse(path, media_type="video/x-matroska", filename=path.name)
+    return FileResponse(path, media_type=media_type_for(path), filename=path.name)
 
 
 @router.get(

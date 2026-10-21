@@ -18,11 +18,13 @@ from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.disc_source import DiscSource
 from app.core.episode_runtime import find_short_titles
+from app.core.errors import MakeMKVLicenseError
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError, title_index_from_filename
 from app.core.fingerprint_disc_classifier import (
     identify_disc_via_network,
     network_titles_to_mappings,
 )
+from app.core.media_formats import list_video_files
 from app.core.tmdb_classifier import (
     TMDB_DEGRADED_AUTH_FAILED,
     TMDB_DEGRADED_NOT_CONFIGURED,
@@ -203,6 +205,27 @@ def _apply_manual_identity(analysis, manual: ManualIdentity) -> None:
     analysis.tmdb_degraded_reason = None
     analysis._tmdb_signal = None
     analysis._discdb_signal = None
+
+
+def _has_staged_media(job) -> bool:
+    """Whether this job's media is already on disk (ripped or imported).
+
+    Decides "resume matching" vs "disc not yet ripped" when a parked job is
+    re-identified or named. A manual import's files are listed in its manifest
+    and may sit in subfolders below ``staging_path`` (their common ancestor), in
+    any importable container; everything else is a flat staging directory of
+    MakeMKV output.
+    """
+    if job.import_manifest_json:
+        try:
+            files = json.loads(job.import_manifest_json).get("files", [])
+        except (ValueError, TypeError, AttributeError):
+            files = []
+        if any(Path(f).is_file() for f in files):
+            return True
+    if not job.staging_path:
+        return False
+    return bool(list_video_files(Path(job.staging_path)))
 
 
 def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
@@ -515,6 +538,11 @@ class IdentificationCoordinator:
                     await self._state_machine.transition_to_failed(
                         job, session, f"Cannot scan this job: {e}"
                     )
+                    return
+                except MakeMKVLicenseError as e:
+                    # Named, actionable message (expired key / old beta build)
+                    # rather than the generic "No titles found on disc".
+                    await self._state_machine.transition_to_failed(job, session, str(e))
                     return
                 except ScanTimeoutError:
                     await self._state_machine.transition_to_failed(
@@ -1132,7 +1160,7 @@ class IdentificationCoordinator:
         return signal
 
     async def identify_from_staging(self, job_id: int) -> None:
-        """Identify and process pre-ripped MKV files from staging."""
+        """Identify and process pre-ripped video files from staging."""
         from app.core.analyst import TitleInfo
 
         async with async_session() as session:
@@ -1149,18 +1177,18 @@ class IdentificationCoordinator:
                     mkv_files = sorted(Path(f) for f in manifest.get("files", []))
                     mkv_files = [f for f in mkv_files if f.exists()]
                 else:
-                    mkv_files = sorted(staging_dir.glob("*.mkv"))
+                    mkv_files = list_video_files(staging_dir)
 
                 if not mkv_files:
                     msg = (
-                        "No MKV files found from import manifest (all listed files are missing)"
+                        "No video files found from import manifest (all listed files are missing)"
                         if job.import_manifest_json
-                        else "No MKV files found in staging directory"
+                        else "No video files found in staging directory"
                     )
                     await self._state_machine.transition_to_failed(job, session, msg)
                     return
 
-                # Build TitleInfo objects from MKV files using ffprobe
+                # Build TitleInfo objects from the files using ffprobe (any container)
                 titles: list[TitleInfo] = []
                 for idx, mkv_file in enumerate(mkv_files):
                     duration = await self._probe_duration(mkv_file)
@@ -1489,13 +1517,10 @@ class IdentificationCoordinator:
                 raise ValueError(f"Cannot set name on job in state: {job.state}")
 
             mid_rip = job.state == JobState.RIPPING
-            # Post-rip detection (mirrors re_identify): staged .mkv files mean
+            # Post-rip detection (mirrors re_identify): staged media files mean
             # the disc already ripped (and was ejected at rip end) — resuming
             # must route to matching/movie resolution, never a second rip.
-            has_ripped = False
-            if not mid_rip and job.staging_path:
-                staging = Path(job.staging_path)
-                has_ripped = staging.exists() and any(staging.glob("*.mkv"))
+            has_ripped = not mid_rip and _has_staged_media(job)
 
             job.detected_title = name
             job.content_type = ContentType(content_type_str)
@@ -1619,10 +1644,7 @@ class IdentificationCoordinator:
             _prev_tmdb_id = job.tmdb_id
 
             # Check if files already exist in staging (post-rip)
-            has_ripped = False
-            if job.staging_path:
-                staging = Path(job.staging_path)
-                has_ripped = staging.exists() and any(staging.glob("*.mkv"))
+            has_ripped = _has_staged_media(job)
 
             # Update job metadata with user-corrected values
             job.detected_title = title
