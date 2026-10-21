@@ -492,3 +492,127 @@ class TestStampNumbering:
         stats = {"reference_count": 13}
         stamp_numbering(stats, {"scheme": SCHEME_DIVERGENT, "roster_size": 0})
         assert "pack_roster_size" not in stats
+
+
+def _ha_s2_marker(extra_crosswalk=None, crosswalk=None):
+    """The Hey Arnold! S2 marker as the builder would publish it (#760)."""
+    from app.matcher.numbering_crosswalk import derive_crosswalk
+
+    codes, roster, releases = _fixture("hey_arnold_s2")
+    mapping = dict(derive_crosswalk(2, codes, roster, releases).mapping)
+    mapping.update(extra_crosswalk or {})
+    return {
+        "scheme": SCHEME_DIVERGENT,
+        "roster_size": 37,
+        "crosswalk": mapping if crosswalk is None else crosswalk,
+    }
+
+
+def _write_ha_s2_pack(cache_dir, marker):
+    """A 20-row Hey Arnold! S2 pack whose row k has one term, in column k + 1."""
+    import numpy as np
+    from scipy import sparse
+
+    from app.matcher.vectorizer_config import HASHING_N_FEATURES
+
+    codes = [f"S02E{n:02d}" for n in range(1, 21)]
+    _write_manifest(
+        cache_dir,
+        {
+            "537": {
+                "tmdb_id": 537,
+                "name": "Hey Arnold!",
+                "seasons": [2],
+                "episode_counts": {"2": 20},
+                "season_numbering": {"2": marker},
+            }
+        },
+    )
+    precomputed = cache_dir / "precomputed"
+    np.save(precomputed / "idf.npy", np.ones(HASHING_N_FEATURES, dtype=np.float32))
+    show_dir = precomputed / "537"
+    show_dir.mkdir(parents=True, exist_ok=True)
+    rows = list(range(len(codes)))
+    counts = sparse.csr_matrix(
+        (np.ones(len(codes), dtype=np.uint16), (rows, [r + 1 for r in rows])),
+        shape=(len(codes), HASHING_N_FEATURES),
+    )
+    sparse.save_npz(show_dir / "S02.npz", counts)
+    (show_dir / "S02.index.json").write_text(json.dumps(codes), encoding="utf-8")
+
+
+@pytest.mark.unit
+class TestPrecomputedCrosswalk:
+    """Precomputed references are read through the season's crosswalk (#760)."""
+
+    def test_precomputed_codes_are_translated(self, tmp_path):
+        from app.matcher.episode_identification import precomputed_episode_codes
+
+        _write_ha_s2_pack(tmp_path, _ha_s2_marker())
+        codes = precomputed_episode_codes(tmp_path, "Hey Arnold!", 2, expected_tmdb_id=537)
+        assert len(codes) == 19
+        assert codes[5:10] == ["S02E11-E12", "S02E13", "S02E14-E15", "S02E16-E17", "S02E18-E19"]
+        assert "S02E19" not in codes
+
+    def test_load_precomputed_drops_unmapped_rows(self, tmp_path):
+        _write_ha_s2_pack(tmp_path, _ha_s2_marker())
+        matrix, codes, _idf = _matcher(tmp_path, "Hey Arnold!", 537)._load_precomputed_season(2)
+        assert matrix.shape[0] == len(codes) == 19
+        # Row 5 is still corpus E06's vector (column 6), now labelled with TMDB's code.
+        assert codes[5] == "S02E11-E12"
+        assert list(matrix[5].nonzero()[1]) == [6]
+        # Corpus E19 (column 19) is gone; corpus E20 (column 20) moved up.
+        assert codes[18] == "S02E36-E37"
+        assert list(matrix[18].nonzero()[1]) == [20]
+
+    def test_crosswalk_key_missing_from_index_is_ignored(self, tmp_path):
+        from app.matcher.episode_identification import precomputed_episode_codes
+
+        _write_ha_s2_pack(tmp_path, _ha_s2_marker(extra_crosswalk={"S02E99": "S02E99"}))
+        codes = precomputed_episode_codes(tmp_path, "Hey Arnold!", 2, expected_tmdb_id=537)
+        assert len(codes) == 19
+        assert "S02E99" not in codes
+
+    def test_all_unmapped_crosswalk_is_treated_as_absent(self, tmp_path):
+        from app.matcher.episode_identification import precomputed_episode_codes
+
+        _write_ha_s2_pack(tmp_path, _ha_s2_marker(crosswalk={"S02E99": "S02E36-E37"}))
+        codes = precomputed_episode_codes(tmp_path, "Hey Arnold!", 2, expected_tmdb_id=537)
+        assert codes == [f"S02E{n:02d}" for n in range(1, 21)]
+
+    def test_manifest_with_crosswalk_still_loads_on_legacy_path(self, tmp_path):
+        from app.matcher.episode_identification import load_precomputed_manifest
+
+        marker = _ha_s2_marker()
+        _write_ha_s2_pack(tmp_path, marker)
+        assert load_precomputed_manifest(tmp_path) is not None
+        numbering = _matcher(tmp_path, "Hey Arnold!", 537).precomputed_numbering(2)
+        assert numbering["scheme"] == SCHEME_DIVERGENT
+        assert numbering["roster_size"] == 37
+
+    def test_stamp_numbering_crosswalked_reads_tmdb_aired(self):
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {}
+        stamp_numbering(stats, _ha_s2_marker())
+        assert stats == {
+            "numbering_scheme": SCHEME_TMDB_AIRED,
+            "numbering_crosswalk": True,
+            "pack_numbering_scheme": SCHEME_DIVERGENT,
+            "pack_roster_size": 37,
+        }
+
+    def test_stamp_numbering_divergent_without_crosswalk_unchanged(self):
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {}
+        stamp_numbering(stats, {"scheme": SCHEME_DIVERGENT, "roster_size": 37})
+        assert stats == {"numbering_scheme": SCHEME_DIVERGENT, "pack_roster_size": 37}
+
+    def test_stamp_numbering_all_unmapped_crosswalk_stays_divergent(self):
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {}
+        stamp_numbering(stats, _ha_s2_marker(crosswalk={}))
+        assert stats["numbering_scheme"] == SCHEME_DIVERGENT
+        assert "numbering_crosswalk" not in stats

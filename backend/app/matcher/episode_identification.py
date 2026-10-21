@@ -20,7 +20,14 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.multi_episode import decompose_vote_runs
-from app.matcher.numbering_scheme import SCHEME_UNKNOWN, VALID_SCHEMES, usable_count
+from app.matcher.numbering_crosswalk import crosswalk_applies, translate_codes
+from app.matcher.numbering_scheme import (
+    SCHEME_DIVERGENT,
+    SCHEME_TMDB_AIRED,
+    SCHEME_UNKNOWN,
+    VALID_SCHEMES,
+    usable_count,
+)
 from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
 from app.matcher.srt_utils import is_watermark_block as _is_watermark_block
 from app.matcher.subtitle_utils import (
@@ -137,7 +144,17 @@ def stamp_numbering(match_stats: dict, numbering: dict | None) -> None:
     """
     if not numbering:
         return
-    match_stats["numbering_scheme"] = numbering["scheme"]
+    if crosswalk_applies(numbering):
+        # The references were translated through the pack's crosswalk on load
+        # (#760), so the codes this result carries ARE canonical TMDB coordinates
+        # even though the corpus itself is half-hour numbered. Stamping tmdb_aired
+        # is what lets the ordering projection and the conjoined-hint gate treat
+        # them as such; the pack's own statement is kept beside it.
+        match_stats["numbering_scheme"] = SCHEME_TMDB_AIRED
+        match_stats["numbering_crosswalk"] = True
+        match_stats["pack_numbering_scheme"] = SCHEME_DIVERGENT
+    else:
+        match_stats["numbering_scheme"] = numbering["scheme"]
     # usable_count, not a local isinstance check: bool is an int subclass in
     # Python, and the shared predicate already excludes it.
     if usable_count(numbering.get("roster_size")):
@@ -232,6 +249,22 @@ def _corpus_show_dir(cache_dir, key: str) -> Path:
     return Path(cache_dir) / "precomputed" / sanitize_filename(str(key))
 
 
+def season_marker(manifest, show_name: str, season: int, expected_tmdb_id) -> dict | None:
+    """The raw numbering marker the manifest records for show + season, or None.
+
+    Resolves the show exactly as the vector loader does (tmdb_id first, name
+    fallback, id-mismatch refusal), so a marker and the codes it describes always
+    come from the same show entry. Returns ``unknown`` markers too; callers that
+    need a usable scheme filter (see ``EpisodeMatcher.precomputed_numbering``).
+    """
+    _key, show_entry = _resolve_corpus_entry(manifest, show_name, expected_tmdb_id)
+    if not show_entry or _tmdb_id_mismatch(expected_tmdb_id, show_entry.get("tmdb_id")):
+        return None
+    numbering = show_entry.get("season_numbering")
+    marker = numbering.get(str(season)) if isinstance(numbering, dict) else None
+    return marker if isinstance(marker, dict) else None
+
+
 def precomputed_covers_season(
     cache_dir, show_name: str, season: int, manifest=None, expected_tmdb_id=None
 ) -> bool:
@@ -294,7 +327,17 @@ def precomputed_episode_codes(
             codes = json.load(fh)
     except (OSError, json.JSONDecodeError):
         return None
-    return codes if isinstance(codes, list) and codes else None
+    if not isinstance(codes, list) or not codes:
+        return None
+    # The codes a half-hour-numbered season's rows stand for in TMDB numbering,
+    # unmapped rows dropped: the same translation the vector loader applies, so
+    # the skip/heal/coverage readers agree with what the matcher will vote on.
+    translated = translate_codes(
+        codes, season_marker(manifest, show_name, season, expected_tmdb_id)
+    )
+    if translated is not None:
+        codes = [code for code in translated if code]
+    return codes
 
 
 # Season/episode token shared by reference-coverage and the runtime augmentation
@@ -1377,11 +1420,8 @@ class EpisodeMatcher:
         hazard the per-call TF-IDF matcher below exists to avoid.
         """
         manifest = self._load_precomputed_manifest()
-        _key, show_entry = _resolve_corpus_entry(manifest, self.show_name, self.expected_tmdb_id)
-        if not show_entry:
-            return None
-        marker = (show_entry.get("season_numbering") or {}).get(str(season_number))
-        if not isinstance(marker, dict):
+        marker = season_marker(manifest, self.show_name, season_number, self.expected_tmdb_id)
+        if marker is None:
             return None
         scheme = marker.get("scheme")
         if scheme not in VALID_SCHEMES or scheme == SCHEME_UNKNOWN:
@@ -1458,6 +1498,24 @@ class EpisodeMatcher:
                 f"S{season_number:02d}; using scraping"
             )
             return None
+
+        # A half-hour-numbered season: relabel each row with the TMDB code(s) it
+        # holds and drop rows the crosswalk could not map. An unmapped row's own
+        # code names an unrelated TMDB segment (#760), so it must not vote at all.
+        translated = translate_codes(
+            episode_codes,
+            season_marker(manifest, self.show_name, season_number, self.expected_tmdb_id),
+        )
+        if translated is not None:
+            keep = [i for i, code in enumerate(translated) if code]
+            dropped = [episode_codes[i] for i, code in enumerate(translated) if not code]
+            ref_matrix = ref_matrix[keep]
+            episode_codes = [translated[i] for i in keep]
+            logger.info(
+                f"Translated {self.show_name} S{season_number:02d} half-hour references "
+                f"into TMDB segment codes ({len(keep)} kept"
+                + (f"; dropped unmapped {', '.join(dropped)})" if dropped else ")")
+            )
 
         ref_matrix, episode_codes = self._augment_with_downloaded_srts(
             ref_matrix, episode_codes, season_number

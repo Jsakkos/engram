@@ -33,6 +33,7 @@ _backend_dir = str(Path(__file__).parent.parent)
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
 
+from app.core.episode_codes import parse_episode_code
 from app.matcher.numbering_scheme import SCHEME_DIVERGENT, SCHEME_TMDB_AIRED, VALID_SCHEMES
 from app.matcher.vectorizer_config import (
     CACHE_FORMAT_VERSION,
@@ -69,6 +70,52 @@ def _season_label(season_key) -> str:
     a non-numeric one is shown verbatim rather than crashing the gate."""
     key = str(season_key)
     return f"S{int(key):02d}" if key.isdigit() else f"S{key}"
+
+
+def _check_crosswalk(label: str, season_key, marker: dict, reference_count) -> list[str]:
+    """Shape-check one season's half-hour to segment crosswalk (#760).
+
+    The runtime translates matched references through this map and files tracks
+    under the result, so a value that is malformed, in another season, or claimed
+    by two keys would mis-file a track. Whether each key is present in the
+    season's index is not checkable here (only tarball member names are read); the
+    runtime ignores keys it does not find.
+    """
+    crosswalk = marker.get("crosswalk")
+    if crosswalk is None:
+        return []
+    if marker.get("scheme") != SCHEME_DIVERGENT:
+        return [f"{label} carries a crosswalk but is not marked {SCHEME_DIVERGENT!r}"]
+    if not isinstance(crosswalk, dict):
+        return [f"{label} crosswalk is not a dict: {type(crosswalk).__name__}"]
+    season = int(season_key) if str(season_key).isdigit() else None
+    if isinstance(reference_count, int) and len(crosswalk) > reference_count:
+        return [
+            f"{label} crosswalk has {len(crosswalk)} entries, more than its "
+            f"{reference_count} references"
+        ]
+
+    failures: list[str] = []
+    spans: list[tuple[int, int, str]] = []
+    for key in sorted(crosswalk, key=str):
+        value = crosswalk[key]
+        parsed_key = parse_episode_code(key if isinstance(key, str) else None)
+        if not parsed_key or parsed_key[0] != season or len(parsed_key[1]) != 1:
+            failures.append(f"{label} crosswalk key {key!r} is not a single episode of the season")
+            continue
+        parsed_value = parse_episode_code(value if isinstance(value, str) else None)
+        if not parsed_value or parsed_value[0] != season:
+            failures.append(
+                f"{label} crosswalk value {value!r} is not an episode code of the season"
+            )
+            continue
+        spans.append((min(parsed_value[1]), max(parsed_value[1]), key))
+    for (_lo, hi, key), (next_lo, _hi, next_key) in zip(spans, spans[1:], strict=False):
+        if next_lo <= hi:
+            failures.append(
+                f"{label} crosswalk values for {key} and {next_key} overlap or are out of order"
+            )
+    return failures
 
 
 def _check_season_numbering(shows: dict) -> tuple[list[str], int, list[str]]:
@@ -145,9 +192,22 @@ def _check_season_numbering(shows: dict) -> tuple[list[str], int, list[str]]:
                     f"its roster_size {roster_size} contradicts its episode_counts "
                     f"{reference_count}"
                 )
+            crosswalk_failures = _check_crosswalk(
+                f"{show_display!r} {_season_label(season_key)}",
+                season_key,
+                marker,
+                reference_count,
+            )
+            failures.extend(crosswalk_failures)
             if scheme == SCHEME_DIVERGENT:
+                crosswalk = marker.get("crosswalk")
+                mapped = (
+                    f", {len(crosswalk)} mapped"
+                    if isinstance(crosswalk, dict) and crosswalk and not crosswalk_failures
+                    else ""
+                )
                 divergent.append(
-                    f"{show_display} {_season_label(season_key)} ({reference_count} refs vs {roster_size} roster)"
+                    f"{show_display} {_season_label(season_key)} ({reference_count} refs vs {roster_size} roster{mapped})"
                 )
 
     return failures, len(divergent), sorted(divergent)
