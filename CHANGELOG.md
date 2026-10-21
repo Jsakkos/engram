@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Two discs that start at the same moment no longer get mixed up. With several ISOs mounted when Engram starts, each virtual drive's disc began in the same second, and both jobs were given the same staging folder because its name only went down to the second. Both rips wrote into that one folder, so each job matched and filed the other disc's episodes (a Season 1 disc could come out labelled as Season 2). Every job now gets a staging folder of its own, named after the job. (#768)
+
 ## [0.41.0] - 2026-10-20
 
 _Highlights: recover failed jobs from staging, Play-All tracks detected from the disc's own structure, import of MP4/TS files, and an external player for movie review._
