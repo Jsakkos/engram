@@ -2033,22 +2033,13 @@ async def get_network_info(request: Request) -> NetworkInfoResponse:
     )
 
 
-@router.put("/config")
-async def update_config(config: ConfigUpdate) -> dict:
-    """Update configuration and persist to database."""
-    from app.services.config_service import update_config as update_db_config
+async def validate_config_update(update_data: dict) -> dict:
+    """Validate and normalize a config update the way ``PUT /api/config`` does.
 
-    # Build kwargs from non-None fields
-    # Allow None through for fields that can be cleared to null
-    # NOTE: fingerprint_disclosure_accepted_at is intentionally absent — it is
-    # not a ConfigUpdate field, so it never arrives via model_dump(). It's
-    # managed server-side in the disclosure block below and cleared through
-    # config_service.update_config's own _nullable_fields.
-    _nullable_fields = {"import_watch_path", "fingerprint_server_url"}
-    update_data = {
-        k: v for k, v in config.model_dump().items() if v is not None or k in _nullable_fields
-    }
-
+    Raises ``HTTPException`` with the same status and detail PUT always has, and
+    returns the normalized dict. Shared with settings import (#731) so a file
+    cannot get past a check the Settings form is held to.
+    """
     # Validate fingerprint_server_url against SSRF before persisting
     if update_data.get("fingerprint_server_url"):
         from app.core.security import is_safe_remote_url
@@ -2212,6 +2203,27 @@ async def update_config(config: ConfigUpdate) -> dict:
                 status_code=422,
                 detail=f"episode_ordering_preference must be one of {sorted(ALLOWED_ORDERINGS)}",
             )
+
+    return update_data
+
+
+@router.put("/config")
+async def update_config(config: ConfigUpdate) -> dict:
+    """Update configuration and persist to database."""
+    from app.services.config_service import update_config as update_db_config
+
+    # Build kwargs from non-None fields
+    # Allow None through for fields that can be cleared to null
+    # NOTE: fingerprint_disclosure_accepted_at is intentionally absent — it is
+    # not a ConfigUpdate field, so it never arrives via model_dump(). It's
+    # managed server-side in the disclosure block below and cleared through
+    # config_service.update_config's own _nullable_fields.
+    _nullable_fields = {"import_watch_path", "fingerprint_server_url"}
+    update_data = {
+        k: v for k, v in config.model_dump().items() if v is not None or k in _nullable_fields
+    }
+
+    update_data = await validate_config_update(update_data)
 
     # Keep the disclosure-acceptance timestamp consistent with the flag,
     # server-side: stamp it on accept, clear it on explicit revoke.
