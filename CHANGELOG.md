@@ -15,6 +15,7 @@ _Highlights: recover failed jobs from staging, Play-All tracks detected from the
 - Manual import now accepts `.mp4`, `.m4v`, `.ts` and `.m2ts` files as well as `.mkv`. Files are filed unchanged and keep their own extension in the library (an MP4 lands as `Show - S01E01.mp4`), and an existing copy of the same episode in another container counts as a conflict instead of becoming a duplicate. Picking a `BDMV` folder, its `STREAM` folder or a single stream clip imports the whole disc backup through MakeMKV, because those clips are fragments, not titles.
 
 - Movie review now has the same **Open in player** and **Copy stream URL** buttons as TV review, so you can watch each feature-length title in VLC or MPV before picking which cut to keep.
+- A **Getting Help & Reporting Issues** guide covering Trace, the support bot in the Engram Discord: run `/bug` or `/feature` and it gathers the details, checks for an existing issue, and drafts a GitHub issue you file with one click; attach a job's diagnostics bundle and it reads the logs for you. The README, Troubleshooting and Contributing pages, and GitHub's new-issue page, now point there.
 
 ### Fixed
 

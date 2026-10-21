@@ -95,6 +95,9 @@ to the Discord thread.
    Links, Read Message History, Attach Files.
 4. Create a **forum** channel for help (e.g. `#help`). If it has tags named `Bug` and
    `Feature`, `/bug` and `/feature` posts get tagged automatically.
+   The Engram server's forum is `#ask-engram`, and the user guide
+   (`docs/getting-help.md`, plus the README and Troubleshooting) names it; renaming the
+   channel means updating those pages too.
 5. Create a maintainer role (or reuse one) and give it to yourself.
 6. Turn on Developer Mode in Discord, then copy the server ID, the forum's channel ID and
    the maintainer role ID.
