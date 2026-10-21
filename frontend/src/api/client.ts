@@ -137,6 +137,30 @@ export async function reassignEpisode(
 }
 
 /**
+ * Re-identify a disc (confirm which show/movie it is). The backend runs the
+ * identification in the background and broadcasts the job update, so callers
+ * should refresh the job rather than expect the new identity in the response.
+ */
+export async function reIdentifyJob(
+  jobId: number,
+  title: string,
+  contentType: string,
+  season?: number,
+  tmdbId?: number,
+): Promise<void> {
+  return apiFetchVoid(`/api/jobs/${jobId}/re-identify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title,
+      content_type: contentType,
+      season: season ?? null,
+      tmdb_id: tmdbId ?? null,
+    }),
+  });
+}
+
+/**
  * Set a show's output ordering preference (#200), keyed by TMDB id. Ordering is
  * a property of the show (not a one-off review decision), so it persists and
  * applies to future organizes. The caller should refetch the season roster

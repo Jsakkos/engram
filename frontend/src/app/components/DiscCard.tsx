@@ -116,6 +116,11 @@ export interface DiscData {
   backupStatus?: string | null;
   /** Backend prose explaining a skipped or failed backup; rendered verbatim. */
   backupStatusReason?: string | null;
+  /** Backend-computed: no progress past the stall threshold (#718). Drives
+   *  whether Force advance is a primary control or lives in the overflow menu. */
+  looksStuck?: boolean;
+  /** Seconds since the job last made progress, when stuck. */
+  stalledForSeconds?: number | null;
   /** True when at least one title on this disc has a rip-level failure (re-rippable). */
   hasDamagedTrack?: boolean;
   /** How this disc's identity was obtained, from the backend's
@@ -518,6 +523,8 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     emphasizeReIdentify={showIdentityReview}
                     manualIdentity={isManualIdentity}
                     onRetryFromStaging={recovery?.can_retry ? onRetryFromStaging : undefined}
+                    looksStuck={disc.looksStuck}
+                    stalledForSeconds={disc.stalledForSeconds}
                   />
                 </div>
               </div>
