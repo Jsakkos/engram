@@ -5,7 +5,6 @@ without importing routes, which imports the services layer back.
 """
 
 import asyncio
-from datetime import UTC, datetime  # noqa: F401
 
 from fastapi import HTTPException
 from pydantic import BaseModel
