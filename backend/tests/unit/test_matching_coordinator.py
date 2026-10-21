@@ -2354,3 +2354,40 @@ class TestAudioLanguageRouting:
             t = await session.get(DiscTitle, title_id)
             assert t.state == TitleState.REVIEW
             assert json.loads(t.match_details)["error"] == "audio_language_unsupported"
+
+
+@pytest.mark.unit
+class TestLanguageReviewFindings:
+    def test_hint_when_file_english_is_commentary_only(self):
+        from app.matcher.audio_streams import AudioPlan
+        from app.matcher.subtitle_utils import language_refusal_details
+
+        details = language_refusal_details(
+            AudioPlan("foreign", None, ["ja", "en"], usable_languages=["ja"])
+        )
+        t = DiscTitle(
+            job_id=1,
+            title_index=0,
+            duration_seconds=1380,
+            state=TitleState.MATCHING,
+            match_details=json.dumps(details),
+            audio_languages=json.dumps(["ja", "en", "en"]),
+        )
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        assert "MakeMKV's language settings" in json.loads(t.match_details)["message"]
+
+    def test_fingerprint_only_when_lookup_stream_matches_auto_pick(self):
+        from app.matcher.audio_streams import AudioStream, plan_audio
+        from app.services.matching_coordinator import _may_fingerprint
+
+        dub_default = [
+            AudioStream(0, "en", "", 2, False, False),
+            AudioStream(1, "de", "", 6, True, False),
+        ]
+        english_default = [
+            AudioStream(0, "en", "", 2, True, False),
+            AudioStream(1, "de", "", 6, False, False),
+        ]
+        assert _may_fingerprint(plan_audio(dub_default, "en")) is False
+        assert _may_fingerprint(plan_audio(english_default, "en")) is True
+        assert _may_fingerprint(plan_audio(None, "en")) is True

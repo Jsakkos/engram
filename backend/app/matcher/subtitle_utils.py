@@ -31,7 +31,11 @@ def language_refusal_details(plan) -> dict:
             "Assign the episode by hand."
         )
     else:
-        names = list(dict.fromkeys(language_name(c) for c in plan.languages if c))
+        # Commentary and audio description are not the track's dialogue: an
+        # English commentary must not make the note read "only audio is Japanese
+        # and English, and Engram matches by English dialogue".
+        spoken = plan.usable_languages or plan.languages
+        names = list(dict.fromkeys(language_name(c) for c in spoken if c))
         message = (
             f"This track's only audio is {' and '.join(names) or 'in another language'}, "
             "and Engram matches episodes by English dialogue, so it could not be matched "
@@ -40,6 +44,7 @@ def language_refusal_details(plan) -> dict:
     return {
         "error": AUDIO_LANGUAGE_ERROR_CODE,
         "audio_languages": list(plan.languages),
+        "usable_audio_languages": list(plan.usable_languages),
         "message": message,
     }
 

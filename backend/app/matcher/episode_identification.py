@@ -19,7 +19,12 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
-from app.matcher.audio_streams import AudioPlan, plan_audio, probe_audio_streams
+from app.matcher.audio_streams import (
+    AudioPlan,
+    follows_auto_pick,
+    plan_audio,
+    probe_audio_streams,
+)
 from app.matcher.multi_episode import decompose_vote_runs
 from app.matcher.numbering_scheme import SCHEME_UNKNOWN, VALID_SCHEMES, usable_count
 from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
@@ -1221,24 +1226,29 @@ class EpisodeMatcher:
         stream = self.audio_plan(video_file).stream
         return stream.audio_index if stream is not None else None
 
-    def _source_key(self, mkv_file) -> str:
-        """Resolved source path, plus ``#a<n>`` when transcribing audio stream n > 0.
+    def _stream_suffix(self, video_file) -> str:
+        """``#a<n>`` when transcribing a stream ffmpeg would not have picked, else "".
 
-        Stream 0 (and an unprobed file) keeps the plain path, so transcripts cached
-        before streams were chosen explicitly still hit: on nearly every disc the
-        first audio stream is the one ffmpeg used to pick.
+        Transcripts cached before streams were chosen explicitly are of ffmpeg's own
+        pick, so they keep the plain key and still hit only when the plan agrees
+        with that pick. Any other stream gets its own key, so a cached transcript of
+        a dub is never reused for the English track.
         """
-        index = self._audio_stream_index(mkv_file)
-        source = self._resolve_source(mkv_file)
-        return f"{source}#a{index}" if index else source
+        plan = self.audio_plan(video_file)
+        if follows_auto_pick(plan):
+            return ""
+        return f"#a{plan.stream.audio_index}"
+
+    def _source_key(self, mkv_file) -> str:
+        """Resolved source path plus the stream suffix: the L1 chunk/transcript key."""
+        return self._resolve_source(mkv_file) + self._stream_suffix(mkv_file)
 
     def transcript_file_key(self, video_file) -> str | None:
         """Persistent (L2) transcript key: ``file_key_for`` plus the stream suffix."""
         file_key = transcript_store.file_key_for(video_file)
-        index = self._audio_stream_index(video_file)
-        if file_key is None or not index:
-            return file_key
-        return f"{file_key}#a{index}"
+        if file_key is None:
+            return None
+        return file_key + self._stream_suffix(video_file)
 
     def _chunk_path(self, mkv_file, start_time, duration):
         """Hash resolved source path into the filename so concurrent threads don't collide."""

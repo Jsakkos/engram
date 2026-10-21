@@ -51,7 +51,27 @@ class AudioStream:
 class AudioPlan:
     verdict: str
     stream: AudioStream | None = None
-    languages: list[str | None] = field(default_factory=list)
+    languages: list[str | None] = field(default_factory=list)  # every audio stream
+    # Languages of the non-commentary streams: what the track's dialogue can be in.
+    usable_languages: list[str | None] = field(default_factory=list)
+    # The stream ffmpeg (and fpcalc) pick when not told: before #241 every
+    # transcript and fingerprint came from it.
+    auto_index: int | None = None
+
+
+def follows_auto_pick(plan: AudioPlan) -> bool:
+    """True when the planned stream is the one ffmpeg would pick by itself.
+
+    Then a transcript cached before streams were chosen explicitly, and a
+    fingerprint fpcalc takes from the whole file, describe the same audio the
+    matcher now transcribes. An unprobed plan names no stream and follows it.
+    """
+    return plan.stream is None or plan.stream.audio_index == plan.auto_index
+
+
+def _auto_pick(streams: list[AudioStream]) -> int:
+    """ffmpeg's own choice: the default-flagged stream, else the most channels, first on ties."""
+    return max(streams, key=lambda s: (s.default, s.channels)).audio_index
 
 
 _probe_memo: dict[tuple[str, int, int], list[AudioStream] | None] = {}
@@ -139,11 +159,16 @@ def plan_audio(streams: list[AudioStream] | None, language: str) -> AudioPlan:
         return AudioPlan("no_audio", languages=languages)
 
     usable = [s for s in streams if not s.commentary]
+    details = {
+        "languages": languages,
+        "usable_languages": [s.language for s in usable],
+        "auto_index": _auto_pick(streams),
+    }
     wanted = [s for s in usable if s.language == language]
     if wanted:
         chosen = next((s for s in wanted if s.default), wanted[0])
-        return AudioPlan("match", chosen, languages)
+        return AudioPlan("match", chosen, **details)
     untagged = [s for s in usable if s.language is None]
     if untagged:
-        return AudioPlan("untagged", untagged[0], languages)
-    return AudioPlan("foreign", None, languages)
+        return AudioPlan("untagged", untagged[0], **details)
+    return AudioPlan("foreign", None, **details)

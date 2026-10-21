@@ -1524,7 +1524,7 @@ class TestPlannedAudioStream:
     """The matcher transcribes the planned audio stream (issue #241)."""
 
     @staticmethod
-    def _matcher(tmp_path, stream_index, verdict="match"):
+    def _matcher(tmp_path, stream_index, verdict="match", auto_index=0):
         from app.matcher.audio_streams import AudioPlan, AudioStream
         from app.matcher.episode_identification import EpisodeMatcher
 
@@ -1534,7 +1534,7 @@ class TestPlannedAudioStream:
             if stream_index is not None
             else None
         )
-        plan = AudioPlan(verdict, stream, ["en"])
+        plan = AudioPlan(verdict, stream, ["en"], auto_index=auto_index)
         matcher.audio_plan = MagicMock(return_value=plan)
         return matcher
 
@@ -1607,3 +1607,14 @@ class TestPlannedAudioStream:
         ):
             matcher.transcribe_chunk_cached(f, 300, 30, model, model_key="k")
         assert get.call_args.args[0] == transcript_store.file_key_for(f) + "#a1"
+
+    def test_stream_ffmpeg_used_to_pick_keeps_legacy_key(self, tmp_path):
+        """Old transcripts were of ffmpeg's own pick: reuse them only for that stream."""
+        from pathlib import Path
+
+        f = tmp_path / "x.mkv"
+        legacy = (str(Path(f).resolve()), 300, 30)
+        # English at 0, a dub flagged default at 1: the old transcript is the dub's.
+        assert self._matcher(tmp_path, 0, auto_index=1)._transcription_key(f, 300, 30) != legacy
+        # English at 2 was ffmpeg's pick all along: its old transcript is right.
+        assert self._matcher(tmp_path, 2, auto_index=2)._transcription_key(f, 300, 30) == legacy

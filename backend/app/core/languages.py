@@ -10,6 +10,8 @@ The table is deliberately small and hand-written: a library (langcodes,
 pycountry) would add a frozen-build hidden-import risk for a lookup this size.
 """
 
+import re
+
 # 639-1 code -> (English name, 639-2 bibliographic/terminology aliases).
 _LANGUAGES: dict[str, tuple[str, tuple[str, ...]]] = {
     "en": ("English", ("eng",)),
@@ -57,6 +59,8 @@ _LANGUAGES: dict[str, tuple[str, tuple[str, ...]]] = {
 _ALIASES: dict[str, str] = {
     alias: code for code, (_, aliases) in _LANGUAGES.items() for alias in aliases
 }
+# Some tools tag a track with the language's English name ("English", "Japanese").
+_ALIASES.update({name.lower(): code for code, (name, _) in _LANGUAGES.items()})
 
 # Codes that say "no particular language": undetermined, multiple, none, uncoded.
 _UNKNOWN = {"und", "mul", "zxx", "mis"}
@@ -66,7 +70,9 @@ def normalize_language(code: str | None) -> str | None:
     """The 639-1 code for ``code``, the lower-cased code if unmapped, or None if unknown."""
     if not code:
         return None
-    code = code.strip().lower()
+    # BCP 47 / locale forms carry a region or script after the language:
+    # "en-US", "en_GB", "zh-Hant". Only the language part decides.
+    code = re.split(r"[-_]", code.strip().lower(), maxsplit=1)[0]
     if not code or code in _UNKNOWN:
         return None
     # qaa..qtz is ISO 639-2's private-use range: no shared meaning.

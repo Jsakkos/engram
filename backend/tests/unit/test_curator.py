@@ -898,3 +898,16 @@ class TestAudioLanguageRefusal:
         assert result.match_details["error"] == "audio_language_unsupported"
         assert matcher.audio_plan.call_count == 1
         matcher.identify_episode.assert_not_called()
+
+
+@pytest.mark.unit
+def test_refusal_message_ignores_commentary_languages():
+    from app.matcher.audio_streams import AudioPlan
+    from app.matcher.subtitle_utils import language_refusal_details
+
+    plan = AudioPlan("foreign", None, ["ja", "en"], usable_languages=["ja"])
+    details = language_refusal_details(plan)
+    assert "only audio is Japanese," in details["message"]
+    assert "English," not in details["message"].split("by English")[0]
+    assert details["audio_languages"] == ["ja", "en"]
+    assert details["usable_audio_languages"] == ["ja"]

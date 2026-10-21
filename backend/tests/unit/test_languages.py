@@ -46,3 +46,19 @@ def test_is_english():
     assert is_english("en")
     assert not is_english("jpn")
     assert not is_english(None)
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("en-US", "en"),
+        ("en_GB", "en"),
+        ("English", "en"),
+        ("pt-BR", "pt"),
+        ("Japanese", "ja"),
+        ("zh-Hant", "zh"),
+    ],
+)
+def test_normalize_region_subtags_and_names(raw, expected):
+    # Imports tagged by other tools must not read as "another language" (review #4).
+    assert normalize_language(raw) == expected

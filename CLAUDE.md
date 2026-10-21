@@ -258,9 +258,11 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   `docs/superpowers/specs/2026-10-08-thetvdb-episode-namespace-design.md`.
 - **The ripped file's audio decides ASR, not the disc scan (#241).** `app/matcher/audio_streams.py`
   probes a file once (ffprobe, memoized) and `EpisodeMatcher.audio_plan` picks the stream:
-  `match` / `untagged` / `unprobed` transcribe (with `-map 0:a:<n>`; stream 0 keeps the legacy
-  cache keys, others add `#a<n>`), `foreign` / `no_audio` make the curator refuse with
-  `audio_language_unsupported` after the chromaprint prepass. The prewarm reads the same plan.
+  `match` / `untagged` / `unprobed` transcribe (with `-map 0:a:<n>`; the stream ffmpeg would
+  pick by itself keeps the legacy cache keys, any other adds `#a<n>`), `foreign` / `no_audio`
+  make the curator refuse with `audio_language_unsupported` after the chromaprint prepass. The
+  prewarm reads the same plan. fpcalc fingerprints the whole file (its own stream pick), so
+  chromaprint extraction/contribution is skipped when that pick differs from the planned stream.
   MakeMKV's language settings can drop disc tracks from the rip, so `DiscTitle.audio_languages`
   (SINFO attr 3 at scan time) is evidence for the review message only. TINFO attr 28 is
   MakeMKV's *metadata* language, not the audio language. Codes go through

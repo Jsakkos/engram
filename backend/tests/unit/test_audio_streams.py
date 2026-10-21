@@ -140,3 +140,26 @@ class TestProbeAudioStreams:
 
     def test_missing_file_is_none(self, tmp_path):
         assert probe_audio_streams(tmp_path / "gone.mkv") is None
+
+
+@pytest.mark.unit
+class TestPlanDetails:
+    def test_usable_languages_exclude_commentary(self):
+        p = plan_audio([s(0, "ja"), s(1, "en", commentary=True)], "en")
+        assert p.languages == ["ja", "en"]
+        assert p.usable_languages == ["ja"]
+
+    def test_auto_index_prefers_default_then_channels(self):
+        streams = [s(0, "en", ch=2), s(1, "de", ch=6, default=True)]
+        assert plan_audio(streams, "en").auto_index == 1
+        streams = [s(0, "en", ch=2), s(1, "de", ch=6)]
+        assert plan_audio(streams, "en").auto_index == 1
+        streams = [s(0, "en", ch=6), s(1, "de", ch=6)]
+        assert plan_audio(streams, "en").auto_index == 0
+
+    def test_follows_auto_pick(self):
+        from app.matcher.audio_streams import follows_auto_pick
+
+        assert follows_auto_pick(plan_audio([s(0, "en", default=True), s(1, "de")], "en"))
+        assert not follows_auto_pick(plan_audio([s(0, "en"), s(1, "de", default=True)], "en"))
+        assert follows_auto_pick(plan_audio(None, "en"))

@@ -36,7 +36,12 @@ from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
 from app.database import async_session
-from app.matcher.audio_streams import AudioPlan, plan_audio, probe_audio_streams
+from app.matcher.audio_streams import (
+    AudioPlan,
+    follows_auto_pick,
+    plan_audio,
+    probe_audio_streams,
+)
 from app.matcher.numbering_scheme import SCHEME_DIVERGENT, SCHEME_TMDB_AIRED
 from app.matcher.subtitle_utils import (
     AUDIO_LANGUAGE_ERROR_CODE,
@@ -398,6 +403,17 @@ def _plan_file_audio(file_path: Path) -> AudioPlan:
     return plan_audio(probe_audio_streams(file_path), "en")
 
 
+def _may_fingerprint(plan: AudioPlan) -> bool:
+    """Whether fpcalc on the whole file fingerprints the stream lookups now use.
+
+    fpcalc picks its own stream (the default-flagged one), while matching and the
+    chromaprint lookup windows use the planned stream. On a disc whose default
+    track is a dub they differ, and contributing would teach the shared network
+    the dub's fingerprint under an episode every lookup sends English for (#241).
+    """
+    return follows_auto_pick(plan)
+
+
 def _apply_language_review(title: "DiscTitle") -> bool:
     """Park a title the curator refused for its audio. True if it did (issue #241).
 
@@ -411,11 +427,13 @@ def _apply_language_review(title: "DiscTitle") -> bool:
     title.state = TitleState.REVIEW
     disc_languages = title.audio_language_list() or []
     message = details.get("message") or ""
-    if (
-        "en" in disc_languages
-        and "en" not in (details.get("audio_languages") or [])
-        and _RIP_LEFT_OUT_HINT not in message
-    ):
+    # What the file can be transcribed from: an English commentary is not English
+    # dialogue, so it must not suppress the hint. Older refusals lack the usable
+    # list; fall back to every stream.
+    file_languages = details.get("usable_audio_languages")
+    if file_languages is None:
+        file_languages = details.get("audio_languages") or []
+    if "en" in disc_languages and "en" not in file_languages and _RIP_LEFT_OUT_HINT not in message:
         details["message"] = message + _RIP_LEFT_OUT_HINT
         title.match_details = json.dumps(details)
     return True
@@ -1952,7 +1970,13 @@ class MatchingCoordinator:
 
                         cfg = await get_config()
                         fpcalc_path = await _resolve_fpcalc_path(cfg.fpcalc_path)
-                        if fpcalc_path:
+                        fingerprint_plan = await asyncio.to_thread(_plan_file_audio, file_path)
+                        if fpcalc_path and not _may_fingerprint(fingerprint_plan):
+                            logger.info(
+                                f"Skipping chromaprint for title {title.id}: the disc's "
+                                "default audio is not the stream matching used"
+                            )
+                        elif fpcalc_path:
                             ffmpeg_path = await _resolve_ffmpeg_path(cfg.ffmpeg_path)
                             extractor = ChromaprintExtractor(
                                 fpcalc_path=fpcalc_path, ffmpeg_path=ffmpeg_path
