@@ -4,11 +4,14 @@ Extracted from JobManager to isolate matching concerns.
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import re
 import time
+import weakref
 from collections import defaultdict
+from collections.abc import Coroutine
 from datetime import UTC
 from enum import StrEnum
 from pathlib import Path
@@ -680,6 +683,12 @@ class MatchingCoordinator:
         self._subtitle_ready: dict[int, asyncio.Event] = {}
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._match_semaphore: asyncio.Semaphore | None = None
+        # Match coroutines built per title id (see has_live_match). A QUEUED
+        # title with an unfinished one is waiting on _match_semaphore; one
+        # without is orphaned (#776). A set, since a re-match can overlap the
+        # tail of the previous match for the same title; weak, so a coroutine
+        # nobody scheduled does not pin its title as live.
+        self._live_matches: defaultdict[int, weakref.WeakSet] = defaultdict(weakref.WeakSet)
 
         # Cross-coordinator callbacks
         self._check_job_completion: callable = None
@@ -1069,7 +1078,7 @@ class MatchingCoordinator:
             lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
         )
 
-    async def match_single_file(
+    def match_single_file(
         self,
         job_id: int,
         title_id: int,
@@ -1077,8 +1086,14 @@ class MatchingCoordinator:
         num_points: int | None = None,
         min_vote_count: int | None = None,
         advisory: bool = False,
-    ) -> None:
+    ) -> Coroutine[None, None, None]:
         """Run matching for a single ripped file, tagging logs with the job id.
+
+        A plain function returning the match coroutine, so the title counts as
+        having a live match from the moment a caller builds the coroutine for
+        ``create_task``, not from the task's first step (see ``has_live_match``).
+        Every match task in the app is built here, which is what makes the
+        registry complete.
 
         Self-tags so every matching log line carries ``job=<id>`` regardless of
         how this is reached — task spawn, direct ``await`` from an API handler
@@ -1092,10 +1107,39 @@ class MatchingCoordinator:
         after the subtitle-ready wait, because imports and ``rerun_matching``
         dispatch matches before ``decide_job_namespace`` has committed.
         """
+        coro = self._tracked_match(
+            job_id, title_id, file_path, num_points, min_vote_count, advisory
+        )
+        # Drop titles whose matches are all gone, so the map stays bounded.
+        for tid in [tid for tid, coros in self._live_matches.items() if not coros]:
+            del self._live_matches[tid]
+        self._live_matches[title_id].add(coro)
+        return coro
+
+    async def _tracked_match(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None,
+        min_vote_count: int | None,
+        advisory: bool,
+    ) -> None:
         with job_log_context(job_id):
             await self._run_match_single_file(
                 job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
             )
+
+    def has_live_match(self, title_id: int) -> bool:
+        """Whether a match task exists for this title, running or waiting for a slot.
+
+        Read from the coroutines themselves rather than a counter kept by their
+        body: one cancelled before its first step, or closed without ever being
+        scheduled, never runs its body but does end ``CORO_CLOSED``, and one
+        that is dropped unscheduled is garbage-collected out of the weak set.
+        """
+        coros = self._live_matches.get(title_id, ())
+        return any(inspect.getcoroutinestate(c) != inspect.CORO_CLOSED for c in coros)
 
     async def _llm_fallback_without_subtitles(
         self,
