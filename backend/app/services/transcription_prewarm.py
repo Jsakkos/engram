@@ -257,6 +257,7 @@ class TranscriptionPrewarmer:
         from app.matcher import transcript_store
         from app.matcher.asr_models import get_cached_model, model_output_key
         from app.matcher.episode_identification import (
+            NoAudioStreamError,
             canonical_scan_points,
             get_video_duration,  # int (np.ceil) — same helper transcribe_full keys its
             # L2 row with. Do NOT swap in srt_utils.get_video_duration (returns float):
@@ -333,6 +334,10 @@ class TranscriptionPrewarmer:
                     )
             except asyncio.CancelledError:
                 raise
+            except NoAudioStreamError:
+                # Every other span of this file would fail identically (#793).
+                logger.info(f"Prewarm: {file_path.name} has no audio track; skipping it")
+                break
             except Exception as e:
                 logger.warning(f"Prewarm: chunk {start}s of {file_path.name} failed: {e}")
 
