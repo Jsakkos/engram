@@ -14,6 +14,35 @@ _HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
 # scan against the same unreadable corpus cannot help.
 REFERENCES_UNREADABLE_ERROR_CODE = "references_unreadable"
 
+# match_details["error"] when a track's audio cannot be matched by its dialogue:
+# every usable audio stream is another language, or the file has no audio at all
+# (issue #241). Produced by the curator before ASR, routed to review, and never
+# auto re-matched: a deeper scan of the same audio cannot change its language.
+AUDIO_LANGUAGE_ERROR_CODE = "audio_language_unsupported"
+
+
+def language_refusal_details(plan) -> dict:
+    """match_details for a track the curator refused for its audio (an ``AudioPlan``)."""
+    from app.core.languages import language_name
+
+    if plan.verdict == "no_audio":
+        message = (
+            "This track has no audio, so it could not be matched by its dialogue. "
+            "Assign the episode by hand."
+        )
+    else:
+        names = list(dict.fromkeys(language_name(c) for c in plan.languages if c))
+        message = (
+            f"This track's only audio is {' and '.join(names) or 'in another language'}, "
+            "and Engram matches episodes by English dialogue, so it could not be matched "
+            "automatically. Assign the episode by hand."
+        )
+    return {
+        "error": AUDIO_LANGUAGE_ERROR_CODE,
+        "audio_languages": list(plan.languages),
+        "message": message,
+    }
+
 
 def _looks_like_srt(header: str) -> bool:
     """True if a decoded text header passes SRT sniffing: no HTML markers, and

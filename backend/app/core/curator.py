@@ -11,7 +11,11 @@ from pathlib import Path
 
 from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
 from app.matcher.llm_episode_matcher import match_episode_via_llm
-from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+from app.matcher.subtitle_utils import (
+    AUDIO_LANGUAGE_ERROR_CODE,
+    REFERENCES_UNREADABLE_ERROR_CODE,
+    language_refusal_details,
+)
 from app.models.app_config import DEFAULT_FINGERPRINT_SERVER_URL
 
 logger = logging.getLogger(__name__)
@@ -255,6 +259,9 @@ class EpisodeCurator:
                 file_path, series_name, s, progress_callback, num_points, min_vote_count, tmdb_id
             )
             details = result.match_details or {}
+            if details.get("error") == AUDIO_LANGUAGE_ERROR_CODE:
+                # The audio is the same whichever season is tried: refuse once.
+                return result
             if details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE:
                 # Report the most damaged season: its "could not be read" message
                 # explains more than a merely small season's "too few subtitles".
@@ -461,6 +468,18 @@ class EpisodeCurator:
         ``tmdb_id`` is forwarded to the LLM fallback so it builds context from the
         known show identity rather than re-resolving by name (collision-safe).
         """
+        # Dialogue in a language the references are not in cannot be matched: the
+        # vote would land on an arbitrary episode. Park the track with the reason
+        # instead (issue #241). Runs after the chromaprint prepass, which does not
+        # depend on language; an unprobed file proceeds exactly as before.
+        plan = await asyncio.to_thread(self._matcher.audio_plan, file_path)
+        if getattr(plan, "verdict", None) in ("foreign", "no_audio"):
+            logger.info(
+                f"[Curator] {file_path.name}: no matchable audio ({plan.verdict}, "
+                f"languages {plan.languages}); routing to review without ASR"
+            )
+            return self._fallback_result(file_path, match_details=language_refusal_details(plan))
+
         try:
             # Run the matcher in a thread to not block async loop
             logger.debug(f"[Curator] Starting identifying_episode in thread for {file_path.name}")

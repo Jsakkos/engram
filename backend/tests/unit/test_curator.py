@@ -794,3 +794,107 @@ class TestChromaprintPrepassNamespace:
         assert calls == []
         assert result is asr
         assert "chromaprint_vs_asr_conflict" not in (result.match_details or {})
+
+
+@pytest.mark.unit
+class TestAudioLanguageRefusal:
+    """A track whose audio is all another language is parked, not guessed (#241)."""
+
+    @staticmethod
+    def _curator(tmp_path, monkeypatch, plan):
+        curator = EpisodeCurator()
+        curator._cache_dir = tmp_path
+        matcher = Mock()
+        matcher.audio_plan.return_value = plan
+        curator._matcher = matcher
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
+
+        async def no_prepass(**k):
+            return None
+
+        monkeypatch.setattr(curator, "_chromaprint_prepass", no_prepass)
+        f = tmp_path / "ep.mkv"
+        f.write_text("")
+        return curator, matcher, f
+
+    async def test_foreign_audio_returns_language_refusal_without_asr(self, tmp_path, monkeypatch):
+        from app.matcher.audio_streams import AudioPlan
+
+        curator, matcher, f = self._curator(
+            tmp_path, monkeypatch, AudioPlan("foreign", None, ["ja"])
+        )
+        result = await curator.match_single_file(f, "Show", 1)
+
+        assert result.episode_code is None
+        assert result.needs_review is True
+        assert result.confidence == 0.0
+        assert result.match_details["error"] == "audio_language_unsupported"
+        assert result.match_details["audio_languages"] == ["ja"]
+        assert "only audio is Japanese" in result.match_details["message"]
+        matcher.identify_episode.assert_not_called()
+
+    async def test_message_names_every_distinct_language(self, tmp_path, monkeypatch):
+        from app.matcher.audio_streams import AudioPlan
+
+        curator, _, f = self._curator(
+            tmp_path, monkeypatch, AudioPlan("foreign", None, ["ja", "ja", None, "de"])
+        )
+        result = await curator.match_single_file(f, "Show", 1)
+        assert "only audio is Japanese and German," in result.match_details["message"]
+
+    async def test_no_audio_returns_its_own_refusal(self, tmp_path, monkeypatch):
+        from app.matcher.audio_streams import AudioPlan
+
+        curator, matcher, f = self._curator(tmp_path, monkeypatch, AudioPlan("no_audio"))
+        result = await curator.match_single_file(f, "Show", 1)
+        assert result.match_details["error"] == "audio_language_unsupported"
+        assert result.match_details["message"].startswith("This track has no audio")
+        matcher.identify_episode.assert_not_called()
+
+    async def test_chromaprint_hit_wins_over_foreign_audio(self, tmp_path, monkeypatch):
+        from app.matcher.audio_streams import AudioPlan
+
+        curator, matcher, f = self._curator(
+            tmp_path, monkeypatch, AudioPlan("foreign", None, ["ja"])
+        )
+
+        async def hit(**k):
+            return {
+                "season": 1,
+                "episode": 4,
+                "confidence": 0.99,
+                "tier": "canonical",
+                "match_details": {},
+            }
+
+        monkeypatch.setattr(curator, "_chromaprint_prepass", hit)
+        result = await curator.match_single_file(f, "Show", 1)
+        assert result.episode_code == "S01E04"
+        matcher.audio_plan.assert_not_called()
+
+    @pytest.mark.parametrize("verdict", ["unprobed", "untagged", "match"])
+    async def test_usable_audio_runs_asr_as_today(self, tmp_path, monkeypatch, verdict):
+        from app.matcher.audio_streams import AudioPlan
+
+        curator, matcher, f = self._curator(tmp_path, monkeypatch, AudioPlan(verdict))
+        matcher.identify_episode.return_value = {
+            "season": 1,
+            "episode": 3,
+            "confidence": 0.95,
+            "match_details": {},
+        }
+        result = await curator.match_single_file(f, "Show", 1)
+        assert result.episode_code == "S01E03"
+        matcher.identify_episode.assert_called_once()
+
+    async def test_across_seasons_refuses_once(self, tmp_path, monkeypatch):
+        from app.matcher.audio_streams import AudioPlan
+
+        curator, matcher, f = self._curator(
+            tmp_path, monkeypatch, AudioPlan("foreign", None, ["ja"])
+        )
+        monkeypatch.setattr(curator, "_candidate_seasons", lambda show: [1, 2, 3])
+        result = await curator.match_single_file(f, "Show", None)
+        assert result.match_details["error"] == "audio_language_unsupported"
+        assert matcher.audio_plan.call_count == 1
+        matcher.identify_episode.assert_not_called()
