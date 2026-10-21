@@ -229,6 +229,9 @@ async def isolate_database(monkeypatch):
     _jm_inst._suppress_match_done.clear()
     _jm_inst._rematch_tasks.clear()
     _jm_inst._rematch_rerun.clear()
+    # Same for the live-match registry (#776): a count leaked by a task cancelled
+    # before its first step would make a later test's title id look live.
+    _jm_inst._matching._live_matches.clear()
 
     yield
 
