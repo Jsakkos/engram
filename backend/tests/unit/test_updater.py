@@ -1776,7 +1776,9 @@ def test_windows_swap_retries_past_a_transient_holder(tmp_path):
             timeout=60.0,
         )
         holder.terminate()
-        ok = _t8_wait_for(lambda: result.exists(), timeout=60.0)
+        ok = _t8_wait_for(
+            lambda: log.exists() and "] done (" in log.read_text(errors="replace"), timeout=60.0
+        )
         log_text = log.read_text(errors="replace") if log.exists() else "<no log>"
         assert hit, f"helper never hit the held install dir; helper log:\n{log_text}"
         assert ok, f"no result marker within 60s; helper log:\n{log_text}"
@@ -1824,7 +1826,9 @@ def test_windows_swap_gives_up_on_a_persistent_holder_and_says_why(tmp_path, par
         )
         time.sleep(2)
         parent.terminate()
-        ok = _t8_wait_for(lambda: result.exists(), timeout=60.0)
+        ok = _t8_wait_for(
+            lambda: log.exists() and "] done (" in log.read_text(errors="replace"), timeout=60.0
+        )
         log_text = log.read_text(errors="replace") if log.exists() else "<no log>"
         assert ok, f"no result marker within 60s; helper log:\n{log_text}"
         text = result.read_text(errors="replace")
