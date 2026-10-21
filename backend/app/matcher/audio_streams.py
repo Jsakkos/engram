@@ -102,7 +102,7 @@ def _run_probe(path: Path) -> list[AudioStream] | None:
         return None
     try:
         raw = json.loads(result.stdout or "")
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         return None
     entries = raw.get("streams") if isinstance(raw, dict) else None
     if not isinstance(entries, list):

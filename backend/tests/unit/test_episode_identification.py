@@ -1517,3 +1517,93 @@ class TestScrapingSignatureTracksMtime:
             ei.scraping_reference_signature([srt]), using_precomputed=False, reference_files=[srt]
         )
         assert rebuilt is not first, "rewritten references must rebuild the matcher"
+
+
+@pytest.mark.unit
+class TestPlannedAudioStream:
+    """The matcher transcribes the planned audio stream (issue #241)."""
+
+    @staticmethod
+    def _matcher(tmp_path, stream_index, verdict="match"):
+        from app.matcher.audio_streams import AudioPlan, AudioStream
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show")
+        stream = (
+            AudioStream(stream_index, "en", "", 2, False, False)
+            if stream_index is not None
+            else None
+        )
+        plan = AudioPlan(verdict, stream, ["en"])
+        matcher.audio_plan = MagicMock(return_value=plan)
+        return matcher
+
+    @staticmethod
+    def _capture_ffmpeg(tmp_path):
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            # create the output wav so the post-run checks pass
+            from pathlib import Path
+
+            Path(cmd[-1]).write_bytes(b"\0" * 2048)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        return calls, fake_run
+
+    def test_extract_audio_chunk_maps_planned_stream(self, tmp_path):
+        matcher = self._matcher(tmp_path, 2)
+        calls, fake_run = self._capture_ffmpeg(tmp_path)
+        with patch("app.matcher.episode_identification.subprocess.run", side_effect=fake_run):
+            matcher.extract_audio_chunk(tmp_path / "x.mkv", 300, 30)
+        argv = calls[0]
+        i = argv.index("-map")
+        assert argv[i + 1] == "0:a:2"
+        assert i < len(argv) - 1
+
+    def test_extract_audio_chunk_no_map_when_unprobed(self, tmp_path):
+        matcher = self._matcher(tmp_path, None, verdict="unprobed")
+        calls, fake_run = self._capture_ffmpeg(tmp_path)
+        with patch("app.matcher.episode_identification.subprocess.run", side_effect=fake_run):
+            matcher.extract_audio_chunk(tmp_path / "x.mkv", 300, 30)
+        assert "-map" not in calls[0]
+
+    def test_cache_keys_differ_by_stream_but_stream0_keeps_legacy_key(self, tmp_path):
+        from pathlib import Path
+
+        f = tmp_path / "x.mkv"
+        legacy = (str(Path(f).resolve()), 300, 30)
+        m0 = self._matcher(tmp_path, 0)
+        m1 = self._matcher(tmp_path, 1)
+        unprobed = self._matcher(tmp_path, None, verdict="unprobed")
+        assert m0._transcription_key(f, 300, 30) == legacy
+        assert unprobed._transcription_key(f, 300, 30) == legacy
+        assert m1._transcription_key(f, 300, 30) != legacy
+        assert m0._chunk_path(f, 300, 30) == unprobed._chunk_path(f, 300, 30)
+        assert m1._chunk_path(f, 300, 30) != m0._chunk_path(f, 300, 30)
+
+    def test_transcript_file_key_includes_stream(self, tmp_path):
+        from app.matcher import transcript_store
+
+        f = tmp_path / "x.mkv"
+        f.write_bytes(b"x")
+        base = transcript_store.file_key_for(f)
+        assert self._matcher(tmp_path, 0).transcript_file_key(f) == base
+        assert self._matcher(tmp_path, 1).transcript_file_key(f) == base + "#a1"
+
+    def test_transcribe_chunk_cached_l2_key_includes_stream(self, tmp_path):
+        from app.matcher import transcript_store
+
+        f = tmp_path / "x.mkv"
+        f.write_bytes(b"x")
+        matcher = self._matcher(tmp_path, 1)
+        model = MagicMock()
+        model.transcribe.return_value = {"text": "hello there"}
+        with (
+            patch.object(transcript_store, "get", return_value=None) as get,
+            patch.object(transcript_store, "put"),
+            patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")),
+        ):
+            matcher.transcribe_chunk_cached(f, 300, 30, model, model_key="k")
+        assert get.call_args.args[0] == transcript_store.file_key_for(f) + "#a1"

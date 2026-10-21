@@ -19,6 +19,7 @@ from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similar
 
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
+from app.matcher.audio_streams import AudioPlan, plan_audio, probe_audio_streams
 from app.matcher.multi_episode import decompose_vote_runs
 from app.matcher.numbering_scheme import SCHEME_UNKNOWN, VALID_SCHEMES, usable_count
 from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
@@ -1206,9 +1207,42 @@ class EpisodeMatcher:
         """Canonical source-path form shared by chunk hash + in-memory cache key."""
         return str(Path(mkv_file).resolve())
 
+    def audio_plan(self, video_file, language: str = "en") -> AudioPlan:
+        """Which audio stream of ``video_file`` to transcribe for ``language`` (issue #241).
+
+        Lives on the matcher so extraction, every transcript cache and the prewarm
+        (which drives this same class) can never disagree about the stream. The
+        ffprobe answer is memoized per file in ``audio_streams``.
+        """
+        return plan_audio(probe_audio_streams(Path(video_file)), language)
+
+    def _audio_stream_index(self, video_file) -> int | None:
+        """The planned audio-relative stream index, or None to let ffmpeg pick."""
+        stream = self.audio_plan(video_file).stream
+        return stream.audio_index if stream is not None else None
+
+    def _source_key(self, mkv_file) -> str:
+        """Resolved source path, plus ``#a<n>`` when transcribing audio stream n > 0.
+
+        Stream 0 (and an unprobed file) keeps the plain path, so transcripts cached
+        before streams were chosen explicitly still hit: on nearly every disc the
+        first audio stream is the one ffmpeg used to pick.
+        """
+        index = self._audio_stream_index(mkv_file)
+        source = self._resolve_source(mkv_file)
+        return f"{source}#a{index}" if index else source
+
+    def transcript_file_key(self, video_file) -> str | None:
+        """Persistent (L2) transcript key: ``file_key_for`` plus the stream suffix."""
+        file_key = transcript_store.file_key_for(video_file)
+        index = self._audio_stream_index(video_file)
+        if file_key is None or not index:
+            return file_key
+        return f"{file_key}#a{index}"
+
     def _chunk_path(self, mkv_file, start_time, duration):
         """Hash resolved source path into the filename so concurrent threads don't collide."""
-        src_hash = hashlib.sha1(self._resolve_source(mkv_file).encode("utf-8")).hexdigest()[:16]
+        src_hash = hashlib.sha1(self._source_key(mkv_file).encode("utf-8")).hexdigest()[:16]
         return self.temp_dir / f"chunk_{src_hash}_{start_time}_{duration}.wav"
 
     def _transcription_key(self, mkv_file, start_time, duration) -> tuple:
@@ -1218,7 +1252,7 @@ class EpisodeMatcher:
         fallback share one transcript cache without colliding (chunks start >= 300s
         with a 30s duration; the full-file pass uses start=0 with the file duration).
         """
-        return (self._resolve_source(mkv_file), start_time, duration)
+        return (self._source_key(mkv_file), start_time, duration)
 
     def _remember_transcription(self, key: tuple, text: str) -> None:
         """Store an ASR transcript, bounding the cache.
@@ -1285,7 +1319,7 @@ class EpisodeMatcher:
             return text
 
         if file_key is None:
-            file_key = transcript_store.file_key_for(video_file)
+            file_key = self.transcript_file_key(video_file)
         if model_key is None:
             model_key = self._model_key_for(model)
 
@@ -1311,8 +1345,8 @@ class EpisodeMatcher:
     def extract_audio_chunk(self, mkv_file, start_time, duration=None):
         """Extract a chunk of audio from MKV file with caching."""
         duration = duration or self.chunk_duration
-        # Resolve once so cache_key matches what _chunk_path hashes.
-        cache_key = (self._resolve_source(mkv_file), start_time, duration)
+        # Same source key _chunk_path hashes (it carries the planned stream).
+        cache_key = (self._source_key(mkv_file), start_time, duration)
 
         if cache_key in self.audio_chunks:
             return self.audio_chunks[cache_key]
@@ -1321,6 +1355,10 @@ class EpisodeMatcher:
 
         chunk_path = self._chunk_path(mkv_file, start_time, duration)
         if not chunk_path.exists():
+            # Name the stream explicitly: left to itself ffmpeg takes the
+            # default-flagged track, which on a dub disc can be the wrong language.
+            stream_index = self._audio_stream_index(mkv_file)
+            stream_map = ["-map", f"0:a:{stream_index}"] if stream_index is not None else []
             cmd = [
                 "ffmpeg",
                 "-hide_banner",
@@ -1330,6 +1368,7 @@ class EpisodeMatcher:
                 str(duration),
                 "-i",
                 str(mkv_file),
+                *stream_map,
                 "-vn",  # Disable video
                 "-sn",  # Disable subtitles
                 "-dn",  # Disable data streams
@@ -1701,7 +1740,7 @@ class EpisodeMatcher:
             # compute path re-extracts instead of returning a dangling path
             # (same hygiene as TranscriptionPrewarmer._transcribe_span).
             if temp_files:
-                self.audio_chunks.pop((self._resolve_source(video_file), 0, duration), None)
+                self.audio_chunks.pop((self._source_key(video_file), 0, duration), None)
 
         if len(full) < 50:
             logger.info(f"transcribe_full: too little text ({len(full)} chars) for {video_file}")
@@ -2001,7 +2040,7 @@ class EpisodeMatcher:
             model = get_cached_model(model_config)
             # L2 transcript-cache identity, computed ONCE per call (one stat, one
             # key derivation) and passed into every chunk lookup below.
-            l2_file_key = transcript_store.file_key_for(video_file)
+            l2_file_key = self.transcript_file_key(video_file)
             l2_model_key = self._model_key_for(model)
 
             if progress_callback:

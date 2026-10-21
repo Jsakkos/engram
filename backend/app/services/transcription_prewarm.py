@@ -254,7 +254,6 @@ class TranscriptionPrewarmer:
 
     async def _prewarm_file(self, matcher, file_path: Path, *, full_file: bool) -> None:
         """Warm all missing scan-grid spans (and optionally the full file) for one file."""
-        from app.matcher import transcript_store
         from app.matcher.asr_models import get_cached_model, model_output_key
         from app.matcher.episode_identification import (
             NoAudioStreamError,
@@ -263,6 +262,13 @@ class TranscriptionPrewarmer:
             # L2 row with. Do NOT swap in srt_utils.get_video_duration (returns float):
             # a fractional duration would fork the (0, duration) full-file cache key.
         )
+
+        # A file with no audio the matcher can use will never be transcribed
+        # (issue #241): warming it would only spend Whisper on the wrong language.
+        plan = await asyncio.to_thread(matcher.audio_plan, file_path)
+        if plan.verdict in ("foreign", "no_audio"):
+            logger.debug(f"Prewarm: {file_path.name} has no matchable audio ({plan.verdict})")
+            return
 
         duration = await asyncio.to_thread(get_video_duration, str(file_path))
         chunk_len = matcher.chunk_duration
@@ -273,7 +279,7 @@ class TranscriptionPrewarmer:
             num_points=DEFAULT_SCAN_POINTS,
         )
 
-        file_key = transcript_store.file_key_for(file_path)
+        file_key = await asyncio.to_thread(matcher.transcript_file_key, file_path)
         if file_key is None:
             logger.debug(f"Prewarm: cannot derive file_key for {file_path}; skipping")
             return
@@ -384,7 +390,7 @@ class TranscriptionPrewarmer:
                     # Best-effort temp cleanup — a locked wav (e.g. Windows AV
                     # scan) is reaped on a later run; missing_ok covers ENOENT.
                     pass
-            matcher.audio_chunks.pop((matcher._resolve_source(file_path), start, length), None)
+            matcher.audio_chunks.pop((matcher._source_key(file_path), start, length), None)
 
     # ------------------------------------------------------------------
     # Lazy matcher construction
