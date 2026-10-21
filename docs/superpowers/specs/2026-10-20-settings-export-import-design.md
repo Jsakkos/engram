@@ -241,3 +241,29 @@ sends only ticked keys, export checkbox warning appears.
    only, which would make keys unexportable from a headless Docker install.
 5. Onboarding gets an import entry point on step 1, not just Settings.
 6. No encryption of the export.
+
+## Amendments during implementation (2026-10-20)
+
+Made after an automated security review of the first backend commits, and during the UI work:
+
+- **Import bodies must be `application/json` (415 otherwise).** The routes read the raw body
+  for the size cap, which skipped FastAPI's own rule of parsing JSON only when declared. A
+  cross-site `text/plain` POST needs no CORS preflight, so without this any web page could
+  apply a settings file.
+- **The preview never touches a UNC path from the file.** Neither the existence check nor
+  `validate_config_update`'s library writability probe (new `probe_paths=False`) runs for a
+  `\server\share` value, so previewing a crafted file cannot make Windows authenticate to the
+  host it names. Such rows carry `path_unchecked: true`, are grouped as "Network paths (not
+  checked)" and are unticked. Apply still runs every check on what the user ticked.
+- **A keys-included export checks the Host header**: loopback names and IP literals only.
+  DNS rebinding reaches the loopback API under the attacker's host name and can then read the
+  response; this is the only response that carries plaintext secrets. `dashboard_base_url` is
+  deliberately not trusted as an allowlist entry, since the same page could set it through
+  `PUT /api/config`. Export without keys is unaffected.
+- An unset (`None`) value is left out of the export rather than written as `null`, except for
+  the two clearable fields, because import reads `null` as "leave alone" elsewhere.
+- Settings keys that are excluded (per-install) appear under "Not recognized" when present in a
+  file, the same as keys this version does not know.
+- The section is named **Import & Export** (not "Backup & Transfer", which read like the
+  disc-backup feature), and the review renders inline in the Settings pane instead of as a
+  second modal.

@@ -7,6 +7,9 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
+### Added
+
+- Settings can be exported to a file and imported on another install, from **Settings > Import & Export** or the first step of setup. Keys and passwords stay out of the file unless you tick **Include keys and passwords**. Before anything changes, an import shows every setting it would apply, with paths missing on this machine unticked and invalid values explained, and it goes through the same checks as saving in Settings. Setup status, LAN access and fingerprint-sharing consent are never carried over. (#731)
 
 ## [0.41.0] - 2026-10-20
 
