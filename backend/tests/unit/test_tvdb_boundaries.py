@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import weakref
 from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -60,6 +61,7 @@ def _bare_coordinator() -> MatchingCoordinator:
     coord._episode_runtimes_locks = defaultdict(asyncio.Lock)
     coord._subtitle_ready = {}
     coord._subtitle_tasks = {}
+    coord._live_matches = defaultdict(weakref.WeakSet)
     return coord
 
 

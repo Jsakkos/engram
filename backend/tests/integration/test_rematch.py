@@ -132,6 +132,35 @@ async def test_bulk_rematch_rejects_non_review_state(client, engram_review_job):
 
 
 @pytest.mark.asyncio
+async def test_bulk_rematch_rejects_movie_job(client, job_with_matched_title, monkeypatch):
+    """Re-match all runs TV episode matching, so a movie job must be refused (#775)."""
+    job, _ = job_with_matched_title
+
+    async with async_session() as session:
+        reloaded = await session.get(DiscJob, job.id)
+        reloaded.content_type = ContentType.MOVIE
+        session.add(reloaded)
+        await session.commit()
+
+    from app.services.job_manager import job_manager
+
+    rerun = AsyncMock()
+    monkeypatch.setattr(job_manager, "rerun_matching", rerun)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/rematch",
+        json={"source_preference": "engram"},
+    )
+    assert resp.status_code == 409
+    assert "TV" in resp.json()["detail"]
+    rerun.assert_not_awaited()
+
+    async with async_session() as session:
+        unchanged = await session.get(DiscJob, job.id)
+        assert unchanged.state == JobState.REVIEW_NEEDED
+
+
+@pytest.mark.asyncio
 async def test_reassign_episode_returns_200(client, job_with_matched_title):
     """POST /api/jobs/{id}/titles/{tid}/reassign should return 200 and update DB."""
     job, title = job_with_matched_title
