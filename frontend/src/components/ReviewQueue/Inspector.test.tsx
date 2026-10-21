@@ -208,6 +208,19 @@ describe('Inspector: review reason notice', () => {
         ).toBeInTheDocument();
     });
 
+    it('shows why a half-hour-numbered match was held', () => {
+        const message =
+            'The reference subtitles for this season are numbered differently from TMDB (usually by broadcast half-hour instead of by segment), so S02E06 may name the wrong episode. Check it and assign the TMDB episode(s) this track holds.';
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({ error: 'numbering_divergent', message }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('numbered differently from TMDB')),
+        ).toBeInTheDocument();
+    });
+
     it('adds no notice when there is no message to show', () => {
         const plain = renderInspector({ title: makeTitle() });
         const baseline = plain.container.querySelectorAll('[data-testid="sv-notice"]').length;

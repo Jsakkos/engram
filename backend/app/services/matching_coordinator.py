@@ -223,6 +223,12 @@ RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_eject
 # confirmed verdict pre-fills the combined code (S01E01-E03) for them to confirm.
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
 
+# A match against a reference season the pack marks as numbered differently from
+# TMDB (broadcast half-hours instead of segments) that no crosswalk translated.
+# Its code is in the pack's numbering, which TMDB uses for an unrelated episode,
+# so it is held for a human rather than filed (#760).
+NUMBERING_DIVERGENT_ERROR_CODE = "numbering_divergent"
+
 # REVIEW reasons a deeper matcher pass cannot fix: never auto re-match these.
 # Defined here rather than in finalization_coordinator because that module imports
 # this one, and both the conflict re-match below and the review escalation there
@@ -236,6 +242,9 @@ _NON_REMATCHABLE_REVIEW_ERRORS = {
     # The matcher refused the title: too few reference subtitles held any text. A
     # deeper scan against the same references cannot change that.
     REFERENCES_UNREADABLE_ERROR_CODE,
+    # A deeper scan against the same half-hour corpus returns the same half-hour
+    # number; only a person (or a crosswalked pack) can translate it.
+    NUMBERING_DIVERGENT_ERROR_CODE,
 } | set(RIP_FAILURE_ERROR_CODES)
 
 
@@ -389,7 +398,36 @@ def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -
         return REFERENCES_UNREADABLE_ERROR_CODE
     if _apply_multi_episode_review(title, conjoined_hint):
         return MULTI_EPISODE_ERROR_CODE
+    if _apply_divergent_numbering_review(title):
+        return NUMBERING_DIVERGENT_ERROR_CODE
     return None
+
+
+def _apply_divergent_numbering_review(title: "DiscTitle") -> bool:
+    """Hold a match whose code is in a half-hour numbering no crosswalk translated.
+
+    Keyed on the pack's explicit ``divergent`` marker only, never on the
+    reference/roster count heuristic: a scraped corpus that is merely incomplete
+    also has fewer references than the roster, and holding every such match would
+    bury ordinary seasons in review. A crosswalked result is stamped ``tmdb_aired``
+    and never reaches this branch. The matched code stays as the reviewer's
+    pre-fill. Returns True if it held the title.
+    """
+    if not title.matched_episode or title.state not in (TitleState.MATCHED, TitleState.REVIEW):
+        return False
+    details = _title_details(title)
+    if details.get("numbering_scheme") != SCHEME_DIVERGENT or details.get("error"):
+        return False
+    title.state = TitleState.REVIEW
+    details["error"] = NUMBERING_DIVERGENT_ERROR_CODE
+    details["message"] = (
+        "The reference subtitles for this season are numbered differently from TMDB "
+        "(usually by broadcast half-hour instead of by segment), so "
+        f"{title.matched_episode} may name the wrong episode. Check it and assign the "
+        "TMDB episode(s) this track holds."
+    )
+    title.match_details = json.dumps(details)
+    return True
 
 
 def _combined_code(codes: list) -> str | None:

@@ -12,10 +12,13 @@ import pytest
 
 from app.models.disc_job import TitleState
 from app.services.matching_coordinator import (
+    _NON_REMATCHABLE_REVIEW_ERRORS,
     MULTI_EPISODE_ERROR_CODE,
+    NUMBERING_DIVERGENT_ERROR_CODE,
     _apply_multi_episode_review,
     _combined_code,
     _may_contribute_fingerprint,
+    _route_unconfirmable_title,
 )
 
 
@@ -75,3 +78,65 @@ def test_crosswalked_two_segment_track_is_not_contributed():
     details = {"numbering_crosswalk": True, "multi_episode": {"is_multi_episode": False}}
     assert _may_contribute_fingerprint("S02E11-E12", None, details) is False
     assert _may_contribute_fingerprint("S02E13", None, details) is True
+
+
+@pytest.mark.unit
+class TestDivergentWithoutCrosswalkIsHeld:
+    """A half-hour-numbered match with no crosswalk is held for review, not filed.
+
+    Its code names a half-hour of the pack's own numbering, which TMDB uses for an
+    unrelated segment. Filing it was the job 100 outcome: five wrong files, all at
+    high confidence.
+    """
+
+    def _divergent(self, matched="S02E06", state=TitleState.MATCHED, **details):
+        title = _title(matched, numbering_scheme="divergent", pack_roster_size=37, **details)
+        title.state = state
+        return title
+
+    def test_divergent_uncrosswalked_match_is_parked(self):
+        title = self._divergent()
+        assert _route_unconfirmable_title(title, None) == NUMBERING_DIVERGENT_ERROR_CODE
+        assert title.state == TitleState.REVIEW
+        assert title.matched_episode == "S02E06"  # kept as the reviewer's pre-fill
+        details = json.loads(title.match_details)
+        assert details["error"] == NUMBERING_DIVERGENT_ERROR_CODE
+        assert details["message"] == (
+            "The reference subtitles for this season are numbered differently from TMDB "
+            "(usually by broadcast half-hour instead of by segment), so S02E06 may name "
+            "the wrong episode. Check it and assign the TMDB episode(s) this track holds."
+        )
+
+    def test_low_confidence_divergent_match_gets_the_notice_too(self):
+        title = self._divergent(state=TitleState.REVIEW)
+        assert _route_unconfirmable_title(title, None) == NUMBERING_DIVERGENT_ERROR_CODE
+        assert json.loads(title.match_details)["error"] == NUMBERING_DIVERGENT_ERROR_CODE
+
+    def test_crosswalked_match_is_not_parked(self):
+        title = _title("S02E11-E12", numbering_crosswalk=True, pack_numbering_scheme="divergent")
+        assert _route_unconfirmable_title(title, None) is None
+        assert title.state == TitleState.MATCHED
+
+    def test_tmdb_aired_match_is_not_parked(self):
+        title = _title("S02E06")
+        assert _route_unconfirmable_title(title, None) is None
+        assert title.state == TitleState.MATCHED
+
+    def test_count_heuristic_alone_does_not_park(self):
+        # A scraped corpus that is merely incomplete also has fewer references
+        # than the roster; only the pack's explicit marker may hold a match.
+        title = _title("S02E06", numbering_scheme=None, reference_count=20, roster_size=37)
+        assert _route_unconfirmable_title(title, None) is None
+
+    def test_title_without_an_episode_is_not_touched(self):
+        title = self._divergent(matched=None, state=TitleState.REVIEW)
+        assert _route_unconfirmable_title(title, None) is None
+
+    def test_an_earlier_routing_error_wins(self):
+        title = self._divergent(error="file_exists", message="S02E06 is already organized.")
+        title.state = TitleState.REVIEW
+        assert _route_unconfirmable_title(title, None) is None
+        assert json.loads(title.match_details)["error"] == "file_exists"
+
+    def test_numbering_divergent_is_not_rematchable(self):
+        assert NUMBERING_DIVERGENT_ERROR_CODE in _NON_REMATCHABLE_REVIEW_ERRORS
