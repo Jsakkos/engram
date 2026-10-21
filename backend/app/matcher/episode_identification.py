@@ -62,6 +62,15 @@ def _stderr_tail(stderr: str | None, lines: int = _FFMPEG_STDERR_TAIL_LINES) -> 
     return " | ".join(tail[-lines:])
 
 
+def _file_identity(path: str) -> tuple:
+    """(path, mtime_ns, size): changes when the file at ``path`` is rewritten."""
+    try:
+        st = Path(path).stat()
+    except OSError:
+        return (path, None, None)
+    return (path, st.st_mtime_ns, st.st_size)
+
+
 def has_audio_stream(video_file) -> bool | None:
     """Whether ``video_file`` has at least one audio stream; None if ffprobe can't tell."""
     try:
@@ -1170,9 +1179,9 @@ class EpisodeMatcher:
         self._max_tfidf_cache = MAX_TFIDF_CACHE
         # Cache for extracted audio chunks (cleared per identify_episode call)
         self.audio_chunks = {}
-        # Resolved sources found to have no audio stream: later chunks of the
-        # same file raise NoAudioStreamError without spawning ffmpeg again.
-        self._no_audio_sources: set[str] = set()
+        # Sources (by _file_identity) found to have no audio stream: later chunks
+        # of the same file raise NoAudioStreamError without spawning ffmpeg again.
+        self._no_audio_sources: set[tuple] = set()
         # Cache for ASR transcripts, keyed by (resolved_source, start, duration).
         # Unlike audio_chunks this PERSISTS across identify_episode calls so the
         # season-unknown path (one call per candidate season) reuses Whisper output
@@ -1316,7 +1325,10 @@ class EpisodeMatcher:
 
         if cache_key in self.audio_chunks:
             return self.audio_chunks[cache_key]
-        if cache_key[0] in self._no_audio_sources:
+        # Keyed on the file's identity, not just its path, so a re-rip that
+        # rewrites the same staging file (with its audio this time) is retried.
+        source_identity = _file_identity(cache_key[0])
+        if source_identity in self._no_audio_sources:
             raise NoAudioStreamError(f"{mkv_file} has no audio track to transcribe")
 
         chunk_path = self._chunk_path(mkv_file, start_time, duration)
@@ -1353,7 +1365,7 @@ class EpisodeMatcher:
                     # A file with no audio fails every chunk the same way; say so
                     # once and remember it rather than logging ten opaque errors.
                     if has_audio_stream(mkv_file) is False:
-                        self._no_audio_sources.add(cache_key[0])
+                        self._no_audio_sources.add(source_identity)
                         error_msg = (
                             f"{mkv_file} has no audio track to transcribe; skipping "
                             "audio matching for it (MakeMKV may have left out a track "
