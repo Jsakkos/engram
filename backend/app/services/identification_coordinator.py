@@ -671,6 +671,12 @@ class IdentificationCoordinator:
                         source_filename=title.source_filename or None,
                         segment_count=title.segment_count,
                         segment_map=title.segment_map or None,
+                        audio_languages=json.dumps(title.audio_languages)
+                        if title.audio_languages
+                        else None,
+                        subtitle_languages=json.dumps(title.subtitle_languages)
+                        if title.subtitle_languages
+                        else None,
                     )
                     session.add(disc_title)
 
