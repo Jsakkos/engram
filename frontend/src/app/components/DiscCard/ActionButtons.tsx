@@ -32,11 +32,13 @@ interface ConfirmModalProps {
     confirmLabel: string;
     dismissLabel: string;
     confirmTone?: "red" | "cyan" | "amber";
+    /** Stacking override for callers that open this above another modal (the Settings overlay sits at 1000). */
+    zIndex?: number;
     onConfirm: () => void;
     onDismiss: () => void;
 }
 
-function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confirmTone = "red", onConfirm, onDismiss }: ConfirmModalProps) {
+export function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confirmTone = "red", zIndex, onConfirm, onDismiss }: ConfirmModalProps) {
     const dismissRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
@@ -63,6 +65,7 @@ function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confir
     return createPortal(
         <motion.div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={zIndex === undefined ? undefined : { zIndex }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
