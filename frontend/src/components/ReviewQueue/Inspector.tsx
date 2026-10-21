@@ -18,7 +18,11 @@ import {
     titleDisplayName,
 } from './utils';
 
-const REVIEW_NOTICE_CODES = new Set(['references_unreadable', 'multi_episode_detected']);
+const REVIEW_NOTICE_CODES = new Set([
+    'references_unreadable',
+    'multi_episode_detected',
+    'audio_language_unsupported',
+]);
 
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
