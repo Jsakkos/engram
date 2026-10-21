@@ -609,6 +609,10 @@ async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJo
     return list(result.scalars().all())
 
 
+# Escape character for the History search LIKE patterns.
+_LIKE_ESCAPE = "\\"
+
+
 def _history_search_clause(q: str):
     """Case-insensitive substring match across the text a user would search by.
 
@@ -616,20 +620,22 @@ def _history_search_clause(q: str):
     any title's matched episode code. ``%``, ``_`` and the escape character are
     escaped so a query like ``100%`` is literal, not a wildcard.
     """
-    escaped = q.replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
+    escaped = q.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
+    escaped = escaped.replace("%", _LIKE_ESCAPE + "%").replace("_", _LIKE_ESCAPE + "_")
     pattern = f"%{escaped}%"
     episode_hit = (
         select(DiscTitle.id)
         .where(
-            DiscTitle.job_id == DiscJob.id, DiscTitle.matched_episode.ilike(pattern, escape="\\")
+            DiscTitle.job_id == DiscJob.id,
+            DiscTitle.matched_episode.ilike(pattern, escape=_LIKE_ESCAPE),
         )
         .exists()
     )
     return or_(
-        DiscJob.volume_label.ilike(pattern, escape="\\"),
-        DiscJob.detected_title.ilike(pattern, escape="\\"),
-        DiscJob.tmdb_name.ilike(pattern, escape="\\"),
-        DiscJob.error_message.ilike(pattern, escape="\\"),
+        DiscJob.volume_label.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.detected_title.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.tmdb_name.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.error_message.ilike(pattern, escape=_LIKE_ESCAPE),
         episode_hit,
     )
 

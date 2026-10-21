@@ -1122,33 +1122,43 @@ export default function HistoryPage() {
 
   useEffect(() => {
     // The tiles describe the same job set as the table, so they re-fetch
-    // whenever a filter changes.
+    // whenever a filter changes. `cancelled` drops a response that a newer
+    // request has superseded, so a slow stale reply cannot overwrite it.
+    let cancelled = false;
     const params = buildStatsQuery({ filterType, filterState, q });
     apiFetch<Stats>(`/api/jobs/stats?${params}`)
-      .then(setStats)
+      .then((data) => {
+        if (!cancelled) setStats(data);
+      })
       .catch((error) => {
+        if (cancelled) return;
         console.error("Failed to load history stats:", error);
         toast.error("Failed to load history statistics.");
       });
+    return () => {
+      cancelled = true;
+    };
   }, [filterType, filterState, q]);
 
-  const fetchHistory = useCallback(() => {
+  useEffect(() => {
+    let cancelled = false;
     const params = buildHistoryQuery({ page, perPage, filterType, filterState, q });
 
     apiFetch<HistoryJob[]>(`/api/jobs/history?${params}`)
       .then((data: HistoryJob[]) => {
+        if (cancelled) return;
         setHistory(data);
         setHasMore(data.length === perPage);
       })
       .catch((error) => {
+        if (cancelled) return;
         console.error("Failed to load job history:", error);
         toast.error("Failed to load job history.");
       });
+    return () => {
+      cancelled = true;
+    };
   }, [page, filterType, filterState, q]);
-
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
 
   // Fetch job detail when a job is selected (or when detailRefreshKey increments after an amend)
   useEffect(() => {
@@ -1184,14 +1194,15 @@ export default function HistoryPage() {
         },
         { replace: true }
       );
-      setPage(1);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchText, q, setSearchParams]);
 
   // Keep the box in step when the URL changes underneath it (back/forward).
+  // A new query (typed, back/forward, or a shared link) always restarts paging.
   useEffect(() => {
     setSearchText(q);
+    setPage(1);
   }, [q]);
 
   const handleRowClick = (jobId: number) => {
