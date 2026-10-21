@@ -115,7 +115,7 @@ Choose a settings file and Engram shows every setting in it before anything chan
 | Group | Meaning | Ticked by default |
 |-------|---------|-------------------|
 | **Changes** | Differs from what this install has | Yes |
-| **Not found on this machine** | A folder or program path that does not exist here | No |
+| **Not found on this machine** | A folder or program path that does not exist here. Applying a folder creates it on this machine, so tick it only if that is where you want it | No |
 | **Network paths (not checked)** | A `\\server\share` path. Engram does not open network paths from an imported file, so it cannot say whether the share is there | No |
 | **Invalid** | Fails the same checks as saving in Settings (a bad naming placeholder, an internal webhook address, an unwritable library folder); the reason is shown | Cannot be ticked |
 | **Unchanged** | Already the same here | No |

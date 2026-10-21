@@ -267,3 +267,8 @@ Made after an automated security review of the first backend commits, and during
 - The section is named **Import & Export** (not "Backup & Transfer", which read like the
   disc-backup feature), and the review renders inline in the Settings pane instead of as a
   second modal.
+- **Network-path guard widened after the final review**: besides UNC, any value rooted in a
+  backslash (the NT namespace and device paths, which reach the network with a single
+  leading separator) and, on Windows, any value rooted in `/` is left unchecked.
+- The "Not found on this machine" hint no longer suggests ticking a not-yet-mounted share:
+  saving runs `ensure_paths_exist`, which would create that folder on the local disk.
