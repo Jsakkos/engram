@@ -1743,6 +1743,8 @@ class JobManager:
     async def _broadcast_stall_changes(self) -> None:
         """Push stall state for watched jobs; send on change, and keep a stuck
         job's duration fresh. A cleared flag is sent once, then goes quiet."""
+        if not self._last_activity and not self._stall_sent:
+            return
         async with async_session() as session:
             result = await session.execute(
                 select(DiscJob.id, DiscJob.state).where(DiscJob.state.in_(_STALL_WATCHED_STATES))
@@ -1752,6 +1754,11 @@ class JobManager:
         seen: set[int] = set()
         for job_id, state in rows:
             seen.add(job_id)
+            # A MATCHING job with tracks QUEUED/MATCHING is draining the global
+            # match queue, not stuck. The watchdog refreshes its clock for that,
+            # but only when enabled and on its own cadence, so do it here too.
+            if state == JobState.MATCHING and await self._has_pending_match_work(job_id):
+                self._last_activity[job_id] = now
             stalled, stuck = self.stall_state(job_id, state, now)
             if stuck or self._stall_sent.get(job_id, False) != stuck:
                 await ws_manager.broadcast(
