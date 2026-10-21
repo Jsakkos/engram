@@ -240,6 +240,34 @@ class TestBackupBeforeMigrate:
         later = bk.backup_before_migrate(_url(db), SQLModel.metadata, "0.43.0", keep=2)
         assert later is not None and later != first
 
+    def test_prerelease_tags_do_not_break_oldest_first_ordering(self, tmp_path):
+        """The sort key is the part after the last "-", so a tag must never hold one."""
+        db = tmp_path / "engram.db"
+        _make_current_db(db)
+        taken = []
+        for version in ("0.42.0-rc1", "0.9.0", "1.0.0-beta-2"):
+            bk.record_opened_version(db, version)
+            taken.append(bk.backup_before_migrate(_url(db), SQLModel.metadata, VERSION, keep=5))
+
+        assert bk.list_backups(db) == taken
+        assert taken[0].name.startswith("engram.db.bak-0.42.0_rc1-")
+        assert taken[2].name.startswith("engram.db.bak-1.0.0_beta_2-")
+
+    def test_unwritable_marker_keeps_every_backup(self, tmp_path, monkeypatch, caplog):
+        """Without the marker the crash-loop guard is blind, so pruning must stop."""
+        db = tmp_path / "engram.db"
+        _make_current_db(db)
+
+        def read_only(*args, **kwargs):
+            raise PermissionError("read-only")
+
+        monkeypatch.setattr(bk, "_write_marker", read_only)
+        with caplog.at_level("WARNING", logger="app.database_backup"):
+            for _ in range(4):
+                assert bk.backup_before_migrate(_url(db), SQLModel.metadata, VERSION, keep=2)
+        assert len(bk.list_backups(db)) == 4
+        assert "keeping all backups" in caplog.text
+
     def test_backup_failure_never_raises(self, tmp_path, monkeypatch, caplog):
         db = tmp_path / "engram.db"
         _make_drifted_db(db)

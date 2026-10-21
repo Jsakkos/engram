@@ -30,6 +30,7 @@ from pathlib import Path
 
 from sqlalchemy import MetaData
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ def sqlite_file_path(database_url: str) -> Path | None:
     """The on-disk file behind a SQLite URL, or None for memory/non-SQLite URLs."""
     try:
         url = make_url(database_url)
-    except Exception:
+    except ArgumentError:
         return None
     if not url.get_backend_name().startswith("sqlite"):
         return None
@@ -232,7 +233,6 @@ def backup_before_migrate(
         finally:
             partial.unlink(missing_ok=True)
 
-        _write_marker(db_path, {**marker, "pending_backup": backup.name})
         reason = (
             f"upgrading from {previous or 'an unrecorded version'} to {app_version}"
             if previous != app_version
@@ -240,6 +240,20 @@ def backup_before_migrate(
         )
         detail = f" ({', '.join(changes)})" if changes else ""
         logger.info(f"Backed up database to {backup} before migrating: {reason}{detail}")
+
+        try:
+            _write_marker(db_path, {**marker, "pending_backup": backup.name})
+        except OSError as e:
+            # Without the marker the crash-loop guard above cannot work: every
+            # start would look like a fresh upgrade, and pruning would rotate the
+            # real pre-upgrade copy out after `keep` restarts. Keep every copy.
+            logger.warning(
+                f"Could not write the database version marker; keeping all backups "
+                f"instead of pruning to {keep}: {e}",
+                exc_info=True,
+            )
+            return backup
+
         _prune(db_path, keep)
         return backup
     except Exception as e:
