@@ -9,6 +9,7 @@ All notable changes to Engram will be documented in this file.
 - **Reassign** in History now lists every episode of the season. The picker was built only from episodes other tracks on the disc already held, so the one episode the disc was missing, the one a mis-filed track usually is, could never be chosen. It now reads the season's episode list, with episode titles, and falls back to a full numbered range when that list can't be loaded. (#770)
 
 - An episode track is no longer filed as an extra just because it is shorter than the show's listed runtime when other tracks of the same length on the disc already matched as episodes. Some shows list a 30-minute broadcast slot while the disc's episodes run 20 minutes, so a track that matching couldn't place on the first pass was then filed under Extras next to its matched siblings. Engram now keeps matching such a track, and sends it to review if it still can't be placed. (#770)
+
 - A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
 ## [0.41.0] - 2026-10-20
