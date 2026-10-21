@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
 import { EngramSelect } from './ui/EngramSelect';
 import { SvActionButton } from '../app/components/synapse/SvActionButton';
+import { ConfirmModal } from '../app/components/DiscCard/ActionButtons';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
 import BackgroundEffectsSetting from './BackgroundEffectsSetting';
@@ -298,6 +299,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         discordMentionReview: '',
         dashboardBaseUrl: '',
     });
+    // The config as loaded from the server (plus tool auto-detection fills). Dirty
+    // state is the form compared against this, so editing a field back to its
+    // original value is clean again and merely opening a section is not an edit.
+    const [baseline, setBaseline] = useState<ConfigData | null>(null);
+    const [confirmingDiscard, setConfirmingDiscard] = useState(false);
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string; review: string; ripped: string}>({completed: '', failed: '', review: '', ripped: ''});
@@ -414,7 +420,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 });
                 setTvdbConfigured(data.tvdb_configured === true);
                 // Note: API keys are redacted as "***" for security
-                setConfig({
+                const loaded: ConfigData = {
                     stagingPath: data.staging_path || '',
                     makemkvPath: data.makemkv_path || '',
                     makemkvKey: data.makemkv_key === '***' ? '' : (data.makemkv_key || ''),
@@ -478,7 +484,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     discordNotifyRipped: data.discord_notify_ripped ?? false,
                     discordMentionReview: data.discord_mention_review || '',
                     dashboardBaseUrl: data.dashboard_base_url || '',
-                });
+                };
+                setConfig(loaded);
+                setBaseline(loaded);
             } catch (error) {
                 console.error('Failed to load config:', error);
             } finally {
@@ -571,11 +579,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             setToolDetection(data);
 
             // Update config paths from detection if currently empty
+            // Detection fills are not user edits, so they move the baseline too.
+            // Otherwise merely visiting the Tools section would arm the discard prompt.
+            const fillDetected = (field: 'makemkvPath' | 'ffmpegPath', path: string) => {
+                setConfig(prev => ({ ...prev, [field]: path }));
+                setBaseline(prev => (prev && !prev[field] ? { ...prev, [field]: path } : prev));
+            };
             if (data.makemkv.found && data.makemkv.path && !config.makemkvPath) {
-                setConfig(prev => ({ ...prev, makemkvPath: data.makemkv.path! }));
+                fillDetected('makemkvPath', data.makemkv.path);
             }
             if (data.ffmpeg.found && data.ffmpeg.path && !config.ffmpegPath) {
-                setConfig(prev => ({ ...prev, ffmpegPath: data.ffmpeg.path! }));
+                fillDetected('ffmpegPath', data.ffmpeg.path);
             }
         } catch (error) {
             console.error('Tool detection failed:', error);
@@ -625,6 +639,40 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             handleSave();
         }
     };
+
+    const isDirty = baseline !== null && JSON.stringify(config) !== JSON.stringify(baseline);
+
+    // The one close path. The close button, Escape and a backdrop click all land
+    // here: clean closes at once, dirty asks first. Keep further close affordances
+    // routed through this rather than calling onClose directly.
+    const requestClose = () => {
+        if (isDirty) {
+            setConfirmingDiscard(true);
+        } else {
+            onClose();
+        }
+    };
+
+    // Escape and outside clicks are the accidental gestures. The first-run wizard
+    // is a required flow, so they do nothing there; its close button is the only
+    // way out and still goes through requestClose.
+    const requestDismiss = () => {
+        if (!isOnboarding) requestClose();
+    };
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            // A nested layer (open Radix select, discard prompt, library flow)
+            // owns this Escape.
+            if (e.key !== 'Escape' || e.defaultPrevented) return;
+            if (confirmingDiscard || showBootstrapFlow) return;
+            requestDismiss();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    // requestDismiss closes over isDirty/isOnboarding/onClose; re-bind when they change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [confirmingDiscard, showBootstrapFlow, isDirty, isOnboarding, onClose]);
 
     const handleBack = () => {
         if (step > 1) {
@@ -2469,13 +2517,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
 
     return (
         <>
-        <div className="wizard-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+        <div className="wizard-overlay" onClick={requestDismiss} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
             <div className="wizard-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2 className="modal-title" id="wizard-title">{isOnboarding ? 'Setup Wizard' : 'Settings'}</h2>
                     <button
                         className="modal-close"
-                        onClick={onClose}
+                        onClick={requestClose}
                         aria-label={isOnboarding ? 'Close setup wizard' : 'Close settings'}
                     >
                         &times;
@@ -2547,6 +2595,21 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 </div>
             </div>
         </div>
+
+        {confirmingDiscard && (
+            <ConfirmModal
+                titleId="discard-changes-title"
+                title="Discard unsaved changes?"
+                body={isOnboarding
+                    ? 'Closing setup now throws away what you have entered so far.'
+                    : 'You have edits that have not been saved. Closing Settings will throw them away.'}
+                confirmLabel="Discard"
+                dismissLabel="Keep editing"
+                zIndex={1100}
+                onConfirm={onClose}
+                onDismiss={() => setConfirmingDiscard(false)}
+            />
+        )}
 
         {showBootstrapFlow && (
             <BootstrapLibraryFlow onClose={() => setShowBootstrapFlow(false)} />
