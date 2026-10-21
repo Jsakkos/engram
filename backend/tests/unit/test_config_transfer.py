@@ -431,3 +431,25 @@ async def test_ordinary_rows_do_not_need_review():
     row = _row(await ct.preview_import(_file({"extras_policy": "skip"})), "extras_policy")
     assert row["needs_review"] is False
     assert row["selected"] is True
+
+
+async def test_webhook_row_needs_review_and_shows_only_the_host():
+    """The webhook decides where notifications go, so it is opted into like the
+    endpoints. Its path carries the token, so only the host is shown."""
+    hook = "https://discord.com/api/webhooks/123/secret-token-part"
+    await _seed(discord_webhook_url="https://discord.com/api/webhooks/1/old")
+    preview = await ct.preview_import(_file({"discord_webhook_url": hook}, includes_secrets=True))
+    row = _row(preview, "discord_webhook_url")
+    assert row["needs_review"] is True
+    assert row["selected"] is False
+    assert row["incoming"] == "***"
+    assert row["incoming_host"] == "discord.com"
+    assert "secret-token-part" not in json.dumps(preview)
+
+
+async def test_other_rows_have_no_incoming_host():
+    await _seed(tmdb_api_key="eyJold")
+    preview = await ct.preview_import(_file({"tmdb_api_key": TOKEN, "extras_policy": "skip"}))
+    assert _row(preview, "tmdb_api_key")["incoming_host"] is None
+    assert _row(preview, "tmdb_api_key")["selected"] is True
+    assert _row(preview, "extras_policy")["incoming_host"] is None

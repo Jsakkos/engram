@@ -17,6 +17,8 @@ export interface ImportPreviewField {
     path_unchecked: boolean;
     /** Repoints a server that receives keys or data, or a program Engram runs. */
     needs_review: boolean;
+    /** Host of an incoming secret URL (the Discord webhook); its path is never sent. */
+    incoming_host?: string | null;
     error: string | null;
     selected: boolean;
 }

@@ -79,6 +79,7 @@ REVIEW_FIELDS = frozenset(
     {
         "discdb_api_url",
         "ai_local_base_url",
+        "discord_webhook_url",
         "fingerprint_server_url",
         "makemkv_path",
         "ffmpeg_path",
@@ -184,6 +185,14 @@ async def _validate_field(
     return normalized.get(key, coerced), None
 
 
+def _secret_url_host(key: str, value: object) -> str | None:
+    if key not in SECRET_FIELDS or key not in REVIEW_FIELDS or not isinstance(value, str):
+        return None
+    from urllib.parse import urlsplit
+
+    return urlsplit(value).hostname
+
+
 def _is_network_path(key: str, value: object) -> bool:
     r"""A path field the preview must not touch. Probing a network location makes
     Windows authenticate to whatever host an uploaded file names.
@@ -242,6 +251,9 @@ async def preview_import(data: object) -> dict:
                 "path_missing": path_missing,
                 "path_unchecked": unchecked and not error,
                 "needs_review": key in REVIEW_FIELDS,
+                # A secret URL's path carries its token; the host alone lets the
+                # user recognise where it points.
+                "incoming_host": _secret_url_host(key, raw) if not error else None,
                 "error": error,
                 "selected": status == "change"
                 and not path_missing

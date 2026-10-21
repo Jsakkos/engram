@@ -98,6 +98,15 @@ describe('ImportSettingsDialog', () => {
         expect(screen.getByRole('heading', { name: /^Changes \(2\)/ })).toBeInTheDocument();
     });
 
+    it('shows only the host of an incoming webhook', () => {
+        const preview = {
+            ...PREVIEW,
+            fields: [field({ key: 'discord_webhook_url', secret: true, current: '***', incoming: '***', needs_review: true, incoming_host: 'discord.com', selected: false })],
+        };
+        render(<ImportSettingsDialog file={FILE} preview={preview} onCancel={() => {}} onApplied={() => {}} />);
+        expect(screen.getByText('will be replaced (new host discord.com)')).toBeInTheDocument();
+    });
+
     it('never shows a secret value, only that it will be replaced', () => {
         render(<ImportSettingsDialog file={FILE} preview={PREVIEW} onCancel={() => {}} onApplied={() => {}} />);
         expect(screen.getByText('will be replaced')).toBeInTheDocument();

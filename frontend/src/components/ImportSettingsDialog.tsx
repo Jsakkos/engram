@@ -97,7 +97,7 @@ export default function ImportSettingsDialog({
                 </label>
                 <span className="transfer-row-value">
                     {f.secret ? (
-                        'will be replaced'
+                        f.incoming_host ? `will be replaced (new host ${f.incoming_host})` : 'will be replaced'
                     ) : (
                         <>
                             <span className="transfer-row-old">{show(f.current)}</span>
