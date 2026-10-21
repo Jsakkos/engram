@@ -1428,7 +1428,9 @@ async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
 
     from app.services.job_manager import job_manager
 
-    advanced = await job_manager.reconcile_and_advance(job.id, reason="manual advance")
+    advanced = await job_manager.reconcile_and_advance(
+        job.id, reason="manual advance", user_initiated=True
+    )
     if not advanced:
         raise HTTPException(status_code=400, detail="Job could not be advanced")
     return {"status": "advanced", "job_id": job.id}

@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -60,6 +60,7 @@ def _bare_coordinator() -> MatchingCoordinator:
     coord._episode_runtimes_locks = defaultdict(asyncio.Lock)
     coord._subtitle_ready = {}
     coord._subtitle_tasks = {}
+    coord._live_matches = Counter()
     return coord
 
 

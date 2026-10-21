@@ -8,7 +8,8 @@ import json
 import logging
 import re
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
+from collections.abc import Coroutine
 from datetime import UTC
 from enum import StrEnum
 from pathlib import Path
@@ -620,6 +621,11 @@ class MatchingCoordinator:
         self._subtitle_ready: dict[int, asyncio.Event] = {}
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._match_semaphore: asyncio.Semaphore | None = None
+        # Match coroutines created per title id and not yet finished. A QUEUED
+        # title with an entry here is waiting on _match_semaphore; one without
+        # is orphaned (#776). Counted rather than a set: a re-match can overlap
+        # the tail of the previous match for the same title.
+        self._live_matches: Counter[int] = Counter()
 
         # Cross-coordinator callbacks
         self._check_job_completion: callable = None
@@ -1009,7 +1015,7 @@ class MatchingCoordinator:
             lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
         )
 
-    async def match_single_file(
+    def match_single_file(
         self,
         job_id: int,
         title_id: int,
@@ -1017,8 +1023,14 @@ class MatchingCoordinator:
         num_points: int | None = None,
         min_vote_count: int | None = None,
         advisory: bool = False,
-    ) -> None:
+    ) -> Coroutine[None, None, None]:
         """Run matching for a single ripped file, tagging logs with the job id.
+
+        A plain function returning the match coroutine, so the title counts as
+        having a live match from the moment a caller builds the coroutine for
+        ``create_task``, not from the task's first step (see ``has_live_match``).
+        Every match task in the app is built here, which is what makes the
+        registry complete.
 
         Self-tags so every matching log line carries ``job=<id>`` regardless of
         how this is reached — task spawn, direct ``await`` from an API handler
@@ -1032,10 +1044,38 @@ class MatchingCoordinator:
         after the subtitle-ready wait, because imports and ``rerun_matching``
         dispatch matches before ``decide_job_namespace`` has committed.
         """
-        with job_log_context(job_id):
-            await self._run_match_single_file(
-                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
-            )
+        self._live_matches[title_id] += 1
+        return self._tracked_match(
+            job_id, title_id, file_path, num_points, min_vote_count, advisory
+        )
+
+    async def _tracked_match(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None,
+        min_vote_count: int | None,
+        advisory: bool,
+    ) -> None:
+        try:
+            with job_log_context(job_id):
+                await self._run_match_single_file(
+                    job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
+                )
+        finally:
+            self._live_matches[title_id] -= 1
+            if self._live_matches[title_id] <= 0:
+                del self._live_matches[title_id]
+
+    def has_live_match(self, title_id: int) -> bool:
+        """Whether a match task exists for this title, running or waiting for a slot.
+
+        A task cancelled before its first step never runs the ``finally`` above,
+        so its title stays counted. That errs toward "live", which only means a
+        user Force leaves the title alone, the behaviour before #776.
+        """
+        return self._live_matches[title_id] > 0
 
     async def _llm_fallback_without_subtitles(
         self,
