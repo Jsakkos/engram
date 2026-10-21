@@ -2273,3 +2273,84 @@ class TestNumberingDisagreementReason:
         )
         assert "tmdb_aired" not in why
         assert "published subtitle cache" not in why
+
+
+@pytest.mark.unit
+class TestAudioLanguageRouting:
+    """Language-refused titles route to review and stay put (issue #241)."""
+
+    @staticmethod
+    def _refused(audio_languages=None, refusal_languages=("ja",)):
+        from app.matcher.audio_streams import AudioPlan
+        from app.matcher.subtitle_utils import language_refusal_details
+
+        details = language_refusal_details(AudioPlan("foreign", None, list(refusal_languages)))
+        return DiscTitle(
+            job_id=1,
+            title_index=0,
+            duration_seconds=1380,
+            state=TitleState.MATCHING,
+            match_details=json.dumps(details),
+            audio_languages=json.dumps(audio_languages) if audio_languages is not None else None,
+        )
+
+    def test_language_refusal_routes_to_review(self):
+        from app.matcher.subtitle_utils import AUDIO_LANGUAGE_ERROR_CODE
+
+        t = self._refused()
+        assert _route_unconfirmable_title(t, conjoined_hint=3) == AUDIO_LANGUAGE_ERROR_CODE
+        assert t.state == TitleState.REVIEW
+        # The language reason wins over a runtime-based multi-episode message.
+        assert json.loads(t.match_details)["error"] == AUDIO_LANGUAGE_ERROR_CODE
+
+    def test_language_refusal_is_not_rematchable(self):
+        from app.services.matching_coordinator import _is_rematchable_review
+
+        t = self._refused()
+        t.state = TitleState.REVIEW
+        assert _is_rematchable_review(t) is False
+
+    def test_disc_had_english_hint_appended(self):
+        t = self._refused(audio_languages=["ja", "en"])
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        assert json.loads(t.match_details)["message"].endswith(
+            " The disc also has English audio, but MakeMKV's language settings left it "
+            "out of the rip."
+        )
+
+    def test_hint_appended_once(self):
+        t = self._refused(audio_languages=["ja", "en"])
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        assert json.loads(t.match_details)["message"].count("MakeMKV") == 1
+
+    @pytest.mark.parametrize("disc", [None, ["ja"], ["ja", None]])
+    def test_no_hint_without_english_on_the_disc(self, disc):
+        t = self._refused(audio_languages=disc)
+        before = json.loads(t.match_details)["message"]
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        assert json.loads(t.match_details)["message"] == before
+
+    async def test_llm_fallback_skipped_for_foreign_audio(self, monkeypatch, tmp_path):
+        import app.services.matching_coordinator as mc
+        from app.matcher.audio_streams import AudioPlan
+
+        monkeypatch.setattr(mc, "_plan_file_audio", lambda path: AudioPlan("foreign", None, ["ja"]))
+        suggest = AsyncMock(return_value={"llm_suggestion": {"episode": 1}})
+        monkeypatch.setattr(episode_curator, "suggest_episode_via_llm", suggest)
+
+        coord = _make_coord()
+        async with _unit_session_factory() as session:
+            job, title = await _seed(session)
+            job.subtitle_status = "failed"
+            session.add(job)
+            await session.commit()
+            job_id, title_id = job.id, title.id
+
+        await coord._run_match_single_file(job_id, title_id, tmp_path / "x.mkv")
+
+        suggest.assert_not_awaited()
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, title_id)
+            assert t.state == TitleState.REVIEW
+            assert json.loads(t.match_details)["error"] == "audio_language_unsupported"
