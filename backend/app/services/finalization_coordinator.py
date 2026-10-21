@@ -1773,15 +1773,21 @@ class FinalizationCoordinator:
                         # so the other files on the job are extras the reviewer
                         # never rejected, and deleting them here would lose them.
                         unselected_titles = []
+                        # Extras held for a keep/discard choice (extras_policy "ask",
+                        # #773) that the reviewer did not discard ride along into
+                        # Extras/ instead of being deleted with the other cuts.
+                        kept_extras: list[DiscTitle] = []
                         if not _has_file_exists(title.match_details):
                             cleanup_statement = select(DiscTitle).where(
                                 DiscTitle.job_id == job_id,
                                 DiscTitle.id != title_id,
                                 DiscTitle.output_filename.isnot(None),
                             )
-                            unselected_titles = (
-                                (await session.execute(cleanup_statement)).scalars().all()
-                            )
+                            others = (await session.execute(cleanup_statement)).scalars().all()
+                            kept_extras = [
+                                t for t in others if t.is_extra and t.state == TitleState.REVIEW
+                            ]
+                            unselected_titles = [t for t in others if t not in kept_extras]
 
                         # A manual import's files are the user's originals, not
                         # regenerable rips: an unselected cut stays where it is.
@@ -1839,7 +1845,11 @@ class FinalizationCoordinator:
                                 tmdb_id=_tmdb_id,
                                 edition=_edition,
                                 already_clean=_already_clean,
-                                extra_files=[] if _is_import else None,
+                                extra_files=(
+                                    [Path(t.output_filename) for t in kept_extras]
+                                    if _is_import
+                                    else None
+                                ),
                             )
                         else:
                             org_result = await asyncio.to_thread(
@@ -1890,6 +1900,20 @@ class FinalizationCoordinator:
                                 organized_to=_org_to,
                                 output_filename=_out,
                             )
+                            extras_mapping = org_result.get("extras_mapping") or {}
+                            for extra in kept_extras:
+                                dest = extras_mapping.get(Path(extra.output_filename).name)
+                                extra.state = TitleState.COMPLETED
+                                extra.organized_from = Path(extra.output_filename).name
+                                extra.organized_to = str(dest) if dest else None
+                                session.add(extra)
+                                await ws_manager.broadcast_title_update(
+                                    job_id,
+                                    extra.id,
+                                    extra.state.value,
+                                    organized_from=extra.organized_from,
+                                    organized_to=extra.organized_to,
+                                )
                             job.progress_percent = 100.0
                             job.error_message = None
                             job.final_path = str(org_result["main_file"])

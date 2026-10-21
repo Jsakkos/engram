@@ -1968,12 +1968,14 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 onValueChange={(v) => handleInputChange('extrasPolicy', v)}
                                 options={[
                                     { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
-                                    { value: 'skip', label: 'Skip extras (don\'t rip short tracks, discard any others)' },
+                                    { value: 'skip', label: 'Skip extras (don\'t rip bonus tracks, discard any that slip through)' },
                                     { value: 'ask', label: 'Ask me (show in Review Queue)' },
                                 ]}
                             />
                             <span className="form-hint">
-                                How to handle bonus content that doesn&apos;t match any episode runtime.
+                                How to handle bonus content: TV tracks that match no episode runtime, and
+                                movie titles that aren&apos;t the main feature. A movie&apos;s feature-length
+                                cuts are always ripped.
                             </span>
                         </div>
 

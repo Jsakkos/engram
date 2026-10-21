@@ -5,7 +5,7 @@ import { Save, Package } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, isHeldMovieExtra, movieReviewTitles, type TitleAction } from './ReviewQueue/utils';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
@@ -639,9 +639,11 @@ function ReviewQueue() {
             // The organize runs inside the request, so the job's state is already
             // settled. If it landed back in review (a library conflict, #685),
             // stay and show why instead of leaving the reviewer on the dashboard
-            // with nothing but another "needs review" notification.
+            // with nothing but another "needs review" notification. A discard
+            // that leaves the job in review (one extra of several, #773, or one
+            // of several cuts) stays too, so the rest can be decided.
             const current = await fetchCurrentJob();
-            if (matchAction === 'save' && current?.state === 'review_needed') {
+            if (current?.state === 'review_needed') {
                 await fetchJobDetails();
                 return;
             }
@@ -845,11 +847,13 @@ function ReviewQueue() {
                     <SvNotice tone="warn">
                         {titles.some((t) => t.state === 'review' && parseMatchDetails(t).error === 'file_exists')
                             ? '› THIS MOVIE IS ALREADY IN THE LIBRARY. REPLACE IT, KEEP BOTH, OR DISCARD THIS RIP.'
-                            : '› MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.'}
+                            : titles.some(isHeldMovieExtra)
+                              ? '› BONUS TRACKS FOUND. DISCARD ANY YOU DON’T WANT, THEN SELECT THE FEATURE. THE REST GO TO EXTRAS.'
+                              : '› MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.'}
                     </SvNotice>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {titles.map(title => (
+                        {movieReviewTitles(titles).map(title => (
                             <motion.div
                                 key={title.id}
                                 initial={{ opacity: 0, y: 10 }}
@@ -889,6 +893,11 @@ function ReviewQueue() {
                                                 >
                                                     {titleDisplayName(title)}
                                                 </span>
+                                                {isHeldMovieExtra(title) && (
+                                                    <SvBadge size="sm" tone={sv.magenta} dot={false}>
+                                                        Extra · kept unless discarded
+                                                    </SvBadge>
+                                                )}
                                             </div>
                                             <div
                                                 style={{
@@ -911,26 +920,31 @@ function ReviewQueue() {
                                             <PlayerControls title={title} />
                                         </div>
 
-                                        {/* Edition input */}
-                                        <div style={{ width: 192 }}>
-                                            <SvTextInput
-                                                value={selectedEditions[title.id] || ''}
-                                                onChange={(v) => handleEditionChange(title.id, v)}
-                                                placeholder="Edition tag…"
-                                                list="edition-suggestions"
-                                                ariaLabel={`Edition tag for title ${title.title_index}`}
-                                            />
-                                        </div>
+                                        {/* Edition input + Select: the feature's. A held
+                                            extra is only kept or discarded (#773). */}
+                                        {!isHeldMovieExtra(title) && (
+                                            <div style={{ width: 192 }}>
+                                                <SvTextInput
+                                                    value={selectedEditions[title.id] || ''}
+                                                    onChange={(v) => handleEditionChange(title.id, v)}
+                                                    placeholder="Edition tag…"
+                                                    list="edition-suggestions"
+                                                    ariaLabel={`Edition tag for title ${title.title_index}`}
+                                                />
+                                            </div>
+                                        )}
 
                                         {/* Actions */}
                                         <div style={{ display: 'flex', gap: 8 }}>
-                                            <SvActionButton
-                                                tone="green"
-                                                onClick={() => handleSaveMovie(title.id, 'save')}
-                                                disabled={isSaving}
-                                            >
-                                                Select
-                                            </SvActionButton>
+                                            {!isHeldMovieExtra(title) && (
+                                                <SvActionButton
+                                                    tone="green"
+                                                    onClick={() => handleSaveMovie(title.id, 'save')}
+                                                    disabled={isSaving}
+                                                >
+                                                    Select
+                                                </SvActionButton>
+                                            )}
                                             <SvActionButton
                                                 tone="red"
                                                 onClick={() => handleSaveMovie(title.id, 'skip')}

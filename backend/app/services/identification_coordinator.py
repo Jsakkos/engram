@@ -395,7 +395,12 @@ class IdentificationCoordinator:
         return next_state_after_identify(config, drive_id)
 
     async def _skip_short_titles_before_rip(
-        self, job: DiscJob, session, job_id: int, trust_identity: bool
+        self,
+        job: DiscJob,
+        session,
+        job_id: int,
+        trust_identity: bool,
+        content_type_settled: bool = True,
     ) -> None:
         """Mark tracks too short to be episodes SKIPPED before the rip starts.
 
@@ -408,11 +413,21 @@ class IdentificationCoordinator:
         TMDB runtimes are used only when ``trust_identity``; for a same-name twin
         or an uncorroborated identity they could be the wrong show's, and the
         filter falls back to the disc's own evidence.
+
+        A movie disc gets the movie rule instead (#773), but only once it is
+        settled as a movie: a disc parked over a movie-vs-TV conflict may be TV,
+        where its short titles are the episodes.
         """
         from app.services.config_service import get_config
 
         config = await get_config()
-        if config.extras_policy != "skip" or job.content_type != ContentType.TV:
+        if config.extras_policy != "skip":
+            return
+        if job.content_type == ContentType.MOVIE:
+            if content_type_settled:
+                await self._skip_movie_extras_before_rip(session, job_id, config)
+            return
+        if job.content_type != ContentType.TV:
             return
 
         runtimes: list[int] = []
@@ -458,17 +473,7 @@ class IdentificationCoordinator:
             return
 
         reasons = {s.index: s.reason for s in short}
-        skipped: list[DiscTitle] = []
-        for dt in db_titles:
-            if dt.title_index in reasons:
-                dt.state = TitleState.SKIPPED
-                dt.is_selected = False
-                dt.match_details = json.dumps(
-                    {"reason": reasons[dt.title_index], "skipped": True, "auto_skipped": True}
-                )
-                session.add(dt)
-                skipped.append(dt)
-        await session.commit()
+        skipped = await self._mark_skipped_before_rip(session, job_id, db_titles, reasons)
         if runtimes:
             evidence = "TMDB + disc"
         elif wants_tmdb:
@@ -480,10 +485,65 @@ class IdentificationCoordinator:
             f"(extras policy 'skip', {evidence}): "
             + "; ".join(f"title {dt.title_index}: {reasons[dt.title_index]}" for dt in skipped)
         )
+
+    async def _skip_movie_extras_before_rip(self, session, job_id: int, config) -> None:
+        """Mark a movie disc's non-feature titles SKIPPED before the rip (#773).
+
+        The rule (:func:`find_movie_extras_before_rip`) never touches a title the
+        post-rip feature pick could choose; whatever it lets through is settled by
+        ``_resolve_multi_title_movie`` after the rip under the same policy.
+        """
+        from app.core.analyst import find_movie_extras_before_rip
+
+        db_titles = (
+            (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+            .scalars()
+            .all()
+        )
+        # Unlike the TV filter, is_extra does not exclude a title here: on a movie
+        # disc it is TheDiscDB's non-MainMovie tag, which is exactly what to skip.
+        candidates = [
+            (t.title_index, t.duration_seconds or 0)
+            for t in db_titles
+            if t.state == TitleState.PENDING and t.is_selected
+        ]
+        main_movie = {
+            m.index for m in self._get_discdb_mappings(job_id) if m.title_type == "MainMovie"
+        }
+        reasons = find_movie_extras_before_rip(
+            candidates,
+            min_feature_duration=config.analyst_movie_min_duration,
+            main_movie_indices=main_movie,
+        )
+        if not reasons:
+            return
+        skipped = await self._mark_skipped_before_rip(session, job_id, db_titles, reasons)
+        logger.info(
+            f"Job {job_id}: auto-skipped {len(skipped)} non-feature title(s) before rip "
+            f"(extras policy 'skip'): "
+            + "; ".join(f"title {dt.title_index}: {reasons[dt.title_index]}" for dt in skipped)
+        )
+
+    async def _mark_skipped_before_rip(
+        self, session, job_id: int, db_titles, reasons: dict[int, str]
+    ) -> list[DiscTitle]:
+        """Put ``reasons``' titles in the manual "skip the rip" state and broadcast."""
+        skipped: list[DiscTitle] = []
+        for dt in db_titles:
+            if dt.title_index in reasons:
+                dt.state = TitleState.SKIPPED
+                dt.is_selected = False
+                dt.match_details = json.dumps(
+                    {"reason": reasons[dt.title_index], "skipped": True, "auto_skipped": True}
+                )
+                session.add(dt)
+                skipped.append(dt)
+        await session.commit()
         for dt in skipped:
             await ws_manager.broadcast_title_update(
                 job_id, dt.id, TitleState.SKIPPED.value, match_details=dt.match_details
             )
+        return skipped
 
     async def _hand_off_after_identify(self, job_id: int, state: JobState) -> None:
         """Run the phase chosen by :func:`next_state_after_identify`.
@@ -819,6 +879,7 @@ class IdentificationCoordinator:
                     session,
                     job_id,
                     trust_identity=not _collision and not analysis.identity_unconfirmed,
+                    content_type_settled=(not analysis.needs_review or analysis.is_ambiguous_movie),
                 )
 
                 # Start subtitle download for ALL TV content — except when identity is
@@ -855,7 +916,12 @@ class IdentificationCoordinator:
 
                         candidate_count = 0
                         for dt in db_titles:
-                            if dt.duration_seconds and dt.duration_seconds >= 80 * 60:
+                            # A title the extras policy skipped above stays skipped.
+                            if (
+                                dt.duration_seconds
+                                and dt.duration_seconds >= 80 * 60
+                                and dt.state != TitleState.SKIPPED
+                            ):
                                 dt.is_selected = True
                                 candidate_count += 1
                                 session.add(dt)

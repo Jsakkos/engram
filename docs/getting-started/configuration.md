@@ -245,6 +245,28 @@ against the episode runtimes and it is discarded as an extra.
 
 With `"keep"` or `"ask"`, every track is ripped so extras can be filed or reviewed.
 
+#### Movie discs
+
+The policy applies to movie discs too. Engram never drops a title that could be
+the movie itself: every feature-length cut (theatrical, extended, director's cut)
+is always ripped.
+
+| Policy | Before ripping | After ripping |
+|--------|----------------|---------------|
+| `"keep"` | Every title is ripped. | The feature is filed; every other title goes to the movie's `Extras/` folder. |
+| `"skip"` | Titles that cannot be the feature are skipped (see below). | Any non-feature title that was still ripped is discarded instead of filed. |
+| `"ask"` | Every title is ripped. | The disc waits in the Review Queue. Discard any extras you don't want, then **Select** the feature; the extras you kept go to `Extras/`. |
+
+Under `"skip"`, a title is skipped before ripping when:
+
+- **TheDiscDB** knows the disc and tags a different title as the main movie, or
+- it is shorter than the movie-length floor (`analyst_movie_min_duration`, 80
+  minutes by default) while at least one title on the disc is longer. A disc with
+  nothing that long (a short film) is ripped whole and sorted out afterwards.
+
+As with TV, skipped titles stay on the dashboard card with the reason and can be
+**UN-SKIP**ped until the rip reaches them.
+
 ### Import Watch Folder
 
 Engram can auto-ingest pre-ripped MKV files dropped into a watched folder. See the
