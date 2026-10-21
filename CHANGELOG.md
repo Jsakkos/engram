@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
+- Engram now saves a copy of its database before upgrading it. When it starts on a new version, or finds the database's layout needs updating, it first writes `engram.db.bak-<previous-version>-<timestamp>` next to `engram.db`, keeping the three newest copies, so a bad upgrade can no longer cost you your API keys, settings or job history. The copy is made with SQLite's own backup, so it includes writes not yet folded into the main file, and a startup that crashes partway through an upgrade keeps its original copy rather than replacing it on every retry. If the copy can't be written, Engram logs a warning and starts anyway. The Troubleshooting guide explains where to find the copies and how to restore one. (#730)
 - Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
 
 ### Fixed
