@@ -1428,7 +1428,9 @@ async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
 
     from app.services.job_manager import job_manager
 
-    advanced = await job_manager.reconcile_and_advance(job.id, reason="manual advance")
+    advanced = await job_manager.reconcile_and_advance(
+        job.id, reason="manual advance", user_initiated=True
+    )
     if not advanced:
         raise HTTPException(status_code=400, detail="Job could not be advanced")
     return {"status": "advanced", "job_id": job.id}
@@ -4706,6 +4708,13 @@ async def rematch_job(
         raise HTTPException(
             status_code=409,
             detail=f"Cannot re-match in state: {job.state.value}",
+        )
+    # rerun_matching is TV episode matching; on a movie it would assign episode
+    # codes to feature tracks.
+    if job.content_type != ContentType.TV:
+        raise HTTPException(
+            status_code=409,
+            detail="Re-match applies only to TV discs",
         )
 
     from app.services.job_manager import job_manager
