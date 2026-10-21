@@ -793,20 +793,25 @@ class JobManager:
                     )
                     return
 
-                staging_dir = (
-                    Path(db_config.staging_path).expanduser()
-                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                )
-
                 job = DiscJob(
                     drive_id=drive_letter,
                     volume_label=volume_label,
-                    staging_path=str(staging_dir),
                     state=JobState.IDENTIFYING,
                     content_hash=new_hash,
                 )
 
                 session.add(job)
+                # The staging directory carries the job id, assigned by this flush.
+                # A timestamp alone is per-second: two mounted ISOs announced at
+                # startup both got the same directory, and each job then matched
+                # and filed the other disc's rips (#768). The per-drive lock and
+                # cooldown above cannot help, because the two discs are in
+                # different drives.
+                await session.flush()
+                job.staging_path = str(
+                    Path(db_config.staging_path).expanduser()
+                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{job.id}"
+                )
                 await session.commit()
                 await session.refresh(job)
 
