@@ -161,6 +161,7 @@ interface ConfigData {
     stagingCleanupPolicy: string;
     stagingCleanupDays: number;
     extrasPolicy: string;
+    makemkvMinTitleLength: number;
     alwaysReview: boolean;
     backupBeforeRip: boolean;
     backupPath: string;
@@ -256,6 +257,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         stagingCleanupPolicy: 'on_success',
         stagingCleanupDays: 7,
         extrasPolicy: 'keep',
+        makemkvMinTitleLength: 120,
         alwaysReview: false,
         backupBeforeRip: false,
         backupPath: '',
@@ -436,6 +438,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     stagingCleanupPolicy: data.staging_cleanup_policy || 'on_success',
                     stagingCleanupDays: data.staging_cleanup_days ?? 7,
                     extrasPolicy: data.extras_policy || 'keep',
+                    makemkvMinTitleLength: data.makemkv_min_title_length ?? 120,
                     alwaysReview: data.always_review ?? false,
                     backupBeforeRip: data.backup_before_rip ?? false,
                     backupPath: data.backup_path || '',
@@ -663,6 +666,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     staging_cleanup_policy: config.stagingCleanupPolicy,
                     staging_cleanup_days: config.stagingCleanupDays,
                     extras_policy: config.extrasPolicy,
+                    makemkv_min_title_length: config.makemkvMinTitleLength,
                     always_review: config.alwaysReview,
                     backup_before_rip: config.backupBeforeRip,
                     backup_path: config.backupPath,
@@ -1958,6 +1962,22 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                     </span>
                                 </span>
                             </label>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="makemkvMinTitleLength">Minimum Title Length (seconds)</label>
+                            <input
+                                id="makemkvMinTitleLength"
+                                type="number"
+                                min={0}
+                                max={3600}
+                                value={config.makemkvMinTitleLength}
+                                onChange={(e) => handleInputChange('makemkvMinTitleLength', Math.max(0, Math.min(3600, parseInt(e.target.value) || 0)))}
+                            />
+                            <span className="form-hint">
+                                MakeMKV ignores titles shorter than this. 120 is MakeMKV&apos;s default;
+                                lower it for discs whose specials run under two minutes.
+                            </span>
                         </div>
 
                         <div className="form-group">

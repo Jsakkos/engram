@@ -117,6 +117,12 @@ Configuration is resolved in this priority order:
 | `matcher_min_confidence` | Minimum confidence to auto-accept an episode match | `0.6` |
 | `enable_gpu_acceleration` | Run transcription on an NVIDIA GPU (opt-in; downloads the CUDA runtime) | `false` |
 | `conflict_resolution_default` | File conflict handling | `"ask"` |
+| `makemkv_min_title_length` | MakeMKV's minimum title length, in seconds (`--minlength`) | `120` |
+
+`makemkv_min_title_length` is passed to MakeMKV on every scan, rip and backup.
+Titles shorter than it are hidden by MakeMKV and never reach Engram, so lower it
+(Settings, **Minimum Title Length**) if a disc's specials or featurettes run under
+two minutes. `0` shows every title, including menu loops and logos.
 
 `max_concurrent_matches` is the main matching-throughput knob. It's clamped to your hardware and
 takes effect on restart — see [Performance & Hardware](../guide/performance.md#concurrency-tuning)
