@@ -25,6 +25,7 @@ from app.core.episode_namespace import (
 )
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
+from app.matcher.numbering_scheme import SCHEME_DIVERGENT
 from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call, os_download_temp_name
 from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
@@ -367,8 +368,10 @@ def _precomputed_skip_result(
     we must NOT skip the download against it.
     """
     from app.matcher.episode_identification import (
+        load_precomputed_manifest,
         precomputed_covers_season,
         precomputed_episode_codes,
+        season_marker,
     )
 
     # Corpus guard first — returns False on an id mismatch (different same-named show).
@@ -391,9 +394,15 @@ def _precomputed_skip_result(
     # so two same-named shows never collide. Informational here — precomputed mode
     # reads vectors, not these SRTs — but kept consistent with the live cache key.
     series_cache_dir = cache_path / "data" / corpus_dir_name(expected_tmdb_id, show_name)
+    marker = season_marker(
+        load_precomputed_manifest(cache_path), show_name, season, expected_tmdb_id
+    )
     return {
         "show_name": show_name,
         "season": season,
+        # The pack's statement about how this season is numbered, so the heal can
+        # tell a half-hour corpus from an incomplete one (#760).
+        "numbering_scheme": (marker or {}).get("scheme"),
         "total_episodes": len(codes),
         "episodes": [
             {"code": code, "status": "precomputed", "source": "precomputed"} for code in codes
@@ -489,7 +498,18 @@ def _heal_precomputed_gaps(
     any TMDB failure returns ``skip`` unchanged (the job still matches against the
     cache) instead of raising. An episode no provider can supply is logged as a
     hard gap and surfaced to the review UI via reference_coverage().
+
+    Never runs for a season the pack marks ``divergent`` (#760). A half-hour
+    corpus diffed against a segment roster yields a meaningless gap list, and the
+    scrapers that would fill it index the show by half-hour too, so what they
+    return would land under the wrong TMDB code and be grafted into the vote.
     """
+    if skip.get("numbering_scheme") == SCHEME_DIVERGENT:
+        logger.info(
+            f"Precomputed cache for {show_name} S{season:02d} is numbered by broadcast "
+            "half-hour, not by TMDB segment; not healing gaps against the TMDB roster"
+        )
+        return skip
     precomputed_codes = {ep["code"] for ep in skip.get("episodes", [])}
     try:
         resolved_id = str(tmdb_id) if tmdb_id is not None else fetch_show_id(show_name)

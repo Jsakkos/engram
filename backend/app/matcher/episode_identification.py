@@ -17,6 +17,7 @@ from scipy.sparse import vstack as scipy_vstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
+from app.core.episode_codes import episode_parts
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.multi_episode import decompose_vote_runs
@@ -382,9 +383,16 @@ def reference_coverage(
     and ignores SRTs. Cheap: one JSON read + one dir scan, no network.
     """
     cache_dir = Path(cache_dir)
-    pre_codes = set(
-        precomputed_episode_codes(cache_dir, show_name, season, expected_tmdb_id=tmdb_id) or []
-    )
+    # A crosswalked half-hour reference ("S02E11-E12", #760) covers every episode
+    # it holds, so expand combined codes before comparing per episode.
+    pre_codes = {
+        part
+        for code in precomputed_episode_codes(
+            cache_dir, show_name, season, expected_tmdb_id=tmdb_id
+        )
+        or []
+        for part in episode_parts(code)
+    }
     data_dir = cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
     dl_codes = downloaded_episode_codes(data_dir, season)
     coverage: dict[str, str] = {}
@@ -1502,10 +1510,9 @@ class EpisodeMatcher:
         # A half-hour-numbered season: relabel each row with the TMDB code(s) it
         # holds and drop rows the crosswalk could not map. An unmapped row's own
         # code names an unrelated TMDB segment (#760), so it must not vote at all.
-        translated = translate_codes(
-            episode_codes,
-            season_marker(manifest, self.show_name, season_number, self.expected_tmdb_id),
-        )
+        marker = season_marker(manifest, self.show_name, season_number, self.expected_tmdb_id)
+        divergent = isinstance(marker, dict) and marker.get("scheme") == SCHEME_DIVERGENT
+        translated = translate_codes(episode_codes, marker)
         if translated is not None:
             keep = [i for i, code in enumerate(translated) if code]
             dropped = [episode_codes[i] for i, code in enumerate(translated) if not code]
@@ -1518,11 +1525,13 @@ class EpisodeMatcher:
             )
 
         ref_matrix, episode_codes = self._augment_with_downloaded_srts(
-            ref_matrix, episode_codes, season_number
+            ref_matrix, episode_codes, season_number, divergent=divergent
         )
         return ref_matrix, episode_codes, self._precomputed_idf
 
-    def _augment_with_downloaded_srts(self, ref_matrix, episode_codes, season_number):
+    def _augment_with_downloaded_srts(
+        self, ref_matrix, episode_codes, season_number, *, divergent: bool = False
+    ):
         """Graft downloaded SRTs for episodes the precomputed cache doesn't cover.
 
         The shipped cache can be incomplete (e.g. Mad Men S02 shipped without
@@ -1533,7 +1542,13 @@ class EpisodeMatcher:
 
         Additive and idempotent: returns the inputs unchanged when there is
         nothing to graft, and never raises — a bad SRT is skipped, not fatal.
+
+        Grafts nothing into a ``divergent`` (half-hour numbered) season (#760): a
+        scraped SRT there is named by a provider that also numbers by half-hour,
+        so its code would name an unrelated TMDB segment.
         """
+        if divergent:
+            return ref_matrix, episode_codes
         data_dir = self.cache_dir / "data" / corpus_dir_name(self.expected_tmdb_id, self.show_name)
         if not data_dir.is_dir():
             return ref_matrix, episode_codes
