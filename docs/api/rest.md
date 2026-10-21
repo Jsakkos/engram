@@ -103,6 +103,7 @@ one still in progress or parked in review.
 | `content_type` | string | — | Filter: `tv` or `movie` |
 | `state` | string | — | Filter by any `JobState`, e.g. `completed`, `failed`, `review_needed`. An unknown value is rejected with 422 |
 | `include_all_states` | bool | `false` | Return every state instead of the completed/failed default. Ignored when `state` is given |
+| `q` | string | none | Case-insensitive text search over volume label, detected/TMDB title, matched episode codes and error text (`%` and `_` are literal). Max 200 characters |
 
 ### Job Statistics
 
@@ -110,7 +111,7 @@ one still in progress or parked in review.
 GET /api/jobs/stats
 ```
 
-Returns aggregated analytics: total jobs, completed/failed counts, TV/movie counts, average processing time, top 5 common errors, and 10 most recent jobs.
+Takes the same `content_type`, `state`, `include_all_states` and `q` filters as the history endpoint and aggregates exactly the jobs that query would list (completed/failed by default). Returns: total jobs, completed/failed counts, TV/movie counts, average processing time, top 5 common errors, and 10 most recent jobs.
 
 ---
 
