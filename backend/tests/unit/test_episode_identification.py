@@ -755,6 +755,26 @@ class TestExtractAudioChunkNoAudioStream:
         # The rewritten file got its own ffmpeg attempt and probe.
         assert [c[0] for c in calls] == ["ffmpeg", "ffprobe", "ffmpeg", "ffprobe"]
 
+    def test_same_size_rewrite_is_retried_on_mtime(self, tmp_path):
+        """A rewrite that keeps the size still counts as a new file via its mtime."""
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        matcher = self._matcher(tmp_path)
+        source = tmp_path / "C1_t06.mkv"
+        source.write_bytes(b"video only")
+        calls: list = []
+        run = _fake_run(ffmpeg_rc=_EINVAL_UNSIGNED, ffmpeg_stderr="x", probe_stdout="", calls=calls)
+
+        with patch("app.matcher.episode_identification.subprocess.run", side_effect=run):
+            with pytest.raises(NoAudioStreamError):
+                matcher.extract_audio_chunk(str(source), 90, duration=30)
+            st = source.stat()
+            os.utime(source, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+            with pytest.raises(NoAudioStreamError):
+                matcher.extract_audio_chunk(str(source), 383, duration=30)
+
+        assert [c[0] for c in calls] == ["ffmpeg", "ffprobe", "ffmpeg", "ffprobe"]
+
     def test_ffmpeg_command_hides_banner(self, tmp_path):
         matcher = self._matcher(tmp_path)
         calls: list = []
