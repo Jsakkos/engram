@@ -8,21 +8,19 @@ All notable changes to Engram will be documented in this file.
 
 - Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
 
-### Fixed
+- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
 
-- **Restart to Update** on Windows no longer fails at `move_install` on every update. Programs Engram starts inherit its working folder, which was the install folder, so a browser that Engram opened kept the install folder in use after Engram exited, and Windows refused to move it aside for the new version. Engram now moves off the install folder at startup, and the update helper retries a busy folder for up to 30 seconds before giving up. When it does give up, the notice names the folder and the reason Windows gave, the extra `engram.new-<version>` copy is no longer left beside the install, and copies left by earlier failed updates are removed on the next start. This takes effect from the update after the one that ships it: a version that is already failing still has to be replaced by hand once, and closing your browser first lets that go through. (#791)
-- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
 ### Changed
 
 - **Force advance** now only appears beside Cancel and Eject once a job looks stuck, meaning it has made no progress for three minutes. The backend reports this as `looks_stuck` / `stalled_for_seconds` on the job (REST and WebSocket), taken from the same activity clock the stale-job watchdog uses, and the button's tooltip says how long the job has been idle. On a healthy job Force stays one click away in a **More actions** menu. (#718)
 
 - The dashboard footer no longer shows made-up telemetry (`UNIT 07`, `BUFFER NOMINAL`, `CPU IDLE`...) or a platform-based `DRIVE READY`. The drive label now reflects the optical drives Engram detects (`2 DRIVES`, `1 DRIVE · BUSY` while a disc is being read, `IMPORT ONLY` when there are none), and the scrolling band reports the real ASR device with whether transcription is running, jobs per phase, and discs awaiting review. (#720)
 
-### Added
-
-- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
-
 ### Fixed
+
+- **Restart to Update** on Windows no longer fails at `move_install` on every update. Programs Engram starts inherit its working folder, which was the install folder, so a browser that Engram opened kept the install folder in use after Engram exited, and Windows refused to move it aside for the new version. Engram now moves off the install folder at startup, and the update helper retries a busy folder for up to 30 seconds before giving up. When it does give up, the notice names the folder and the reason Windows gave, the extra `engram.new-<version>` copy is no longer left beside the install, and copies left by earlier failed updates are removed on the next start. This takes effect from the update after the one that ships it: a version that is already failing still has to be replaced by hand once, and closing your browser first lets that go through. (#791)
+
+- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
 
 - The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
 
