@@ -10,6 +10,7 @@ import contextlib
 import json
 import os
 import re
+import shutil
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -632,6 +633,195 @@ class TestUniqueChunkPaths:
         path_a = matcher._chunk_path("/some/dir/title_t00.mkv", 1473, 30)
         path_b = matcher._chunk_path("/some/dir/title_t00.mkv", 1473, 30)
         assert path_a == path_b
+
+
+_FFMPEG_BANNER = (
+    "ffmpeg version 8.1-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers\n"
+    "  built with gcc 15.2.0 (Rev8, Built by MSYS2 project)\n"
+    "  configuration: --enable-gpl --enable-version3 --enable-static\n"
+    "  libavutil      60. 23.100 / 60. 23.100\n"
+    "  libavcodec     62. 23.102 / 62. 23.102\n"
+    "  libavformat    62.  8.102 / 62.  8.102\n"
+)
+# ffmpeg exits with AVERROR(EINVAL) when the output has no streams; Windows
+# reports the negative exit status as an unsigned 32-bit value (#793).
+_EINVAL_UNSIGNED = 2**32 - 22
+
+
+def _fake_run(*, ffmpeg_rc, ffmpeg_stderr, probe_stdout, probe_rc=0, calls=None):
+    """subprocess.run stand-in answering ffmpeg and ffprobe differently."""
+    import subprocess
+
+    def run(cmd, *args, **kwargs):
+        if calls is not None:
+            calls.append(cmd)
+        if cmd[0] == "ffprobe":
+            return subprocess.CompletedProcess(cmd, probe_rc, stdout=probe_stdout, stderr="")
+        return subprocess.CompletedProcess(cmd, ffmpeg_rc, stdout="", stderr=ffmpeg_stderr)
+
+    return run
+
+
+@pytest.mark.unit
+class TestExtractAudioChunkNoAudioStream:
+    """A ripped title with no audio track must fail clearly, once (#793).
+
+    MakeMKV can write a title without its only audio track (e.g. a lone
+    foreign-language track its selection rules skipped). ffmpeg then refuses
+    the ``-vn -sn -dn`` output with EINVAL, and the log only ever showed the
+    first stderr line: the version banner.
+    """
+
+    def _matcher(self, tmp_path):
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        return EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show", model_name="tiny")
+
+    def test_audio_less_source_raises_no_audio_stream_error(self, tmp_path):
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        matcher = self._matcher(tmp_path)
+        stderr = (
+            _FFMPEG_BANNER + "[out#0/wav @ 0000017fe0626a80] Output file does not contain any "
+            "stream\nError opening output file out.wav.\n"
+            "Error opening output files: Invalid argument\n"
+        )
+        run = _fake_run(ffmpeg_rc=_EINVAL_UNSIGNED, ffmpeg_stderr=stderr, probe_stdout="")
+
+        with (
+            patch("app.matcher.episode_identification.subprocess.run", side_effect=run),
+            pytest.raises(NoAudioStreamError, match="no audio track"),
+        ):
+            matcher.extract_audio_chunk(str(tmp_path / "C1_t06.mkv"), 90, duration=30)
+
+    def test_audio_less_source_is_probed_once_then_fails_fast(self, tmp_path):
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        matcher = self._matcher(tmp_path)
+        calls: list = []
+        run = _fake_run(
+            ffmpeg_rc=_EINVAL_UNSIGNED, ffmpeg_stderr="boom", probe_stdout="", calls=calls
+        )
+        source = str(tmp_path / "C1_t06.mkv")
+
+        with patch("app.matcher.episode_identification.subprocess.run", side_effect=run):
+            for start in (90, 383, 676):
+                with pytest.raises(NoAudioStreamError):
+                    matcher.extract_audio_chunk(source, start, duration=30)
+
+        # One ffmpeg attempt + one ffprobe; later chunks never spawn a process.
+        assert [c[0] for c in calls] == ["ffmpeg", "ffprobe"]
+
+    def test_failure_reports_stderr_tail_not_banner(self, tmp_path):
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        matcher = self._matcher(tmp_path)
+        stderr = _FFMPEG_BANNER + "C1_t06.mkv: Invalid data found when processing input\n"
+        # The file does have audio, so this is a generic failure, not "no audio".
+        run = _fake_run(ffmpeg_rc=1, ffmpeg_stderr=stderr, probe_stdout="1\n")
+
+        with (
+            patch("app.matcher.episode_identification.subprocess.run", side_effect=run),
+            pytest.raises(RuntimeError) as excinfo,
+        ):
+            matcher.extract_audio_chunk(str(tmp_path / "C1_t06.mkv"), 90, duration=30)
+
+        assert not isinstance(excinfo.value, NoAudioStreamError)
+        message = str(excinfo.value)
+        assert "Invalid data found when processing input" in message
+        assert "ffmpeg version" not in message
+        assert "\n" not in message
+
+    def test_ffmpeg_command_hides_banner(self, tmp_path):
+        matcher = self._matcher(tmp_path)
+        calls: list = []
+        run = _fake_run(ffmpeg_rc=1, ffmpeg_stderr="x", probe_stdout="1\n", calls=calls)
+
+        with (
+            patch("app.matcher.episode_identification.subprocess.run", side_effect=run),
+            pytest.raises(RuntimeError),
+        ):
+            matcher.extract_audio_chunk(str(tmp_path / "C1_t06.mkv"), 90, duration=30)
+
+        assert "-hide_banner" in calls[0]
+
+    def test_unknown_probe_result_keeps_generic_error(self, tmp_path):
+        """If ffprobe itself fails we can't claim "no audio"; keep the plain error."""
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        matcher = self._matcher(tmp_path)
+        run = _fake_run(ffmpeg_rc=1, ffmpeg_stderr="x", probe_stdout="", probe_rc=1)
+
+        with (
+            patch("app.matcher.episode_identification.subprocess.run", side_effect=run),
+            pytest.raises(RuntimeError) as excinfo,
+        ):
+            matcher.extract_audio_chunk(str(tmp_path / "C1_t06.mkv"), 90, duration=30)
+
+        assert not isinstance(excinfo.value, NoAudioStreamError)
+
+    @pytest.mark.skipif(
+        not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg not installed"
+    )
+    def test_real_video_only_mkv(self, tmp_path):
+        """End to end against real ffmpeg: a video-only MKV, as MakeMKV wrote it."""
+        import subprocess
+
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        source = tmp_path / "C1_t06.mkv"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=64x48:rate=5",
+                "-t",
+                "130",
+                "-c:v",
+                "mpeg2video",
+                "-y",
+                str(source),
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+        matcher = self._matcher(tmp_path)
+        with pytest.raises(NoAudioStreamError):
+            matcher.extract_audio_chunk(str(source), 90, duration=30)
+
+    def test_identify_episode_stops_scanning_audio_less_file(self, tmp_path, monkeypatch):
+        from app.matcher.episode_identification import EpisodeMatcher, NoAudioStreamError
+
+        data = tmp_path / "data" / "4229"
+        data.mkdir(parents=True)
+        for ep in (1, 2):
+            (data / f"Show - S01E0{ep}.srt").write_text(
+                f"1\n00:00:01,000 --> 00:00:02,000\nLine for episode {ep} here.\n",
+                encoding="utf-8",
+            )
+        matcher = EpisodeMatcher(tmp_path, "Show", expected_tmdb_id=4229, model_name="small")
+        extract = MagicMock(side_effect=NoAudioStreamError("no audio track"))
+        monkeypatch.setattr(matcher, "_load_precomputed_season", lambda season: None)
+        monkeypatch.setattr(
+            "app.matcher.episode_identification.get_video_duration", lambda *_a, **_k: 2849.0
+        )
+        monkeypatch.setattr(matcher, "extract_audio_chunk", extract)
+        monkeypatch.setattr(
+            "app.matcher.episode_identification.get_cached_model", MagicMock(return_value=None)
+        )
+        monkeypatch.setattr(matcher, "_match_full_file", MagicMock(return_value=None))
+
+        result = matcher.identify_episode(tmp_path / "C1_t06.mkv", tmp_path, 1)
+
+        assert (result or {}).get("episode") is None
+        # The first chunk proves the file is silent; the other nine are not tried.
+        assert extract.call_count == 1
 
 
 @pytest.mark.unit

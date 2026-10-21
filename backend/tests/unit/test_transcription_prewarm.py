@@ -723,6 +723,28 @@ class TestWalkAwayRematch:
 
 
 class TestFailSoftGranularity:
+    async def test_audio_less_file_stops_after_first_chunk(
+        self, tmp_path, config_flags, model_loader, duration_stub
+    ):
+        """A title with no audio track fails every chunk identically (#793): stop
+        warming that file instead of logging the same failure ten times."""
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        attempts: list[int] = []
+
+        class SilentMatcher(FakeMatcher):
+            def transcribe_chunk_cached(self, video_file, start, *args, **kwargs):
+                attempts.append(int(start))
+                raise NoAudioStreamError("no audio track")
+
+        p = TranscriptionPrewarmer(semaphore_provider=CountingSemaphore)
+        p._matcher = SilentMatcher()
+
+        job_id, _f = await _seed_review_job(tmp_path)
+        await _run_to_completion(p, job_id)
+
+        assert attempts == [int(OFFSETS[0])]
+
     async def test_single_chunk_failure_continues_remaining(
         self, tmp_path, config_flags, model_loader, duration_stub
     ):
