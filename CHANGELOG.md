@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Restart to Update** on Windows no longer fails at `move_install` on every update. Programs Engram starts inherit its working folder, which was the install folder, so a browser that Engram opened kept the install folder in use after Engram exited, and Windows refused to move it aside for the new version. Engram now moves off the install folder at startup, and the update helper retries a busy folder for up to 30 seconds before giving up. When it does give up, the notice names the folder and the reason Windows gave, the extra `engram.new-<version>` copy is no longer left beside the install, and copies left by earlier failed updates are removed on the next start. This takes effect from the update after the one that ships it: a version that is already failing still has to be replaced by hand once, and closing your browser first lets that go through. (#791)
+
 ## [0.41.0] - 2026-10-20
 
 _Highlights: recover failed jobs from staging, Play-All tracks detected from the disc's own structure, import of MP4/TS files, and an external player for movie review._

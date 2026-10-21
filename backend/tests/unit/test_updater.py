@@ -824,14 +824,17 @@ class TestRenderUpdateBat:
 
     def test_atomic_two_rename_swap(self):
         bat = self._bat()
-        assert 'move "%INSTALL%" "%OLDDIR%"' in bat  # install aside
-        assert 'move "%NEWDIR%" "%INSTALL%"' in bat  # new into place
+        assert 'call :retry_move "%INSTALL%" "%OLDDIR%"' in bat  # install aside
+        assert 'call :retry_move "%NEWDIR%" "%INSTALL%"' in bat  # new into place
+        assert 'move "%~1" "%~2"' in bat  # the one real rename, inside the retry helper
 
     def test_clears_stale_old_dir_before_swap(self):
         """A leftover .old from a prior failed run must be cleared before the swap,
         or `move install -> old` fails and a retry can't succeed."""
         bat = self._bat()
-        assert bat.index('rmdir /S /Q "%OLDDIR%"') < bat.index('move "%INSTALL%" "%OLDDIR%"')
+        assert bat.index('rmdir /S /Q "%OLDDIR%"') < bat.index(
+            'call :retry_move "%INSTALL%" "%OLDDIR%"'
+        )
 
     def test_checks_exit_codes(self):
         bat = self._bat()
@@ -844,7 +847,7 @@ class TestRenderUpdateBat:
         bat = self._bat()
         assert ":restore_old" in bat
         assert ":relaunch_old" in bat
-        assert 'move "%OLDDIR%" "%INSTALL%"' in bat  # put the old install back
+        assert 'call :retry_move "%OLDDIR%" "%INSTALL%"' in bat  # put the old install back
         # The failed-move branch jumps to the restore path:
         assert "goto restore_old" in bat
 
@@ -885,7 +888,7 @@ class TestRenderUpdateBat:
         """
         bat = self._bat()
         assert 'cd /d "%TEMP%"' in bat
-        assert bat.index('cd /d "%TEMP%"') < bat.index('move "%INSTALL%" "%OLDDIR%"')
+        assert bat.index('cd /d "%TEMP%"') < bat.index('call :retry_move "%INSTALL%" "%OLDDIR%"')
 
     def test_logs_diagnostic_context_before_swap(self):
         """The helper echoes its cwd + key paths so a field failure is diagnosable
@@ -1217,6 +1220,7 @@ def _t8_run_helper(
     exe: str,
     pid: int,
     version: str,
+    **render_kwargs,
 ) -> None:
     """Render the bat, rewrite the self-delete to use the literal bat path, and spawn it."""
     bat = checker._render_update_bat(
@@ -1229,6 +1233,7 @@ def _t8_run_helper(
         pid=pid,
         version=version,
         result_path=str(result),
+        **render_kwargs,
     )
     bat_path = os.path.join(os.environ["TEMP"], f"engram_update_test_{pid}.bat")
     # The rendered bat has '(goto) 2>nul & del "%~f0"' for the success self-delete.
@@ -1523,4 +1528,272 @@ def test_windows_swap_failure_writes_marker_and_keeps_install(tmp_path):
     finally:
         if parent.poll() is None:
             parent.terminate()
+        subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
+
+
+# ---------------------------------------------------------------------------
+# #791: the swap's `move install -> .old` failed when another process held the
+# install dir, every update, and left an `engram.new-<version>` dir behind each time.
+# ---------------------------------------------------------------------------
+
+
+class TestSwapRetryAndDiagnosis:
+    """Every rename retries with backoff, and a give-up names the path and the OS reason."""
+
+    def _bat(self, **kwargs):
+        return UpdateChecker._render_update_bat(**_BAT_ARGS, **kwargs)
+
+    def test_renames_go_through_one_retrying_helper(self):
+        bat = self._bat()
+        # The only `move` in the script is the helper's; the three call sites use it.
+        moves = [line.strip() for line in bat.splitlines() if line.strip().startswith("move ")]
+        assert moves == ['move "%~1" "%~2" > "%MOVEOUT%" 2>&1']
+        assert bat.count("call :retry_move") == 3  # install aside, new in, restore old
+
+    def test_backoff_doubles_with_a_cap_and_uses_ping(self):
+        bat = self._bat()
+        assert 'set /a "BACKOFF=1<<TRIES"' in bat
+        assert "if %BACKOFF% GTR 8 set /a BACKOFF=8" in bat
+        assert "ping -n %PINGS% 127.0.0.1 >nul" in bat
+        assert "\ntimeout " not in bat
+
+    def test_attempt_budget_defaults_to_six_and_is_overridable(self):
+        assert "set /a MOVE_ATTEMPTS=6" in self._bat()
+        assert "set /a MOVE_ATTEMPTS=2" in self._bat(move_attempts=2)
+
+    def test_helper_is_unreachable_by_fallthrough(self):
+        """The subroutine sits after the script's last line, behind a `goto :eof`, so the
+        rollback tail can't fall into it and run a stray rename."""
+        bat = self._bat()
+        assert bat.index("goto :eof") < bat.index(":retry_move\n")
+        assert bat.index(":relaunch_old") < bat.index(":retry_move\n")
+
+    def test_reason_is_captured_from_the_failed_move(self):
+        bat = self._bat()
+        assert 'move "%~1" "%~2" > "%MOVEOUT%" 2>&1' in bat
+        assert 'set /p REASON=<"%MOVEOUT%"' in bat
+
+    def test_failure_marker_names_path_and_reason(self):
+        bat = self._bat()
+        tail = bat[bat.index(":relaunch_old") :]
+        # Redirect-first so a reason ending in a digit can't be parsed as a handle number.
+        assert '>>"%RESULT%" echo path=%FAILPATH%' in tail
+        assert '>>"%RESULT%" echo reason=%REASON%' in tail
+
+    def test_move_install_failure_names_the_install_dir(self):
+        bat = self._bat()
+        start = bat.index('set "STEP=move_install"')
+        assert 'set "FAILPATH=%INSTALL%"' in bat[start : bat.index("call :retry_move", start)]
+
+    def test_failed_move_install_removes_the_new_dir(self):
+        """The stale `engram.new-<version>` dirs in #791 came from this branch."""
+        bat = self._bat()
+        branch = bat[bat.index(":fail_no_swap") : bat.index(":fail\n")]
+        assert 'rmdir /S /Q "%NEWDIR%"' in branch
+
+    def test_failed_restore_keeps_the_new_dir(self):
+        """If the old install could not be put back, the .new copy is the only runnable
+        build left on that drive, so the rollback must not delete it."""
+        bat = self._bat()
+        branch = bat[bat.index(":restore_old") : bat.index(":fail_no_swap")]
+        assert 'rmdir /S /Q "%NEWDIR%"' not in branch.split("call :retry_move")[0]
+        assert "restore_failed" in branch
+
+
+class TestDescribeUpdateFailure:
+    def test_move_install_names_path_reason_and_remedy(self, tmp_path):
+        marker = tmp_path / "update_result.txt"
+        marker.write_text(
+            "result=failed\nversion=0.41.0\nstep=move_install\npath=D:\\engram\n"
+            "reason=The process cannot access the file because it is being used by "
+            "another process.\n",
+            encoding="utf-8",
+        )
+        c = UpdateChecker()
+        c._consume_update_result_marker(marker)
+        msg = c.last_update_error
+        assert "0.41.0" in msg and "move_install" in msg
+        assert "D:\\engram" in msg
+        assert "being used by another process" in msg
+        assert "close" in msg.lower()  # tells the user what to do about it
+
+    def test_old_helper_marker_without_path_still_reads(self, tmp_path):
+        """A marker written by an older helper (no path/reason) keeps the old wording."""
+        marker = tmp_path / "update_result.txt"
+        marker.write_text("result=failed\nversion=0.41.0\nstep=robocopy\n", encoding="utf-8")
+        c = UpdateChecker()
+        c._consume_update_result_marker(marker)
+        assert c.last_update_error.startswith(
+            "Update to 0.41.0 couldn't be applied automatically (step: robocopy)."
+        )
+
+    def test_non_utf8_reason_does_not_crash(self, tmp_path):
+        """cmd writes the OS message in the console code page (e.g. a German umlaut in
+        cp850); an undecodable byte must not take down the update checker."""
+        marker = tmp_path / "update_result.txt"
+        marker.write_bytes(
+            b"result=failed\r\nversion=0.41.0\r\nstep=move_install\r\n"
+            b"path=D:\\engram\r\nreason=Zugriff verweigert \x84\r\n"
+        )
+        c = UpdateChecker()
+        c._consume_update_result_marker(marker)
+        assert "move_install" in c.last_update_error
+        assert not marker.exists()
+
+
+class TestSweepStaleSwapDirs:
+    def _layout(self, tmp_path):
+        install = tmp_path / "engram"
+        install.mkdir()
+        for name in ("engram.new-0.40.0", "engram.new-0.41.0", "engram.old-0.41.0", "x.new-1"):
+            (tmp_path / name / "_internal").mkdir(parents=True)
+        (tmp_path / "engram.new-notes.txt").write_text("a file, not a swap dir")
+        return install
+
+    def test_removes_only_this_installs_new_dirs(self, tmp_path):
+        install = self._layout(tmp_path)
+        UpdateChecker._sweep_stale_swap_dirs(install)
+        left = sorted(p.name for p in tmp_path.iterdir())
+        assert left == ["engram", "engram.new-notes.txt", "engram.old-0.41.0", "x.new-1"]
+
+    def test_keeps_old_dirs(self, tmp_path):
+        """An .old dir can be the only good copy after a failed restore; never sweep it."""
+        install = self._layout(tmp_path)
+        UpdateChecker._sweep_stale_swap_dirs(install)
+        assert (tmp_path / "engram.old-0.41.0").is_dir()
+
+    def test_missing_parent_is_a_noop(self, tmp_path):
+        UpdateChecker._sweep_stale_swap_dirs(tmp_path / "nope" / "engram")
+
+    async def test_start_sweeps_on_frozen_windows(self, monkeypatch, tmp_path):
+        install = self._layout(tmp_path)
+        monkeypatch.setattr("app.core.updater.sys.platform", "win32")
+        monkeypatch.setattr("app.core.updater.sys.executable", str(install / "engram.exe"))
+        monkeypatch.setattr("app.core.updater.STAGING_BASE", tmp_path / "no-staging")
+        c = UpdateChecker()
+        c._is_frozen = True
+        c._consume_update_result_marker = lambda: None
+        c._load_skipped_version = AsyncMock(return_value=None)
+        c._check = AsyncMock()
+        c._fetch_current_release_notes = AsyncMock()
+        await c.start()
+        assert not (tmp_path / "engram.new-0.40.0").exists()
+
+    async def test_start_does_not_sweep_in_dev(self, monkeypatch, tmp_path):
+        install = self._layout(tmp_path)
+        monkeypatch.setattr("app.core.updater.sys.platform", "win32")
+        monkeypatch.setattr("app.core.updater.sys.executable", str(install / "python.exe"))
+        monkeypatch.setattr("app.core.updater.STAGING_BASE", tmp_path / "no-staging")
+        c = UpdateChecker()
+        c._is_frozen = False
+        c._consume_update_result_marker = lambda: None
+        c._load_skipped_version = AsyncMock(return_value=None)
+        c._check = AsyncMock()
+        c._fetch_current_release_notes = AsyncMock()
+        await c.start()
+        assert (tmp_path / "engram.new-0.40.0").exists()
+
+
+def _t791_hold_cwd(directory: Path, seconds: int) -> subprocess.Popen:
+    """Start a process whose working directory is *directory*, like a browser that
+    webbrowser.open launched from an Engram whose cwd was the install dir."""
+    return subprocess.Popen(
+        ["ping", "-n", str(seconds + 1), "127.0.0.1"],
+        cwd=str(directory),
+        stdout=subprocess.DEVNULL,
+    )
+
+
+@windows_only
+def test_windows_swap_retries_past_a_transient_holder(tmp_path):
+    """A process holding the install dir as its cwd makes `move install -> .old` fail.
+    When it lets go within the retry budget, the swap completes instead of rolling back."""
+    exe = "engram_t791a.exe"
+    src = tmp_path / "stage" / "engram"
+    install = tmp_path / "app" / "engram"
+    _t8_make_build(src, exe, "NEW")
+    _t8_make_build(install, exe, "OLD")
+    log = tmp_path / "helper.log"
+    result = tmp_path / "update_result.txt"
+
+    parent = subprocess.Popen([str(install / exe), "/c", "ping -n 60 127.0.0.1 >nul"])
+    holder = _t791_hold_cwd(install, 9)
+    try:
+        _t8_run_helper(
+            UpdateChecker(),
+            src=src,
+            install=install,
+            new_dir=tmp_path / "app" / "engram.new",
+            old_dir=tmp_path / "app" / "engram.old",
+            log=log,
+            result=result,
+            exe=exe,
+            pid=parent.pid,
+            version="9.9.9",
+        )
+        time.sleep(2)
+        parent.terminate()
+        ok = _t8_wait_for(lambda: result.exists(), timeout=60.0)
+        log_text = log.read_text(errors="replace") if log.exists() else "<no log>"
+        assert ok, f"no result marker within 60s; helper log:\n{log_text}"
+        text = result.read_text(errors="replace")
+        assert "result=success" in text, f"{text}\n--- helper log ---\n{log_text}"
+        assert "is in use; retry" in log_text  # it really did hit the lock and retry
+        assert (install / "VERSION.txt").read_text() == "NEW"
+    finally:
+        for proc in (parent, holder):
+            if proc.poll() is None:
+                proc.terminate()
+        subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
+
+
+@windows_only
+def test_windows_swap_gives_up_on_a_persistent_holder_and_says_why(tmp_path):
+    """The #791 failure: the holder never lets go. The install stays untouched, the
+    marker names the install dir and the OS reason, and no .new dir is left behind."""
+    exe = "engram_t791b.exe"
+    src = tmp_path / "stage" / "engram"
+    install = tmp_path / "app" / "engram"
+    new_dir = tmp_path / "app" / "engram.new-9.9.9"
+    _t8_make_build(src, exe, "NEW")
+    _t8_make_build(install, exe, "OLD")
+    log = tmp_path / "helper.log"
+    result = tmp_path / "update_result.txt"
+
+    parent = subprocess.Popen([str(install / exe), "/c", "ping -n 60 127.0.0.1 >nul"])
+    holder = _t791_hold_cwd(install, 90)
+    try:
+        _t8_run_helper(
+            UpdateChecker(),
+            src=src,
+            install=install,
+            new_dir=new_dir,
+            old_dir=tmp_path / "app" / "engram.old-9.9.9",
+            log=log,
+            result=result,
+            exe=exe,
+            pid=parent.pid,
+            version="9.9.9",
+            move_attempts=2,
+        )
+        time.sleep(2)
+        parent.terminate()
+        ok = _t8_wait_for(lambda: result.exists(), timeout=60.0)
+        log_text = log.read_text(errors="replace") if log.exists() else "<no log>"
+        assert ok, f"no result marker within 60s; helper log:\n{log_text}"
+        text = result.read_text(errors="replace")
+        assert "result=failed" in text and "step=move_install" in text, text
+        assert f"path={install}" in text, text
+        reason = next(line for line in text.splitlines() if line.startswith("reason="))
+        assert len(reason) > len("reason="), f"empty reason:\n{text}\n{log_text}"
+        assert (install / "VERSION.txt").read_text() == "OLD"
+        assert not new_dir.exists(), "failed swap left the .new dir behind"
+
+        c = UpdateChecker()
+        c._consume_update_result_marker(result)
+        assert str(install) in c.last_update_error
+    finally:
+        for proc in (parent, holder):
+            if proc.poll() is None:
+                proc.terminate()
         subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
