@@ -558,9 +558,9 @@ async def test_match_cancelled_before_first_step_is_not_live(tmp_path):
     matching = job_manager._matching
     task = asyncio.create_task(matching.match_single_file(1, 77, tmp_path / "t.mkv"))
     task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    await asyncio.gather(task, return_exceptions=True)
 
+    assert task.cancelled()
     assert not matching.has_live_match(77)
 
 
