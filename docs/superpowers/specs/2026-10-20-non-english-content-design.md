@@ -253,10 +253,9 @@ usable audio stream is tagged with a non-English language.
 7. Language suffix `@<lang>` (the contributor used `.<lang>`) so one predicate covers `@tvdb` and
    language dirs.
 
-## Open questions for the maintainer
+## Maintainer decisions (2026-10-20)
 
 1. Phase 2, a foreign show whose disc has both the original audio and an English dub: match in the
-   original language (recommended), or English first?
-2. Phase 2, Japanese/Chinese/Thai (character n-grams, uncalibrated): auto-file confident matches
-   like any other language, or always park them for review until real-disc evidence calibrates
-   them (recommended)?
+   **original language**.
+2. Phase 2, Japanese/Chinese/Thai (character n-grams, uncalibrated): **always park matches for
+   review** until real-disc evidence calibrates them.
