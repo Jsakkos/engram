@@ -72,6 +72,29 @@ def _find_free_port(host: str, preferred: int, max_attempts: int = 20) -> int:
         return s.getsockname()[1]
 
 
+def _release_install_dir(*, frozen: bool) -> None:
+    """Move a frozen Windows build's working directory off its install dir (#791).
+
+    Explorer and the update helper's relaunch both start engram.exe with the install
+    dir as its cwd, and every process it starts inherits that cwd, including the
+    browser that ``webbrowser.open`` launches when none is running. That browser
+    outlives Engram, and Windows refuses to rename a directory that is any process's
+    cwd, so the update helper's ``move install -> .old`` failed on every update.
+    Nothing in a frozen build resolves paths against the cwd once settings are loaded
+    (the DB and logs live under ~/.engram), so the home dir is a safe neutral spot.
+    Dev runs keep their cwd: ``./engram.db`` is resolved against it.
+    """
+    if not frozen or sys.platform != "win32":
+        return
+    try:
+        os.chdir(os.path.expanduser("~"))
+    except OSError:
+        # Best-effort: the update helper retries and reports a busy install dir.
+        from loguru import logger
+
+        logger.debug("Could not move the working directory off the install dir", exc_info=True)
+
+
 def _schedule_browser_open(url: str, *, updated: bool) -> None:
     """Open the dashboard tab after startup — unless this is an update relaunch.
 
@@ -108,6 +131,9 @@ def main() -> None:
         from app.main import app, settings
 
         frozen = is_frozen()
+        # After `app.main` (settings read a .env from the cwd) and before anything is
+        # launched, so no child inherits the install dir as its cwd.
+        _release_install_dir(frozen=frozen)
         logger.info(
             f"Starting engram {__version__} — is_frozen()={frozen} "
             f"(sys.frozen={getattr(sys, 'frozen', False)!r}, "
