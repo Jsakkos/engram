@@ -18,13 +18,16 @@ export interface HistoryQueryInput {
   filterType: string;
   /** "" = backend default (completed + failed), or a JobState, or ALL_JOBS_FILTER. */
   filterState: string;
+  /** Free-text search; blank/absent = no search. */
+  q?: string;
 }
 
-export type HistoryFilters = Pick<HistoryQueryInput, "filterType" | "filterState">;
+export type HistoryFilters = Pick<HistoryQueryInput, "filterType" | "filterState" | "q">;
 
 /** Filter parameters shared by the table and the summary tiles. */
-function filterParams({ filterType, filterState }: HistoryFilters): URLSearchParams {
+function filterParams({ filterType, filterState, q }: HistoryFilters): URLSearchParams {
   const params = new URLSearchParams();
+  if (q && q.trim()) params.set("q", q.trim());
   if (filterType) params.set("content_type", filterType);
   if (filterState === ALL_JOBS_FILTER) {
     params.set("include_all_states", "true");
@@ -44,11 +47,12 @@ export function buildHistoryQuery({
   perPage,
   filterType,
   filterState,
+  q,
 }: HistoryQueryInput): URLSearchParams {
   const params = new URLSearchParams({
     page: String(page),
     per_page: String(perPage),
   });
-  filterParams({ filterType, filterState }).forEach((v, k) => params.set(k, v));
+  filterParams({ filterType, filterState, q }).forEach((v, k) => params.set(k, v));
   return params;
 }

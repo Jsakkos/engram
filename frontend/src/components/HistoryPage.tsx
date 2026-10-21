@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, amendTitle } from "../api/client";
@@ -15,6 +15,7 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  Search,
   Bug,
   X,
   Copy,
@@ -1097,6 +1098,12 @@ function DistRow({
 export default function HistoryPage() {
   const navigate = useNavigate();
   const { jobId: urlJobId } = useParams<{ jobId: string }>();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The committed query lives in the URL so a search deep-links alongside
+  // /history/:jobId; the box holds the in-progress text until it is debounced.
+  const q = searchParams.get("q") ?? "";
+  const [searchText, setSearchText] = useState(q);
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<HistoryJob[]>([]);
   const [page, setPage] = useState(1);
@@ -1116,17 +1123,17 @@ export default function HistoryPage() {
   useEffect(() => {
     // The tiles describe the same job set as the table, so they re-fetch
     // whenever a filter changes.
-    const params = buildStatsQuery({ filterType, filterState });
+    const params = buildStatsQuery({ filterType, filterState, q });
     apiFetch<Stats>(`/api/jobs/stats?${params}`)
       .then(setStats)
       .catch((error) => {
         console.error("Failed to load history stats:", error);
         toast.error("Failed to load history statistics.");
       });
-  }, [filterType, filterState]);
+  }, [filterType, filterState, q]);
 
   const fetchHistory = useCallback(() => {
-    const params = buildHistoryQuery({ page, perPage, filterType, filterState });
+    const params = buildHistoryQuery({ page, perPage, filterType, filterState, q });
 
     apiFetch<HistoryJob[]>(`/api/jobs/history?${params}`)
       .then((data: HistoryJob[]) => {
@@ -1137,7 +1144,7 @@ export default function HistoryPage() {
         console.error("Failed to load job history:", error);
         toast.error("Failed to load job history.");
       });
-  }, [page, filterType, filterState]);
+  }, [page, filterType, filterState, q]);
 
   useEffect(() => {
     fetchHistory();
@@ -1164,20 +1171,43 @@ export default function HistoryPage() {
       });
   }, [selectedJobId, detailRefreshKey]);
 
+  // Debounce the box into the URL (replace: typing must not flood history).
+  useEffect(() => {
+    if (searchText.trim() === q) return;
+    const timer = setTimeout(() => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (searchText.trim()) next.set("q", searchText.trim());
+          else next.delete("q");
+          return next;
+        },
+        { replace: true }
+      );
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchText, q, setSearchParams]);
+
+  // Keep the box in step when the URL changes underneath it (back/forward).
+  useEffect(() => {
+    setSearchText(q);
+  }, [q]);
+
   const handleRowClick = (jobId: number) => {
     if (jobId === selectedJobId) {
       setSelectedJobId(null);
-      navigate(ROUTES.HISTORY, { replace: true });
+      navigate(ROUTES.HISTORY + location.search, { replace: true });
     } else {
       setSelectedJobId(jobId);
-      navigate(historyDetailPath(jobId), { replace: true });
+      navigate(historyDetailPath(jobId) + location.search, { replace: true });
     }
   };
 
   const handleCloseDetail = useCallback(() => {
     setSelectedJobId(null);
-    navigate(ROUTES.HISTORY, { replace: true });
-  }, [navigate]);
+    navigate(ROUTES.HISTORY + location.search, { replace: true });
+  }, [navigate, location.search]);
 
   const openBugReport = useCallback((jobId?: number) => {
     setBugModalJobId(jobId);
@@ -1276,6 +1306,31 @@ export default function HistoryPage() {
         {/* Filters */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <SvLabel>Filter</SvLabel>
+          <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+            <Search size={12} style={{ position: "absolute", left: 8, color: sv.inkDim, pointerEvents: "none" }} />
+            <input
+              type="search"
+              role="searchbox"
+              aria-label="Search history"
+              data-testid="history-search"
+              placeholder="Search label, title, episode, error"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              style={{
+                background: sv.bg0,
+                border: `1px solid ${sv.lineMid}`,
+                color: sv.ink,
+                fontFamily: sv.mono,
+                fontSize: 11,
+                letterSpacing: "0.06em",
+                padding: "6px 10px 6px 26px",
+                width: 280,
+                outline: "none",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = sv.cyan; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = sv.lineMid; }}
+            />
+          </div>
           <SvSelect
             value={filterType}
             onChange={(v) => { setFilterType(v); setPage(1); }}

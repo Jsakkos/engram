@@ -609,10 +609,36 @@ async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJo
     return list(result.scalars().all())
 
 
+def _history_search_clause(q: str):
+    """Case-insensitive substring match across the text a user would search by.
+
+    Covers the volume label, detected and TMDB titles, the failure text, and
+    any title's matched episode code. ``%``, ``_`` and the escape character are
+    escaped so a query like ``100%`` is literal, not a wildcard.
+    """
+    escaped = q.replace("\\", "\\\\").replace("%", "\%").replace("_", "\_")
+    pattern = f"%{escaped}%"
+    episode_hit = (
+        select(DiscTitle.id)
+        .where(
+            DiscTitle.job_id == DiscJob.id, DiscTitle.matched_episode.ilike(pattern, escape="\\")
+        )
+        .exists()
+    )
+    return or_(
+        DiscJob.volume_label.ilike(pattern, escape="\\"),
+        DiscJob.detected_title.ilike(pattern, escape="\\"),
+        DiscJob.tmdb_name.ilike(pattern, escape="\\"),
+        DiscJob.error_message.ilike(pattern, escape="\\"),
+        episode_hit,
+    )
+
+
 def _history_filters(
     state: JobState | None,
     include_all_states: bool,
     content_type: str | None,
+    q: str | None = None,
 ) -> list:
     """WHERE clauses defining the History job set.
 
@@ -629,6 +655,8 @@ def _history_filters(
         clauses.append(DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
     if content_type:
         clauses.append(DiscJob.content_type == content_type)
+    if q and q.strip():
+        clauses.append(_history_search_clause(q.strip()))
     return clauses
 
 
@@ -639,9 +667,13 @@ async def get_job_history(
     content_type: str | None = None,
     state: JobState | None = None,
     include_all_states: bool = False,
+    q: str | None = Query(None, max_length=200),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
     """Get job history with pagination and filtering.
+
+    ``q`` is a case-insensitive text search (label, titles, episode codes,
+    error text) applied before paging, so it spans every page.
 
     Defaults to finished jobs (completed/failed), which is what "history" means
     to a user. An explicit ``state`` is honoured for *any* state, and
@@ -649,7 +681,7 @@ async def get_job_history(
     history a guaranteed backstop: every job ever created is reachable from
     here, including a REVIEW_NEEDED job that has been parked for weeks.
     """
-    query = select(DiscJob).where(*_history_filters(state, include_all_states, content_type))
+    query = select(DiscJob).where(*_history_filters(state, include_all_states, content_type, q))
 
     query = (
         query.order_by(DiscJob.completed_at.desc().nulls_last(), DiscJob.created_at.desc())
@@ -667,6 +699,7 @@ async def get_job_stats(
     content_type: str | None = None,
     state: JobState | None = None,
     include_all_states: bool = False,
+    q: str | None = Query(None, max_length=200),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Get job analytics for the same job set ``/jobs/history`` would list.
@@ -674,7 +707,7 @@ async def get_job_stats(
     Takes the History filters so the summary tiles describe exactly the rows
     the table shows (see ``_history_filters``), not every job ever created.
     """
-    filters = _history_filters(state, include_all_states, content_type)
+    filters = _history_filters(state, include_all_states, content_type, q)
     all_jobs = await session.execute(select(DiscJob).where(*filters))
     jobs = list(all_jobs.scalars().all())
 

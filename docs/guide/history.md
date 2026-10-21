@@ -38,6 +38,8 @@ Two dropdown filters are available above the history table:
 - **Content type** -- filter by All Types, TV, or Movie.
 - **State** -- filter by All States, Completed, or Failed.
 
+A **search box** next to the filters matches the volume label, the detected or TMDB title, matched episode codes (for example `S02E07`) and error text, case-insensitively, across every page. The search is kept in the page URL (`/history?q=frasier`), so it can be bookmarked and survives opening a job's detail panel; clearing the box restores the full view. The stat cards follow the search too.
+
 Changing either filter resets the page back to 1. Filters are applied server-side for efficiency.
 
 ## History Table
