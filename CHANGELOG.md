@@ -28,6 +28,10 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **Reassign** in History now lists every episode of the season. The picker was built only from episodes other tracks on the disc already held, so the one episode the disc was missing, the one a mis-filed track usually is, could never be chosen. It now reads the season's episode list, with episode titles, and falls back to a full numbered range when that list can't be loaded. (#770)
+
+- An episode track is no longer filed as an extra just because it is shorter than the show's listed runtime when other tracks of the same length on the disc already matched as episodes. Some shows list a 30-minute broadcast slot while the disc's episodes run 20 minutes, so a track that matching couldn't place on the first pass was then filed under Extras next to its matched siblings. Engram now keeps matching such a track, and sends it to review if it still can't be placed. (#770)
+
 - Settings no longer throws away unsaved edits when you click outside it, and Escape now closes it. The close button, Escape and an outside click all go through one path: Settings closes at once when nothing has changed, and otherwise asks **Discard unsaved changes?** with **Keep editing** selected. The first-run setup wizard ignores Escape and outside clicks entirely. (#711)
 
 - The AI provider, API key and model fields in **Settings > Data Sharing > AI assistance** now show when either **AI-Powered Title Resolution** or **AI-Powered Episode Matching (TV)** is on. Before, a user who wanted only LLM episode matching could not reach them without also enabling title resolution. The episode-matching toggle now sits beside the title-resolution toggle, and the key hint names both features. (#546)
