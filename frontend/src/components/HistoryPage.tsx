@@ -27,7 +27,7 @@ import { FEATURES } from "../config/constants";
 import { ROUTES, historyDetailPath } from "../config/routes";
 import { SvActionButton, SvAtmosphere, SvBadge, SvBarChart, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from "../app/components/synapse";
 import BugReportModal from "./BugReportModal";
-import { ALL_JOBS_FILTER, buildHistoryQuery } from "./historyQuery";
+import { ALL_JOBS_FILTER, buildHistoryQuery, buildStatsQuery } from "./historyQuery";
 import { historyBadgeState, historyTimelineLabel } from "./historyState";
 import {
   formatBytesScaled,
@@ -1114,13 +1114,16 @@ export default function HistoryPage() {
   const perPage = 20;
 
   useEffect(() => {
-    apiFetch<Stats>("/api/jobs/stats")
+    // The tiles describe the same job set as the table, so they re-fetch
+    // whenever a filter changes.
+    const params = buildStatsQuery({ filterType, filterState });
+    apiFetch<Stats>(`/api/jobs/stats?${params}`)
       .then(setStats)
       .catch((error) => {
         console.error("Failed to load history stats:", error);
         toast.error("Failed to load history statistics.");
       });
-  }, []);
+  }, [filterType, filterState]);
 
   const fetchHistory = useCallback(() => {
     const params = buildHistoryQuery({ page, perPage, filterType, filterState });

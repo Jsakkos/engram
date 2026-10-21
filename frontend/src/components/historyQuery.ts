@@ -20,6 +20,25 @@ export interface HistoryQueryInput {
   filterState: string;
 }
 
+export type HistoryFilters = Pick<HistoryQueryInput, "filterType" | "filterState">;
+
+/** Filter parameters shared by the table and the summary tiles. */
+function filterParams({ filterType, filterState }: HistoryFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filterType) params.set("content_type", filterType);
+  if (filterState === ALL_JOBS_FILTER) {
+    params.set("include_all_states", "true");
+  } else if (filterState) {
+    params.set("state", filterState);
+  }
+  return params;
+}
+
+/** `GET /api/jobs/stats`: the tiles describe the same job set as the table. */
+export function buildStatsQuery(filters: HistoryFilters): URLSearchParams {
+  return filterParams(filters);
+}
+
 export function buildHistoryQuery({
   page,
   perPage,
@@ -30,11 +49,6 @@ export function buildHistoryQuery({
     page: String(page),
     per_page: String(perPage),
   });
-  if (filterType) params.set("content_type", filterType);
-  if (filterState === ALL_JOBS_FILTER) {
-    params.set("include_all_states", "true");
-  } else if (filterState) {
-    params.set("state", filterState);
-  }
+  filterParams({ filterType, filterState }).forEach((v, k) => params.set(k, v));
   return params;
 }

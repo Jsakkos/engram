@@ -10,14 +10,14 @@ At the top of the page, six stat cards summarize your archival activity:
 
 | Stat | Description | Color |
 |------|-------------|-------|
-| **Total Jobs** | Count of all completed and failed jobs | Cyan |
+| **Total Jobs** | Count of the jobs in the current view | Cyan |
 | **Completed** | Successfully archived jobs | Green |
 | **Failed** | Jobs that ended in error | Red |
 | **TV Shows** | Jobs classified as TV content | Amber |
 | **Movies** | Jobs classified as movie content | Magenta |
 | **Avg Time** | Average processing time across all jobs | Violet |
 
-These stats are fetched from the `GET /api/jobs/stats` endpoint and reflect the entire job history, not just the current page.
+These stats are fetched from the `GET /api/jobs/stats` endpoint and describe the same set of jobs as the table (every page, with the current filters applied), so the tiles and the rows always agree.
 
 ## Common Errors
 

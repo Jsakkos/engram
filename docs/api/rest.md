@@ -110,7 +110,7 @@ one still in progress or parked in review.
 GET /api/jobs/stats
 ```
 
-Returns aggregated analytics: total jobs, completed/failed counts, TV/movie counts, average processing time, top 5 common errors, and 10 most recent jobs.
+Takes the same `content_type`, `state` and `include_all_states` filters as the history endpoint and aggregates exactly the jobs that query would list (completed/failed by default). Returns: total jobs, completed/failed counts, TV/movie counts, average processing time, top 5 common errors, and 10 most recent jobs.
 
 ---
 
