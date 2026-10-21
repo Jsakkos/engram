@@ -2249,6 +2249,76 @@ async def update_config(config: ConfigUpdate) -> dict:
     return {"status": "updated", "persisted": True}
 
 
+async def _read_settings_body(request: Request) -> object:
+    """The JSON body of a settings-import request, size-capped (#731)."""
+    from app.services.config_transfer import MAX_IMPORT_BYTES
+
+    body = await request.body()
+    if len(body) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="The settings file is too large.")
+    try:
+        return json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(
+            status_code=400, detail="The settings file is not valid JSON."
+        ) from None
+
+
+@router.get("/config/export", dependencies=[Depends(require_localhost_or_lan)])
+async def export_settings(include_secrets: bool = False) -> JSONResponse:
+    """Download the configuration as a settings file (#731).
+
+    Keys and passwords are left out unless ``include_secrets`` is set. The flag
+    is the only thing in the URL; secret values travel in the body alone.
+    """
+    from app.services.config_transfer import build_export
+
+    data = await build_export(include_secrets)
+    suffix = "-with-keys" if include_secrets else ""
+    filename = f"engram-settings-{datetime.now(UTC):%Y-%m-%d}{suffix}.json"
+    return JSONResponse(
+        data,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post("/config/import/preview", dependencies=[Depends(require_localhost_or_lan)])
+async def preview_settings_import(request: Request) -> dict:
+    """Show what importing a settings file would change, field by field. Writes nothing."""
+    from app.services.config_transfer import SettingsFileError, preview_import
+
+    data = await _read_settings_body(request)
+    try:
+        return await preview_import(data)
+    except SettingsFileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.post("/config/import/apply", dependencies=[Depends(require_localhost_or_lan)])
+async def apply_settings_import(request: Request) -> dict:
+    """Apply the chosen keys of a settings file: ``{"file": {...}, "keys": [...]}``.
+
+    Stateless: the client re-sends the file it previewed, and every selected key
+    is validated again. Any bad key refuses the whole request and writes nothing.
+    """
+    from app.services.config_transfer import ImportRejected, SettingsFileError, apply_import
+
+    body = await _read_settings_body(request)
+    keys = body.get("keys") if isinstance(body, dict) else None
+    if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+        raise HTTPException(status_code=400, detail="keys must be a list of setting names.")
+    try:
+        applied = await apply_import(body.get("file"), keys)
+    except SettingsFileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except ImportRejected as exc:
+        raise HTTPException(status_code=422, detail={"errors": exc.errors}) from None
+    return {"applied": applied}
+
+
 @router.get("/parked-discs")
 async def get_parked_discs() -> dict:
     """Discs detected while first-run setup was incomplete (pipeline parked).
