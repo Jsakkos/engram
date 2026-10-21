@@ -10,6 +10,8 @@ export interface AmendTitleModalProps {
   seasonEpisodes: number[];
   /** Episode titles keyed by episode number, from the season roster when it loaded. */
   episodeNames?: Record<number, string>;
+  /** True while the season roster is still loading: the list may still change. */
+  episodesLoading?: boolean;
   hasUploadedFingerprint?: boolean;
   onSubmit: (target: { kind: AmendKind; episode_code?: string }) => Promise<void>;
   onClose: () => void;
@@ -20,6 +22,7 @@ export function AmendTitleModal({
   season,
   seasonEpisodes,
   episodeNames,
+  episodesLoading,
   hasUploadedFingerprint,
   onSubmit,
   onClose,
@@ -212,6 +215,8 @@ export function AmendTitleModal({
                         <SvLabel size={10}>Episode</SvLabel>
                         <select
                           aria-label="Episode"
+                          disabled={episodesLoading}
+                          aria-busy={episodesLoading || undefined}
                           value={episode ?? ""}
                           onChange={(e) => setEpisode(Number(e.target.value))}
                           style={{

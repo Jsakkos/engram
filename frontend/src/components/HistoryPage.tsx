@@ -436,7 +436,7 @@ function JobDetailPanel({
   const effectiveAmendSeason =
     detail?.detected_season ?? (matchedSeason ? parseInt(matchedSeason[1], 10) : 1);
   // The reassign picker offers the whole season (#770); fetched only while it's open.
-  const { roster: amendRoster } = useSeasonRoster(
+  const { roster: amendRoster, loading: amendRosterLoading } = useSeasonRoster(
     amendTarget && detail ? String(detail.id) : undefined,
     effectiveAmendSeason,
   );
@@ -913,6 +913,7 @@ function JobDetailPanel({
           season={effectiveAmendSeason}
           seasonEpisodes={amendOptions.map((o) => o.episode)}
           episodeNames={Object.fromEntries(amendOptions.map((o) => [o.episode, o.name]))}
+          episodesLoading={amendRosterLoading}
           onSubmit={async (target) => {
             await amendTitle(detail.id, amendTarget.titleId, target);
             onRefreshDetail();

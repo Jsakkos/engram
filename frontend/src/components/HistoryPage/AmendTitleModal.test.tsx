@@ -54,4 +54,18 @@ describe("AmendTitleModal", () => {
     expect(screen.getByRole("option", { name: /S01E07 — Pilot Name/ })).toBeTruthy();
     expect(screen.getByRole("option", { name: /S01E08 — Episode 8/ })).toBeTruthy();
   });
+
+  it("disables the episode select while the season roster is still loading", () => {
+    render(
+      <AmendTitleModal
+        title={{ id: 1, matchedEpisode: "extra", titleIndex: 0 }}
+        season={1}
+        seasonEpisodes={[1, 2]}
+        episodesLoading
+        onSubmit={vi.fn()}
+        onClose={() => {}}
+      />,
+    );
+    expect((screen.getByLabelText("Episode") as HTMLSelectElement).disabled).toBe(true);
+  });
 });
