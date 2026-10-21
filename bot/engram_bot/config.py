@@ -61,6 +61,7 @@ class Settings:
         "README.md",
         "docs/index.md",
         "docs/troubleshooting.md",
+        "docs/getting-help.md",
         "docs/getting-started/*.md",
         "docs/guide/*.md",
         "docs/deployment/*.md",
