@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
 import { EngramSelect } from './ui/EngramSelect';
 import { SvActionButton } from '../app/components/synapse/SvActionButton';
+import { ConfirmModal } from '../app/components/DiscCard/ActionButtons';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
 import SettingsTransferSection from './SettingsTransferSection';
@@ -306,6 +307,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         discordMentionReview: '',
         dashboardBaseUrl: '',
     });
+    // The config as loaded from the server (plus tool auto-detection fills). Dirty
+    // state is the form compared against this, so editing a field back to its
+    // original value is clean again and merely opening a section is not an edit.
+    const [baseline, setBaseline] = useState<ConfigData | null>(null);
+    const [confirmingDiscard, setConfirmingDiscard] = useState(false);
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string; review: string; ripped: string}>({completed: '', failed: '', review: '', ripped: ''});
@@ -373,6 +379,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         }
     }, [config.allowLanAccess, fetchNetworkInfo]);
 
+    // Either AI feature uses the one provider/key/model below, so the connection
+    // fields show when at least one of them is on (#546).
+    const aiProviderNeeded = config.aiIdentificationEnabled || config.aiEpisodeMatchingEnabled;
+
     // Populate the model dropdown whenever a local provider or its endpoint
     // changes. The fetch doubles as a reachability check, which is why the local
     // path does not need a separate Test button to tell the user their server is
@@ -385,7 +395,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // `cancelled` flag then guards the state update for a reply that lands after
     // the inputs changed again.
     useEffect(() => {
-        if (!config.aiIdentificationEnabled || !isLocalProvider(config.aiProvider)) {
+        if (!aiProviderNeeded || !isLocalProvider(config.aiProvider)) {
             setLocalModels({models: [], error: null});
             return;
         }
@@ -400,7 +410,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [config.aiIdentificationEnabled, config.aiProvider, config.aiLocalBaseUrl]);
+    }, [aiProviderNeeded, config.aiProvider, config.aiLocalBaseUrl]);
 
     // Load existing config on mount
     useEffect(() => {
@@ -422,7 +432,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 });
                 setTvdbConfigured(data.tvdb_configured === true);
                 // Note: API keys are redacted as "***" for security
-                setConfig({
+                const loaded: ConfigData = {
                     stagingPath: data.staging_path || '',
                     makemkvPath: data.makemkv_path || '',
                     makemkvKey: data.makemkv_key === '***' ? '' : (data.makemkv_key || ''),
@@ -487,7 +497,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     discordNotifyRipped: data.discord_notify_ripped ?? false,
                     discordMentionReview: data.discord_mention_review || '',
                     dashboardBaseUrl: data.dashboard_base_url || '',
-                });
+                };
+                setConfig(loaded);
+                setBaseline(loaded);
             } catch (error) {
                 console.error('Failed to load config:', error);
             } finally {
@@ -580,11 +592,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             setToolDetection(data);
 
             // Update config paths from detection if currently empty
+            // Detection fills are not user edits, so they move the baseline too.
+            // Otherwise merely visiting the Tools section would arm the discard prompt.
+            const fillDetected = (field: 'makemkvPath' | 'ffmpegPath', path: string) => {
+                setConfig(prev => (prev[field] ? prev : { ...prev, [field]: path }));
+                setBaseline(prev => (prev && !prev[field] ? { ...prev, [field]: path } : prev));
+            };
             if (data.makemkv.found && data.makemkv.path && !config.makemkvPath) {
-                setConfig(prev => ({ ...prev, makemkvPath: data.makemkv.path! }));
+                fillDetected('makemkvPath', data.makemkv.path);
             }
             if (data.ffmpeg.found && data.ffmpeg.path && !config.ffmpegPath) {
-                setConfig(prev => ({ ...prev, ffmpegPath: data.ffmpeg.path! }));
+                fillDetected('ffmpegPath', data.ffmpeg.path);
             }
         } catch (error) {
             console.error('Tool detection failed:', error);
@@ -634,6 +652,40 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             handleSave();
         }
     };
+
+    const isDirty = baseline !== null && JSON.stringify(config) !== JSON.stringify(baseline);
+
+    // The one close path. The close button, Escape and a backdrop click all land
+    // here: clean closes at once, dirty asks first. Keep further close affordances
+    // routed through this rather than calling onClose directly.
+    const requestClose = () => {
+        if (isDirty) {
+            setConfirmingDiscard(true);
+        } else {
+            onClose();
+        }
+    };
+
+    // Escape and outside clicks are the accidental gestures. The first-run wizard
+    // is a required flow, so they do nothing there; its close button is the only
+    // way out and still goes through requestClose.
+    const requestDismiss = () => {
+        if (!isOnboarding) requestClose();
+    };
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            // A nested layer (open Radix select, discard prompt, library flow)
+            // owns this Escape.
+            if (e.key !== 'Escape' || e.defaultPrevented) return;
+            if (confirmingDiscard || showBootstrapFlow) return;
+            requestDismiss();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    // requestDismiss closes over isDirty/isOnboarding/onClose; re-bind when they change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [confirmingDiscard, showBootstrapFlow, isDirty, isOnboarding, onClose]);
 
     const handleBack = () => {
         if (step > 1) {
@@ -1452,13 +1504,29 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 <span className="checkbox-text">
                                     <strong>AI-Powered Title Resolution</strong>
                                     <span className="checkbox-hint">
-                                        When TMDB lookup fails (obscure titles, abbreviations), use an LLM to identify the disc. Requires an API key below.
+                                        When TMDB lookup fails (obscure titles, abbreviations), use an LLM to identify the disc. Uses the provider and API key below.
                                     </span>
                                 </span>
                             </label>
                         </div>
 
-                        {config.aiIdentificationEnabled && (
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.aiEpisodeMatchingEnabled}
+                                    onChange={(e) => handleInputChange('aiEpisodeMatchingEnabled', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>AI-Powered Episode Matching (TV)</strong>
+                                    <span className="checkbox-hint">
+                                        When episode matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {aiProviderNeeded && (
                             <>
                                 <div className="wizard-grid">
                                 <div className="form-group">
@@ -1504,7 +1572,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         }}
                                     />
                                     <span className="form-hint">
-                                        API key for {providerLabel}. Used only when TMDB lookup fails.
+                                        API key for {providerLabel}. Used by title resolution (when TMDB lookup fails) and by episode matching.
                                     </span>
                                 </div>
                                 )}
@@ -1610,21 +1678,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         </span>
                                     </div>
                                 )}
-                                </div>
-                                <div className="form-group checkbox-group">
-                                    <label className="checkbox-label">
-                                        <input
-                                            type="checkbox"
-                                            checked={config.aiEpisodeMatchingEnabled}
-                                            onChange={(e) => handleInputChange('aiEpisodeMatchingEnabled', e.target.checked)}
-                                        />
-                                        <span className="checkbox-text">
-                                            <strong>AI-Powered Episode Matching (TV)</strong>
-                                            <span className="checkbox-hint">
-                                                When episode matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
-                                            </span>
-                                        </span>
-                                    </label>
                                 </div>
                             </>
                         )}
@@ -2532,13 +2585,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
 
     return (
         <>
-        <div className="wizard-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+        <div className="wizard-overlay" onClick={requestDismiss} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
             <div className="wizard-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2 className="modal-title" id="wizard-title">{isOnboarding ? 'Setup Wizard' : 'Settings'}</h2>
                     <button
                         className="modal-close"
-                        onClick={onClose}
+                        onClick={requestClose}
                         aria-label={isOnboarding ? 'Close setup wizard' : 'Close settings'}
                     >
                         &times;
@@ -2610,6 +2663,21 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 </div>
             </div>
         </div>
+
+        {confirmingDiscard && (
+            <ConfirmModal
+                titleId="discard-changes-title"
+                title="Discard unsaved changes?"
+                body={isOnboarding
+                    ? 'Closing setup now throws away what you have entered so far.'
+                    : 'You have edits that have not been saved. Closing Settings will throw them away.'}
+                confirmLabel="Discard"
+                dismissLabel="Keep editing"
+                zIndex={1100}
+                onConfirm={onClose}
+                onDismiss={() => setConfirmingDiscard(false)}
+            />
+        )}
 
         {showBootstrapFlow && (
             <BootstrapLibraryFlow onClose={() => setShowBootstrapFlow(false)} />
