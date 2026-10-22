@@ -4,13 +4,16 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob and similar) are filed under the TMDB segments each disc track holds, such as `S02E11-E12`, instead of under a number that named an unrelated episode. The shared subtitle pack numbers these seasons by broadcast half-hour while TMDB lists every segment separately, so Hey Arnold! S2 Disc 2 was filed as `S02E06` to `S02E10` when it holds `S02E11-E12`, `S02E13`, `S02E14-E15`, `S02E16-E17` and `S02E18-E19`. The subtitle pack now records which segments each half-hour holds, and Engram files tracks by that. A season the pack cannot yet map is held for review with an explanation instead of being filed under the wrong number. Full effect needs the next nightly subtitle-pack update. (#760)
+
 ## [0.42.1] - 2026-10-22
 
 _Highlights: fixes for movie bonus discs (the wrong track filed as the movie, deleted titles still offered, a new **File all as extras** action) and for TV episodes misfiled as extras when TMDB lists the wrong runtime._
 
 ### Fixed
 
-- Segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob and similar) are filed under the TMDB segments each disc track holds, such as `S02E11-E12`, instead of under a number that named an unrelated episode. The shared subtitle pack numbers these seasons by broadcast half-hour while TMDB lists every segment separately, so Hey Arnold! S2 Disc 2 was filed as `S02E06` to `S02E10` when it holds `S02E11-E12`, `S02E13`, `S02E14-E15`, `S02E16-E17` and `S02E18-E19`. The subtitle pack now records which segments each half-hour holds, and Engram files tracks by that. A season the pack cannot yet map is held for review with an explanation instead of being filed under the wrong number. Full effect needs the next nightly subtitle-pack update. (#760)
 - A movie disc whose tracks run about the same length could file a bonus track as the movie and the real pick into `Extras/`. The organizer took the biggest file in staging rather than the title Engram had chosen, and recorded every unmatched title at the movie's path, so a track still flagged as an extra showed as filed there. It now files exactly the chosen title. Choosing a bonus track with **Select** on the review page also clears its extra flag, so the job's record matches what was filed. (#814, thanks @katelovescode!)
 
 - The movie review page no longer offers **Select** on titles whose files were deleted when another title was selected. With nothing left to pick it says so, instead of asking for one of several feature-length titles, and the server refuses such a selection rather than trying to re-rip a disc that has left the drive. (#812, thanks @katelovescode!)
