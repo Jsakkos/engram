@@ -79,13 +79,13 @@ def require_debug() -> None:
         raise HTTPException(status_code=403, detail="Only available in debug mode")
 
 
-def require_trusted_host(
-    request: Request,
-    detail: str = (
-        "This action is only allowed when the dashboard is opened by IP address or as localhost."
-    ),
-) -> None:
-    """403 unless the Host header names this machine in a way DNS rebinding can't.
+_TRUSTED_HOST_DETAIL = (
+    "This action is only allowed when the dashboard is opened by IP address or as localhost."
+)
+
+
+def check_trusted_host(request: Request, detail: str = _TRUSTED_HOST_DETAIL) -> None:
+    """403 with ``detail`` unless the Host header names this machine in a way DNS rebinding can't.
 
     A rebinding page reaches the loopback API under the attacker's own host name,
     so it is same-origin to itself and a custom header does not stop it. Only
@@ -104,6 +104,15 @@ def require_trusted_host(
     except ValueError:
         pass
     raise HTTPException(status_code=403, detail=detail)
+
+
+def require_trusted_host(request: Request) -> None:
+    """FastAPI dependency form of ``check_trusted_host``.
+
+    Parameterless on purpose: a ``detail`` argument on a dependency would be
+    exposed as a query parameter, letting callers set the 403 text.
+    """
+    check_trusted_host(request)
 
 
 def require_custom_header(request: Request) -> None:

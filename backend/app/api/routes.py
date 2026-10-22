@@ -34,6 +34,7 @@ from sqlmodel import select
 # config_models so config_transfer can use them without an import cycle.
 from app.api.config_models import ConfigUpdate, validate_config_update  # noqa: F401
 from app.api.guards import (
+    check_trusted_host,
     require_custom_header,
     require_debug,
     require_localhost,
@@ -2139,7 +2140,7 @@ def _require_trusted_host(request: Request) -> None:
     No configured host name is trusted: ``dashboard_base_url`` is writable by the
     same rebinding page through ``PUT /api/config``, so it cannot vouch.
     """
-    require_trusted_host(
+    check_trusted_host(
         request,
         "Exporting keys and passwords is only allowed when the dashboard is opened "
         "by IP address or as localhost. Open it that way, or export without keys.",
@@ -5533,9 +5534,18 @@ async def restart_backend(background_tasks: BackgroundTasks):
     except UpdateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    def _do_restart() -> None:
+    async def _do_restart() -> None:
         try:
+            # Re-check: a disc inserted since the guard above would start makemkvcon,
+            # which the exec/exit below would orphan.
+            await update_checker._check_no_active_jobs()
+            from app.services.job_manager import job_manager
+
+            # Stop the drive sentinel and background tasks first, as shutdown does.
+            await job_manager.stop()
             restart_now()
+        except UpdateError:
+            logger.warning("Restart cancelled: a disc operation started meanwhile")
         except Exception as exc:  # noqa: BLE001 - nothing to return to by now
             logger.error(f"Restart failed: {exc}", exc_info=True)
 
