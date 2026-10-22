@@ -8,6 +8,8 @@ All notable changes to Engram will be documented in this file.
 
 - A **Test login** button next to the OpenSubtitles fields, in setup and in Settings. It logs in with the entered (or saved) credentials and says which part failed: the username or password, the API key, a rate limit or a used-up daily quota, or no connection. On success it shows how many downloads are left today. The password and key are never echoed back or logged. (#723)
 
+- Settings that only apply after a restart now say so. After saving one (concurrent matches, GPU acceleration, staging cleanup, the stuck-job watchdog, LAN access), Settings offers **Restart now** on the packaged build, relaunching Engram and reconnecting the dashboard. The button is disabled with a reason while a disc operation is running, and a source or Docker run gets instructions instead. The GPU acceleration control offers it too once the GPU is enabled. Engram never restarts without that click. (#722)
+
 ## [0.42.1] - 2026-10-22
 
 _Highlights: fixes for movie bonus discs (the wrong track filed as the movie, deleted titles still offered, a new **File all as extras** action) and for TV episodes misfiled as extras when TMDB lists the wrong runtime._

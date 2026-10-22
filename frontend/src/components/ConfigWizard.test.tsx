@@ -866,6 +866,91 @@ describe('ConfigWizard: settings export/import (#731)', () => {
     });
 });
 
+describe('ConfigWizard: restart prompt (#722)', () => {
+    const PUT_NEEDS_RESTART = {
+        status: 'updated',
+        restart_required: ['max_concurrent_matches'],
+        restart_required_labels: ['Concurrent matches'],
+    };
+
+    async function saveInSettings() {
+        const onComplete = vi.fn();
+        render(<ConfigWizard {...noop} onComplete={onComplete} isOnboarding={false} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+        return onComplete;
+    }
+
+    const restartPosts = () =>
+        (fetch as unknown as Mock).mock.calls.filter(
+            (c) => c[1]?.method === 'POST' && String(c[0]).endsWith('/api/restart'),
+        );
+
+    it('offers Restart now instead of closing when a startup-only setting changed', async () => {
+        mockApi({}, { putResponse: PUT_NEEDS_RESTART });
+        const onComplete = await saveInSettings();
+
+        const prompt = await screen.findByTestId('restart-prompt');
+        expect(prompt).toHaveTextContent('Concurrent matches');
+        expect(await screen.findByRole('button', { name: 'Restart now' })).toBeEnabled();
+        expect(onComplete).not.toHaveBeenCalled();
+        // Never restarts on its own: no POST until the user clicks.
+        expect(restartPosts()).toHaveLength(0);
+    });
+
+    it('Later closes the settings without restarting', async () => {
+        mockApi({}, { putResponse: PUT_NEEDS_RESTART });
+        const onComplete = await saveInSettings();
+        await screen.findByRole('button', { name: 'Restart now' });
+        fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+        expect(onComplete).toHaveBeenCalled();
+        expect(restartPosts()).toHaveLength(0);
+    });
+
+    it('disables Restart now with a reason while a job is active', async () => {
+        mockApi(
+            {},
+            {
+                putResponse: PUT_NEEDS_RESTART,
+                restartStatus: { mode: 'packaged', can_restart: true, hint: '', active_jobs: true },
+            },
+        );
+        await saveInSettings();
+        expect(await screen.findByRole('button', { name: 'Restart now' })).toBeDisabled();
+        expect(screen.getByText(/disc operation is in progress/i)).toBeInTheDocument();
+    });
+
+    it('shows instructions, not a button, on a source or Docker run', async () => {
+        mockApi(
+            {},
+            {
+                putResponse: PUT_NEEDS_RESTART,
+                restartStatus: {
+                    mode: 'source',
+                    can_restart: false,
+                    hint: 'Stop and start the backend (uvicorn) to apply this.',
+                    active_jobs: false,
+                },
+            },
+        );
+        await saveInSettings();
+        expect(await screen.findByTestId('restart-instructions')).toHaveTextContent('Stop and start');
+        expect(screen.queryByRole('button', { name: 'Restart now' })).not.toBeInTheDocument();
+    });
+
+    it('closes as before when nothing needing a restart changed', async () => {
+        const onComplete = await saveInSettings();
+        await waitFor(() => expect(onComplete).toHaveBeenCalled());
+        expect(screen.queryByTestId('restart-prompt')).not.toBeInTheDocument();
+    });
+
+    it('POSTs /api/restart only when Restart now is clicked', async () => {
+        mockApi({}, { putResponse: PUT_NEEDS_RESTART });
+        await saveInSettings();
+        fireEvent.click(await screen.findByRole('button', { name: 'Restart now' }));
+        await waitFor(() => expect(restartPosts()).toHaveLength(1));
+    });
+});
+
 describe('ConfigWizard: OpenSubtitles login test (#723)', () => {
     async function openSubtitlesSection() {
         render(<ConfigWizard {...noop} isOnboarding={false} />);

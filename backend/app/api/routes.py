@@ -33,7 +33,13 @@ from sqlmodel import select
 # Re-exported: tests and callers import these from routes. They live in
 # config_models so config_transfer can use them without an import cycle.
 from app.api.config_models import ConfigUpdate, validate_config_update  # noqa: F401
-from app.api.guards import require_debug, require_localhost, require_localhost_or_lan
+from app.api.guards import (
+    require_custom_header,
+    require_debug,
+    require_localhost,
+    require_localhost_or_lan,
+    require_trusted_host,
+)
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.episode_codes import parse_episode_code
@@ -43,6 +49,12 @@ from app.core.media_formats import (
     is_importable_video,
     list_video_files,
     media_type_for,
+)
+from app.core.restarter import (
+    RESTART_REQUIRED_FIELDS,
+    changed_restart_fields,
+    restart_now,
+    restart_support,
 )
 from app.core.security import (
     is_allowed_image_url,
@@ -2061,6 +2073,12 @@ async def update_config(config: ConfigUpdate) -> dict:
 
     update_data = await validate_config_update(update_data)
 
+    # Which startup-only settings this save actually changes (#722), read before
+    # the write so "changed" means changed, not merely present in the payload.
+    from app.services.config_service import get_config
+
+    restart_required = changed_restart_fields(await get_config(), update_data)
+
     # Keep the disclosure-acceptance timestamp consistent with the flag,
     # server-side: stamp it on accept, clear it on explicit revoke.
     if "fingerprint_disclosure_accepted" in update_data:
@@ -2082,7 +2100,12 @@ async def update_config(config: ConfigUpdate) -> dict:
 
         await job_manager.resume_parked_discs()
 
-    return {"status": "updated", "persisted": True}
+    return {
+        "status": "updated",
+        "persisted": True,
+        "restart_required": restart_required,
+        "restart_required_labels": [RESTART_REQUIRED_FIELDS[f] for f in restart_required],
+    }
 
 
 async def _read_settings_body(request: Request) -> object:
@@ -2116,23 +2139,10 @@ def _require_trusted_host(request: Request) -> None:
     No configured host name is trusted: ``dashboard_base_url`` is writable by the
     same rebinding page through ``PUT /api/config``, so it cannot vouch.
     """
-    import ipaddress
-    from urllib.parse import urlsplit
-
-    host = (urlsplit(f"//{request.headers.get('host', '')}").hostname or "").lower()
-    if host == "localhost" or host.endswith(".localhost"):
-        return
-    try:
-        ipaddress.ip_address(host)
-        return
-    except ValueError:
-        pass
-    raise HTTPException(
-        status_code=403,
-        detail=(
-            "Exporting keys and passwords is only allowed when the dashboard is opened "
-            "by IP address or as localhost. Open it that way, or export without keys."
-        ),
+    require_trusted_host(
+        request,
+        "Exporting keys and passwords is only allowed when the dashboard is opened "
+        "by IP address or as localhost. Open it that way, or export without keys.",
     )
 
 
@@ -5481,6 +5491,55 @@ async def skip_update_version(body: SkipVersionRequest):
         await update_checker.skip_version(body.version)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.get("/restart/status", dependencies=[Depends(require_localhost_or_lan)])
+async def restart_status() -> dict:
+    """Whether Engram can restart itself, and whether a job is in the way (#722)."""
+    support = restart_support()
+    try:
+        await update_checker._check_no_active_jobs()
+        active = False
+    except UpdateError:
+        active = True
+    return {
+        "mode": support.mode,
+        "can_restart": support.can_restart,
+        "hint": support.hint,
+        "active_jobs": active,
+    }
+
+
+@router.post(
+    "/restart",
+    dependencies=[
+        Depends(require_localhost_or_lan),
+        Depends(require_custom_header),
+        Depends(require_trusted_host),
+    ],
+)
+async def restart_backend(background_tasks: BackgroundTasks):
+    """Relaunch a packaged build so startup-only settings apply (#722).
+
+    Same guards as ``/updates/restart``: packaged builds only, and never while a
+    disc operation is running. The relaunch runs after the response is sent.
+    """
+    support = restart_support()
+    if not support.can_restart:
+        raise HTTPException(status_code=400, detail=support.hint)
+    try:
+        await update_checker._check_no_active_jobs()
+    except UpdateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    def _do_restart() -> None:
+        try:
+            restart_now()
+        except Exception as exc:  # noqa: BLE001 - nothing to return to by now
+            logger.error(f"Restart failed: {exc}", exc_info=True)
+
+    background_tasks.add_task(_do_restart)
     return {"ok": True}
 
 

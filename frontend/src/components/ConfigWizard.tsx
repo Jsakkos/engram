@@ -12,6 +12,7 @@ import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { PathStatusHint } from './PathStatusHint';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
 import { requestAiValidation } from '../utils/aiValidation';
+import RestartControls from './RestartControls';
 import { requestOpenSubtitlesValidation } from '../utils/opensubtitlesValidation';
 import { fetchLocalModels, isLocalProvider, localProviderDefaultUrl } from '../utils/localModels';
 import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
@@ -332,6 +333,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     const [aiValidation, setAiValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string, model?: string}>({status: 'idle'});
     // OpenSubtitles login test (#723). Same invalid-vs-error split as the AI test.
     const [osValidation, setOsValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', message?: string}>({status: 'idle'});
+    // Set after a save that changed a startup-only setting (#722); the backend
+    // names them in the PUT response, so no list of such settings lives here.
+    const [restartPrompt, setRestartPrompt] = useState<string[] | null>(null);
     const [localModels, setLocalModels] = useState<{models: string[]; error: string | null}>({
         models: [],
         error: null,
@@ -794,7 +798,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 throw new Error(`Failed to save config: ${response.status} ${errorText}`);
             }
 
-            await response.json();
+            const saved = await response.json().catch(() => ({}));
+            const restartLabels: string[] = Array.isArray(saved?.restart_required_labels)
+                ? saved.restart_required_labels
+                : [];
+            // First-run setup has no running jobs worth protecting and the app is
+            // about to start fresh anyway; only Settings offers the restart.
+            if (!isOnboarding && restartLabels.length > 0) {
+                setBaseline(config);
+                setRestartPrompt(restartLabels);
+                return;
+            }
             onComplete();
         } catch (error) {
             console.error('Failed to save config:', error);
@@ -2683,6 +2697,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     </div>
                 )}
 
+                {restartPrompt && (
+                    <div className="restart-prompt" role="alert" data-testid="restart-prompt">
+                        <strong>Restart to apply</strong>
+                        <p>
+                            Saved. {restartPrompt.join(', ')} only {restartPrompt.length === 1 ? 'takes' : 'take'} effect
+                            after Engram restarts.
+                        </p>
+                        <RestartControls onLater={onComplete} />
+                    </div>
+                )}
+
                 <div className="wizard-actions">
                     {step > 1 && isOnboarding && (
                         <button className="btn-secondary" onClick={handleBack}>
@@ -2697,6 +2722,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed || !!discordTemplateErrors.review || !!discordTemplateErrors.ripped}
                         >
                             {step === totalSteps ? (isSaving ? 'Saving...' : 'Complete Setup') : 'Next →'}
+                        </button>
+                    ) : restartPrompt ? (
+                        <button className="btn-primary" onClick={onComplete}>
+                            Done
                         </button>
                     ) : (
                         <button

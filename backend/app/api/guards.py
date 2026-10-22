@@ -79,6 +79,46 @@ def require_debug() -> None:
         raise HTTPException(status_code=403, detail="Only available in debug mode")
 
 
+def require_trusted_host(
+    request: Request,
+    detail: str = (
+        "This action is only allowed when the dashboard is opened by IP address or as localhost."
+    ),
+) -> None:
+    """403 unless the Host header names this machine in a way DNS rebinding can't.
+
+    A rebinding page reaches the loopback API under the attacker's own host name,
+    so it is same-origin to itself and a custom header does not stop it. Only
+    loopback names and IP literals (what LAN users type) are accepted; no
+    configured host name is trusted, because ``dashboard_base_url`` is writable by
+    the same page through ``PUT /api/config``.
+    """
+    from urllib.parse import urlsplit
+
+    host = (urlsplit(f"//{request.headers.get('host', '')}").hostname or "").lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        return
+    try:
+        ipaddress.ip_address(host)
+        return
+    except ValueError:
+        pass
+    raise HTTPException(status_code=403, detail=detail)
+
+
+def require_custom_header(request: Request) -> None:
+    """FastAPI dependency: 403 unless the request carries ``X-Engram-Request``.
+
+    A custom header makes a cross-origin call non-simple, so a browser must
+    preflight it and the CORS allowlist (the dev origin only) refuses. Without
+    it, any web page the user visits could fire a plain cross-site form POST at
+    ``localhost`` and trigger a disruptive host-level action such as a restart.
+    The dashboard sets the header; it is not a credential and carries no secret.
+    """
+    if not request.headers.get("x-engram-request"):
+        raise HTTPException(status_code=403, detail="Missing X-Engram-Request header")
+
+
 async def require_localhost_or_lan(request: Request) -> None:
     """FastAPI dependency: allow loopback always, LAN peers only when opted in.
 
