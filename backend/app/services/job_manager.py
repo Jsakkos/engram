@@ -4392,11 +4392,18 @@ class JobManager:
             )
             # None for library mode, which covers every disc rip.
             _lib_path = _library_path_for_job(job, "movie")
+            # The organizer files exactly the title chosen above. Left to its folder
+            # scan it takes the LARGEST MKV, which on a disc of similar-length
+            # tracks is not the one the feature pick (by duration/runtime) chose,
+            # so the feature went to Extras/ and an extra became the movie (#814).
+            # The folder stays the fallback for a title with no file on record.
             _main_file: Path | None = None
+            if _selected and _selected.output_filename:
+                _candidate = Path(_selected.output_filename)
+                if import_files or _candidate.exists():
+                    _main_file = _candidate
             _extra_files: list[Path] | None = None
             if import_files:
-                if _selected and _selected.output_filename:
-                    _main_file = Path(_selected.output_filename)
                 _extra_files = [
                     Path(t.output_filename)
                     for t in ripped_titles
@@ -4409,7 +4416,7 @@ class JobManager:
         if _lib_path is None and not import_files:
             organize_result = await asyncio.to_thread(
                 movie_organizer.organize,
-                output_dir,
+                _main_file or output_dir,
                 volume_label,
                 detected_title,
                 _tmdb_year,
@@ -4503,8 +4510,10 @@ class JobManager:
                         if output_basename and output_basename in extras_mapping:
                             t.organized_to = str(extras_mapping[output_basename])
                             t.is_extra = True
-                        else:
+                        elif _selected_id is None or t.id == _selected_id:
                             t.organized_to = str(organize_result.get("main_file") or "")
+                        # Anything else was not moved: it must not be recorded as
+                        # having been filed at the feature's path (#814).
                         session.add(t)
                         await ws_manager.broadcast_title_update(
                             job_id,

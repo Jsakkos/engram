@@ -1801,6 +1801,14 @@ class FinalizationCoordinator:
 
                     else:
                         # File exists — Post-Rip workflow
+                        # Select makes this title the feature. One the rip-end pick
+                        # had tagged as an extra stops being one, or it is filed as
+                        # the movie while its row still says is_extra (#814).
+                        statement = select(DiscTitle).where(DiscTitle.job_id == job_id)
+                        for t in (await session.execute(statement)).scalars().all():
+                            t.is_selected = t.id == title.id
+                            session.add(t)
+                        title.is_extra = False
                         job.state = JobState.ORGANIZING
                         await session.commit()
                         await self._broadcaster.broadcast_job_state_changed(job_id, job.state)
