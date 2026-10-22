@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.42.1] - 2026-10-22
+
+_Highlights: fixes for movie bonus discs (the wrong track filed as the movie, deleted titles still offered, a new **File all as extras** action) and for TV episodes misfiled as extras when TMDB lists the wrong runtime._
+
 ### Fixed
 
 - A movie disc whose tracks run about the same length could file a bonus track as the movie and the real pick into `Extras/`. The organizer took the biggest file in staging rather than the title Engram had chosen, and recorded every unmatched title at the movie's path, so a track still flagged as an extra showed as filed there. It now files exactly the chosen title. Choosing a bonus track with **Select** on the review page also clears its extra flag, so the job's record matches what was filed. (#814, thanks @katelovescode!)
