@@ -4,6 +4,7 @@ The shape behind all three reports: a disc identified as the movie (same TMDB id
 that carries only bonus content, longest title ~47 min against a ~152 min film.
 """
 
+import asyncio
 import importlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -335,9 +336,9 @@ class TestOrganizeMovieExtras:
 
         assert result["success"] is True
         assert (extras_dir / "Extra 1.mkv").read_bytes() == b"from the movie disc"
-        assert result["extras_mapping"] == {
-            "BONUS_t00.mkv": extras_dir / "Extra 2.mkv",
-            "BONUS_t04.mkv": extras_dir / "Extra 3.mkv",
+        assert result["moved"] == {
+            str(staged[0]): extras_dir / "Extra 2.mkv",
+            str(staged[1]): extras_dir / "Extra 3.mkv",
         }
         assert all((extras_dir / n).exists() for n in ("Extra 2.mkv", "Extra 3.mkv"))
         assert result["extras_dir"] == extras_dir
@@ -421,3 +422,76 @@ class TestFileMovieAsExtras:
         with pytest.raises(ValueError, match="Nothing"):
             await _make_coord().file_movie_as_extras(job_id)
         assert (await _job(job_id)).state == JobState.REVIEW_NEEDED
+
+    async def test_two_concurrent_requests_file_once(self, tmp_path, cfg):
+        """A double POST must not file the same titles twice (Extra 1-2, then 3-4)."""
+        job_id, _ = await _seed(
+            tmp_path,
+            state=JobState.REVIEW_NEEDED,
+            specs=[
+                (0, 46.0, 3000, TitleState.MATCHED, False, True),
+                (4, 46.7, 2000, TitleState.MATCHED, False, True),
+            ],
+        )
+        library = tmp_path / "lib"
+        coord = _make_coord()
+
+        with _library_cfg(library):
+            results = await asyncio.gather(
+                coord.file_movie_as_extras(job_id),
+                coord.file_movie_as_extras(job_id),
+                return_exceptions=True,
+            )
+
+        assert sorted(r for r in results if isinstance(r, int)) == [2]
+        assert sum(isinstance(r, ValueError) for r in results) == 1
+        extras = sorted(p.name for p in (library / "The Dark Knight (2008)" / "Extras").iterdir())
+        assert extras == ["Extra 1.mkv", "Extra 2.mkv"]
+
+    async def test_an_organizer_crash_fails_the_job_instead_of_stranding_it(
+        self, tmp_path, monkeypatch, cfg
+    ):
+        job_id, _ = await _seed(
+            tmp_path,
+            state=JobState.REVIEW_NEEDED,
+            specs=[(0, 46.0, 3000, TitleState.MATCHED, False, True)],
+        )
+
+        def boom(*_a, **_k):
+            raise RuntimeError("config unreadable")
+
+        monkeypatch.setattr(organizer_module, "organize_movie_extras", boom)
+
+        await _make_coord().file_movie_as_extras(job_id)
+
+        job = await _job(job_id)
+        assert job.state == JobState.FAILED
+        assert "config unreadable" in job.error_message
+
+    async def test_a_partial_failure_records_what_was_moved(self, tmp_path, monkeypatch, cfg):
+        job_id, ids = await _seed(
+            tmp_path,
+            state=JobState.REVIEW_NEEDED,
+            specs=[
+                (0, 46.0, 3000, TitleState.MATCHED, False, True),
+                (4, 46.7, 2000, TitleState.MATCHED, False, True),
+            ],
+        )
+        real_move = organizer_module.move_media_file
+
+        def move(src, dest, **kw):
+            if src.name == "BONUS_t04.mkv":
+                raise OSError("disk full")
+            return real_move(src, dest, **kw)
+
+        monkeypatch.setattr(organizer_module, "move_media_file", move)
+
+        with _library_cfg(tmp_path / "lib"):
+            count = await _make_coord().file_movie_as_extras(job_id)
+
+        assert count == 1
+        moved, stuck = await _titles(ids)
+        assert moved.state == TitleState.COMPLETED and moved.organized_to
+        assert stuck.state != TitleState.COMPLETED and stuck.organized_to is None
+        job = await _job(job_id)
+        assert job.state == JobState.FAILED and "disk full" in job.error_message

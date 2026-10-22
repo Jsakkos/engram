@@ -544,6 +544,8 @@ class FinalizationCoordinator:
     ) -> None:
         self._broadcaster = event_broadcaster
         self._state_machine = state_machine
+        # One "file as extras" per job at a time (see file_movie_as_extras).
+        self._file_as_extras_locks: dict[int, asyncio.Lock] = {}
 
         # Cross-coordinator callbacks (set by JobManager)
         self._run_ripping: callable = None
@@ -2039,7 +2041,16 @@ class FinalizationCoordinator:
         Raises ValueError when the job is not a movie awaiting review or nothing
         is left to file.
         """
-        from app.core.organizer import organize_movie_extras
+        # Held for the whole action, and the session opened inside it, so a second
+        # request (a double click, a retried POST) reads the state the first one
+        # left instead of passing the REVIEW_NEEDED check alongside it and filing
+        # the same titles again past the first run's Extra N.
+        lock = self._file_as_extras_locks.setdefault(job_id, asyncio.Lock())
+        async with lock:
+            return await self._file_movie_as_extras_locked(job_id)
+
+    async def _file_movie_as_extras_locked(self, job_id: int) -> int:
+        from app.core import organizer
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -2068,23 +2079,28 @@ class FinalizationCoordinator:
             _tmdb_id = job.tmdb_id
             _lib_path = _library_path_for_job(job, "movie")
             files = [Path(t.output_filename) for t in titles]
-            job.state = JobState.ORGANIZING
-            await session.commit()
-            await self._broadcaster.broadcast_job_state_changed(job_id, job.state)
+            if not await self._state_machine.transition_to_organizing(job, session):
+                raise ValueError("Only a movie job awaiting review can be filed as extras")
 
-            result = await asyncio.to_thread(
-                organize_movie_extras,
-                files,
-                final_title,
-                _tmdb_year,
-                _lib_path,
-                tmdb_id=_tmdb_id,
-                already_clean=_already_clean,
-            )
+            try:
+                result = await asyncio.to_thread(
+                    organizer.organize_movie_extras,
+                    files,
+                    final_title,
+                    _tmdb_year,
+                    _lib_path,
+                    tmdb_id=_tmdb_id,
+                    already_clean=_already_clean,
+                )
+            except Exception as e:
+                # Anything outside the organizer's own guarded move (reading the
+                # naming config, say) must not leave the job stranded in ORGANIZING.
+                logger.error(f"Filing movie extras crashed: {e}", exc_info=True)
+                result = {"success": False, "extras_dir": None, "moved": {}, "error": str(e)}
 
-            mapping = result.get("extras_mapping") or {}
+            moved = result.get("moved") or {}
             for t in titles:
-                dest = mapping.get(Path(t.output_filename).name)
+                dest = moved.get(str(Path(t.output_filename)))
                 if dest is None:
                     continue
                 t.state = TitleState.COMPLETED
@@ -2108,14 +2124,14 @@ class FinalizationCoordinator:
                     job, session, error_message=result["error"]
                 )
                 logger.error(f"Failed to file movie extras: {result['error']}")
-                return len(mapping)
+                return len(moved)
 
             job.final_path = str(result["extras_dir"])
             job.progress_percent = 100.0
             job.error_message = None
             await self._state_machine.transition_to_completed(job, session)
-            logger.info(f"Filed {len(mapping)} title(s) as extras in {result['extras_dir']}")
-            return len(mapping)
+            logger.info(f"Filed {len(moved)} title(s) as extras in {result['extras_dir']}")
+            return len(moved)
 
     @staticmethod
     def _apply_decision_fields(

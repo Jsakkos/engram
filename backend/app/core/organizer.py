@@ -583,33 +583,30 @@ def organize_movie_extras(
     film whether or not it is in the library yet.
 
     Returns:
-        dict with 'success', 'extras_dir', 'extras_mapping', 'error' keys. On a
-        failed move, 'extras_mapping' still lists the files already moved.
+        dict with 'success', 'extras_dir', 'moved', 'error' keys. 'moved' maps each
+        source path (``str``, the full path: an import can hold two files of the same
+        name in different folders) to its destination. On a failed move it still
+        lists the files already moved.
     """
     from app.services.config_service import get_config_sync
 
     library_path, error = _movie_library_root(library_path)
     if error:
-        return {"success": False, "extras_dir": None, "extras_mapping": {}, "error": error}
+        return {"success": False, "extras_dir": None, "moved": {}, "error": error}
 
     clean_name = movie_name if already_clean else clean_movie_name(movie_name)
     folder_name = format_movie_folder(
         get_config_sync().naming_movie_format, clean_name, year, tmdb_id
     )
     extras_dir = library_path / folder_name / "Extras"
-    mapping: dict[str, Path] = {}
+    moved: dict[str, Path] = {}
     try:
         for f in files:
-            mapping.update(_move_extras([f], extras_dir))
+            moved[str(f)] = _move_extras([f], extras_dir)[f.name]
     except Exception as e:
         logger.exception("Error filing movie extras")
-        return {
-            "success": False,
-            "extras_dir": extras_dir,
-            "extras_mapping": mapping,
-            "error": str(e),
-        }
-    return {"success": True, "extras_dir": extras_dir, "extras_mapping": mapping, "error": None}
+        return {"success": False, "extras_dir": extras_dir, "moved": moved, "error": str(e)}
+    return {"success": True, "extras_dir": extras_dir, "moved": moved, "error": None}
 
 
 def organize_movie(

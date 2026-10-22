@@ -40,6 +40,7 @@ class JobStateMachine:
             JobState.BACKING_UP,  # Answered a pre-rip prompt with backup enabled
             JobState.RIPPING,
             JobState.MATCHING,  # Re-match with corrected metadata (post-rip)
+            JobState.ORGANIZING,  # Review answered by filing (movie "file as extras")
             JobState.COMPLETED,
             JobState.FAILED,
         },
