@@ -224,6 +224,13 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   `Extras/` and reporting success. "Nothing here is an episode" is far more often a failed
   match than a genuine bonus disc, and the mis-file is invisible until someone browses the
   library. Independent of `always_review` — this is the floor, not the override.
+- **Movie bonus discs are held too (#813).** `select_movie_main_feature` returns
+  `no_feature` (review, nothing tagged as an extra) when even the longest title is far
+  short of the TMDB runtime, instead of filing a featurette as the movie. The review's
+  way out is `POST /api/jobs/{id}/review/file-as-extras` (`file_movie_as_extras`), which
+  files every kept title under `Movies/Name (Year)/Extras/`. The organizer files exactly
+  the title the job selected (never "the largest MKV"), and extras numbering continues
+  past ones already in the folder (`_move_extras`), so a second disc never overwrites.
 - **Episode codes are multi-episode capable**: `app/core/episode_codes.py` owns parsing and
   canonicalization. One track can hold several TMDB episodes (`S01E01-E03`) — real for
   segment-format shows, where TMDB numbers ~7min segments and the DVD carries the assembled

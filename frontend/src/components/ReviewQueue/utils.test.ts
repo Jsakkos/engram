@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { DiscTitle } from '../../types';
-import { buildInitialSelections, isHeldMovieExtra, movieReviewNotice, movieReviewTitles } from './utils';
+import { buildInitialSelections, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles } from './utils';
 
 describe('movie extras in review (#773)', () => {
     const title = (id: number, state: DiscTitle['state'], is_extra: boolean): DiscTitle =>
@@ -44,6 +44,18 @@ describe('movie review after a Select deleted the other rips (#812)', () => {
         expect(movieReviewNotice([removed(1), removed(2)])).toBe('nothing_selectable');
         // Held extras are kept or discarded, never selected as the feature.
         expect(movieReviewNotice([title(1, 'review', true), removed(2)])).toBe('nothing_selectable');
+    });
+
+    it('counts what "file all as extras" would file, as the server does (#813)', () => {
+        const kept = movieExtrasOnlyTitles([
+            title(1, 'review', false, JSON.stringify({ error: 'file_exists' })),
+            title(2, 'matched', true),
+            removed(3),
+            { ...title(4, 'failed', true), matched_episode: 'skip' },
+            title(5, 'completed', true),
+            title(6, 'failed', false),
+        ]);
+        expect(kept.map((t) => t.id)).toEqual([1, 2]);
     });
 
     it('keeps the existing notices when there is still a choice', () => {

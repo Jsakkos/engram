@@ -2026,6 +2026,97 @@ class FinalizationCoordinator:
             # TV: organize everything once all titles are resolved.
             await self._finalize_tv_if_resolved(session, job)
 
+    async def file_movie_as_extras(self, job_id: int) -> int:
+        """File every kept title of a movie job under the movie's ``Extras/``.
+
+        The review's answer for a disc with no feature on it, typically a bonus
+        disc that identified as the film (#813): every other movie action names
+        one title the feature. Kept means still holding a rip the reviewer did not
+        discard: discarded titles, rips an earlier Select deleted, and extras the
+        skip policy already settled stay as they are. The movie's own file is
+        never touched. Returns how many titles were filed.
+
+        Raises ValueError when the job is not a movie awaiting review or nothing
+        is left to file.
+        """
+        from app.core.organizer import organize_movie_extras
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError("Job not found")
+            if job.content_type != ContentType.MOVIE or job.state != JobState.REVIEW_NEEDED:
+                raise ValueError("Only a movie job awaiting review can be filed as extras")
+
+            statement = (
+                select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
+            )
+            titles = [
+                t
+                for t in (await session.execute(statement)).scalars().all()
+                if t.state not in (TitleState.FAILED, TitleState.SKIPPED, TitleState.COMPLETED)
+                and t.matched_episode != "skip"
+                and t.output_filename
+                and Path(t.output_filename).exists()
+            ]
+            if not titles:
+                raise ValueError("Nothing is left to file as extras")
+
+            final_title = job.detected_title or job.volume_label
+            _already_clean = bool(job.tmdb_name) and final_title == job.tmdb_name
+            _tmdb_year = job.tmdb_year
+            _tmdb_id = job.tmdb_id
+            _lib_path = _library_path_for_job(job, "movie")
+            files = [Path(t.output_filename) for t in titles]
+            job.state = JobState.ORGANIZING
+            await session.commit()
+            await self._broadcaster.broadcast_job_state_changed(job_id, job.state)
+
+            result = await asyncio.to_thread(
+                organize_movie_extras,
+                files,
+                final_title,
+                _tmdb_year,
+                _lib_path,
+                tmdb_id=_tmdb_id,
+                already_clean=_already_clean,
+            )
+
+            mapping = result.get("extras_mapping") or {}
+            for t in titles:
+                dest = mapping.get(Path(t.output_filename).name)
+                if dest is None:
+                    continue
+                t.state = TitleState.COMPLETED
+                t.is_extra = True
+                t.is_selected = False
+                t.organized_from = Path(t.output_filename).name
+                t.organized_to = str(dest)
+                t.match_details = _clear_file_exists(t.match_details)
+                session.add(t)
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    t.id,
+                    t.state.value,
+                    organized_from=t.organized_from,
+                    organized_to=t.organized_to,
+                    is_extra=True,
+                )
+
+            if not result["success"]:
+                await self._state_machine.transition_to_failed(
+                    job, session, error_message=result["error"]
+                )
+                logger.error(f"Failed to file movie extras: {result['error']}")
+                return len(mapping)
+
+            job.final_path = str(result["extras_dir"])
+            job.progress_percent = 100.0
+            job.error_message = None
+            await self._state_machine.transition_to_completed(job, session)
+            logger.info(f"Filed {len(mapping)} title(s) as extras in {result['extras_dir']}")
+            return len(mapping)
+
     @staticmethod
     def _apply_decision_fields(
         title: DiscTitle,

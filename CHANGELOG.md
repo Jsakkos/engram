@@ -10,6 +10,8 @@ All notable changes to Engram will be documented in this file.
 
 - The movie review page no longer offers **Select** on titles whose files were deleted when another title was selected. With nothing left to pick it says so, instead of asking for one of several feature-length titles, and the server refuses such a selection rather than trying to re-rip a disc that has left the drive. (#812, thanks @katelovescode!)
 
+- A bonus disc that identifies as the movie itself can now be finished. When even its longest title is far shorter than the movie's runtime, Engram holds the disc for review instead of filing a featurette as the film, and the movie review page has a new **File all as extras** action that files every title you kept into the movie's `Extras/` folder and completes the job. Extras added this way (or from a second movie disc) are numbered after the ones already there instead of replacing them. (#813, thanks @katelovescode!)
+
 ## [0.42.0] - 2026-10-21
 
 _Highlights: settings export and import, a database backup before every upgrade, History search, review-page shortcuts, a minimum title length setting, and fixes for mounted ISOs, the Windows updater, movie extras and non-English discs._

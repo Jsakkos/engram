@@ -2583,6 +2583,12 @@ class JobManager:
                 job_id, title_id, episode_code, edition, conflict_resolution=conflict_resolution
             )
 
+    async def file_movie_as_extras(self, job_id: int) -> int:
+        """File a movie job's kept titles under the movie's Extras/ (#813)."""
+        with job_log_context(job_id):  # see apply_review (#563)
+            await self._prewarmer.cancel_and_wait(job_id)
+            return await self._finalization.file_movie_as_extras(job_id)
+
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
         """Apply several review decisions for a job in one atomic pass."""
         with job_log_context(job_id):  # see apply_review (#563)

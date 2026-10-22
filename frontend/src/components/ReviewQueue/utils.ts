@@ -100,6 +100,15 @@ export function movieReviewTitles(titles: DiscTitle[]): DiscTitle[] {
     );
 }
 
+/**
+ * The titles "file all as extras" would file (#813): every listed title still
+ * holding a rip. Mirrors the server's filter in
+ * `FinalizationCoordinator.file_movie_as_extras`.
+ */
+export function movieExtrasOnlyTitles(titles: DiscTitle[]): DiscTitle[] {
+    return movieReviewTitles(titles).filter((t) => t.state !== 'failed' && t.state !== 'completed');
+}
+
 export type MovieReviewNotice = 'conflict' | 'nothing_selectable' | 'held_extras' | 'pick_version';
 
 /**

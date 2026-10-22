@@ -5,7 +5,8 @@ import { Save, Package, Keyboard } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, isHeldMovieExtra, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
+import { MovieExtrasOnlyAction } from './ReviewQueue/MovieExtrasOnlyAction';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
@@ -32,16 +33,17 @@ import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/Movi
 import { PlayerControls } from './ReviewQueue/PlayerControls';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
 
-/** Uppercase mono caption styling, reused for metadata rows. */
+/** Heading notice of the movie review, by `movieReviewNotice`. */
 const MOVIE_REVIEW_NOTICE_TEXT: Record<MovieReviewNotice, string> = {
     conflict: '› THIS MOVIE IS ALREADY IN THE LIBRARY. REPLACE IT, KEEP BOTH, OR DISCARD THIS RIP.',
     nothing_selectable:
-        '› NO TITLE IS LEFT TO SELECT AS THE FEATURE. CANCEL THIS JOB FROM THE DASHBOARD.',
+        '› NO TITLE IS LEFT TO SELECT AS THE FEATURE. FILE THE REST AS EXTRAS, OR CANCEL THIS JOB FROM THE DASHBOARD.',
     held_extras:
         '› BONUS TRACKS FOUND. DISCARD ANY YOU DON’T WANT, THEN SELECT THE FEATURE. THE REST GO TO EXTRAS.',
     pick_version: '› MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.',
 };
 
+/** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
     fontFamily: sv.mono,
     fontSize: 11,
@@ -674,6 +676,27 @@ function ReviewQueue() {
         }
     };
 
+    // A disc with no feature on it (#813): file every kept title under the
+    // movie's Extras/ and finish the job.
+    const handleFileAsExtras = async () => {
+        setIsSaving(true);
+        setError(null);
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/review/file-as-extras`, { method: 'POST' });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Filing as extras failed: ${response.status} ${text}`);
+            }
+            navigate('/');
+        } catch (err) {
+            console.error('Failed to file movie as extras:', err);
+            setError(err instanceof Error ? err.message : 'Failed to file as extras');
+            await fetchJobDetails();
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const handleSaveMovie = async (
         titleId: number,
         matchAction: 'save' | 'skip',
@@ -946,8 +969,24 @@ function ReviewQueue() {
                 >
                     {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
                     <SvNotice tone="warn">
-                        {MOVIE_REVIEW_NOTICE_TEXT[movieReviewNotice(titles)]}
+                        {(() => {
+                            const notice = movieReviewNotice(titles);
+                            // The backend's reason says why it asked for a pick,
+                            // e.g. that no title is long enough to be the movie
+                            // (#813); the generic text is the fallback.
+                            return notice === 'pick_version' && job.review_reason
+                                ? `› ${job.review_reason.toUpperCase()}`
+                                : MOVIE_REVIEW_NOTICE_TEXT[notice];
+                        })()}
                     </SvNotice>
+                    {movieExtrasOnlyTitles(titles).length > 0 && (
+                        <MovieExtrasOnlyAction
+                            count={movieExtrasOnlyTitles(titles).length}
+                            movieName={job.detected_title || job.volume_label}
+                            disabled={isSaving}
+                            onConfirm={handleFileAsExtras}
+                        />
+                    )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {movieReviewTitles(titles).map(title => (
