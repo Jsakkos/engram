@@ -995,3 +995,56 @@ describe('ConfigWizard: OpenSubtitles login test (#723)', () => {
         expect(screen.queryByText(/rejected the API key/)).not.toBeInTheDocument();
     });
 });
+
+describe('ConfigWizard: first-run Preferences step (#726)', () => {
+    async function goToPreferences() {
+        mockApi({ tmdb_api_key: '***' });
+        render(<ConfigWizard {...noop} isOnboarding={true} />);
+        for (const heading of ['Tools & License', 'TMDB Read Access Token', 'Data Sharing', 'Preferences']) {
+            fireEvent.click(await screen.findByRole('button', { name: /^Next/ }));
+            await screen.findByRole('heading', { level: 3, name: heading });
+        }
+    }
+
+    it('asks only the library-dependent choices and points to Settings for the rest', async () => {
+        await goToPreferences();
+
+        expect(screen.getByText(/recommended defaults/i)).toBeInTheDocument();
+        expect(screen.getByLabelText('Naming Convention')).toBeInTheDocument();
+        expect(screen.getByLabelText('Extras Handling')).toBeInTheDocument();
+        // The tuning knobs are not asked on first run...
+        expect(screen.queryByText('Max Concurrent Matches')).not.toBeInTheDocument();
+        expect(screen.queryByText('GPU Acceleration')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Maintenance & watchdog/)).not.toBeInTheDocument();
+        expect(screen.queryByText('Minimum Title Length (seconds)')).not.toBeInTheDocument();
+    });
+
+    it('still sends every default unchanged when setup completes', async () => {
+        await goToPreferences();
+        fireEvent.click(screen.getByRole('button', { name: 'Complete Setup' }));
+        await waitFor(() => expect(noop.onComplete).toHaveBeenCalled());
+        const put = (fetch as unknown as Mock).mock.calls.find((c) => c[1]?.method === 'PUT');
+        const body = JSON.parse(put![1].body);
+        expect(body).toMatchObject({
+            max_concurrent_matches: 2,
+            enable_background_pretranscription: true,
+            pretranscribe_full_file: false,
+            conflict_resolution_default: 'ask',
+            episode_ordering_preference: 'aired',
+            staging_cleanup_policy: 'on_success',
+            extras_policy: 'keep',
+            watchdog_enabled: true,
+            always_review: false,
+            naming_season_format: 'Season {season:02d}',
+            naming_episode_format: '{show} - S{season:02d}E{episode:02d}',
+        });
+    });
+
+    it('keeps every one of those options reachable in Settings', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+        expect(await screen.findByText('Max Concurrent Matches')).toBeInTheDocument();
+        expect(screen.getByLabelText('Extras Handling')).toBeInTheDocument();
+        expect(screen.getByLabelText('Naming Convention')).toBeInTheDocument();
+        expect(screen.getByText(/Maintenance & watchdog/)).toBeInTheDocument();
+    });
+});

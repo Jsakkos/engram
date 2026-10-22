@@ -1163,3 +1163,19 @@
     margin: 0;
     font-size: 0.9rem;
 }
+
+/* First-run Preferences (#726): two choices and a sentence, sized to fit the
+   wizard body at 1366x768 without scrolling. The body already pads 2rem, so the
+   step adds none and drops the 400px minimum height. */
+.wizard-step-compact {
+    padding: 0;
+    min-height: 0;
+}
+
+.wizard-step-compact .step-description {
+    margin-bottom: 1rem;
+}
+
+.wizard-step-compact .form-group {
+    margin-bottom: 1rem;
+}

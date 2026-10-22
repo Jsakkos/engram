@@ -1023,6 +1023,58 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         );
     };
 
+    // Shared by the first-run Preferences step and the full Settings group, so the
+    // two cannot drift. These are the only Preferences choices that depend on the
+    // user's library rather than on tuning (#726).
+    const extrasPolicyField = (
+        <div className="form-group">
+            <label htmlFor="extrasPolicy">Extras Handling</label>
+            <EngramSelect
+                id="extrasPolicy"
+                value={config.extrasPolicy}
+                onValueChange={(v) => handleInputChange('extrasPolicy', v)}
+                options={[
+                    { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
+                    { value: 'skip', label: 'Skip extras (don\'t rip bonus tracks, discard any that slip through)' },
+                    { value: 'ask', label: 'Ask me (show in Review Queue)' },
+                ]}
+            />
+            <span className="form-hint">
+                How to handle bonus content: TV tracks that match no episode runtime, and
+                movie titles that aren&apos;t the main feature. A movie&apos;s feature-length
+                cuts are always ripped.
+            </span>
+        </div>
+    );
+
+    const namingConventionField = (
+        <div className="form-group">
+            <label htmlFor="namingConvention">Naming Convention</label>
+            <EngramSelect
+                id="namingConvention"
+                value={namingSelection}
+                onValueChange={(v) => {
+                    const preset = NAMING_PRESETS.find((p) => p.id === v);
+                    setCustomNamingChosen(!preset);
+                    if (preset) {
+                        handleInputChange('namingSeasonFormat', preset.seasonFormat);
+                        handleInputChange('namingEpisodeFormat', preset.episodeFormat);
+                    }
+                }}
+                options={[
+                    { value: 'plex', label: 'Plex (Season 01 / Show - S01E01)' },
+                    { value: 'kodi', label: 'Kodi (Season 1 / Show - S01E01)' },
+                    { value: 'minimal', label: 'Minimal (S01 / Show - S01E01)' },
+                    // Custom formats are edited further down in Settings, not on first run.
+                    ...(isOnboarding ? [] : [{ value: 'custom', label: 'Custom' }]),
+                ]}
+            />
+            <span className="form-hint">
+                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
+            </span>
+        </div>
+    );
+
     const renderStepContent = () => {
         switch (step) {
             case 1:
@@ -1839,6 +1891,23 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             }
 
             case 5:
+                if (isOnboarding) {
+                    // First run: the tuning knobs keep their recommended defaults and stay
+                    // reachable in Settings > Preferences. Only the two choices that depend
+                    // on how the user organizes their library are asked here (#726).
+                    return (
+                        <div className="wizard-step wizard-step-compact">
+                            <h3 className="step-title">Preferences</h3>
+                            <p className="step-description">
+                                Engram will use recommended defaults for everything else. You can change
+                                any of it later in Settings, under Preferences.
+                            </p>
+
+                            {namingConventionField}
+                            {extrasPolicyField}
+                        </div>
+                    );
+                }
                 return (
                     <div className="wizard-step">
                         <h3 className="step-title">Preferences</h3>
@@ -2124,49 +2193,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             </span>
                         </div>
 
-                        <div className="form-group">
-                            <label htmlFor="extrasPolicy">Extras Handling</label>
-                            <EngramSelect
-                                id="extrasPolicy"
-                                value={config.extrasPolicy}
-                                onValueChange={(v) => handleInputChange('extrasPolicy', v)}
-                                options={[
-                                    { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
-                                    { value: 'skip', label: 'Skip extras (don\'t rip bonus tracks, discard any that slip through)' },
-                                    { value: 'ask', label: 'Ask me (show in Review Queue)' },
-                                ]}
-                            />
-                            <span className="form-hint">
-                                How to handle bonus content: TV tracks that match no episode runtime, and
-                                movie titles that aren&apos;t the main feature. A movie&apos;s feature-length
-                                cuts are always ripped.
-                            </span>
-                        </div>
+                        {extrasPolicyField}
 
-                        <div className="form-group">
-                            <label htmlFor="namingConvention">Naming Convention</label>
-                            <EngramSelect
-                                id="namingConvention"
-                                value={namingSelection}
-                                onValueChange={(v) => {
-                                    const preset = NAMING_PRESETS.find((p) => p.id === v);
-                                    setCustomNamingChosen(!preset);
-                                    if (preset) {
-                                        handleInputChange('namingSeasonFormat', preset.seasonFormat);
-                                        handleInputChange('namingEpisodeFormat', preset.episodeFormat);
-                                    }
-                                }}
-                                options={[
-                                    { value: 'plex', label: 'Plex (Season 01 / Show - S01E01)' },
-                                    { value: 'kodi', label: 'Kodi (Season 1 / Show - S01E01)' },
-                                    { value: 'minimal', label: 'Minimal (S01 / Show - S01E01)' },
-                                    { value: 'custom', label: 'Custom' },
-                                ]}
-                            />
-                            <span className="form-hint">
-                                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
-                            </span>
-                        </div>
+                        {namingConventionField}
 
                         <div className="form-group">
                             <label htmlFor="namingTvShowFormat">Show Folder Format</label>

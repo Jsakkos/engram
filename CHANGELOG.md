@@ -10,6 +10,10 @@ All notable changes to Engram will be documented in this file.
 
 - Settings that only apply after a restart now say so. After saving one (concurrent matches, GPU acceleration, staging cleanup, the stuck-job watchdog, LAN access), Settings offers **Restart now** on the packaged build, relaunching Engram and reconnecting the dashboard. The button is disabled with a reason while a disc operation is running, and a source or Docker run gets instructions instead. The GPU acceleration control offers it too once the GPU is enabled. Engram never restarts without that click. (#722)
 
+### Changed
+
+- The first-run **Preferences** step is now short. It asks only how to name your library and how to handle extras, and says the rest uses recommended defaults, changeable later in Settings. It fits on one screen without scrolling at 1366x768. Every other option (matching, cleanup, watchdog, notifications and the rest) is still in Settings, under Preferences, and no default value changed. The setup summary of paths and keys moved out of this step; Settings still shows it. (#726)
+
 ## [0.42.1] - 2026-10-22
 
 _Highlights: fixes for movie bonus discs (the wrong track filed as the movie, deleted titles still offered, a new **File all as extras** action) and for TV episodes misfiled as extras when TMDB lists the wrong runtime._
