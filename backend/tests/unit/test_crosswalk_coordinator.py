@@ -44,11 +44,19 @@ class TestCrosswalkExplainsTheHint:
         assert title.state == TitleState.MATCHED
         assert "error" not in json.loads(title.match_details)
 
-    def test_crosswalked_code_with_wrong_part_count_still_parks(self):
+    def test_crosswalked_code_shorter_than_the_hint_still_parks(self):
+        # The track runs longer than the half-hour its code covers.
         title = _title("S01E01-E02", numbering_crosswalk=True)
         assert _apply_multi_episode_review(title, conjoined_hint=3) is True
         assert title.state == TitleState.REVIEW
         assert json.loads(title.match_details)["error"] == MULTI_EPISODE_ERROR_CODE
+
+    def test_hint_is_a_lower_bound_so_more_parts_explain_it(self):
+        # Dexter's Laboratory: a 22-minute track against 7-minute segments gets
+        # the smallest fitting hint (2), while its half-hour holds 3 segments.
+        title = _title("S01E01-E03", numbering_crosswalk=True)
+        assert _apply_multi_episode_review(title, conjoined_hint=2) is False
+        assert title.state == TitleState.MATCHED
 
     def test_combined_code_without_crosswalk_still_parks(self):
         title = _title("S01E01-E03")
@@ -90,7 +98,13 @@ class TestDivergentWithoutCrosswalkIsHeld:
     """
 
     def _divergent(self, matched="S02E06", state=TitleState.MATCHED, **details):
-        title = _title(matched, numbering_scheme="divergent", pack_roster_size=37, **details)
+        title = _title(
+            matched,
+            numbering_scheme="divergent",
+            numbering_segmented=True,
+            pack_roster_size=37,
+            **details,
+        )
         title.state = state
         return title
 
@@ -138,5 +152,40 @@ class TestDivergentWithoutCrosswalkIsHeld:
         assert _route_unconfirmable_title(title, None) is None
         assert json.loads(title.match_details)["error"] == "file_exists"
 
+    def test_incomplete_ordinary_season_is_not_parked(self):
+        # divergent without segmented: a pack merely missing episodes of an
+        # ordinary season. Its codes are TMDB coordinates; holding them would
+        # bury every disc of the season in review.
+        title = _title("S02E06", numbering_scheme="divergent", pack_roster_size=37)
+        assert _route_unconfirmable_title(title, None) is None
+        assert title.state == TitleState.MATCHED
+
+    def test_held_match_is_not_contributed(self):
+        details = {
+            "numbering_scheme": "divergent",
+            "numbering_segmented": True,
+            "multi_episode": {"is_multi_episode": False},
+        }
+        assert _may_contribute_fingerprint("S02E06", None, details) is False
+
+    def test_incomplete_ordinary_season_match_is_contributed(self):
+        details = {"numbering_scheme": "divergent", "multi_episode": {"is_multi_episode": False}}
+        assert _may_contribute_fingerprint("S02E06", None, details) is True
+
     def test_numbering_divergent_is_not_rematchable(self):
         assert NUMBERING_DIVERGENT_ERROR_CODE in _NON_REMATCHABLE_REVIEW_ERRORS
+
+
+@pytest.mark.unit
+def test_confirmed_multi_verdict_in_untranslated_segmented_season_keeps_the_notice():
+    # The multi-episode routing takes the error slot first, so its message must
+    # carry the numbering warning too: the pre-filled codes are half-hour numbers.
+    title = _title(
+        "S02E06",
+        numbering_scheme="divergent",
+        numbering_segmented=True,
+        multi_episode={"is_multi_episode": True, "codes": ["S02E06", "S02E07"]},
+    )
+    assert _route_unconfirmable_title(title, None) == MULTI_EPISODE_ERROR_CODE
+    message = json.loads(title.match_details)["message"]
+    assert "numbered differently from TMDB" in message

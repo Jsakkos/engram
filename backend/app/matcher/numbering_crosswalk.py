@@ -42,6 +42,11 @@ MIN_TITLE_CHARS = 4
 # treated as several broadcasts aired back to back (Hey Arnold! S3 E30-E33).
 GROUP_SPLIT_TOLERANCE = 0.25
 
+# A segment is a short. TMDB lists Hey Arnold! segments at 11 minutes and
+# Dexter's Laboratory's at 7; a sitcom aired two a night is still 22-minute
+# broadcasts, not segments.
+SEGMENT_MAX_MINUTES = 15
+
 SOURCE_RELEASE_TITLE = "release_title"
 SOURCE_AIR_DATE_GAP = "air_date_gap"
 SOURCE_UNMAPPED = "unmapped"
@@ -119,6 +124,27 @@ def broadcast_groups(roster: list[RosterEpisode]) -> list[list[int]]:
     return groups
 
 
+def is_segmented_season(roster: list[RosterEpisode]) -> bool:
+    """Whether TMDB catalogues this season as segments aired in shared half-hours.
+
+    The pack's ``divergent`` marker only says the subtitle corpus and the roster
+    disagree on how many episodes the season holds. That is also true of an
+    ordinary season the pack is merely missing a few episodes of, and treating
+    such a season as half-hour numbered (no gap healing, a review hold, a
+    structure-derived crosswalk) would mis-file it. A season counts as
+    segmented only when TMDB's own roster says so: most broadcast groups hold
+    two or more episodes, and those episodes are segment-length.
+    """
+    groups = broadcast_groups(roster)
+    if len(groups) < 2:
+        return False
+    shared = sum(1 for g in groups if len(g) >= 2)
+    runtimes = [e.runtime for e in roster if e.runtime]
+    if not runtimes or len(runtimes) < len(roster) / 2:
+        return False
+    return shared * 2 >= len(groups) and statistics.median(runtimes) <= SEGMENT_MAX_MINUTES
+
+
 def _titles_named(release: str, titles: list[tuple[int, str]]) -> frozenset[int]:
     """TMDB episode numbers whose titles appear in ``release`` after its SxxEyy marker.
 
@@ -169,11 +195,14 @@ def _anchors(
             continue
         anchors[number] = (indices[0], indices[-1])
 
+    # Every pair, not just neighbours: with anchors 1->E5, 2->E6, 3->E1, 4->E2 the
+    # neighbour check flags only (2, 3) and keeps 1->E5 and 4->E2, still inverted.
     ordered = sorted(anchors)
     bad: set[int] = set()
-    for earlier, later in zip(ordered, ordered[1:], strict=False):
-        if anchors[later][0] <= anchors[earlier][1]:
-            bad.update((earlier, later))
+    for i, earlier in enumerate(ordered):
+        for later in ordered[i + 1 :]:
+            if anchors[later][0] <= anchors[earlier][1]:
+                bad.update((earlier, later))
     return {n: span for n, span in anchors.items() if n not in bad}
 
 
@@ -227,6 +256,21 @@ def derive_crosswalk(
         mapping[corpus[number]] = format_episode_code(season, episodes)
         sources[source] += 1
     return Crosswalk(mapping=mapping, sources=sources)
+
+
+def is_segmented_marker(marker: dict | None) -> bool:
+    """True when a season marker says the corpus is half-hour numbered segments.
+
+    The single runtime test for "no gap healing, no scraped-SRT grafting, hold an
+    untranslated match for review". It needs the builder's ``segmented`` flag, not
+    just ``divergent``: a pack merely missing episodes of an ordinary season is
+    also ``divergent``, and its codes are real TMDB coordinates.
+    """
+    return (
+        isinstance(marker, dict)
+        and marker.get("scheme") == SCHEME_DIVERGENT
+        and marker.get("segmented") is True
+    )
 
 
 def crosswalk_applies(marker: dict | None) -> bool:

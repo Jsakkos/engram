@@ -152,6 +152,7 @@ class TestSeasonCrosswalk:
             entry = bsc._season_numbering_entry(tmdb_id=537, season=2, codes=codes)
         assert entry["scheme"] == SCHEME_DIVERGENT
         assert entry["roster_size"] == 37
+        assert entry["segmented"] is True
         assert entry["crosswalk"]["S02E06"] == "S02E11-E12"
         assert "S02E19" not in entry["crosswalk"]
         assert entry["crosswalk_sources"] == {
@@ -201,7 +202,7 @@ class TestSeasonCrosswalk:
         assert len(entry["crosswalk"]) == 13
         assert entry["crosswalk"]["S01E13"] == "S01E36-E38"
 
-    def test_release_lookup_exception_does_not_abort(self, bsc):
+    def test_release_lookup_exception_falls_back_to_structure(self, bsc):
         codes, roster, _releases = _fixture("dexters_lab_s1")
         with (
             patch.object(bsc, "fetch_season_details", return_value=38),
@@ -209,7 +210,25 @@ class TestSeasonCrosswalk:
             patch.object(bsc, "season_release_titles", side_effect=RuntimeError("quota")),
         ):
             entry = bsc._season_numbering_entry(tmdb_id=4229, season=1, codes=codes)
-        assert entry == {"scheme": SCHEME_DIVERGENT, "roster_size": 38}
+        assert entry["segmented"] is True
+        assert len(entry["crosswalk"]) == 13
+
+    def test_unsegmented_divergent_season_gets_no_crosswalk_and_no_lookup(self, bsc):
+        # An ordinary drama the pack is merely missing E13 of, with a same-day
+        # two-part premiere: structure alone would shift every track by one.
+        roster = [
+            RosterEpisode(1, "Pilot Part One", "2010-01-01", 62),
+            RosterEpisode(2, "Pilot Part Two", "2010-01-01", 44),
+        ] + [RosterEpisode(n, f"Episode {n}", f"2010-01-{n:02d}", 44) for n in range(3, 14)]
+        codes = [f"S01E{n:02d}" for n in range(1, 13)]
+        with (
+            patch.object(bsc, "fetch_season_details", return_value=13),
+            patch.object(bsc, "_season_roster", return_value=roster),
+            patch.object(bsc, "season_release_titles") as mock_lookup,
+        ):
+            entry = bsc._season_numbering_entry(tmdb_id=1, season=1, codes=codes)
+        assert entry == {"scheme": SCHEME_DIVERGENT, "roster_size": 13}
+        mock_lookup.assert_not_called()
 
     def test_roster_exception_does_not_abort(self, bsc):
         with (
@@ -275,6 +294,35 @@ class TestSeasonReleaseTitles:
         assert calls == [
             {"parent_tmdb_id": "537", "season_number": 2, "languages": "en", "type": "episode"}
         ]
+
+    def test_release_titles_tolerates_a_junk_response(self):
+        from app.matcher import testing_service as ts
+
+        response = SimpleNamespace(
+            data=[
+                self._sub(2, 6, None),
+                self._sub(2, 7, 12345),
+                SimpleNamespace(),
+                self._sub(2, 8, "S02E08.Arnold saves Sid.Hookey"),
+            ]
+        )
+        client = SimpleNamespace(search=lambda **kw: response)
+        with (
+            patch.object(ts, "_os_client_and_reason", return_value=(client, None)),
+            patch.object(ts, "os_api_call", side_effect=self._passthrough),
+        ):
+            result = ts.season_release_titles("537", 2)
+        assert result == {6: [""], 7: [""], 8: ["S02E08.Arnold saves Sid.Hookey"]}
+
+    def test_release_titles_empty_when_response_has_no_data(self):
+        from app.matcher import testing_service as ts
+
+        client = SimpleNamespace(search=lambda **kw: object())
+        with (
+            patch.object(ts, "_os_client_and_reason", return_value=(client, None)),
+            patch.object(ts, "os_api_call", side_effect=self._passthrough),
+        ):
+            assert ts.season_release_titles("537", 2) == {}
 
     def test_release_titles_none_without_client(self):
         from app.matcher import testing_service as ts
@@ -504,6 +552,7 @@ def _ha_s2_marker(extra_crosswalk=None, crosswalk=None):
     return {
         "scheme": SCHEME_DIVERGENT,
         "roster_size": 37,
+        "segmented": True,
         "crosswalk": mapping if crosswalk is None else crosswalk,
     }
 
@@ -598,6 +647,7 @@ class TestPrecomputedCrosswalk:
         assert stats == {
             "numbering_scheme": SCHEME_TMDB_AIRED,
             "numbering_crosswalk": True,
+            "numbering_segmented": True,
             "pack_numbering_scheme": SCHEME_DIVERGENT,
             "pack_roster_size": 37,
         }
@@ -608,6 +658,36 @@ class TestPrecomputedCrosswalk:
         stats = {}
         stamp_numbering(stats, {"scheme": SCHEME_DIVERGENT, "roster_size": 37})
         assert stats == {"numbering_scheme": SCHEME_DIVERGENT, "pack_roster_size": 37}
+
+    def test_stamp_numbering_segmented_without_crosswalk(self):
+        from app.matcher.episode_identification import stamp_numbering
+
+        stats = {}
+        stamp_numbering(stats, {"scheme": SCHEME_DIVERGENT, "roster_size": 37, "segmented": True})
+        assert stats == {
+            "numbering_scheme": SCHEME_DIVERGENT,
+            "numbering_segmented": True,
+            "pack_roster_size": 37,
+        }
+
+    def test_numbering_with_a_crosswalk_that_maps_nothing_stamps_divergent(self, tmp_path):
+        # Every key misses the shipped index: the loader leaves the codes
+        # untranslated, so the stamp must not claim they are TMDB coordinates.
+        from app.matcher.episode_identification import stamp_numbering
+
+        _write_ha_s2_pack(tmp_path, _ha_s2_marker(crosswalk={"S02E99": "S02E36-E37"}))
+        numbering = _matcher(tmp_path, "Hey Arnold!", 537).precomputed_numbering(2)
+        assert "crosswalk" not in numbering
+        stats = {}
+        stamp_numbering(stats, numbering)
+        assert stats["numbering_scheme"] == SCHEME_DIVERGENT
+        assert stats["numbering_segmented"] is True
+        assert "numbering_crosswalk" not in stats
+
+    def test_numbering_keeps_a_crosswalk_that_translates(self, tmp_path):
+        _write_ha_s2_pack(tmp_path, _ha_s2_marker())
+        numbering = _matcher(tmp_path, "Hey Arnold!", 537).precomputed_numbering(2)
+        assert numbering["crosswalk"]["S02E06"] == "S02E11-E12"
 
     def test_stamp_numbering_all_unmapped_crosswalk_stays_divergent(self):
         from app.matcher.episode_identification import stamp_numbering

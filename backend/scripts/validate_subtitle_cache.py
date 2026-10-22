@@ -86,6 +86,10 @@ def _check_crosswalk(label: str, season_key, marker: dict, reference_count) -> l
         return []
     if marker.get("scheme") != SCHEME_DIVERGENT:
         return [f"{label} carries a crosswalk but is not marked {SCHEME_DIVERGENT!r}"]
+    if marker.get("segmented") is not True:
+        # The runtime applies a crosswalk only to a season the builder judged
+        # segmented; a map on any other season is one it would never have derived.
+        return [f"{label} carries a crosswalk but is not marked segmented"]
     if not isinstance(crosswalk, dict):
         return [f"{label} crosswalk is not a dict: {type(crosswalk).__name__}"]
     season = int(season_key) if str(season_key).isdigit() else None
@@ -96,8 +100,8 @@ def _check_crosswalk(label: str, season_key, marker: dict, reference_count) -> l
         ]
 
     failures: list[str] = []
-    spans: list[tuple[int, int, str]] = []
-    for key in sorted(crosswalk, key=str):
+    spans: list[tuple[int, int, int, str]] = []
+    for key in crosswalk:
         value = crosswalk[key]
         parsed_key = parse_episode_code(key if isinstance(key, str) else None)
         if not parsed_key or parsed_key[0] != season or len(parsed_key[1]) != 1:
@@ -109,8 +113,12 @@ def _check_crosswalk(label: str, season_key, marker: dict, reference_count) -> l
                 f"{label} crosswalk value {value!r} is not an episode code of the season"
             )
             continue
-        spans.append((min(parsed_value[1]), max(parsed_value[1]), key))
-    for (_lo, hi, key), (next_lo, _hi, next_key) in zip(spans, spans[1:], strict=False):
+        spans.append((parsed_key[1][0], min(parsed_value[1]), max(parsed_value[1]), key))
+    # Ordered by the key's episode NUMBER: as strings, S02E100 sorts before S02E11.
+    spans.sort()
+    for (_n, _lo, hi, key), (_next_n, next_lo, _hi, next_key) in zip(
+        spans, spans[1:], strict=False
+    ):
         if next_lo <= hi:
             failures.append(
                 f"{label} crosswalk values for {key} and {next_key} overlap or are out of order"

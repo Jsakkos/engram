@@ -27,7 +27,11 @@ from app.matcher.audio_streams import (
     probe_audio_streams,
 )
 from app.matcher.multi_episode import decompose_vote_runs
-from app.matcher.numbering_crosswalk import crosswalk_applies, translate_codes
+from app.matcher.numbering_crosswalk import (
+    crosswalk_applies,
+    is_segmented_marker,
+    translate_codes,
+)
 from app.matcher.numbering_scheme import (
     SCHEME_DIVERGENT,
     SCHEME_TMDB_AIRED,
@@ -231,6 +235,11 @@ def stamp_numbering(match_stats: dict, numbering: dict | None) -> None:
         match_stats["pack_numbering_scheme"] = SCHEME_DIVERGENT
     else:
         match_stats["numbering_scheme"] = numbering["scheme"]
+    if is_segmented_marker(numbering):
+        # The pack says this season is half-hour numbered segments. With no
+        # crosswalk applied, that is what holds the match for review and keeps it
+        # out of the fingerprint network (see matching_coordinator).
+        match_stats["numbering_segmented"] = True
     # usable_count, not a local isinstance check: bool is an int subclass in
     # Python, and the shared predicate already excludes it.
     if usable_count(numbering.get("roster_size")):
@@ -379,6 +388,20 @@ def precomputed_covers_season(
     return npz_path.exists() and index_path.exists()
 
 
+def _index_codes(cache_dir, manifest, show_name: str, season: int, expected_tmdb_id):
+    """The shipped index's own (untranslated) codes for show + season, or None."""
+    key, _ = _resolve_corpus_entry(manifest, show_name, expected_tmdb_id)
+    if key is None:
+        return None
+    index_path = _corpus_show_dir(cache_dir, key) / f"S{season:02d}.index.json"
+    try:
+        with open(index_path, encoding="utf-8") as fh:
+            codes = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return codes if isinstance(codes, list) and codes else None
+
+
 def precomputed_episode_codes(
     cache_dir, show_name: str, season: int, *, expected_tmdb_id=None
 ) -> list[str] | None:
@@ -396,14 +419,8 @@ def precomputed_episode_codes(
     ):
         return None
 
-    key, _ = _resolve_corpus_entry(manifest, show_name, expected_tmdb_id)
-    index_path = _corpus_show_dir(cache_dir, key) / f"S{season:02d}.index.json"
-    try:
-        with open(index_path, encoding="utf-8") as fh:
-            codes = json.load(fh)
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(codes, list) or not codes:
+    codes = _index_codes(cache_dir, manifest, show_name, season, expected_tmdb_id)
+    if not codes:
         return None
     # The codes a half-hour-numbered season's rows stand for in TMDB numbering,
     # unmapped rows dropped: the same translation the vector loader applies, so
@@ -469,7 +486,12 @@ def reference_coverage(
         for part in episode_parts(code)
     }
     data_dir = cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
-    dl_codes = downloaded_episode_codes(data_dir, season)
+    # A segmented season never grafts scraped SRTs into the vote (#760), so one
+    # on disk does not make its episode covered.
+    segmented = is_segmented_marker(
+        season_marker(load_precomputed_manifest(cache_dir), show_name, season, tmdb_id)
+    )
+    dl_codes = set() if segmented else downloaded_episode_codes(data_dir, season)
     coverage: dict[str, str] = {}
     for ep in episode_numbers:
         code = f"S{season:02d}E{int(ep):02d}"
@@ -1576,6 +1598,16 @@ class EpisodeMatcher:
         scheme = marker.get("scheme")
         if scheme not in VALID_SCHEMES or scheme == SCHEME_UNKNOWN:
             return None
+        if crosswalk_applies(marker):
+            # Report the crosswalk only if it translates this index. The loader
+            # treats a map that matches none of the shipped codes as absent, and
+            # the stamp built from this marker must agree with the codes the vote
+            # actually used (#760). A copy: the manifest is shared and cached.
+            codes = _index_codes(
+                self.cache_dir, manifest, self.show_name, season_number, self.expected_tmdb_id
+            )
+            if translate_codes(codes or [], marker) is None:
+                marker = {k: v for k, v in marker.items() if k != "crosswalk"}
         return marker
 
     def _load_precomputed_season(self, season_number):
@@ -1653,7 +1685,7 @@ class EpisodeMatcher:
         # holds and drop rows the crosswalk could not map. An unmapped row's own
         # code names an unrelated TMDB segment (#760), so it must not vote at all.
         marker = season_marker(manifest, self.show_name, season_number, self.expected_tmdb_id)
-        divergent = isinstance(marker, dict) and marker.get("scheme") == SCHEME_DIVERGENT
+        segmented = is_segmented_marker(marker)
         translated = translate_codes(episode_codes, marker)
         if translated is not None:
             keep = [i for i, code in enumerate(translated) if code]
@@ -1667,12 +1699,12 @@ class EpisodeMatcher:
             )
 
         ref_matrix, episode_codes = self._augment_with_downloaded_srts(
-            ref_matrix, episode_codes, season_number, divergent=divergent
+            ref_matrix, episode_codes, season_number, segmented=segmented
         )
         return ref_matrix, episode_codes, self._precomputed_idf
 
     def _augment_with_downloaded_srts(
-        self, ref_matrix, episode_codes, season_number, *, divergent: bool = False
+        self, ref_matrix, episode_codes, season_number, *, segmented: bool = False
     ):
         """Graft downloaded SRTs for episodes the precomputed cache doesn't cover.
 
@@ -1685,11 +1717,11 @@ class EpisodeMatcher:
         Additive and idempotent: returns the inputs unchanged when there is
         nothing to graft, and never raises — a bad SRT is skipped, not fatal.
 
-        Grafts nothing into a ``divergent`` (half-hour numbered) season (#760): a
+        Grafts nothing into a ``segmented`` (half-hour numbered) season (#760): a
         scraped SRT there is named by a provider that also numbers by half-hour,
         so its code would name an unrelated TMDB segment.
         """
-        if divergent:
+        if segmented:
             return ref_matrix, episode_codes
         data_dir = self.cache_dir / "data" / corpus_dir_name(self.expected_tmdb_id, self.show_name)
         if not data_dir.is_dir():

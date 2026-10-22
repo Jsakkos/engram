@@ -19,6 +19,7 @@ from app.matcher.numbering_crosswalk import (
     broadcast_groups,
     crosswalk_applies,
     derive_crosswalk,
+    is_segmented_season,
     translate_codes,
 )
 
@@ -250,3 +251,70 @@ def test_translate_drops_unmapped():
 def test_all_unmapped_crosswalk_is_treated_as_absent():
     marker = _marker({"S02E99": "S02E36-E37"})  # key not in this index
     assert translate_codes(["S02E06", "S02E07"], marker) is None
+
+
+# --------------------------------------------------------------------------- segmented
+
+
+@pytest.mark.parametrize("name", ["hey_arnold_s2", "dexters_lab_s1", "hey_arnold_s3"])
+def test_segment_format_seasons_are_segmented(name):
+    assert is_segmented_season(_load(name).roster) is True
+
+
+def _weekly(n, runtime=44, double_premiere=False):
+    roster = []
+    for i in range(1, n + 1):
+        air = f"2010-01-{i:02d}"
+        if double_premiere and i == 2:
+            air = "2010-01-01"
+        roster.append(_ep(i, f"Drama Episode {i}", air, runtime))
+    return roster
+
+
+def test_weekly_drama_is_not_segmented():
+    assert is_segmented_season(_weekly(13)) is False
+
+
+def test_double_premiere_drama_is_not_segmented():
+    assert is_segmented_season(_weekly(13, double_premiere=True)) is False
+
+
+def test_sitcom_airing_two_a_night_is_not_segmented():
+    # Groups of two, but 22-minute episodes: two broadcasts, not two segments.
+    roster = []
+    for i in range(6):
+        air = f"2010-02-{i + 1:02d}"
+        roster += [_ep(2 * i + 1, f"Sitcom {2 * i + 1}", air, 22)]
+        roster += [_ep(2 * i + 2, f"Sitcom {2 * i + 2}", air, 22)]
+    assert is_segmented_season(roster) is False
+
+
+def test_unknown_runtimes_are_not_segmented():
+    roster = [_ep(n, f"Seg {n}", f"d{(n + 1) // 2}", 0) for n in range(1, 13)]
+    assert is_segmented_season(roster) is False
+
+
+def test_double_premiere_with_a_missing_episode_derives_nothing_once_gated():
+    # The reviewer's probe: a same-day two-part premiere (62 + 44 minutes) and a
+    # pack missing E13. Air-date gap fill alone would shift every track by one;
+    # the segmented gate is what keeps such a season out of derivation.
+    roster = _weekly(13)
+    roster[0] = _ep(1, "Pilot Part One", "2010-01-01", 62)
+    roster[1] = _ep(2, "Pilot Part Two", "2010-01-01", 44)
+    assert is_segmented_season(roster) is False
+
+
+def test_non_adjacent_inverted_anchors_are_all_dropped():
+    # The reviewer's probe: anchors 1->E5, 2->E6, 3->E1, 4->E2. Checking only
+    # neighbours flags (2, 3) and keeps 1->E5 and 4->E2, which are still inverted.
+    names = ["Alpha One", "Bravo Two", "Charlie Three", "Delta Four", "Echo Five", "Foxtrot Six"]
+    roster = [_ep(n, name, f"d{n}") for n, name in enumerate(names, start=1)]
+    releases = {
+        1: ["S01E01.Echo Five"],
+        2: ["S01E02.Foxtrot Six"],
+        3: ["S01E03.Alpha One"],
+        4: ["S01E04.Bravo Two"],
+    }
+    cw = derive_crosswalk(1, _codes(4), roster, releases)
+    assert cw.sources["release_title"] == 0
+    assert cw.mapping == {}

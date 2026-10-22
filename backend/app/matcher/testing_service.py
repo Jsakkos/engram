@@ -25,7 +25,7 @@ from app.core.episode_namespace import (
 )
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
-from app.matcher.numbering_scheme import SCHEME_DIVERGENT
+from app.matcher.numbering_crosswalk import is_segmented_marker
 from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call, os_download_temp_name
 from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
@@ -401,8 +401,10 @@ def _precomputed_skip_result(
         "show_name": show_name,
         "season": season,
         # The pack's statement about how this season is numbered, so the heal can
-        # tell a half-hour corpus from an incomplete one (#760).
+        # tell a half-hour corpus from an incomplete one (#760). Only "segmented"
+        # decides that: "divergent" alone also describes a merely incomplete pack.
         "numbering_scheme": (marker or {}).get("scheme"),
+        "segmented": is_segmented_marker(marker),
         "total_episodes": len(codes),
         "episodes": [
             {"code": code, "status": "precomputed", "source": "precomputed"} for code in codes
@@ -499,12 +501,13 @@ def _heal_precomputed_gaps(
     cache) instead of raising. An episode no provider can supply is logged as a
     hard gap and surfaced to the review UI via reference_coverage().
 
-    Never runs for a season the pack marks ``divergent`` (#760). A half-hour
+    Never runs for a season the pack marks ``segmented`` (#760). A half-hour
     corpus diffed against a segment roster yields a meaningless gap list, and the
     scrapers that would fill it index the show by half-hour too, so what they
-    return would land under the wrong TMDB code and be grafted into the vote.
+    return would land under the wrong TMDB code and be grafted into the vote. A
+    season that is only ``divergent`` is an incomplete pack, which this heals.
     """
-    if skip.get("numbering_scheme") == SCHEME_DIVERGENT:
+    if skip.get("segmented"):
         logger.info(
             f"Precomputed cache for {show_name} S{season:02d} is numbered by broadcast "
             "half-hour, not by TMDB segment; not healing gaps against the TMDB roster"
@@ -717,12 +720,17 @@ def season_release_titles(show_id: str, season: int) -> dict[int, list[str]] | N
         )
         return None
 
+    # Read defensively: a response missing ``data``, or an upload with no or a
+    # non-text release, is junk to skip rather than a reason to lose the whole
+    # season's evidence. A release that is not text counts as naming nothing,
+    # which the crosswalk's unanimity rule treats as dissent.
     releases: dict[int, list[str]] = {}
-    for subtitle in response.data or []:
+    for subtitle in getattr(response, "data", None) or []:
         episode = getattr(subtitle, "episode_number", None)
-        if not episode or getattr(subtitle, "season_number", None) != season:
+        if not isinstance(episode, int) or getattr(subtitle, "season_number", None) != season:
             continue
-        releases.setdefault(episode, []).append(getattr(subtitle, "release", None) or "")
+        release = getattr(subtitle, "release", None)
+        releases.setdefault(episode, []).append(release if isinstance(release, str) else "")
     return releases
 
 

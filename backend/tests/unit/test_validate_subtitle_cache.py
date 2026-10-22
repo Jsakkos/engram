@@ -575,7 +575,23 @@ class TestCrosswalkValidation:
         return vsc.validate(tmp_path)
 
     def _divergent(self, crosswalk):
-        return {"scheme": "divergent", "roster_size": 37, "crosswalk": crosswalk}
+        return {
+            "scheme": "divergent",
+            "roster_size": 37,
+            "segmented": True,
+            "crosswalk": crosswalk,
+        }
+
+    def test_crosswalk_without_segmented_fails(self, vsc, tmp_path):
+        marker = {"scheme": "divergent", "roster_size": 37, "crosswalk": {"S02E06": "S02E11-E12"}}
+        result = self._validate(vsc, tmp_path, marker)
+        assert any("segmented" in f for f in result.failures)
+
+    def test_three_digit_episodes_are_ordered_numerically(self, vsc, tmp_path):
+        # As strings, S02E100 sorts before S02E11 and reads as out of order.
+        crosswalk = {"S02E11": "S02E21-E22", "S02E100": "S02E199-E200"}
+        result = self._validate(vsc, tmp_path, self._divergent(crosswalk), episode_count=120)
+        assert result.failures == []
 
     def test_valid_crosswalk_passes_and_labels_mapped_count(self, vsc, tmp_path):
         result = self._validate(

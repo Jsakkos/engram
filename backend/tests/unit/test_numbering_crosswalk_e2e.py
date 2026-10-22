@@ -65,6 +65,7 @@ def _publish_pack(cache_dir: Path) -> None:
                             "2": {
                                 "scheme": "divergent",
                                 "roster_size": 37,
+                                "segmented": True,
                                 "crosswalk": crosswalk.mapping,
                                 "crosswalk_sources": crosswalk.sources,
                             }

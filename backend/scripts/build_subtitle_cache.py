@@ -70,7 +70,7 @@ from scipy import sparse
 
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache, _corpus_show_dir
-from app.matcher.numbering_crosswalk import RosterEpisode, derive_crosswalk
+from app.matcher.numbering_crosswalk import RosterEpisode, derive_crosswalk, is_segmented_season
 from app.matcher.numbering_scheme import (
     SCHEME_DIVERGENT,
     SCHEME_UNKNOWN,
@@ -673,26 +673,49 @@ def _season_roster(tmdb_id: int, season: int) -> list[RosterEpisode]:
     ]
 
 
-def _crosswalk_fields(tmdb_id: int, season: int, codes: list[str]) -> dict:
-    """The ``crosswalk`` / ``crosswalk_sources`` marker fields for a divergent season.
+def _segment_fields(tmdb_id: int, season: int, codes: list[str]) -> dict:
+    """The ``segmented`` / ``crosswalk`` / ``crosswalk_sources`` fields for a divergent season.
 
-    Empty when nothing could be mapped, or when the roster or the release lookup
-    failed outright: a crosswalk is an improvement on a divergent marker, never a
-    precondition for publishing one. The release lookup is optional evidence; the
-    TMDB roster alone still maps seasons whose broadcast structure lines up.
+    ``divergent`` only says the corpus and the roster disagree on the season's
+    size, which an ordinary season the pack is merely missing episodes of also
+    does. ``segmented`` is published only when TMDB's own roster shows segments
+    aired in shared half-hours, and only then is a crosswalk derived: structure
+    alone would shift an incomplete drama with a two-part premiere by one.
+
+    Empty when the roster is unavailable or the season is not segmented; a
+    segmented season keeps ``segmented`` even when nothing could be mapped. The
+    release lookup is optional evidence: when it fails, the TMDB roster alone
+    still maps seasons whose broadcast structure lines up.
     """
+    # Same contract as the roster-size lookup above throughout: one season's
+    # failure must never abort a run covering hundreds of shows.
     try:
         roster = _season_roster(tmdb_id, season)
+    except Exception as e:
+        logger.warning(
+            f"  roster fetch failed for tmdb {tmdb_id} S{season:02d}: {e}", exc_info=True
+        )
+        return {}
+    if not is_segmented_season(roster):
+        return {}
+    fields: dict = {"segmented": True}
+    try:
         releases = season_release_titles(str(tmdb_id), season)
+    except Exception as e:
+        logger.warning(
+            f"  release lookup failed for tmdb {tmdb_id} S{season:02d}; "
+            f"deriving the crosswalk from structure alone: {e}",
+            exc_info=True,
+        )
+        releases = None
+    try:
         crosswalk = derive_crosswalk(season, codes, roster, releases)
     except Exception as e:
-        # Same contract as the roster-size lookup above: one season's failure must
-        # never abort a run covering hundreds of shows.
         logger.warning(f"  crosswalk failed for tmdb {tmdb_id} S{season:02d}: {e}", exc_info=True)
-        return {}
-    if not crosswalk.mapping:
-        return {}
-    return {"crosswalk": crosswalk.mapping, "crosswalk_sources": crosswalk.sources}
+        return fields
+    if crosswalk.mapping:
+        fields.update(crosswalk=crosswalk.mapping, crosswalk_sources=crosswalk.sources)
+    return fields
 
 
 def _season_numbering_entry(tmdb_id: int | None, season: int, codes: list[str]) -> dict:
@@ -746,7 +769,7 @@ def _season_numbering_entry(tmdb_id: int | None, season: int, codes: list[str]) 
         return {"scheme": SCHEME_UNKNOWN}
     entry = {"scheme": scheme, "roster_size": roster_size}
     if scheme == SCHEME_DIVERGENT:
-        entry.update(_crosswalk_fields(tmdb_id, season, codes))
+        entry.update(_segment_fields(tmdb_id, season, codes))
     return entry
 
 

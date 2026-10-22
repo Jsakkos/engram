@@ -385,12 +385,26 @@ def _may_contribute_fingerprint(
     runtime pre-filter hint, the chunk-vote verdict, and a combined code already in
     matched_episode. Keeping them in one rule means a future writer of a combined
     code before the enqueue cannot slip past it.
+
+    A match held as ``numbering_divergent`` is refused too: its code is in the
+    pack's half-hour numbering, which TMDB uses for an unrelated segment, and the
+    enqueue runs before the hold (#760).
     """
     return bool(
         matched_episode
         and not conjoined_hint
         and not _is_multi_episode_result(match_details)
         and not is_multi_episode(matched_episode)
+        and not _is_untranslated_segmented_result(match_details)
+    )
+
+
+def _is_untranslated_segmented_result(details: dict | None) -> bool:
+    """A match against a segmented half-hour pack that no crosswalk translated."""
+    return (
+        isinstance(details, dict)
+        and details.get("numbering_scheme") == SCHEME_DIVERGENT
+        and details.get("numbering_segmented") is True
     )
 
 
@@ -505,29 +519,34 @@ def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -
 def _apply_divergent_numbering_review(title: "DiscTitle") -> bool:
     """Hold a match whose code is in a half-hour numbering no crosswalk translated.
 
-    Keyed on the pack's explicit ``divergent`` marker only, never on the
-    reference/roster count heuristic: a scraped corpus that is merely incomplete
-    also has fewer references than the roster, and holding every such match would
-    bury ordinary seasons in review. A crosswalked result is stamped ``tmdb_aired``
-    and never reaches this branch. The matched code stays as the reviewer's
-    pre-fill. Returns True if it held the title.
+    Keyed on the pack saying the season is ``segmented``, never on ``divergent``
+    alone or the reference/roster count heuristic: a pack or scraped corpus that is
+    merely incomplete also has fewer references than the roster, its codes are real
+    TMDB coordinates, and holding every such match would bury ordinary seasons in
+    review. A crosswalked result is stamped ``tmdb_aired`` and never reaches this
+    branch. The matched code stays as the reviewer's pre-fill. Returns True if it
+    held the title.
     """
     matched = getattr(title, "matched_episode", None)
     if not matched or title.state not in (TitleState.MATCHED, TitleState.REVIEW):
         return False
     details = _title_details(title)
-    if details.get("numbering_scheme") != SCHEME_DIVERGENT or details.get("error"):
+    if not _is_untranslated_segmented_result(details) or details.get("error"):
         return False
     title.state = TitleState.REVIEW
     details["error"] = NUMBERING_DIVERGENT_ERROR_CODE
-    details["message"] = (
-        "The reference subtitles for this season are numbered differently from TMDB "
-        "(usually by broadcast half-hour instead of by segment), so "
-        f"{matched} may name the wrong episode. Check it and assign the "
-        "TMDB episode(s) this track holds."
-    )
+    details["message"] = _divergent_numbering_message(f"{matched} may name the wrong episode")
     title.match_details = json.dumps(details)
     return True
+
+
+def _divergent_numbering_message(claim: str) -> str:
+    """The reviewer-facing explanation for codes in a half-hour pack's numbering."""
+    return (
+        "The reference subtitles for this season are numbered differently from TMDB "
+        f"(usually by broadcast half-hour instead of by segment), so {claim}. Check it "
+        "and assign the TMDB episode(s) this track holds."
+    )
 
 
 def _combined_code(codes: list) -> str | None:
@@ -646,13 +665,15 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
         return False
 
     # A reference translated through the pack's half-hour crosswalk already names
-    # every segment its broadcast holds (#760). When it holds exactly as many as
-    # the runtime suggests, the hint is answered, not contradicted: nothing would
-    # vanish from the library, so there is nothing to ask a reviewer.
+    # every segment its broadcast holds (#760). The runtime hint is a LOWER bound
+    # (conjoined_episode_count returns the smallest fitting n: a 22-minute
+    # Dexter's Laboratory track against 7-minute segments reads as 2), so a code
+    # holding at least that many answers the hint rather than contradicting it:
+    # nothing would vanish from the library, so there is nothing to ask a reviewer.
     if (
         not confirmed_multi
         and details.get("numbering_crosswalk")
-        and len(episode_parts(title.matched_episode)) == conjoined_hint
+        and len(episode_parts(title.matched_episode)) >= conjoined_hint
     ):
         logger.info(
             f"Title {sanitize_log_value(getattr(title, 'id', None))}: runtime hint of "
@@ -712,6 +733,12 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
             "together, but the audio match could not confirm it "
             f"({multi_detail.get('reason', 'no verdict')}). "
             "Check it before assigning an episode."
+        )
+    if _is_untranslated_segmented_result(details):
+        # This routing takes the error slot before the numbering hold can, so it
+        # carries that warning itself: the codes above are half-hour numbers.
+        message = (
+            f"{message} {_divergent_numbering_message('these codes may name the wrong episodes')}"
         )
     if prior_error and prior_error != MULTI_EPISODE_ERROR_CODE and prior_message:
         message = f"{message} Also: {prior_message}"
