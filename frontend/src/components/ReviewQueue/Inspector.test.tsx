@@ -208,6 +208,19 @@ describe('Inspector: review reason notice', () => {
         ).toBeInTheDocument();
     });
 
+    it('shows why a half-hour-numbered match was held', () => {
+        const message =
+            'The reference subtitles for this season are numbered differently from TMDB (usually by broadcast half-hour instead of by segment), so S02E06 may name the wrong episode. Check it and assign the TMDB episode(s) this track holds.';
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({ error: 'numbering_divergent', message }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('numbered differently from TMDB')),
+        ).toBeInTheDocument();
+    });
+
     it('shows why a non-English track was not matched', () => {
         const message =
             "This track's only audio is Japanese, and Engram matches episodes by English dialogue, so it could not be matched automatically. Assign the episode by hand.";

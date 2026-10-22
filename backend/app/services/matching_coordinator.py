@@ -21,6 +21,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
 from app.core.episode_codes import (
+    episode_parts,
     format_episode_code,
     is_multi_episode,
     parse_episode_code,
@@ -270,6 +271,12 @@ RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_eject
 # confirmed verdict pre-fills the combined code (S01E01-E03) for them to confirm.
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
 
+# A match against a reference season the pack marks as numbered differently from
+# TMDB (broadcast half-hours instead of segments) that no crosswalk translated.
+# Its code is in the pack's numbering, which TMDB uses for an unrelated episode,
+# so it is held for a human rather than filed (#760).
+NUMBERING_DIVERGENT_ERROR_CODE = "numbering_divergent"
+
 # REVIEW reasons a deeper matcher pass cannot fix: never auto re-match these.
 # Defined here rather than in finalization_coordinator because that module imports
 # this one, and both the conflict re-match below and the review escalation there
@@ -283,6 +290,9 @@ _NON_REMATCHABLE_REVIEW_ERRORS = {
     # The matcher refused the title: too few reference subtitles held any text. A
     # deeper scan against the same references cannot change that.
     REFERENCES_UNREADABLE_ERROR_CODE,
+    # A deeper scan against the same half-hour corpus returns the same half-hour
+    # number; only a person (or a crosswalked pack) can translate it.
+    NUMBERING_DIVERGENT_ERROR_CODE,
     # The track's audio is another language (or absent): a deeper scan of the same
     # audio cannot change that (#241).
     AUDIO_LANGUAGE_ERROR_CODE,
@@ -375,12 +385,26 @@ def _may_contribute_fingerprint(
     runtime pre-filter hint, the chunk-vote verdict, and a combined code already in
     matched_episode. Keeping them in one rule means a future writer of a combined
     code before the enqueue cannot slip past it.
+
+    A match held as ``numbering_divergent`` is refused too: its code is in the
+    pack's half-hour numbering, which TMDB uses for an unrelated segment, and the
+    enqueue runs before the hold (#760).
     """
     return bool(
         matched_episode
         and not conjoined_hint
         and not _is_multi_episode_result(match_details)
         and not is_multi_episode(matched_episode)
+        and not _is_untranslated_segmented_result(match_details)
+    )
+
+
+def _is_untranslated_segmented_result(details: dict | None) -> bool:
+    """A match against a segmented half-hour pack that no crosswalk translated."""
+    return (
+        isinstance(details, dict)
+        and details.get("numbering_scheme") == SCHEME_DIVERGENT
+        and details.get("numbering_segmented") is True
     )
 
 
@@ -487,24 +511,63 @@ def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -
         return REFERENCES_UNREADABLE_ERROR_CODE
     if _apply_multi_episode_review(title, conjoined_hint):
         return MULTI_EPISODE_ERROR_CODE
+    if _apply_divergent_numbering_review(title):
+        return NUMBERING_DIVERGENT_ERROR_CODE
     return None
+
+
+def _apply_divergent_numbering_review(title: "DiscTitle") -> bool:
+    """Hold a match whose code is in a half-hour numbering no crosswalk translated.
+
+    Keyed on the pack saying the season is ``segmented``, never on ``divergent``
+    alone or the reference/roster count heuristic: a pack or scraped corpus that is
+    merely incomplete also has fewer references than the roster, its codes are real
+    TMDB coordinates, and holding every such match would bury ordinary seasons in
+    review. A crosswalked result is stamped ``tmdb_aired`` and never reaches this
+    branch. The matched code stays as the reviewer's pre-fill. Returns True if it
+    held the title.
+    """
+    matched = getattr(title, "matched_episode", None)
+    if not matched or title.state not in (TitleState.MATCHED, TitleState.REVIEW):
+        return False
+    details = _title_details(title)
+    if not _is_untranslated_segmented_result(details) or details.get("error"):
+        return False
+    title.state = TitleState.REVIEW
+    details["error"] = NUMBERING_DIVERGENT_ERROR_CODE
+    details["message"] = _divergent_numbering_message(f"{matched} may name the wrong episode")
+    title.match_details = json.dumps(details)
+    return True
+
+
+def _divergent_numbering_message(claim: str) -> str:
+    """The reviewer-facing explanation for codes in a half-hour pack's numbering."""
+    return (
+        "The reference subtitles for this season are numbered differently from TMDB "
+        f"(usually by broadcast half-hour instead of by segment), so {claim}. Check it "
+        "and assign the TMDB episode(s) this track holds."
+    )
 
 
 def _combined_code(codes: list) -> str | None:
     """The combined code for a verdict's playback-ordered codes, or None.
 
-    None when a code does not parse, a code is itself combined, fewer than two
-    episodes remain, or the codes span seasons: a filename carries one season, so
-    there is no honest combined name for a track that crosses one.
+    None when a code does not parse, fewer than two episodes remain, or the codes
+    span seasons: a filename carries one season, so there is no honest combined
+    name for a track that crosses one.
+
+    A code that is itself combined contributes every episode it holds. References
+    translated through a half-hour crosswalk are combined codes (#760), so a long
+    track can vote "S02E11-E12" then "S02E13"; that is S02E11-E13, not a refusal.
     """
     seasons: set[int] = set()
     episodes: list[int] = []
     for code in codes:
         parsed = parse_episode_code(code if isinstance(code, str) else None)
-        if parsed is None or len(parsed[1]) != 1:
+        if parsed is None:
             return None
         seasons.add(parsed[0])
-        episodes.append(parsed[1][0])
+        episodes.extend(e for e in parsed[1] if e not in episodes)
     if len(seasons) != 1 or len(episodes) < 2:
         return None
     return format_episode_code(seasons.pop(), episodes)
@@ -601,6 +664,24 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
     if not (confirmed_multi or conjoined_hint):
         return False
 
+    # A reference translated through the pack's half-hour crosswalk already names
+    # every segment its broadcast holds (#760). The runtime hint is a LOWER bound
+    # (conjoined_episode_count returns the smallest fitting n: a 22-minute
+    # Dexter's Laboratory track against 7-minute segments reads as 2), so a code
+    # holding at least that many answers the hint rather than contradicting it:
+    # nothing would vanish from the library, so there is nothing to ask a reviewer.
+    if (
+        not confirmed_multi
+        and details.get("numbering_crosswalk")
+        and len(episode_parts(title.matched_episode)) >= conjoined_hint
+    ):
+        logger.info(
+            f"Title {sanitize_log_value(getattr(title, 'id', None))}: runtime hint of "
+            f"~{conjoined_hint} conjoined episodes is explained by its crosswalked code "
+            f"{sanitize_log_value(title.matched_episode)}. Leaving the match as-is."
+        )
+        return False
+
     # A runtime-only hint against a corpus numbered differently from the roster is
     # not evidence: the hint fires on every track of the disc and no verdict can
     # ever clear it, so parking hands the reviewer a question the matcher already
@@ -652,6 +733,12 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
             "together, but the audio match could not confirm it "
             f"({multi_detail.get('reason', 'no verdict')}). "
             "Check it before assigning an episode."
+        )
+    if _is_untranslated_segmented_result(details):
+        # This routing takes the error slot before the numbering hold can, so it
+        # carries that warning itself: the codes above are half-hour numbers.
+        message = (
+            f"{message} {_divergent_numbering_message('these codes may name the wrong episodes')}"
         )
     if prior_error and prior_error != MULTI_EPISODE_ERROR_CODE and prior_message:
         message = f"{message} Also: {prior_message}"
