@@ -283,7 +283,7 @@ class TestSeasonReleaseTitles:
 
         client = SimpleNamespace(search=search)
         with (
-            patch.object(ts, "_os_client_and_reason", return_value=(client, None)),
+            patch.object(ts, "_os_search_client", return_value=client),
             patch.object(ts, "os_api_call", side_effect=self._passthrough),
         ):
             result = ts.season_release_titles("537", 2)
@@ -308,7 +308,7 @@ class TestSeasonReleaseTitles:
         )
         client = SimpleNamespace(search=lambda **kw: response)
         with (
-            patch.object(ts, "_os_client_and_reason", return_value=(client, None)),
+            patch.object(ts, "_os_search_client", return_value=client),
             patch.object(ts, "os_api_call", side_effect=self._passthrough),
         ):
             result = ts.season_release_titles("537", 2)
@@ -319,7 +319,7 @@ class TestSeasonReleaseTitles:
 
         client = SimpleNamespace(search=lambda **kw: object())
         with (
-            patch.object(ts, "_os_client_and_reason", return_value=(client, None)),
+            patch.object(ts, "_os_search_client", return_value=client),
             patch.object(ts, "os_api_call", side_effect=self._passthrough),
         ):
             assert ts.season_release_titles("537", 2) == {}
@@ -327,8 +327,35 @@ class TestSeasonReleaseTitles:
     def test_release_titles_none_without_client(self):
         from app.matcher import testing_service as ts
 
-        with patch.object(ts, "_os_client_and_reason", return_value=(None, "no credentials")):
+        with patch.object(ts, "_os_search_client", return_value=None):
             assert ts.season_release_titles("537", 2) is None
+
+    def test_release_lookup_never_logs_in(self):
+        # Search costs no download quota and needs only the API key. Routing it
+        # through the login-gated client made a night with a spent quota publish
+        # structure-only crosswalks, so title-anchored seasons flapped (#760).
+        from app.matcher import testing_service as ts
+
+        response = SimpleNamespace(data=[self._sub(2, 6, "S02E06.Ransom.Ms.Perfect")])
+        client = SimpleNamespace(search=lambda **kw: response)
+        with (
+            patch.object(ts, "_os_client_and_reason", side_effect=AssertionError("logged in")),
+            patch.object(ts, "_os_search_client", return_value=client),
+            patch.object(ts, "os_api_call", side_effect=self._passthrough),
+        ):
+            assert ts.season_release_titles("537", 2) == {6: ["S02E06.Ransom.Ms.Perfect"]}
+
+    def test_search_client_needs_only_the_api_key(self):
+        from app.matcher import testing_service as ts
+
+        client = ts._os_search_client(SimpleNamespace(opensubtitles_api_key="key"))
+        assert client is not None
+        assert client.token is None
+
+    def test_search_client_none_without_an_api_key(self):
+        from app.matcher import testing_service as ts
+
+        assert ts._os_search_client(SimpleNamespace(opensubtitles_api_key="")) is None
 
     def test_release_titles_none_when_search_raises(self):
         from app.matcher import testing_service as ts
@@ -338,7 +365,7 @@ class TestSeasonReleaseTitles:
 
         client = SimpleNamespace(search=boom)
         with (
-            patch.object(ts, "_os_client_and_reason", return_value=(client, None)),
+            patch.object(ts, "_os_search_client", return_value=client),
             patch.object(ts, "os_api_call", side_effect=self._passthrough),
         ):
             assert ts.season_release_titles("537", 2) is None

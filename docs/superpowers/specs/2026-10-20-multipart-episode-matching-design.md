@@ -41,9 +41,10 @@ Amended design:
   notice in its message, and the validator requires `segmented` beside any crosswalk and
   orders keys by episode number.
 
-Deferred: the release lookup is gated on a usable OpenSubtitles client, so a night when the
-download quota is spent publishes structure-only crosswalks and title-anchored seasons can
-flap. Carrying the previous night's crosswalk forward is a follow-up.
+- **The release lookup never logs in.** Search needs only the API key and spends no download
+  quota, so it uses its own search-only client instead of the login- and quota-gated one. A
+  night with a spent download quota no longer publishes structure-only crosswalks, so
+  title-anchored seasons do not flap between nights.
 
 ## 1. What actually went wrong
 

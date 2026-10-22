@@ -687,6 +687,24 @@ def _season_episode_titles(show_id: str, season: int, tmdb_api_key: str) -> dict
     return {e["episode_number"]: e["name"] for e in episodes if e.get("episode_number") is not None}
 
 
+def _os_search_client(config):
+    """An OpenSubtitles client that can search but has not logged in, or None.
+
+    Search needs only the API key and spends no download quota. The shared client
+    from ``_os_client_and_reason`` is gated on a successful login and on the daily
+    download quota, so using it here made a night with a spent quota look like a
+    night with no release titles at all (#760).
+    """
+    api_key = getattr(config, "opensubtitles_api_key", None)
+    if not api_key:
+        return None
+    try:
+        from opensubtitlescom import OpenSubtitles as _OSApi
+    except ImportError:
+        return None
+    return _OSApi(_USER_AGENT, api_key)
+
+
 def season_release_titles(show_id: str, season: int) -> dict[int, list[str]] | None:
     """Every OpenSubtitles ``release`` string for a season, grouped by episode number.
 
@@ -699,9 +717,11 @@ def season_release_titles(show_id: str, season: int) -> dict[int, list[str]] | N
     """
     from app.services.config_service import get_config_sync
 
-    client, reason = _os_client_and_reason(get_config_sync())
+    client = _os_search_client(get_config_sync())
     if client is None:
-        logger.debug(f"No OpenSubtitles release titles for tmdb {show_id} S{season:02d}: {reason}")
+        logger.debug(
+            f"No OpenSubtitles release titles for tmdb {show_id} S{season:02d}: no API key"
+        )
         return None
     try:
         response = os_api_call(
