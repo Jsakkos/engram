@@ -56,7 +56,12 @@ const ASR_STATUS = {
 };
 
 /** Route the component's startup fetches (config, asr-status, detect-tools). */
-function mockApi(configOverrides: Record<string, unknown> = {}, options: { discordWebhookValid?: boolean } = {}) {
+function mockApi(configOverrides: Record<string, unknown> = {}, options: {
+    discordWebhookValid?: boolean;
+    putResponse?: Record<string, unknown>;
+    restartStatus?: Record<string, unknown>;
+    osResult?: Record<string, unknown>;
+} = {}) {
     const config = {
         setup_complete: true,
         staging_path: '/staging',
@@ -64,12 +69,20 @@ function mockApi(configOverrides: Record<string, unknown> = {}, options: { disco
         library_tv_path: '/tv',
         ...configOverrides,
     };
-    const { discordWebhookValid = true } = options;
+    const {
+        discordWebhookValid = true,
+        putResponse,
+        restartStatus = { mode: 'packaged', can_restart: true, hint: '', active_jobs: false },
+        osResult = { valid: true, version: 'Logged in, 17 downloads left today' },
+    } = options;
     vi.stubGlobal(
         'fetch',
-        vi.fn((input: RequestInfo | URL) => {
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const url = typeof input === 'string' ? input : input.toString();
             const json = async () => {
+                if (init?.method === 'PUT' && putResponse) return putResponse;
+                if (url.includes('/api/restart/status')) return restartStatus;
+                if (url.includes('/api/validate/opensubtitles')) return osResult;
                 if (url.includes('/api/asr-status')) return ASR_STATUS;
                 if (url.includes('/api/detect-tools'))
                     return {
@@ -850,5 +863,50 @@ describe('ConfigWizard: settings export/import (#731)', () => {
 
         fireEvent.click(within(screen.getByRole('navigation', { name: /settings sections/i })).getByRole('button', { name: 'Library Paths' }));
         expect(await screen.findByDisplayValue('/imported/tv')).toBeInTheDocument();
+    });
+});
+
+describe('ConfigWizard: OpenSubtitles login test (#723)', () => {
+    async function openSubtitlesSection() {
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        const button = within(nav)
+            .getAllByRole('button')
+            .find((b) => /metadata|subtitle/i.test(b.textContent ?? ''));
+        fireEvent.click(button!);
+    }
+
+    function fillCredentials() {
+        const field = (id: string) => document.getElementById(id) as HTMLInputElement;
+        fireEvent.change(field('osApiKey'), { target: { value: 'k' } });
+        fireEvent.change(field('osUsername'), { target: { value: 'u' } });
+        fireEvent.change(field('osPassword'), { target: { value: 'p' } });
+    }
+
+    it('disables Test login until a key, username and password are entered', async () => {
+        await openSubtitlesSection();
+        const test = await screen.findByRole('button', { name: 'Test login' });
+        expect(test).toBeDisabled();
+        fillCredentials();
+        expect(test).toBeEnabled();
+    });
+
+    it('reports the remaining downloads on success', async () => {
+        await openSubtitlesSection();
+        await screen.findByRole('button', { name: 'Test login' });
+        fillCredentials();
+        fireEvent.click(screen.getByRole('button', { name: 'Test login' }));
+        expect(await screen.findByText(/17 downloads left today/)).toBeInTheDocument();
+    });
+
+    it('shows the specific failure and clears it when a field changes', async () => {
+        mockApi({}, { osResult: { valid: false, error: 'OpenSubtitles rejected the API key.' } });
+        await openSubtitlesSection();
+        await screen.findByRole('button', { name: 'Test login' });
+        fillCredentials();
+        fireEvent.click(screen.getByRole('button', { name: 'Test login' }));
+        expect(await screen.findByText(/rejected the API key/)).toBeInTheDocument();
+        fireEvent.change(document.getElementById('osPassword') as HTMLInputElement, { target: { value: 'pp' } });
+        expect(screen.queryByText(/rejected the API key/)).not.toBeInTheDocument();
     });
 });

@@ -12,6 +12,7 @@ import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { PathStatusHint } from './PathStatusHint';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
 import { requestAiValidation } from '../utils/aiValidation';
+import { requestOpenSubtitlesValidation } from '../utils/opensubtitlesValidation';
 import { fetchLocalModels, isLocalProvider, localProviderDefaultUrl } from '../utils/localModels';
 import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
 import { requestDiscordWebhookTest } from '../utils/discordWebhookTest';
@@ -329,6 +330,8 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // lets the user continue without TMDB.
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string}>({status: 'idle'});
     const [aiValidation, setAiValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string, model?: string}>({status: 'idle'});
+    // OpenSubtitles login test (#723). Same invalid-vs-error split as the AI test.
+    const [osValidation, setOsValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', message?: string}>({status: 'idle'});
     const [localModels, setLocalModels] = useState<{models: string[]; error: string | null}>({
         models: [],
         error: null,
@@ -613,6 +616,21 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
 
     const handleInputChange = (field: keyof ConfigData, value: string | boolean | number) => {
         setConfig(prev => ({ ...prev, [field]: value }));
+        // An earlier result is about the old credentials; don't leave it standing.
+        if (field === 'opensubtitlesApiKey' || field === 'opensubtitlesUsername' || field === 'opensubtitlesPassword') {
+            setOsValidation({status: 'idle'});
+        }
+    };
+
+    const handleTestOpenSubtitles = async () => {
+        setOsValidation({status: 'testing'});
+        const result = await requestOpenSubtitlesValidation(
+            config.opensubtitlesApiKey,
+            config.opensubtitlesUsername,
+            config.opensubtitlesPassword,
+        );
+        if (result.status === 'valid') setOsValidation({status: 'valid', message: result.detail});
+        else setOsValidation({status: result.status, message: result.error});
     };
 
     const handleTestWebhook = async () => {
@@ -1305,6 +1323,35 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             <span className="form-hint">
                                 Free accounts get 5 subtitle downloads/day. Used only for TV episode matching; skipped if not configured.
                             </span>
+                        </div>
+
+                        <div className="form-group">
+                            <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap'}}>
+                                <button
+                                    type="button"
+                                    onClick={handleTestOpenSubtitles}
+                                    disabled={
+                                        osValidation.status === 'testing' ||
+                                        (!config.opensubtitlesApiKey && !savedKeys.opensubtitles) ||
+                                        !config.opensubtitlesUsername ||
+                                        (!config.opensubtitlesPassword && !savedKeys.opensubtitles)
+                                    }
+                                    className="btn-secondary"
+                                    style={{padding: '0.25rem 0.75rem', fontSize: '0.85rem'}}
+                                >
+                                    {osValidation.status === 'testing' ? 'Testing...' : 'Test login'}
+                                </button>
+                                {osValidation.status === 'valid' && (
+                                    <span style={{color: '#22c55e', fontSize: '0.85rem'}}>✓ {osValidation.message || 'Logged in'}</span>
+                                )}
+                                {osValidation.status === 'invalid' && (
+                                    <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {osValidation.message}</span>
+                                )}
+                                {/* Amber, not red: the credentials weren't refused, the check failed. */}
+                                {osValidation.status === 'error' && (
+                                    <span style={{color: '#f59e0b', fontSize: '0.85rem'}}>⚠ {osValidation.message}</span>
+                                )}
+                            </div>
                         </div>
 
                         <h4 style={{marginTop: '1.5rem', marginBottom: '0.25rem', fontSize: '1rem', fontWeight: 600}}>
