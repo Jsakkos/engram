@@ -673,9 +673,14 @@ class TestExtractAudioChunkNoAudioStream:
     """
 
     def _matcher(self, tmp_path):
+        from app.matcher.audio_streams import AudioPlan
         from app.matcher.episode_identification import EpisodeMatcher
 
-        return EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show", model_name="tiny")
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show", model_name="tiny")
+        # These tests pin extract_audio_chunk's own ffmpeg/ffprobe sequence; the
+        # #241 stream plan probes separately and is covered in its own tests.
+        matcher.audio_plan = lambda *a, **k: AudioPlan("unprobed")
+        return matcher
 
     def test_audio_less_source_raises_no_audio_stream_error(self, tmp_path):
         from app.matcher.episode_identification import NoAudioStreamError
@@ -731,6 +736,49 @@ class TestExtractAudioChunkNoAudioStream:
         assert "Invalid data found when processing input" in message
         assert "ffmpeg version" not in message
         assert "\n" not in message
+        # A file that has audio is never remembered as silent.
+        assert not matcher._no_audio_sources
+
+    def test_rewritten_file_is_retried(self, tmp_path):
+        """A re-rip that rewrites the same path gets a fresh ffmpeg attempt and
+        probe instead of being refused on the strength of the earlier file."""
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        matcher = self._matcher(tmp_path)
+        source = tmp_path / "C1_t06.mkv"
+        source.write_bytes(b"video only")
+        calls: list = []
+        run = _fake_run(ffmpeg_rc=_EINVAL_UNSIGNED, ffmpeg_stderr="x", probe_stdout="", calls=calls)
+
+        with patch("app.matcher.episode_identification.subprocess.run", side_effect=run):
+            with pytest.raises(NoAudioStreamError):
+                matcher.extract_audio_chunk(str(source), 90, duration=30)
+            source.write_bytes(b"video and audio, a different size")
+            with pytest.raises(NoAudioStreamError):
+                matcher.extract_audio_chunk(str(source), 383, duration=30)
+
+        # The rewritten file got its own ffmpeg attempt and probe.
+        assert [c[0] for c in calls] == ["ffmpeg", "ffprobe", "ffmpeg", "ffprobe"]
+
+    def test_same_size_rewrite_is_retried_on_mtime(self, tmp_path):
+        """A rewrite that keeps the size still counts as a new file via its mtime."""
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        matcher = self._matcher(tmp_path)
+        source = tmp_path / "C1_t06.mkv"
+        source.write_bytes(b"video only")
+        calls: list = []
+        run = _fake_run(ffmpeg_rc=_EINVAL_UNSIGNED, ffmpeg_stderr="x", probe_stdout="", calls=calls)
+
+        with patch("app.matcher.episode_identification.subprocess.run", side_effect=run):
+            with pytest.raises(NoAudioStreamError):
+                matcher.extract_audio_chunk(str(source), 90, duration=30)
+            st = source.stat()
+            os.utime(source, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+            with pytest.raises(NoAudioStreamError):
+                matcher.extract_audio_chunk(str(source), 383, duration=30)
+
+        assert [c[0] for c in calls] == ["ffmpeg", "ffprobe", "ffmpeg", "ffprobe"]
 
     def test_ffmpeg_command_hides_banner(self, tmp_path):
         matcher = self._matcher(tmp_path)
@@ -1517,3 +1565,104 @@ class TestScrapingSignatureTracksMtime:
             ei.scraping_reference_signature([srt]), using_precomputed=False, reference_files=[srt]
         )
         assert rebuilt is not first, "rewritten references must rebuild the matcher"
+
+
+@pytest.mark.unit
+class TestPlannedAudioStream:
+    """The matcher transcribes the planned audio stream (issue #241)."""
+
+    @staticmethod
+    def _matcher(tmp_path, stream_index, verdict="match", auto_index=0):
+        from app.matcher.audio_streams import AudioPlan, AudioStream
+        from app.matcher.episode_identification import EpisodeMatcher
+
+        matcher = EpisodeMatcher(cache_dir=tmp_path, show_name="Test Show")
+        stream = (
+            AudioStream(stream_index, "en", "", 2, False, False)
+            if stream_index is not None
+            else None
+        )
+        plan = AudioPlan(verdict, stream, ["en"], auto_index=auto_index)
+        matcher.audio_plan = MagicMock(return_value=plan)
+        return matcher
+
+    @staticmethod
+    def _capture_ffmpeg(tmp_path):
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            # create the output wav so the post-run checks pass
+            from pathlib import Path
+
+            Path(cmd[-1]).write_bytes(b"\0" * 2048)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        return calls, fake_run
+
+    def test_extract_audio_chunk_maps_planned_stream(self, tmp_path):
+        matcher = self._matcher(tmp_path, 2)
+        calls, fake_run = self._capture_ffmpeg(tmp_path)
+        with patch("app.matcher.episode_identification.subprocess.run", side_effect=fake_run):
+            matcher.extract_audio_chunk(tmp_path / "x.mkv", 300, 30)
+        argv = calls[0]
+        i = argv.index("-map")
+        assert argv[i + 1] == "0:a:2"
+        assert i < len(argv) - 1
+
+    def test_extract_audio_chunk_no_map_when_unprobed(self, tmp_path):
+        matcher = self._matcher(tmp_path, None, verdict="unprobed")
+        calls, fake_run = self._capture_ffmpeg(tmp_path)
+        with patch("app.matcher.episode_identification.subprocess.run", side_effect=fake_run):
+            matcher.extract_audio_chunk(tmp_path / "x.mkv", 300, 30)
+        assert "-map" not in calls[0]
+
+    def test_cache_keys_differ_by_stream_but_stream0_keeps_legacy_key(self, tmp_path):
+        from pathlib import Path
+
+        f = tmp_path / "x.mkv"
+        legacy = (str(Path(f).resolve()), 300, 30)
+        m0 = self._matcher(tmp_path, 0)
+        m1 = self._matcher(tmp_path, 1)
+        unprobed = self._matcher(tmp_path, None, verdict="unprobed")
+        assert m0._transcription_key(f, 300, 30) == legacy
+        assert unprobed._transcription_key(f, 300, 30) == legacy
+        assert m1._transcription_key(f, 300, 30) != legacy
+        assert m0._chunk_path(f, 300, 30) == unprobed._chunk_path(f, 300, 30)
+        assert m1._chunk_path(f, 300, 30) != m0._chunk_path(f, 300, 30)
+
+    def test_transcript_file_key_includes_stream(self, tmp_path):
+        from app.matcher import transcript_store
+
+        f = tmp_path / "x.mkv"
+        f.write_bytes(b"x")
+        base = transcript_store.file_key_for(f)
+        assert self._matcher(tmp_path, 0).transcript_file_key(f) == base
+        assert self._matcher(tmp_path, 1).transcript_file_key(f) == base + "#a1"
+
+    def test_transcribe_chunk_cached_l2_key_includes_stream(self, tmp_path):
+        from app.matcher import transcript_store
+
+        f = tmp_path / "x.mkv"
+        f.write_bytes(b"x")
+        matcher = self._matcher(tmp_path, 1)
+        model = MagicMock()
+        model.transcribe.return_value = {"text": "hello there"}
+        with (
+            patch.object(transcript_store, "get", return_value=None) as get,
+            patch.object(transcript_store, "put"),
+            patch.object(matcher, "extract_audio_chunk", return_value=str(tmp_path / "a.wav")),
+        ):
+            matcher.transcribe_chunk_cached(f, 300, 30, model, model_key="k")
+        assert get.call_args.args[0] == transcript_store.file_key_for(f) + "#a1"
+
+    def test_stream_ffmpeg_used_to_pick_keeps_legacy_key(self, tmp_path):
+        """Old transcripts were of ffmpeg's own pick: reuse them only for that stream."""
+        from pathlib import Path
+
+        f = tmp_path / "x.mkv"
+        legacy = (str(Path(f).resolve()), 300, 30)
+        # English at 0, a dub flagged default at 1: the old transcript is the dub's.
+        assert self._matcher(tmp_path, 0, auto_index=1)._transcription_key(f, 300, 30) != legacy
+        # English at 2 was ffmpeg's pick all along: its old transcript is right.
+        assert self._matcher(tmp_path, 2, auto_index=2)._transcription_key(f, 300, 30) == legacy

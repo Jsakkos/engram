@@ -14,10 +14,11 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.episode_codes import normalize_episode_code
+from app.core.languages import language_name
 from app.core.organizer import check_library_writable
 from app.core.security import sanitize_log_value
 from app.database import async_session
-from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+from app.matcher.subtitle_utils import AUDIO_LANGUAGE_ERROR_CODE, REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
@@ -32,13 +33,47 @@ from app.services.matching_coordinator import (
 logger = logging.getLogger(__name__)
 
 
-def _refused_for_references(title) -> bool:
-    """True when the matcher refused this title for lack of usable references."""
+_MATCHER_REFUSAL_CODES = {REFERENCES_UNREADABLE_ERROR_CODE, AUDIO_LANGUAGE_ERROR_CODE}
+
+
+def _title_details(title) -> dict:
     try:
         details = json.loads(title.match_details) if title.match_details else {}
     except (json.JSONDecodeError, TypeError):
-        return False
-    return isinstance(details, dict) and details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE
+        return {}
+    return details if isinstance(details, dict) else {}
+
+
+def _refused_by_matcher(title) -> bool:
+    """True when the matcher refused this title without matching it at all.
+
+    Either the season's references were unusable, or the track's audio is another
+    language (#241). Neither says anything about which show or season the disc is.
+    """
+    return _title_details(title).get("error") in _MATCHER_REFUSAL_CODES
+
+
+def _language_review_summary(titles) -> str | None:
+    """One review-reason sentence for the tracks parked for their audio language."""
+    refused = [
+        t
+        for t in titles
+        if t.state == TitleState.REVIEW
+        and _title_details(t).get("error") == AUDIO_LANGUAGE_ERROR_CODE
+    ]
+    if not refused:
+        return None
+    names = list(
+        dict.fromkeys(
+            language_name(code)
+            for t in refused
+            for code in (_title_details(t).get("audio_languages") or [])
+            if code and code != "en"
+        )
+    )
+    verb = "has" if len(refused) == 1 else "have"
+    languages = f" ({', '.join(names)})" if names else ""
+    return f"{len(refused)} {verb} no English audio{languages}."
 
 
 def _ordering_for_title(match_details, ordering: str, namespace: str | None = None) -> str:
@@ -121,7 +156,7 @@ def _detect_wrong_season(job, titles) -> bool:
     # A disc of titles the matcher REFUSED says nothing about which season it is:
     # it was never matched against anything. Re-running across every season would
     # hit the same refusal once per season.
-    if all(_refused_for_references(t) for t in episode_candidates):
+    if all(_refused_by_matcher(t) for t in episode_candidates):
         return False
     return True
 
@@ -171,7 +206,7 @@ def _detect_wrong_show(job, titles) -> dict | None:
     # A title the matcher refused (too few usable references) was never matched at
     # all, so a disc of refused titles says nothing about which show it is. Naming
     # the twin would send the user to re-identify instead of fixing the subtitles.
-    if all(_refused_for_references(t) for t in episode_candidates):
+    if all(_refused_by_matcher(t) for t in episode_candidates):
         return None
 
     twin = next((c for c in candidates if str(c.get("tmdb_id")) != str(job.tmdb_id)), None)
@@ -1175,11 +1210,14 @@ class FinalizationCoordinator:
         # creates mid-run; this avoids even starting finalization when the
         # matcher already flagged a title for review.)
         if has_review:
-            await self._park_in_review(
-                session,
-                job,
-                f"{sum(1 for t in matchable if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
+            reason = (
+                f"{sum(1 for t in matchable if t.state == TitleState.REVIEW)} title(s) "
+                "need manual episode assignment"
             )
+            language_note = _language_review_summary(matchable)
+            if language_note:
+                reason = f"{reason}. {language_note}"
+            await self._park_in_review(session, job, reason)
         elif has_matched:
             try:
                 await self.finalize_disc_job(job_id)
@@ -1773,15 +1811,24 @@ class FinalizationCoordinator:
                         # so the other files on the job are extras the reviewer
                         # never rejected, and deleting them here would lose them.
                         unselected_titles = []
+                        # Extras held for a keep/discard choice (extras_policy "ask",
+                        # #773) that the reviewer did not discard ride along into
+                        # Extras/ instead of being deleted with the other cuts. Only
+                        # `_apply_movie_extras_policy` puts a movie extra in REVIEW;
+                        # the frontend's `isHeldMovieExtra` (ReviewQueue/utils.ts)
+                        # uses the same is_extra + REVIEW test, keep them in step.
+                        kept_extras: list[DiscTitle] = []
                         if not _has_file_exists(title.match_details):
                             cleanup_statement = select(DiscTitle).where(
                                 DiscTitle.job_id == job_id,
                                 DiscTitle.id != title_id,
                                 DiscTitle.output_filename.isnot(None),
                             )
-                            unselected_titles = (
-                                (await session.execute(cleanup_statement)).scalars().all()
-                            )
+                            others = (await session.execute(cleanup_statement)).scalars().all()
+                            kept_extras = [
+                                t for t in others if t.is_extra and t.state == TitleState.REVIEW
+                            ]
+                            unselected_titles = [t for t in others if t not in kept_extras]
 
                         # A manual import's files are the user's originals, not
                         # regenerable rips: an unselected cut stays where it is.
@@ -1839,7 +1886,11 @@ class FinalizationCoordinator:
                                 tmdb_id=_tmdb_id,
                                 edition=_edition,
                                 already_clean=_already_clean,
-                                extra_files=[] if _is_import else None,
+                                extra_files=(
+                                    [Path(t.output_filename) for t in kept_extras]
+                                    if _is_import
+                                    else None
+                                ),
                             )
                         else:
                             org_result = await asyncio.to_thread(
@@ -1890,6 +1941,20 @@ class FinalizationCoordinator:
                                 organized_to=_org_to,
                                 output_filename=_out,
                             )
+                            extras_mapping = org_result.get("extras_mapping") or {}
+                            for extra in kept_extras:
+                                dest = extras_mapping.get(Path(extra.output_filename).name)
+                                extra.state = TitleState.COMPLETED
+                                extra.organized_from = Path(extra.output_filename).name
+                                extra.organized_to = str(dest) if dest else None
+                                session.add(extra)
+                                await ws_manager.broadcast_title_update(
+                                    job_id,
+                                    extra.id,
+                                    extra.state.value,
+                                    organized_from=extra.organized_from,
+                                    organized_to=extra.organized_to,
+                                )
                             job.progress_percent = 100.0
                             job.error_message = None
                             job.final_path = str(org_result["main_file"])

@@ -11,6 +11,7 @@ Platform restart strategies:
                logging every step to ~/.engram/update_helper.log
 """
 
+import asyncio
 import hashlib
 import os
 import platform
@@ -90,6 +91,9 @@ class UpdateChecker:
         """Entry point — call once from the FastAPI lifespan as asyncio.create_task()."""
         self._consume_update_result_marker()
         self._prune_staging()
+        if self._is_frozen and sys.platform == "win32":
+            # Each leftover is a full build copy; delete off the event loop.
+            await asyncio.to_thread(self._sweep_stale_swap_dirs, Path(sys.executable).parent)
         skipped_version = await self._load_skipped_version()
         await self._check(skipped_version)
         await self._fetch_current_release_notes()
@@ -127,6 +131,29 @@ class UpdateChecker:
                     doomed = child  # rename failed (locked?) — delete in place, best effort
                 shutil.rmtree(doomed, ignore_errors=True)
 
+    @staticmethod
+    def _sweep_stale_swap_dirs(install_dir: Path) -> None:
+        """Delete ``<install>.new-<version>`` dirs left beside the install by failed swaps.
+
+        Helpers before #791 left one behind every time ``move_install`` failed, a full
+        build copy per attempted version. Only ``.new-*`` dirs are removed: an
+        ``.old-*`` dir can be the only runnable copy of the previous install after a
+        failed restore, so it is left for the user. Best-effort, like _prune_staging.
+        """
+        parent = install_dir.parent
+        if not parent.is_dir():
+            return
+        prefix = f"{install_dir.name}.new-"
+        try:
+            children = list(parent.iterdir())
+        except OSError as exc:
+            logger.debug(f"Could not list {parent} for stale update dirs: {exc}")
+            return
+        for child in children:
+            if child.name.startswith(prefix) and child.is_dir() and not child.is_symlink():
+                logger.info(f"Removing leftover update copy: {child}")
+                shutil.rmtree(child, ignore_errors=True)
+
     async def _load_skipped_version(self) -> str | None:
         """Load the skipped version preference from AppConfig."""
         try:
@@ -150,7 +177,9 @@ class UpdateChecker:
             return
         data: dict[str, str] = {}
         try:
-            for line in marker.read_text(encoding="utf-8").splitlines():
+            # cmd writes the OS's error text in the console code page, not UTF-8; a
+            # non-ASCII byte there must not raise out of start() and stop the checker.
+            for line in marker.read_text(encoding="utf-8", errors="replace").splitlines():
                 if "=" in line:
                     key, _, value = line.partition("=")
                     data[key.strip()] = value.strip()
@@ -171,11 +200,44 @@ class UpdateChecker:
             logger.info(f"Update applied successfully to {version}")
         elif data.get("result") == "failed":
             step = data.get("step") or "unknown"
-            self.last_update_error = (
-                f"Update to {version} couldn't be applied automatically (step: {step}). "
-                "It'll retry on the next check, or download manually."
+            self.last_update_error = self._describe_update_failure(
+                version, step, data.get("path") or "", data.get("reason") or ""
             )
-            logger.warning(f"Update to {version} failed at step {step}")
+            logger.warning(
+                f"Update to {version} failed at step {step} "
+                f"(path={data.get('path') or '?'}, reason={data.get('reason') or '?'}); "
+                f"helper log: {marker.with_name('update_helper.log')}"
+            )
+
+    @staticmethod
+    def _describe_update_failure(version: str, step: str, path: str, reason: str) -> str:
+        """Turn the helper's failure marker into the dashboard's notice.
+
+        Markers from helpers older than #791 carry no path or reason; those keep the
+        original wording. Some steps (``wait_timeout``) have a reason but no path.
+        """
+        head = f"Update to {version} couldn't be applied automatically (step: {step})"
+        detail = head
+        if path:
+            detail += f": {path}"
+        if reason:
+            detail += f": {reason.rstrip('.')}"
+        if step == "restore_failed":
+            # The previous install could not be moved back, so nothing will retry on
+            # its own: the user has to rename the .old dir (the path) back by hand.
+            return (
+                f"{detail}. The previous version was left in that folder. If Engram "
+                f"does not start, rename it back to its original name (drop the "
+                f"'.old-{version}' ending), or download manually."
+            )
+        if step == "move_install" and path:
+            return (
+                f"{detail}. Another program is using that folder, often a browser or "
+                "terminal that was started from it. Close it (restarting the "
+                "browser is enough if Engram opened it) and the next update will go "
+                "through, or download manually."
+            )
+        return f"{detail}. It'll retry on the next check, or download manually."
 
     async def _check(self, skipped_version: str | None) -> None:
         """Query GitHub for the latest release and decide whether to download."""
@@ -758,6 +820,7 @@ class UpdateChecker:
         pid: int,
         version: str,
         result_path: str,
+        move_attempts: int = 6,
     ) -> str:
         """Render the Windows update helper batch script (pure — testable off-Windows).
 
@@ -767,10 +830,12 @@ class UpdateChecker:
         After the parent PID exits (bounded ~10s wait, filtered on PID *and* image name so a
         reused PID can't wedge it): robocopy the staged build to a sibling `.new`, verify
         sentinels, swap via two same-volume renames, relaunch with `--updated` (suppresses a
-        duplicate browser tab; the existing tab reconnects), and roll back on any failure. Every
-        terminal path writes a `result=...` marker to %RESULT% that the relaunched app reads to
-        toast success / show a failure notice. Logs every step to %LOG%; only deletes itself on
-        success.
+        duplicate browser tab; the existing tab reconnects), and roll back on any failure. Each
+        rename goes through `:retry_move`, which retries a busy directory with backoff up to
+        ``move_attempts`` times. Every terminal path writes a `result=...` marker to %RESULT%
+        that the relaunched app reads to toast success / show a failure notice; a failure also
+        records which path it was working on and the OS's reason. Logs every step to %LOG%;
+        only deletes itself on success.
         """
         lines = [
             "@echo off",
@@ -783,7 +848,11 @@ class UpdateChecker:
             f'set "RESULT={result_path}"',
             f'set "VER={version}"',
             f'set "EXE=%INSTALL%\\{exe}"',
+            'set "MOVEOUT=%TEMP%\\engram_update_move.txt"',
+            f"set /a MOVE_ATTEMPTS={move_attempts}",
             'set "STEP=start"',
+            'set "FAILPATH="',
+            'set "REASON="',
             f'echo [engram-update] start (pid {pid}) > "%LOG%"',
             'echo [engram-update] cwd=%CD% >> "%LOG%"',
             'echo [engram-update] INSTALL=%INSTALL% NEWDIR=%NEWDIR% OLDDIR=%OLDDIR% >> "%LOG%"',
@@ -797,6 +866,7 @@ class UpdateChecker:
             "if %WAITED% GEQ 10 (",
             '    echo [engram-update] timed out waiting for exit >> "%LOG%"',
             '    set "STEP=wait_timeout"',
+            '    set "REASON=Engram did not exit within 10s"',
             "    goto fail",
             ")",
             "ping -n 2 127.0.0.1 >nul",
@@ -815,21 +885,27 @@ class UpdateChecker:
             "set RC=%ERRORLEVEL%",
             'echo [engram-update] robocopy exit=%RC% >> "%LOG%"',
             'set "STEP=robocopy"',
+            'set "FAILPATH=%NEWDIR%"',
+            'set "REASON=robocopy exit code %RC%"',
             "if %RC% GEQ 8 goto fail",
             # --- verify the copied tree before touching the live install ---
             'set "STEP=verify"',
+            'set "REASON=the copied build is incomplete"',
             f'if not exist "%NEWDIR%\\{exe}" goto fail',
             'if not exist "%NEWDIR%\\_internal\\base_library.zip" goto fail',
             'if not exist "%NEWDIR%\\_internal\\certifi\\cacert.pem" goto fail',
             'if not exist "%NEWDIR%\\_internal\\app\\static\\index.html" goto fail',
+            'set "REASON="',
             # --- atomic swap: install -> .old, .new -> install ---
             'rmdir /S /Q "%OLDDIR%" >nul 2>&1',
             'echo [engram-update] swapping install >> "%LOG%"',
             'set "STEP=move_install"',
-            'move "%INSTALL%" "%OLDDIR%" >> "%LOG%" 2>&1',
+            'set "FAILPATH=%INSTALL%"',
+            'call :retry_move "%INSTALL%" "%OLDDIR%"',
             "if errorlevel 1 goto fail_no_swap",
             'set "STEP=move_new"',
-            'move "%NEWDIR%" "%INSTALL%" >> "%LOG%" 2>&1',
+            'set "FAILPATH=%NEWDIR%"',
+            'call :retry_move "%NEWDIR%" "%INSTALL%"',
             "if errorlevel 1 goto restore_old",
             # --- success ---
             'echo [engram-update] success; relaunching >> "%LOG%"',
@@ -844,10 +920,20 @@ class UpdateChecker:
             'echo [engram-update] swap failed; restoring previous install >> "%LOG%"',
             'set "STEP=swap_restore"',
             'rmdir /S /Q "%INSTALL%" >nul 2>&1',
-            'move "%OLDDIR%" "%INSTALL%" >> "%LOG%" 2>&1',
+            'call :retry_move "%OLDDIR%" "%INSTALL%"',
+            "if errorlevel 1 goto restore_failed",
+            'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
+            "goto relaunch_old",
+            # Both builds are kept: the .old dir is the previous install and the .new dir
+            # the update, so the user can rename either one back by hand.
+            ":restore_failed",
+            'set "STEP=restore_failed"',
+            'set "FAILPATH=%OLDDIR%"',
+            'echo [engram-update] restore failed; kept "%OLDDIR%" and "%NEWDIR%" >> "%LOG%"',
             "goto relaunch_old",
             ":fail_no_swap",
             'echo [engram-update] could not move install aside; left untouched >> "%LOG%"',
+            'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
             "goto relaunch_old",
             ":fail",
             'echo [engram-update] failed at step %STEP%; install untouched >> "%LOG%"',
@@ -858,9 +944,49 @@ class UpdateChecker:
             'echo result=failed>"%RESULT%"',
             'echo version=%VER%>>"%RESULT%"',
             'echo step=%STEP%>>"%RESULT%"',
+            # These two values come from outside the script (an install dir like
+            # `D:\R&D\engram`, a localized OS message), so they are written with delayed
+            # expansion: `!VAR!` expands after cmd has parsed `&`, `|`, `<`, `>` and `)`,
+            # so those characters land in the file instead of splitting the command.
+            # Redirect first: a value ending in a digit would otherwise be read as a
+            # handle number (`...1>>file`). `echo(` writes an empty value as `key=`.
+            "setlocal enabledelayedexpansion",
+            '>>"%RESULT%" echo(path=!FAILPATH!',
+            '>>"%RESULT%" echo(reason=!REASON!',
+            "endlocal",
             'start "" /D "%INSTALL%" "%EXE%" --updated',
             'echo [engram-update] done (rolled back) >> "%LOG%"',
             "endlocal",
+            "goto :eof",
+            # --- :retry_move <src> <dst>: rename with backoff, ERRORLEVEL 1 on give-up ---
+            # Windows refuses to rename a directory while any process has it as its
+            # working directory or holds a file open inside it (#791). Short-lived holders
+            # (antivirus scanning a fresh copy, a process that is still exiting) let go
+            # within seconds, so retry with a doubling wait capped at 8s (2+4+8+8+8 = 30s
+            # over the default six attempts). On give-up, the first line of move's output
+            # (the OS message, e.g. "...being used by another process.") lands in REASON.
+            ":retry_move",
+            "set /a TRIES=0",
+            ":retry_move_again",
+            'move "%~1" "%~2" > "%MOVEOUT%" 2>&1',
+            "if errorlevel 1 goto retry_move_busy",
+            'echo [engram-update] moved "%~1" to "%~2" >> "%LOG%"',
+            "exit /b 0",
+            ":retry_move_busy",
+            'type "%MOVEOUT%" >> "%LOG%"',
+            "set /a TRIES+=1",
+            "if %TRIES% GEQ %MOVE_ATTEMPTS% goto retry_move_give_up",
+            'set /a "BACKOFF=1<<TRIES"',
+            "if %BACKOFF% GTR 8 set /a BACKOFF=8",
+            "set /a PINGS=BACKOFF+1",
+            'echo [engram-update] "%~1" is in use; retry %TRIES% in %BACKOFF%s >> "%LOG%"',
+            "ping -n %PINGS% 127.0.0.1 >nul",
+            "goto retry_move_again",
+            ":retry_move_give_up",
+            'echo [engram-update] giving up on "%~1" after %TRIES% attempts >> "%LOG%"',
+            'set "REASON="',
+            'set /p REASON=<"%MOVEOUT%"',
+            "exit /b 1",
         ]
         return "\n".join(lines) + "\n"
 
