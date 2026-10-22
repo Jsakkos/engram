@@ -8,6 +8,8 @@ All notable changes to Engram will be documented in this file.
 
 - A movie disc whose tracks run about the same length could file a bonus track as the movie and the real pick into `Extras/`. The organizer took the biggest file in staging rather than the title Engram had chosen, and recorded every unmatched title at the movie's path, so a track still flagged as an extra showed as filed there. It now files exactly the chosen title. Choosing a bonus track with **Select** on the review page also clears its extra flag, so the job's record matches what was filed. (#814, thanks @katelovescode!)
 
+- The movie review page no longer offers **Select** on titles whose files were deleted when another title was selected. With nothing left to pick it says so, instead of asking for one of several feature-length titles, and the server refuses such a selection rather than trying to re-rip a disc that has left the drive. (#812, thanks @katelovescode!)
+
 ## [0.42.0] - 2026-10-21
 
 _Highlights: settings export and import, a database backup before every upgrade, History search, review-page shortcuts, a minimum title length setting, and fixes for mounted ISOs, the Windows updater, movie extras and non-English discs._

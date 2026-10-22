@@ -5,7 +5,7 @@ import { Save, Package, Keyboard } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, isHeldMovieExtra, movieReviewTitles, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, isHeldMovieExtra, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
@@ -33,6 +33,15 @@ import { PlayerControls } from './ReviewQueue/PlayerControls';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
 
 /** Uppercase mono caption styling, reused for metadata rows. */
+const MOVIE_REVIEW_NOTICE_TEXT: Record<MovieReviewNotice, string> = {
+    conflict: '› THIS MOVIE IS ALREADY IN THE LIBRARY. REPLACE IT, KEEP BOTH, OR DISCARD THIS RIP.',
+    nothing_selectable:
+        '› NO TITLE IS LEFT TO SELECT AS THE FEATURE. CANCEL THIS JOB FROM THE DASHBOARD.',
+    held_extras:
+        '› BONUS TRACKS FOUND. DISCARD ANY YOU DON’T WANT, THEN SELECT THE FEATURE. THE REST GO TO EXTRAS.',
+    pick_version: '› MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.',
+};
+
 const monoLabelStyle: CSSProperties = {
     fontFamily: sv.mono,
     fontSize: 11,
@@ -937,11 +946,7 @@ function ReviewQueue() {
                 >
                     {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
                     <SvNotice tone="warn">
-                        {titles.some((t) => t.state === 'review' && parseMatchDetails(t).error === 'file_exists')
-                            ? '› THIS MOVIE IS ALREADY IN THE LIBRARY. REPLACE IT, KEEP BOTH, OR DISCARD THIS RIP.'
-                            : titles.some(isHeldMovieExtra)
-                              ? '› BONUS TRACKS FOUND. DISCARD ANY YOU DON’T WANT, THEN SELECT THE FEATURE. THE REST GO TO EXTRAS.'
-                              : '› MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.'}
+                        {MOVIE_REVIEW_NOTICE_TEXT[movieReviewNotice(titles)]}
                     </SvNotice>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

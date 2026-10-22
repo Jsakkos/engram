@@ -76,17 +76,45 @@ export function isHeldMovieExtra(title: DiscTitle): boolean {
 }
 
 /**
+ * A movie title whose rip was deleted when another title was selected (#812).
+ * The backend writes this reason (`UNSELECTED_BY_USER_REASON` in
+ * finalization_coordinator.py) and refuses to select such a title.
+ */
+export function isRemovedBySelect(title: DiscTitle): boolean {
+    return title.state === 'failed' && parseMatchDetails(title).reason === 'Unselected by user';
+}
+
+/**
  * Titles the movie review lists. Extras the "skip" policy already discarded
- * (before the rip, or after it) and titles the reviewer discarded here are
- * settled and would only offer a misleading Select.
+ * (before the rip, or after it), titles the reviewer discarded here, and titles
+ * whose file an earlier Select deleted are settled and would only offer a
+ * misleading Select.
  */
 export function movieReviewTitles(titles: DiscTitle[]): DiscTitle[] {
     return titles.filter(
         (t) =>
             t.state !== 'skipped' &&
             !(t.is_extra && t.state === 'completed') &&
-            t.matched_episode !== 'skip',
+            t.matched_episode !== 'skip' &&
+            !isRemovedBySelect(t),
     );
+}
+
+export type MovieReviewNotice = 'conflict' | 'nothing_selectable' | 'held_extras' | 'pick_version';
+
+/**
+ * Which notice heads the movie review. "pick_version" is only the right ask
+ * when something is left to pick: with every listed title a held extra (or
+ * nothing listed at all) the page must say there is no feature to select.
+ */
+export function movieReviewNotice(titles: DiscTitle[]): MovieReviewNotice {
+    if (titles.some((t) => t.state === 'review' && parseMatchDetails(t).error === 'file_exists')) {
+        return 'conflict';
+    }
+    if (!movieReviewTitles(titles).some((t) => !isHeldMovieExtra(t))) {
+        return 'nothing_selectable';
+    }
+    return titles.some(isHeldMovieExtra) ? 'held_extras' : 'pick_version';
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { DiscTitle } from '../../types';
-import { buildInitialSelections, isHeldMovieExtra, movieReviewTitles } from './utils';
+import { buildInitialSelections, isHeldMovieExtra, movieReviewNotice, movieReviewTitles } from './utils';
 
 describe('movie extras in review (#773)', () => {
     const title = (id: number, state: DiscTitle['state'], is_extra: boolean): DiscTitle =>
@@ -27,6 +27,30 @@ describe('movie extras in review (#773)', () => {
 
     it('keeps a title whose rip failed, so its re-rip notice still shows', () => {
         expect(movieReviewTitles([title(1, 'failed', false)])).toHaveLength(1);
+    });
+});
+
+describe('movie review after a Select deleted the other rips (#812)', () => {
+    const title = (id: number, state: DiscTitle['state'], is_extra: boolean, match_details?: string): DiscTitle =>
+        ({ id, state, is_extra, match_details } as DiscTitle);
+    const removed = (id: number) => title(id, 'failed', true, JSON.stringify({ reason: 'Unselected by user' }));
+
+    it('drops titles whose file the Select cleanup removed', () => {
+        const kept = movieReviewTitles([title(1, 'review', false), removed(2), removed(3)]);
+        expect(kept.map((t) => t.id)).toEqual([1]);
+    });
+
+    it('says so when nothing is left to select, instead of asking for a version', () => {
+        expect(movieReviewNotice([removed(1), removed(2)])).toBe('nothing_selectable');
+        // Held extras are kept or discarded, never selected as the feature.
+        expect(movieReviewNotice([title(1, 'review', true), removed(2)])).toBe('nothing_selectable');
+    });
+
+    it('keeps the existing notices when there is still a choice', () => {
+        const conflict = title(1, 'review', false, JSON.stringify({ error: 'file_exists' }));
+        expect(movieReviewNotice([conflict, removed(2)])).toBe('conflict');
+        expect(movieReviewNotice([title(1, 'matched', false), title(2, 'review', true)])).toBe('held_extras');
+        expect(movieReviewNotice([title(1, 'matched', false), title(2, 'matched', false)])).toBe('pick_version');
     });
 });
 

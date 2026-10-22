@@ -457,6 +457,22 @@ def _has_file_exists(existing: str | None) -> bool:
     return isinstance(parsed, dict) and parsed.get("error") == "file_exists"
 
 
+# Marks a movie title whose rip the Select cleanup deleted. The review page's
+# `isRemovedBySelect` (ReviewQueue/utils.ts) keys on the same string.
+UNSELECTED_BY_USER_REASON = "Unselected by user"
+
+
+def _is_unselected_by_cleanup(title: DiscTitle) -> bool:
+    """True for a movie title whose file was deleted when another was selected."""
+    if title.state != TitleState.FAILED or not title.match_details:
+        return False
+    try:
+        parsed = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(parsed, dict) and parsed.get("reason") == UNSELECTED_BY_USER_REASON
+
+
 def _clear_file_exists(existing: str | None) -> str | None:
     """Drop a resolved FILE_EXISTS reason so the review badge does not stay lit."""
     if not _has_file_exists(existing):
@@ -1755,6 +1771,16 @@ class FinalizationCoordinator:
             if not title or title.job_id != job_id:
                 raise ValueError("Title not found for this job")
 
+            # Its rip was deleted when another title was selected. Selecting it
+            # would find no file and start a re-rip of a disc that has usually
+            # left the drive (#812); the review page no longer lists it.
+            if (
+                job.content_type == ContentType.MOVIE
+                and episode_code != "skip"
+                and _is_unselected_by_cleanup(title)
+            ):
+                raise ValueError("This title's file was removed when another title was selected")
+
             self._apply_decision_fields(
                 title,
                 episode_code,
@@ -1850,7 +1876,7 @@ class FinalizationCoordinator:
 
                                 unselected.state = TitleState.FAILED
                                 unselected.match_details = json.dumps(
-                                    {"reason": "Unselected by user"}
+                                    {"reason": UNSELECTED_BY_USER_REASON}
                                 )
                                 session.add(unselected)
                             except Exception as e:

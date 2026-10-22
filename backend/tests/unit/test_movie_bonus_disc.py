@@ -203,3 +203,36 @@ class TestSelectingAnExtraAsTheFeature:
         assert chosen.is_extra is False and chosen.is_selected is True
         assert chosen.organized_to == str(main)
         assert other.is_selected is False
+
+
+class TestSelectAfterCleanup:
+    """#812: a title whose file the Select cleanup deleted can't be the feature."""
+
+    async def test_select_on_a_removed_title_is_refused_without_a_rerip(
+        self, tmp_path, monkeypatch, cfg
+    ):
+        job_id, ids = await _seed(
+            tmp_path,
+            state=JobState.REVIEW_NEEDED,
+            specs=[
+                (0, 46.0, 3000, TitleState.REVIEW, True, False),
+                (4, 46.7, 2000, TitleState.FAILED, False, True),
+            ],
+        )
+        removed = tmp_path / "BONUS_t04.mkv"
+        removed.unlink()
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, ids[1])
+            t.match_details = '{"reason": "Unselected by user"}'
+            session.add(t)
+            await session.commit()
+        coord = _make_coord()
+        rip = Mock()
+        monkeypatch.setattr(coord, "_run_ripping", rip, raising=False)
+
+        with pytest.raises(ValueError, match="removed"):
+            await coord.apply_review(job_id, ids[1])
+
+        rip.assert_not_called()
+        assert (await _job(job_id)).state == JobState.REVIEW_NEEDED
+        assert (await _titles(ids))[1].state == TitleState.FAILED
