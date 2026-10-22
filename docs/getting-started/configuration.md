@@ -59,7 +59,7 @@ By default Engram binds to `127.0.0.1` (localhost only), so the dashboard is onl
 1. Open the Settings page (gear icon) → **Preferences** step.
 2. Enable **"Allow access from other devices on my network (LAN)"**.
 3. The panel below the toggle shows your LAN address and a QR code once the change is applied.
-4. Click **Save** and **restart Engram** — the bind address is fixed at startup.
+4. Click **Save**, then **Restart now** when Settings offers it (packaged build) — the bind address is fixed at startup. A source or Docker run shows how to restart instead, and **Restart now** stays disabled while a disc is being processed.
 
 !!! warning "No authentication"
     Engram has no login. Anyone on your network can view job status and control the application.

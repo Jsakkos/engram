@@ -4,6 +4,16 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- A **Test login** button next to the OpenSubtitles fields, in setup and in Settings. It logs in with the entered (or saved) credentials and says which part failed: the username or password, the API key, a rate limit or a used-up daily quota, or no connection. On success it shows how many downloads are left today. The password and key are never echoed back or logged. (#723)
+
+- Settings that only apply after a restart now say so. After saving one (concurrent matches, GPU acceleration, staging cleanup, the stuck-job watchdog, LAN access), Settings offers **Restart now** on the packaged build, relaunching Engram and reconnecting the dashboard. The button is disabled with a reason while a disc operation is running, and a source or Docker run gets instructions instead. The GPU acceleration control offers it too once the GPU is enabled. Engram never restarts without that click. (#722)
+
+### Changed
+
+- The first-run **Preferences** step is now short. It asks only how to name your library and how to handle extras, and says the rest uses recommended defaults, changeable later in Settings. It fits on one screen without scrolling at 1366x768. Every other option (matching, cleanup, watchdog, notifications and the rest) is still in Settings, under Preferences, and no default value changed. The setup summary of paths and keys moved out of this step; Settings still shows it. (#726)
+
 ### Fixed
 
 - Segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob and similar) are filed under the TMDB segments each disc track holds, such as `S02E11-E12`, instead of under a number that named an unrelated episode. The shared subtitle pack numbers these seasons by broadcast half-hour while TMDB lists every segment separately, so Hey Arnold! S2 Disc 2 was filed as `S02E06` to `S02E10` when it holds `S02E11-E12`, `S02E13`, `S02E14-E15`, `S02E16-E17` and `S02E18-E19`. The subtitle pack now records which segments each half-hour holds, and Engram files tracks by that. A season the pack cannot yet map is held for review with an explanation instead of being filed under the wrong number. Full effect needs the next nightly subtitle-pack update. (#760)

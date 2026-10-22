@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import RestartControls from "./RestartControls";
 import { ASR_AMBER as AMBER, ASR_CYAN as CYAN, type AsrStatus, gpuDownloadGb as gb } from "../app/components/asrStatus";
 
 /**
@@ -160,6 +161,7 @@ export default function GpuAccelerationSetting() {
                     <span className="form-hint" style={{ color: CYAN }}>
                         ✓ Enabled. Restart the backend to start transcribing on the GPU.
                     </span>
+                    <RestartControls />
                     {disableButton}
                 </>
             )}
