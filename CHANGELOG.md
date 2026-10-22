@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob and similar) are filed under the TMDB segments each disc track holds, such as `S02E11-E12`, instead of under a number that named an unrelated episode. The shared subtitle pack numbers these seasons by broadcast half-hour while TMDB lists every segment separately, so Hey Arnold! S2 Disc 2 was filed as `S02E06` to `S02E10` when it holds `S02E11-E12`, `S02E13`, `S02E14-E15`, `S02E16-E17` and `S02E18-E19`. The subtitle pack now records which segments each half-hour holds, and Engram files tracks by that. A season the pack cannot yet map is held for review with an explanation instead of being filed under the wrong number. Full effect needs the next nightly subtitle-pack update. (#760)
+
 ## [0.42.1] - 2026-10-22
 
 _Highlights: fixes for movie bonus discs (the wrong track filed as the movie, deleted titles still offered, a new **File all as extras** action) and for TV episodes misfiled as extras when TMDB lists the wrong runtime._

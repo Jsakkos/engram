@@ -21,6 +21,7 @@ import {
 const REVIEW_NOTICE_CODES = new Set([
     'references_unreadable',
     'multi_episode_detected',
+    'numbering_divergent',
     'audio_language_unsupported',
 ]);
 

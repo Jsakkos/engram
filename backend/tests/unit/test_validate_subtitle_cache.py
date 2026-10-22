@@ -548,3 +548,96 @@ class TestSeasonLabel:
         assert result.summary["divergent_seasons"] == [
             "Dexter's Laboratory S01 (13 refs vs 38 roster)"
         ]
+
+
+@pytest.mark.unit
+class TestCrosswalkValidation:
+    """A divergent season's crosswalk is checked for shape (#760).
+
+    Every failure here means the builder emitted a map no runtime could trust:
+    translating a reference through it would file a track under a code that is
+    malformed, in another season, or claimed twice.
+    """
+
+    def _shows(self, marker, episode_count=20):
+        return {
+            "537": {
+                "tmdb_id": 537,
+                "name": "Hey Arnold!",
+                "seasons": [2],
+                "episode_counts": {"2": episode_count},
+                "season_numbering": {"2": marker},
+            }
+        }
+
+    def _validate(self, vsc, tmp_path, marker, **kw):
+        _make_assets(vsc, tmp_path, manifest_overrides={"shows": self._shows(marker, **kw)})
+        return vsc.validate(tmp_path)
+
+    def _divergent(self, crosswalk):
+        return {
+            "scheme": "divergent",
+            "roster_size": 37,
+            "segmented": True,
+            "crosswalk": crosswalk,
+        }
+
+    def test_crosswalk_without_segmented_fails(self, vsc, tmp_path):
+        marker = {"scheme": "divergent", "roster_size": 37, "crosswalk": {"S02E06": "S02E11-E12"}}
+        result = self._validate(vsc, tmp_path, marker)
+        assert any("segmented" in f for f in result.failures)
+
+    def test_three_digit_episodes_are_ordered_numerically(self, vsc, tmp_path):
+        # As strings, S02E100 sorts before S02E11 and reads as out of order.
+        crosswalk = {"S02E11": "S02E21-E22", "S02E100": "S02E199-E200"}
+        result = self._validate(vsc, tmp_path, self._divergent(crosswalk), episode_count=120)
+        assert result.failures == []
+
+    def test_valid_crosswalk_passes_and_labels_mapped_count(self, vsc, tmp_path):
+        result = self._validate(
+            vsc,
+            tmp_path,
+            self._divergent({"S02E06": "S02E11-E12", "S02E07": "S02E13", "S02E08": "S02E14-E15"}),
+        )
+        assert result.failures == []
+        assert result.summary["divergent_seasons"] == [
+            "Hey Arnold! S02 (20 refs vs 37 roster, 3 mapped)"
+        ]
+
+    def test_crosswalk_on_non_divergent_season_fails(self, vsc, tmp_path):
+        marker = {"scheme": "tmdb_aired", "roster_size": 20, "crosswalk": {"S02E06": "S02E06"}}
+        result = self._validate(vsc, tmp_path, marker)
+        assert any("crosswalk" in f and "divergent" in f for f in result.failures)
+
+    def test_crosswalk_that_is_not_a_dict_fails(self, vsc, tmp_path):
+        result = self._validate(vsc, tmp_path, self._divergent(["S02E06"]))
+        assert any("crosswalk" in f for f in result.failures)
+
+    def test_crosswalk_key_that_is_not_a_single_code_of_the_season_fails(self, vsc, tmp_path):
+        result = self._validate(vsc, tmp_path, self._divergent({"S03E06": "S02E11-E12"}))
+        assert any("S03E06" in f for f in result.failures)
+
+    def test_crosswalk_value_unparseable_fails(self, vsc, tmp_path):
+        result = self._validate(vsc, tmp_path, self._divergent({"S02E06": "extra"}))
+        assert any("'extra'" in f for f in result.failures)
+
+    def test_crosswalk_value_other_season_fails(self, vsc, tmp_path):
+        result = self._validate(vsc, tmp_path, self._divergent({"S02E19": "S03E32-E33"}))
+        assert any("S03E32-E33" in f for f in result.failures)
+
+    def test_crosswalk_values_overlapping_fails(self, vsc, tmp_path):
+        result = self._validate(
+            vsc, tmp_path, self._divergent({"S02E06": "S02E11-E12", "S02E07": "S02E12-E13"})
+        )
+        assert any("overlap" in f for f in result.failures)
+
+    def test_crosswalk_values_not_increasing_fails(self, vsc, tmp_path):
+        result = self._validate(
+            vsc, tmp_path, self._divergent({"S02E06": "S02E14-E15", "S02E07": "S02E11-E12"})
+        )
+        assert any("overlap" in f or "order" in f for f in result.failures)
+
+    def test_more_crosswalk_keys_than_references_fails(self, vsc, tmp_path):
+        crosswalk = {"S02E01": "S02E01-E02", "S02E02": "S02E03-E04"}
+        result = self._validate(vsc, tmp_path, self._divergent(crosswalk), episode_count=1)
+        assert any("more" in f for f in result.failures)

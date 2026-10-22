@@ -92,7 +92,7 @@ def _norm_title(s: str) -> str:
 
 
 def _season_numbering_entry(
-    tmdb_id: int | None, season: int, reference_count: int, offline: bool
+    tmdb_id: int | None, season: int, codes: list[str], offline: bool
 ) -> dict:
     """Describe how one harvested season is numbered, for the manifest.
 
@@ -100,13 +100,14 @@ def _season_numbering_entry(
     definition for both builders. The only thing this script adds is the
     ``offline`` short-circuit: with ``--offline`` there is no TMDB to resolve a
     canonical roster against, so the season is UNKNOWN and no lookup is even
-    attempted. Everything else (the roster lookup, its failure handling, and the
-    classification) is shared, so a pack-built and a build-built artifact cannot
-    disagree about how they describe the same season.
+    attempted. Everything else (the roster lookup, its failure handling, the
+    classification and the divergent-season crosswalk) is shared, so a pack-built
+    and a build-built artifact cannot disagree about how they describe the same
+    season.
     """
     if offline:
         return {"scheme": SCHEME_UNKNOWN}
-    return _build_season_numbering_entry(tmdb_id, season, reference_count)
+    return _build_season_numbering_entry(tmdb_id, season, codes)
 
 
 def _discover_shows(data_dir: Path) -> dict[str, dict[int, list[tuple[int, str, Path]]]]:
@@ -343,7 +344,7 @@ def main() -> int:
             # looking up str(season) in one and finding it in the other is
             # relying on that.
             season_numbering[str(season)] = _season_numbering_entry(
-                tmdb_id, season, len(codes), args.offline
+                tmdb_id, season, codes, args.offline
             )
 
         if show_seasons:
