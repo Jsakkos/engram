@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Merge queue: GitHub builds a temporary `gh-readonly-queue/main/...` branch
+  # (the PR squashed onto the latest main) and waits for the required "CI Gate"
+  # check on it before landing. Without this trigger a queued PR waits forever.
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -41,12 +46,16 @@ jobs:
         shell: bash
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-          HEAD_MSG: ${{ github.event.head_commit.message }}
+          # push: the head commit; merge_group: the queue's squash commit, whose
+          # subject is the PR title, so the `chore: release v` match still works.
+          HEAD_MSG: ${{ github.event.head_commit.message || github.event.merge_group.head_commit.message }}
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.sha }}
+          MG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           # Clamp to the first line: head_commit.message carries the full body,
           # and `grep '^'` matches the start of EVERY line, so a body line that
@@ -61,6 +70,10 @@ jobs:
           # github.event.before is all-zeros and the diff cannot resolve.
           if [ "$EVENT_NAME" = "pull_request" ]; then
             base="$PR_BASE_SHA"; head="$PR_HEAD_SHA"
+          elif [ "$EVENT_NAME" = "merge_group" ]; then
+            # There is no PR payload and no `before` SHA here; without this the
+            # diff would fail and fail-safe into running the frozen build always.
+            base="$MG_BASE_SHA"; head="$MG_HEAD_SHA"
           else
             base="$PUSH_BEFORE"; head="$PUSH_AFTER"
           fi
