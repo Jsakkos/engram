@@ -255,3 +255,65 @@ def find_short_titles(
     if len(short) >= len(candidates):
         return []
     return short
+
+
+# --- Post-rip disc episode group -----------------------------------------------
+#
+# The post-rip extras gate files a track that misses every TMDB runtime window,
+# and matched siblings (above) can only rescue it once a track on the disc has
+# matched. On a show whose TMDB runtime is simply wrong (MXC: every episode listed
+# at 30 minutes, the DVD tracks run ~20, #801) every track reaches the gate before
+# any match finishes, so the whole disc was filed as extras un-transcribed. The
+# disc's own duration groups are the second opinion: when TMDB fits NO group of
+# similar-length tracks, TMDB is the likelier error, and a track in the disc's
+# episode group is admitted to matching. The matcher, not the runtime, then decides
+# whether it is an episode; a featurette admitted this way fails to match and goes
+# to review, never silently into Extras.
+
+# A group whose length is under this fraction of the season's median TMDB runtime
+# is not TMDB mis-measuring an episode (a disc of 5-minute shorts against
+# 30-minute episodes). Same ratio as the disc-alone pre-rip floor.
+DISC_GROUP_MIN_RUNTIME_RATIO = DISC_RATIO_ALONE
+
+
+def matches_disc_episode_group(
+    title_index: int, titles: list[tuple[int, int]], runtimes: list[int]
+) -> bool:
+    """True if a track sits in the disc's episode group and TMDB fits no group.
+
+    ``titles`` are ``(title_index, duration_seconds)`` pairs for every track on the
+    disc; ``runtimes`` are the season's episode runtimes in minutes.
+
+    Only groups of at least ``DISC_MIN_GROUP_ALONE`` tracks count (the analyst's TV
+    cluster size). If any such group fits a TMDB runtime (single or conjoined), the
+    disc corroborates TMDB and this returns False: an off-runtime group beside a
+    TMDB-length one is a set of extras. Otherwise the episode group is the
+    qualifying group nearest the season's median runtime, ties to the larger:
+    TMDB may be wrong about how long an episode is, but it still points at the
+    longer content, so a pile of featurettes cannot outvote the episodes.
+    """
+    clean_runtimes = [r for r in runtimes if r and r > 0]
+    candidates = [(i, d) for i, d in titles if d and d > 0]
+    if not clean_runtimes or title_index not in {i for i, _ in candidates}:
+        return False
+
+    groups = [g for g in _duration_groups(candidates) if len(g) >= DISC_MIN_GROUP_ALONE]
+
+    def group_minutes(group: list[tuple[int, int]]) -> float:
+        return _median([d for _, d in group]) / 60
+
+    if any(
+        duration_matches_episode_runtime(group_minutes(g), clean_runtimes)
+        or conjoined_episode_count(group_minutes(g), clean_runtimes)
+        for g in groups
+    ):
+        return False
+
+    season_minutes = _median(clean_runtimes)
+    plausible = [
+        g for g in groups if group_minutes(g) >= DISC_GROUP_MIN_RUNTIME_RATIO * season_minutes
+    ]
+    if not plausible:
+        return False
+    episode_group = min(plausible, key=lambda g: (abs(group_minutes(g) - season_minutes), -len(g)))
+    return any(i == title_index for i, _ in episode_group)

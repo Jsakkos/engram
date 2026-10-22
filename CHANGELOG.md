@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- TV episodes are no longer filed as extras when TMDB lists the wrong episode length for the show. TMDB lists every MXC episode at 30 minutes while the DVD episodes run about 20, so every track on the disc missed the runtime check and went to Extras without being matched. Engram now also checks the disc itself: when no group of similar-length tracks on the disc fits TMDB's runtime, the tracks in the disc's episode-length group go on to matching, and one that can't be matched goes to review instead of Extras. Discs whose episodes do fit TMDB keep the existing check, so their featurettes are still filed as extras. (#801)
+
 ## [0.42.0] - 2026-10-21
 
 _Highlights: settings export and import, a database backup before every upgrade, History search, review-page shortcuts, a minimum title length setting, and fixes for mounted ISOs, the Windows updater, movie extras and non-English discs._

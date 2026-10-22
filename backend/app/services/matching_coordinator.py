@@ -31,6 +31,7 @@ from app.core.episode_runtime import (
     EPISODE_DURATION_UNDER_TOLERANCE_MIN,
     conjoined_episode_count,
     duration_matches_episode_runtime,
+    matches_disc_episode_group,
     matches_sibling_episode_duration,
 )
 from app.core.errors import MatchingError
@@ -93,6 +94,17 @@ async def matched_episode_sibling_minutes(session, job_id: int, title_id: int) -
         and t.duration_seconds
         and parse_episode_code(t.matched_episode)
     ]
+
+
+async def disc_title_durations(session, job_id: int) -> list[tuple[int, int]]:
+    """``(title_id, duration_seconds)`` for every track of the job.
+
+    Feeds ``matches_disc_episode_group``: unlike the matched-sibling evidence this
+    needs no track to have matched yet, which is the first-pass case where TMDB's
+    runtime is wrong for the whole disc (#801).
+    """
+    result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+    return [(t.id, t.duration_seconds) for t in result.scalars().all() if t.duration_seconds]
 
 
 # Scan depth for a track the runtime pre-filter admitted as conjoined. A confident
@@ -1405,6 +1417,7 @@ class MatchingCoordinator:
             job_detected_season: int | None = None
             title_duration: float | None = None
             sibling_minutes: list[float] = []
+            disc_durations: list[tuple[int, int]] = []
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
                 title = await session.get(DiscTitle, title_id)
@@ -1416,6 +1429,7 @@ class MatchingCoordinator:
                     sibling_minutes = await matched_episode_sibling_minutes(
                         session, job_id, title_id
                     )
+                    disc_durations = await disc_title_durations(session, job_id)
 
             if job_detected_season:
                 # No connection held across this (possibly networked) lookup.
@@ -1441,6 +1455,21 @@ class MatchingCoordinator:
                                 f"{title_minutes:.0f}min matches no TMDB runtime {runtimes} "
                                 f"but matches episodes already matched on this disc. "
                                 f"Proceeding with matching, not filing as an extra."
+                            )
+                        elif matches_disc_episode_group(title_id, disc_durations, runtimes):
+                            # No track has matched yet, but TMDB's runtime fits no
+                            # group of similar tracks on this disc while this track
+                            # sits in the disc's episode group: TMDB is the likelier
+                            # error. Let the matcher decide; a miss goes to review,
+                            # not silently into Extras (#801).
+                            conjoined_hint = None
+                            logger.info(
+                                f"[MATCH] Title {sanitize_log_value(title_id)} "
+                                f"(Job {sanitize_log_value(job_id)}): duration "
+                                f"{title_minutes:.0f}min matches no TMDB runtime {runtimes} "
+                                f"but matches this disc's episode-length group, which no "
+                                f"TMDB runtime fits. Proceeding with matching, not filing "
+                                f"as an extra."
                             )
                         elif conjoined_hint:
                             # ids are sanitized because CodeQL traces them back to
