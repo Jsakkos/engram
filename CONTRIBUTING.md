@@ -58,10 +58,12 @@ The root `Procfile` starts both servers with one command under a Procfile runner
 foreman start
 ```
 
-Dependencies are installed from the lockfiles before the servers start: the backend runs `uv sync --locked`, and the frontend runs `npm ci` only when `package-lock.json` has changed since the last install (`scripts/ensure_frontend_deps.py`). Neither ever rewrites a lockfile.
+Dependencies are installed from the lockfiles before the servers start: the backend runs `uv sync --locked`, and the frontend runs `npm ci` only when `package-lock.json` has changed since the last install (`scripts/ensure_frontend_deps.py`). Neither ever rewrites a lockfile. Both processes start at the same time, so on a first run the `uv sync` and `npm ci` output is interleaved.
+
+> **Windows:** the `Procfile` commands run through `sh -c`, which native Windows shells don't provide. Run the Procfile runner from WSL or Git Bash, or use the two-terminal steps above.
 
 - The backend starts with `DEBUG=true` by default, which enables the `/api/simulate/*` endpoints. Set `DEBUG=false` to turn them off.
-- If the default ports are taken, set `VITE_BACKEND_PORT` (backend port and the frontend's proxy target) and `VITE_PORT` (dashboard port). A gitignored `.envrc` (direnv) is a convenient place for these.
+- If the default ports are taken, set `VITE_BACKEND_PORT` (backend port and the frontend's proxy target) and `VITE_PORT` (dashboard port). A gitignored `.envrc` is a convenient place for these, as long as direnv exports it into the shell you start the runner from; the runners themselves read `.env`, not `.envrc`.
 - Stopping the runner stops both servers. Check that no `uvicorn` or `makemkvcon` processes are left behind.
 
 ## Code quality

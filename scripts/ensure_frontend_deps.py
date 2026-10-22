@@ -32,6 +32,7 @@ def main() -> int:
     if result.returncode != 0:
         return result.returncode
 
+    # Only after success: a failed install leaves no stamp, so the next start retries it.
     shutil.copyfile(LOCKFILE, STAMP)
     return 0
 
