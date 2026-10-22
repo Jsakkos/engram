@@ -457,6 +457,22 @@ def _has_file_exists(existing: str | None) -> bool:
     return isinstance(parsed, dict) and parsed.get("error") == "file_exists"
 
 
+# Marks a movie title whose rip the Select cleanup deleted. The review page's
+# `isRemovedBySelect` (ReviewQueue/utils.ts) keys on the same string.
+UNSELECTED_BY_USER_REASON = "Unselected by user"
+
+
+def _is_unselected_by_cleanup(title: DiscTitle) -> bool:
+    """True for a movie title whose file was deleted when another was selected."""
+    if title.state != TitleState.FAILED or not title.match_details:
+        return False
+    try:
+        parsed = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(parsed, dict) and parsed.get("reason") == UNSELECTED_BY_USER_REASON
+
+
 def _clear_file_exists(existing: str | None) -> str | None:
     """Drop a resolved FILE_EXISTS reason so the review badge does not stay lit."""
     if not _has_file_exists(existing):
@@ -528,6 +544,8 @@ class FinalizationCoordinator:
     ) -> None:
         self._broadcaster = event_broadcaster
         self._state_machine = state_machine
+        # One "file as extras" per job at a time (see file_movie_as_extras).
+        self._file_as_extras_locks: dict[int, asyncio.Lock] = {}
 
         # Cross-coordinator callbacks (set by JobManager)
         self._run_ripping: callable = None
@@ -1755,6 +1773,16 @@ class FinalizationCoordinator:
             if not title or title.job_id != job_id:
                 raise ValueError("Title not found for this job")
 
+            # Its rip was deleted when another title was selected. Selecting it
+            # would find no file and start a re-rip of a disc that has usually
+            # left the drive (#812); the review page no longer lists it.
+            if (
+                job.content_type == ContentType.MOVIE
+                and episode_code != "skip"
+                and _is_unselected_by_cleanup(title)
+            ):
+                raise ValueError("This title's file was removed when another title was selected")
+
             self._apply_decision_fields(
                 title,
                 episode_code,
@@ -1801,6 +1829,14 @@ class FinalizationCoordinator:
 
                     else:
                         # File exists — Post-Rip workflow
+                        # Select makes this title the feature. One the rip-end pick
+                        # had tagged as an extra stops being one, or it is filed as
+                        # the movie while its row still says is_extra (#814).
+                        statement = select(DiscTitle).where(DiscTitle.job_id == job_id)
+                        for t in (await session.execute(statement)).scalars().all():
+                            t.is_selected = t.id == title.id
+                            session.add(t)
+                        title.is_extra = False
                         job.state = JobState.ORGANIZING
                         await session.commit()
                         await self._broadcaster.broadcast_job_state_changed(job_id, job.state)
@@ -1842,7 +1878,7 @@ class FinalizationCoordinator:
 
                                 unselected.state = TitleState.FAILED
                                 unselected.match_details = json.dumps(
-                                    {"reason": "Unselected by user"}
+                                    {"reason": UNSELECTED_BY_USER_REASON}
                                 )
                                 session.add(unselected)
                             except Exception as e:
@@ -1991,6 +2027,111 @@ class FinalizationCoordinator:
 
             # TV: organize everything once all titles are resolved.
             await self._finalize_tv_if_resolved(session, job)
+
+    async def file_movie_as_extras(self, job_id: int) -> int:
+        """File every kept title of a movie job under the movie's ``Extras/``.
+
+        The review's answer for a disc with no feature on it, typically a bonus
+        disc that identified as the film (#813): every other movie action names
+        one title the feature. Kept means still holding a rip the reviewer did not
+        discard: discarded titles, rips an earlier Select deleted, and extras the
+        skip policy already settled stay as they are. The movie's own file is
+        never touched. Returns how many titles were filed.
+
+        Raises ValueError when the job is not a movie awaiting review or nothing
+        is left to file.
+        """
+        # Held for the whole action, and the session opened inside it, so a second
+        # request (a double click, a retried POST) reads the state the first one
+        # left instead of passing the REVIEW_NEEDED check alongside it and filing
+        # the same titles again past the first run's Extra N.
+        lock = self._file_as_extras_locks.setdefault(job_id, asyncio.Lock())
+        async with lock:
+            return await self._file_movie_as_extras_locked(job_id)
+
+    async def _file_movie_as_extras_locked(self, job_id: int) -> int:
+        from app.core import organizer
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError("Job not found")
+            if job.content_type != ContentType.MOVIE or job.state != JobState.REVIEW_NEEDED:
+                raise ValueError("Only a movie job awaiting review can be filed as extras")
+
+            statement = (
+                select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
+            )
+            titles = [
+                t
+                for t in (await session.execute(statement)).scalars().all()
+                if t.state not in (TitleState.FAILED, TitleState.SKIPPED, TitleState.COMPLETED)
+                and t.matched_episode != "skip"
+                and t.output_filename
+                and Path(t.output_filename).exists()
+            ]
+            if not titles:
+                raise ValueError("Nothing is left to file as extras")
+
+            final_title = job.detected_title or job.volume_label
+            _already_clean = bool(job.tmdb_name) and final_title == job.tmdb_name
+            _tmdb_year = job.tmdb_year
+            _tmdb_id = job.tmdb_id
+            _lib_path = _library_path_for_job(job, "movie")
+            files = [Path(t.output_filename) for t in titles]
+            if not await self._state_machine.transition_to_organizing(job, session):
+                raise ValueError("Only a movie job awaiting review can be filed as extras")
+
+            try:
+                result = await asyncio.to_thread(
+                    organizer.organize_movie_extras,
+                    files,
+                    final_title,
+                    _tmdb_year,
+                    _lib_path,
+                    tmdb_id=_tmdb_id,
+                    already_clean=_already_clean,
+                )
+            except Exception as e:
+                # Anything outside the organizer's own guarded move (reading the
+                # naming config, say) must not leave the job stranded in ORGANIZING.
+                logger.error(f"Filing movie extras crashed: {e}", exc_info=True)
+                result = {"success": False, "extras_dir": None, "moved": {}, "error": str(e)}
+
+            moved = result.get("moved") or {}
+            for t in titles:
+                dest = moved.get(str(Path(t.output_filename)))
+                if dest is None:
+                    continue
+                t.state = TitleState.COMPLETED
+                t.is_extra = True
+                t.is_selected = False
+                t.organized_from = Path(t.output_filename).name
+                t.organized_to = str(dest)
+                t.match_details = _clear_file_exists(t.match_details)
+                session.add(t)
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    t.id,
+                    t.state.value,
+                    organized_from=t.organized_from,
+                    organized_to=t.organized_to,
+                    is_extra=True,
+                )
+
+            if not result["success"]:
+                await self._state_machine.transition_to_failed(
+                    job, session, error_message=result["error"]
+                )
+                logger.error(f"Failed to file movie extras: {result['error']}")
+                return len(moved)
+
+            job.final_path = str(result["extras_dir"])
+            job.progress_percent = 100.0
+            job.error_message = None
+            await self._state_machine.transition_to_completed(job, session)
+            logger.info(f"Filed {len(moved)} title(s) as extras in {result['extras_dir']}")
+            return len(moved)
 
     @staticmethod
     def _apply_decision_fields(

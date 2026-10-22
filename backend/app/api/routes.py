@@ -1536,6 +1536,28 @@ async def submit_review(
     return {"status": "reviewed", "job_id": job.id}
 
 
+@router.post("/jobs/{job_id}/review/file-as-extras")
+async def file_movie_as_extras(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """File every kept title of a movie job under the movie's Extras/ (#813).
+
+    The review's answer for a disc with no feature on it, such as a bonus disc
+    that identified as the film. Completes the job; the movie's own file is
+    never touched.
+    """
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(status_code=400, detail="Job is not awaiting review")
+
+    from app.services.job_manager import job_manager
+
+    try:
+        count = await job_manager.file_movie_as_extras(job.id)
+    except ValueError as e:
+        # Not a movie, or nothing left to file. The coordinator re-checks the
+        # state on a fresh row, so a job that moved on lands here too.
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return {"status": "filed", "job_id": job.id, "count": count}
+
+
 @router.post("/jobs/{job_id}/review/batch")
 async def submit_review_batch(
     review: ReviewBatchRequest,

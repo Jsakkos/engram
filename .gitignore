@@ -116,3 +116,7 @@ artifacts/
 
 # Generated at build time from the TVDB_API_KEY secret (see backend/engram.spec)
 backend/hooks/rthook_tvdb_generated.py
+
+# Local development
+.envrc
+.direnv/

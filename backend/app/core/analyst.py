@@ -313,6 +313,10 @@ class MainFeatureDecision:
     candidate_indices: list[int] = field(default_factory=list)
     needs_review: bool = False
     review_reason: str | None = None
+    # No title is long enough to be this movie: most likely a bonus disc that
+    # identified as the film (#813). Nothing is tagged as an extra, so the
+    # reviewer can still select a feature or file the whole disc as extras.
+    no_feature: bool = False
 
 
 def _bitrate(title: TitleInfo) -> float:
@@ -341,9 +345,26 @@ def select_movie_main_feature(
 
     eligible = [t for t in titles if (t.duration_seconds or 0) >= min_feature_duration]
 
-    # No title clears the feature floor — pick the longest and move on (no review).
+    # No title clears the feature floor: pick the longest and move on (no review),
+    # unless the movie's runtime says even the longest is far too short to be it.
+    # That is a bonus disc carrying the film's TMDB id: filing its longest
+    # featurette as the movie collides with (or, worse, stands in for) the real
+    # one (#813). A short film whose runtime fits is still its own feature.
     if not eligible:
         feature = max(titles, key=lambda t: t.duration_seconds or 0)
+        longest = feature.duration_seconds or 0
+        if runtime_minutes and longest < (runtime_minutes - MOVIE_RUNTIME_TOLERANCE_MIN) * 60:
+            return MainFeatureDecision(
+                feature_index=None,
+                candidate_indices=[t.index for t in titles],
+                needs_review=True,
+                no_feature=True,
+                review_reason=(
+                    f"No title is long enough to be the movie (longest {longest // 60} min, "
+                    f"the movie runs {runtime_minutes} min). This looks like a bonus disc: "
+                    "file every title as an extra, or select the feature if it is here."
+                ),
+            )
         return _single_feature(titles, feature)
 
     if runtime_minutes and runtime_minutes > 0:
