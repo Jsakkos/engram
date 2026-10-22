@@ -249,8 +249,13 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   precomputed codes goes through `translate_codes` (`precomputed_episode_codes`,
   `_load_precomputed_season`), which drops unmapped references; `stamp_numbering` then records
   `tmdb_aired` + `numbering_crosswalk`. The scheme stays `divergent` so older clients are
-  unaffected (no `CACHE_FORMAT_VERSION` bump). Divergent seasons are never gap-healed or grafted
-  from scraped SRTs, and a divergent match with no crosswalk is held as `numbering_divergent`.
+  unaffected (no `CACHE_FORMAT_VERSION` bump). **`divergent` is not "half-hour numbered"**: an
+  ordinary season the pack is merely missing episodes of is divergent too, and its codes are
+  real TMDB coordinates. Everything half-hour specific keys on the builder's explicit
+  `segmented: true` (`is_segmented_season`: most air-date groups hold 2+ episodes of at most
+  15 minutes; read through `is_segmented_marker`): crosswalk derivation, no gap-healing or
+  scraped-SRT grafting, the `numbering_divergent` review hold, and refusing fingerprint
+  contributions. Packs published before the flag existed get none of it.
   Spec: `docs/superpowers/specs/2026-10-20-multipart-episode-matching-design.md`.
 - **A job's episode numbering is a value: `DiscJob.episode_namespace` (`tmdb` | `tvdb`).**
   TMDB aired order is the identity unless a job opts into TheTVDB official order (per show,

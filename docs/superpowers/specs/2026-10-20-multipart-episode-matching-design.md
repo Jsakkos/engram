@@ -7,6 +7,44 @@
   `divergent` marker and explicitly deferred "mapping half-hour *k* to its canonical segments".
   This spec is that deferred piece.
 
+## Revision 2026-10-22: segmented, not divergent
+
+The final review of the first implementation found that `divergent` does not mean "half-hour
+numbered". The builder sets it whenever the harvested reference count differs from the TMDB
+roster size, and it packs any season with 60% or more coverage, so every ordinary season the
+pack is merely missing episodes of is `divergent` too. Applying sections 6.2 and 7 to those
+seasons would switch off the gap healing written for exactly them (Mad Men S02E05), hold every
+disc of them for review, and, with a same-day two-part premiere plus one missing episode,
+derive a structure-only crosswalk that shifts every track by one and files it with confidence.
+
+Amended design:
+
+- **`segmented` is the signal.** `is_segmented_season(roster)` is true when most TMDB broadcast
+  groups (5.1) hold two or more episodes and the median episode runtime is between 1 and 15
+  minutes. A sitcom aired two a night (22-minute episodes) and a drama with a double premiere
+  are not segmented; Hey Arnold!, Dexter's Laboratory and SpongeBob are.
+- **The builder** publishes `"segmented": true` on a divergent season that passes, and derives
+  a crosswalk only for such a season. A failed OpenSubtitles lookup now falls back to
+  structure instead of dropping the crosswalk.
+- **The runtime** keys every half-hour specific behaviour on the marker's `segmented` flag
+  (`is_segmented_marker`): no gap healing (6.2), no scraped-SRT grafting, scraped SRTs not
+  counted as coverage, the `numbering_divergent` hold (7), and no fingerprint contribution for
+  a held match. A pack published before the flag existed gets none of it.
+- **The stamp follows the translation.** `precomputed_numbering` drops a crosswalk that maps
+  none of the shipped index's codes, so `stamp_numbering` never claims `tmdb_aired` over
+  untranslated codes (6.4's invariant).
+- **Anchor inversions** are checked across all pairs, not only neighbours (5.2).
+- **The conjoined hint is a lower bound** (`conjoined_episode_count` returns the smallest
+  fitting n), so a crosswalked code with at least that many parts explains it (6.5). Dexter's
+  Laboratory tracks (hint 2, three segments) file instead of parking.
+- A confirmed multi-episode verdict in an untranslated segmented season keeps the numbering
+  notice in its message, and the validator requires `segmented` beside any crosswalk and
+  orders keys by episode number.
+
+Deferred: the release lookup is gated on a usable OpenSubtitles client, so a night when the
+download quota is spent publishes structure-only crosswalks and title-anchored seasons can
+flap. Carrying the previous night's crosswalk forward is a follow-up.
+
 ## 1. What actually went wrong
 
 The reporter expected disc track 1 to be `S02E11-E12`, track 2 `S02E13`, track 3 `S02E14-E15`,
@@ -277,7 +315,7 @@ unrelated TMDB segment (IMDb E19 would read as TMDB E19 "Gerald Moves Out"), whi
 the mis-file being removed. A track whose true reference was dropped scores weakly against the
 rest and goes to review through the existing low-confidence routing. (My call; see section 8.)
 
-### 6.2 No gap healing for a divergent season
+### 6.2 No gap healing for a segmented season (amended 2026-10-22)
 
 Job 100's log shows the heal at work: "Precomputed cache for Hey Arnold! S02 missing 17 of 37
 episode(s): S02E21 ... fetching" from Addic7ed. Diffing a half-hour corpus against a segment
@@ -328,7 +366,7 @@ New rule in `_apply_multi_episode_review`: when the match came through the cross
 `matched_episode` is a combined code with exactly `conjoined_hint` parts, the hint is satisfied
 and the track is not parked. Any other count (hint 3, code covers 2) still parks, as today.
 
-## 7. Divergent seasons with no crosswalk
+## 7. Segmented seasons with no crosswalk (amended 2026-10-22: keyed on `segmented`)
 
 Until the nightly pack carries crosswalks, and for any season the builder cannot map, a
 `divergent` season has no crosswalk and the runtime behaves as today: it files the corpus
