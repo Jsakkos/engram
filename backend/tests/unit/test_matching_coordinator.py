@@ -2339,7 +2339,14 @@ class TestSiblingEpisodeDurationGuard:
 
         assert sorted(minutes) == [1205 / 60, 1206 / 60]
 
-    async def _run_prefilter(self, monkeypatch, *, with_matched_siblings: bool):
+    async def _run_prefilter(
+        self,
+        monkeypatch,
+        *,
+        with_matched_siblings: bool,
+        unmatched_peers: tuple[int, ...] = (),
+        target_seconds: int = 1206,
+    ):
         """Drive the real pre-filter with the job-113 numbers; report whether the
         track was handed to _handle_extras or admitted to matching."""
 
@@ -2355,7 +2362,7 @@ class TestSiblingEpisodeDurationGuard:
         coord._match_semaphore = MagicMock(acquire=AsyncMock(side_effect=_AdmittedToMatching))
 
         async with _unit_session_factory() as session:
-            job, target = await _seed(session, title_index=0, duration_seconds=1206)
+            job, target = await _seed(session, title_index=0, duration_seconds=target_seconds)
             job.subtitle_status = "completed"
             session.add(job)
             if with_matched_siblings:
@@ -2369,6 +2376,16 @@ class TestSiblingEpisodeDurationGuard:
                             matched_episode=ep,
                         )
                     )
+            # Tracks still waiting on their own match: durations only, no episode.
+            for i, seconds in enumerate(unmatched_peers, start=10):
+                session.add(
+                    DiscTitle(
+                        job_id=job.id,
+                        title_index=i,
+                        duration_seconds=seconds,
+                        state=TitleState.MATCHING,
+                    )
+                )
             await session.commit()
             job_id, title_id = job.id, target.id
 
@@ -2386,6 +2403,26 @@ class TestSiblingEpisodeDurationGuard:
     async def test_prefilter_still_files_a_lone_off_runtime_track(self, monkeypatch):
         # No sibling evidence: the TMDB window keeps its existing behaviour.
         assert await self._run_prefilter(monkeypatch, with_matched_siblings=False) == "extras"
+
+    # Issue #801: the same MXC disc on its FIRST pass. Every track runs the
+    # pre-filter before any match finishes, so there are no matched siblings yet;
+    # the disc's own group of 20-minute tracks has to carry the decision.
+    _MXC_PEERS = (1200, 1206, 1260, 1224, 1212, 1206, 480, 324)
+
+    async def test_prefilter_admits_episode_track_from_disc_group_alone(self, monkeypatch):
+        result = await self._run_prefilter(
+            monkeypatch, with_matched_siblings=False, unmatched_peers=self._MXC_PEERS
+        )
+        assert result == "matching"
+
+    async def test_prefilter_still_files_featurette_beside_disc_group(self, monkeypatch):
+        result = await self._run_prefilter(
+            monkeypatch,
+            with_matched_siblings=False,
+            unmatched_peers=self._MXC_PEERS,
+            target_seconds=476,
+        )
+        assert result == "extras"
 
 
 @pytest.mark.unit
