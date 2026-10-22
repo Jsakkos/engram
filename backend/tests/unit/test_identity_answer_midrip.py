@@ -496,7 +496,8 @@ class TestResumeMoviePostRip:
         refreshed = await _get_job(job.id)
         assert refreshed.state == JobState.COMPLETED
         assert refreshed.final_path == str(out_file)
-        assert organize_calls == [(tmp_path, "UNREADABLE", "Inception")]
+        # The selected title's own file, not the staging folder (#814).
+        assert organize_calls == [(ripped, "UNREADABLE", "Inception")]
         assert (await _get_title(title.id)).state == TitleState.COMPLETED
 
     async def test_multi_title_goes_through_feature_resolution(self, tmp_path, monkeypatch):

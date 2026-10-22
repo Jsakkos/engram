@@ -224,6 +224,13 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   `Extras/` and reporting success. "Nothing here is an episode" is far more often a failed
   match than a genuine bonus disc, and the mis-file is invisible until someone browses the
   library. Independent of `always_review` — this is the floor, not the override.
+- **Movie bonus discs are held too (#813).** `select_movie_main_feature` returns
+  `no_feature` (review, nothing tagged as an extra) when even the longest title is far
+  short of the TMDB runtime, instead of filing a featurette as the movie. The review's
+  way out is `POST /api/jobs/{id}/review/file-as-extras` (`file_movie_as_extras`), which
+  files every kept title under `Movies/Name (Year)/Extras/`. The organizer files exactly
+  the title the job selected (never "the largest MKV"), and extras numbering continues
+  past ones already in the folder (`_move_extras`), so a second disc never overwrites.
 - **Episode codes are multi-episode capable**: `app/core/episode_codes.py` owns parsing and
   canonicalization. One track can hold several TMDB episodes (`S01E01-E03`) — real for
   segment-format shows, where TMDB numbers ~7min segments and the DVD carries the assembled
@@ -592,5 +599,6 @@ For development without physical discs:
 - **`[Unreleased]`** holds entries accumulated between releases; move its content into the new `## [X.Y.Z]` section as part of the release PR. Extraction targets a concrete version and never returns `[Unreleased]`.
 - **Parallel-PR conflicts auto-resolve.** `CHANGELOG.md merge=union` in `.gitattributes` (git's built-in union driver, no per-clone config) combines concurrent `[Unreleased]` entries automatically on `git rebase`. Cosmetic caveats (bullet order, rare duplicate subsection headers) are absorbed by the release-PR curation pass; release extraction is unaffected. Full assessment: `docs/superpowers/reviews/2026-06-02-changelog-conflict-friction.md`.
 - **Release flow**: a `chore: release vX.Y.Z` PR (bump the version files + write the CHANGELOG section) → squash-merge → `tag-release.yml` tags from `main` → `release.yml` builds binaries and publishes the release with the extracted notes.
+- **No merge queue; `main` does not require up-to-date branches.** GitHub rejects the `merge_queue` ruleset rule on this user-owned repo (422, 2026-10-21), so `main` stays on classic protection with `CI Gate` as the only required check and `strict: false`: a green PR that is BEHIND can merge without an update-branch + 20 min CI re-run (`gh pr merge --auto --squash`). The cost is that two PRs green on their own can break `main` together; CI on `main` catches it. `--admin` still bypasses (`enforce_admins` off). The `merge_group` triggers in `ci.yml` stay, so a queue works as-is if the repo moves to an organization.
 - **Preview locally**: `python3 backend/scripts/extract_changelog.py --version X.Y.Z` (or `uv run python …` on Windows) prints exactly what the release body will contain.
 - **Contributor credit is automated.** External contributors are listed in each release body via `backend/scripts/contributors.py --release-section` (wired into `release.yml`, appended between the changelog body and the Full Changelog footer) and thanked on PR merge by `contributor-welcome.yml`. Convention: changelog entries for external contributions append `(#NNN, thanks @user!)`. As part of the `chore: release` PR, regenerate `CONTRIBUTORS.md` with `python backend/scripts/contributors.py --roster --repo Jsakkos/engram > CONTRIBUTORS.md` (a human commit — protected `main` rejects bot pushes, GH006). "Who counts as external" (owner + bots excluded) lives once in `contributors.py`.

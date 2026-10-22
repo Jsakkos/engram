@@ -31,7 +31,8 @@ from collections.abc import Callable, Iterable
 # --- "who counts" -----------------------------------------------------------
 
 OWNER_LOGINS = {"jsakkos"}
-BOT_LOGINS = {"dependabot", "renovate", "github-actions"}
+# `claude` is what Claude Code's Co-Authored-By trailer resolves to on GitHub.
+BOT_LOGINS = {"dependabot", "renovate", "github-actions", "claude"}
 
 _VERSION_TAG = re.compile(r"^v?\d+\.\d+\.\d+$")
 
