@@ -103,8 +103,10 @@ async def disc_title_durations(session, job_id: int) -> list[tuple[int, int]]:
     needs no track to have matched yet, which is the first-pass case where TMDB's
     runtime is wrong for the whole disc (#801).
     """
-    result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
-    return [(t.id, t.duration_seconds) for t in result.scalars().all() if t.duration_seconds]
+    result = await session.execute(
+        select(DiscTitle.id, DiscTitle.duration_seconds).where(DiscTitle.job_id == job_id)
+    )
+    return [(title_id, seconds) for title_id, seconds in result.all() if seconds]
 
 
 # Scan depth for a track the runtime pre-filter admitted as conjoined. A confident
@@ -1461,7 +1463,9 @@ class MatchingCoordinator:
                             # group of similar tracks on this disc while this track
                             # sits in the disc's episode group: TMDB is the likelier
                             # error. Let the matcher decide; a miss goes to review,
-                            # not silently into Extras (#801).
+                            # not silently into Extras (#801). Clearing the conjoined
+                            # hint loses nothing: the group check returns False whenever
+                            # a disc group fits a conjoined runtime.
                             conjoined_hint = None
                             logger.info(
                                 f"[MATCH] Title {sanitize_log_value(title_id)} "

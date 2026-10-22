@@ -277,12 +277,13 @@ DISC_GROUP_MIN_RUNTIME_RATIO = DISC_RATIO_ALONE
 
 
 def matches_disc_episode_group(
-    title_index: int, titles: list[tuple[int, int]], runtimes: list[int]
+    title_key: int, titles: list[tuple[int, int]], runtimes: list[int]
 ) -> bool:
     """True if a track sits in the disc's episode group and TMDB fits no group.
 
-    ``titles`` are ``(title_index, duration_seconds)`` pairs for every track on the
-    disc; ``runtimes`` are the season's episode runtimes in minutes.
+    ``titles`` are ``(key, duration_seconds)`` pairs for every track on the disc,
+    keyed by any per-track id (the matcher passes ``DiscTitle.id``), and ``title_key``
+    is the track's key; ``runtimes`` are the season's episode runtimes in minutes.
 
     Only groups of at least ``DISC_MIN_GROUP_ALONE`` tracks count (the analyst's TV
     cluster size). If any such group fits a TMDB runtime (single or conjoined), the
@@ -294,7 +295,7 @@ def matches_disc_episode_group(
     """
     clean_runtimes = [r for r in runtimes if r and r > 0]
     candidates = [(i, d) for i, d in titles if d and d > 0]
-    if not clean_runtimes or title_index not in {i for i, _ in candidates}:
+    if not clean_runtimes or title_key not in {i for i, _ in candidates}:
         return False
 
     groups = [g for g in _duration_groups(candidates) if len(g) >= DISC_MIN_GROUP_ALONE]
@@ -316,4 +317,4 @@ def matches_disc_episode_group(
     if not plausible:
         return False
     episode_group = min(plausible, key=lambda g: (abs(group_minutes(g) - season_minutes), -len(g)))
-    return any(i == title_index for i, _ in episode_group)
+    return any(i == title_key for i, _ in episode_group)
