@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from app.config import is_frozen
 from app.core.updater import update_checker
@@ -76,7 +76,7 @@ def render_restart_bat(*, exe: str, args: list[str], pid: int, log_path: str) ->
     the next free port rather than leaving the user with nothing running.
     """
     arg_str = " ".join(f'"{a}"' for a in args)
-    image = Path(exe).name
+    image = PureWindowsPath(exe).name
     return "\r\n".join(
         [
             "@echo off",
