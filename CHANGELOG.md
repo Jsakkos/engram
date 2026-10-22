@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - Segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob and similar) are filed under the TMDB segments each disc track holds, such as `S02E11-E12`, instead of under a number that named an unrelated episode. The shared subtitle pack numbers these seasons by broadcast half-hour while TMDB lists every segment separately, so Hey Arnold! S2 Disc 2 was filed as `S02E06` to `S02E10` when it holds `S02E11-E12`, `S02E13`, `S02E14-E15`, `S02E16-E17` and `S02E18-E19`. The subtitle pack now records which segments each half-hour holds, and Engram files tracks by that. A season the pack cannot yet map is held for review with an explanation instead of being filed under the wrong number. Full effect needs the next nightly subtitle-pack update. (#760)
+- TV episodes are no longer filed as extras when TMDB lists the wrong episode length for the show. TMDB lists every MXC episode at 30 minutes while the DVD episodes run about 20, so every track on the disc missed the runtime check and went to Extras without being matched. Engram now also checks the disc itself: when no group of similar-length tracks on the disc fits TMDB's runtime, the tracks in the disc's episode-length group go on to matching, and one that can't be matched goes to review instead of Extras. Discs whose episodes do fit TMDB keep the existing check, so their featurettes are still filed as extras. (#801)
 
 ## [0.42.0] - 2026-10-21
 
