@@ -28,6 +28,8 @@ export interface MatchDetails {
     message?: string;
     matches_found?: number;
     conflict_reason?: string;
+    /** Why a title was settled without a match, e.g. "Unselected by user". */
+    reason?: string;
     auto_sorted?: string;
     /** LLM-based episode suggestion, if one has been run for this title. */
     llm_suggestion?: LLMSuggestion;

@@ -6,6 +6,12 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- A movie disc whose tracks run about the same length could file a bonus track as the movie and the real pick into `Extras/`. The organizer took the biggest file in staging rather than the title Engram had chosen, and recorded every unmatched title at the movie's path, so a track still flagged as an extra showed as filed there. It now files exactly the chosen title. Choosing a bonus track with **Select** on the review page also clears its extra flag, so the job's record matches what was filed. (#814, thanks @katelovescode!)
+
+- The movie review page no longer offers **Select** on titles whose files were deleted when another title was selected. With nothing left to pick it says so, instead of asking for one of several feature-length titles, and the server refuses such a selection rather than trying to re-rip a disc that has left the drive. (#812, thanks @katelovescode!)
+
+- A bonus disc that identifies as the movie itself can now be finished. When even its longest title is far shorter than the movie's runtime, Engram holds the disc for review instead of filing a featurette as the film, and the movie review page has a new **File all as extras** action that files every title you kept into the movie's `Extras/` folder and completes the job. Extras added this way (or from a second movie disc) are numbered after the ones already there instead of replacing them. (#813, thanks @katelovescode!)
+
 - TV episodes are no longer filed as extras when TMDB lists the wrong episode length for the show. TMDB lists every MXC episode at 30 minutes while the DVD episodes run about 20, so every track on the disc missed the runtime check and went to Extras without being matched. Engram now also checks the disc itself: when no group of similar-length tracks on the disc fits TMDB's runtime, the tracks in the disc's episode-length group go on to matching, and one that can't be matched goes to review instead of Extras. Discs whose episodes do fit TMDB keep the existing check, so their featurettes are still filed as extras. (#801)
 
 ## [0.42.0] - 2026-10-21
