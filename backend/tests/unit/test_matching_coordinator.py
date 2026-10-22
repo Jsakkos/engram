@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from app.api.websocket import manager as ws_manager
-from app.core.episode_runtime import MAX_CONJOINED_EPISODES
+from app.core.episode_runtime import MAX_CONJOINED_EPISODES, matches_sibling_episode_duration
 from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -33,6 +33,7 @@ from app.services.matching_coordinator import (
     _same_episode_code,
     _scan_points_for_hint,
     episode_curator,
+    matched_episode_sibling_minutes,
     numbering_schemes_agree,
 )
 from tests.unit.conftest import _unit_session_factory
@@ -2273,6 +2274,118 @@ class TestNumberingDisagreementReason:
         )
         assert "tmdb_aired" not in why
         assert "published subtitle cache" not in why
+
+
+@pytest.mark.unit
+class TestSiblingEpisodeDurationGuard:
+    """Issue #770 (MXC S1 disc 2): TMDB lists every MXC episode at a 30-minute
+    broadcast slot, while the disc's episode tracks run ~20 minutes. Six 20-minute
+    siblings had already MATCHED as episodes when the end-of-disc deep re-match
+    re-ran the runtime pre-filter on the seventh (an unmatched 20-minute track),
+    and the TMDB-only window filed it straight into Extras. A track the same length
+    as tracks on THIS disc that are known episodes is not an extra on duration
+    grounds alone.
+    """
+
+    def test_same_length_as_a_matched_sibling_is_episode_length(self):
+        assert matches_sibling_episode_duration(20.1, [20.1, 20.0, 20.1]) is True
+
+    def test_featurette_is_not_rescued_by_siblings(self):
+        # D1_t07 / C2_t08 on the same disc: 8 and 5 minutes.
+        assert matches_sibling_episode_duration(8.0, [20.1, 20.0]) is False
+        assert matches_sibling_episode_duration(5.4, [20.1]) is False
+
+    def test_no_siblings_never_matches(self):
+        assert matches_sibling_episode_duration(20.0, []) is False
+
+    async def test_collects_only_matched_episode_siblings(self):
+        async with _unit_session_factory() as session:
+            job, target = await _seed(session, title_index=0, duration_seconds=1206)
+            rows = [
+                # matched episodes on this disc: count
+                dict(
+                    title_index=1,
+                    duration_seconds=1206,
+                    state=TitleState.MATCHED,
+                    matched_episode="S01E08",
+                ),
+                dict(
+                    title_index=2,
+                    duration_seconds=1205,
+                    state=TitleState.COMPLETED,
+                    matched_episode="S01E09-E10",
+                ),
+                # an extra, a review-pending title and an unmatched one: ignored
+                dict(
+                    title_index=3,
+                    duration_seconds=476,
+                    state=TitleState.MATCHED,
+                    matched_episode="extra",
+                    is_extra=True,
+                ),
+                dict(
+                    title_index=4,
+                    duration_seconds=900,
+                    state=TitleState.REVIEW,
+                    matched_episode="S01E02",
+                ),
+                dict(title_index=5, duration_seconds=1300, state=TitleState.MATCHING),
+            ]
+            for row in rows:
+                session.add(DiscTitle(job_id=job.id, **row))
+            await session.commit()
+
+            minutes = await matched_episode_sibling_minutes(session, job.id, target.id)
+
+        assert sorted(minutes) == [1205 / 60, 1206 / 60]
+
+    async def _run_prefilter(self, monkeypatch, *, with_matched_siblings: bool):
+        """Drive the real pre-filter with the job-113 numbers; report whether the
+        track was handed to _handle_extras or admitted to matching."""
+
+        class _AdmittedToMatching(Exception):
+            pass
+
+        coord = _make_coord()
+        coord._wait_for_file_ready = AsyncMock(return_value=None)
+        coord._handle_file_wait_result = AsyncMock(return_value=False)
+        coord._episode_runtimes_for_job = AsyncMock(return_value=[30] * 13)
+        coord._handle_extras = AsyncMock(return_value=True)
+        # The first thing after the pre-filter: reaching it means "admitted".
+        coord._match_semaphore = MagicMock(acquire=AsyncMock(side_effect=_AdmittedToMatching))
+
+        async with _unit_session_factory() as session:
+            job, target = await _seed(session, title_index=0, duration_seconds=1206)
+            job.subtitle_status = "completed"
+            session.add(job)
+            if with_matched_siblings:
+                for i, ep in enumerate(("S01E08", "S01E09", "S01E10"), start=1):
+                    session.add(
+                        DiscTitle(
+                            job_id=job.id,
+                            title_index=i,
+                            duration_seconds=1205,
+                            state=TitleState.MATCHED,
+                            matched_episode=ep,
+                        )
+                    )
+            await session.commit()
+            job_id, title_id = job.id, target.id
+
+        from pathlib import Path
+
+        try:
+            await coord._match_after_subtitle_wait(job_id, title_id, Path("B1_t00.mkv"))
+        except _AdmittedToMatching:
+            return "matching"
+        return "extras" if coord._handle_extras.await_count else "neither"
+
+    async def test_prefilter_admits_track_matching_its_matched_siblings(self, monkeypatch):
+        assert await self._run_prefilter(monkeypatch, with_matched_siblings=True) == "matching"
+
+    async def test_prefilter_still_files_a_lone_off_runtime_track(self, monkeypatch):
+        # No sibling evidence: the TMDB window keeps its existing behaviour.
+        assert await self._run_prefilter(monkeypatch, with_matched_siblings=False) == "extras"
 
 
 @pytest.mark.unit

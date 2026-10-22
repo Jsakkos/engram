@@ -182,7 +182,11 @@ describe("ImportModal", () => {
     fireEvent.click(screen.getByText(".."));
 
     await waitFor(() => expect(screen.getByText("King of Queens")).toBeInTheDocument());
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+    // The scroll happens in the row's effect, after the row's text is on screen: wait
+    // for it too, or a slow runner checks between the two (flaked in CI on #797).
+    await waitFor(() =>
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" }),
+    );
   });
 
   const blockedUnit = (over: Partial<client.BlockedUnit> = {}): client.BlockedUnit => ({

@@ -4,9 +4,10 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { apiFetch, amendTitle } from "../api/client";
 import { AmendTitleModal } from "./HistoryPage/AmendTitleModal";
+import { amendEpisodeOptions } from "./HistoryPage/amendEpisodes";
+import { useSeasonRoster } from "../hooks/useSeasonRoster";
 import { FailedJobRecovery } from "./HistoryPage/FailedJobRecovery";
 import { titleStateBadge } from "./HistoryPage/titleState";
-import { parseEpisodeCode } from "./ReviewQueue/coverage";
 import { TvdbAttribution } from "./ReviewQueue/TvdbAttribution";
 import {
   CheckCircle2,
@@ -435,6 +436,15 @@ function JobDetailPanel({
   const matchedSeason = amendTarget?.matchedEpisode?.match(/^S(\d{2})E/);
   const effectiveAmendSeason =
     detail?.detected_season ?? (matchedSeason ? parseInt(matchedSeason[1], 10) : 1);
+  // The reassign picker offers the whole season (#770); fetched only while it's open.
+  const { roster: amendRoster, loading: amendRosterLoading } = useSeasonRoster(
+    amendTarget && detail ? String(detail.id) : undefined,
+    effectiveAmendSeason,
+  );
+  const amendOptions =
+    detail && amendTarget
+      ? amendEpisodeOptions(amendRoster, detail.titles, effectiveAmendSeason)
+      : [];
 
   return (
     <motion.div
@@ -902,22 +912,9 @@ function JobDetailPanel({
             titleIndex: amendTarget.titleIndex,
           }}
           season={effectiveAmendSeason}
-          seasonEpisodes={(() => {
-            // Build episode list from sibling matched_episode codes on the disc's
-            // season, or fall back to a 1..26 range when that's not available.
-            // A combined track contributes EVERY episode it claims: matching
-            // "E(\d+)$" took only the last one, so S01E01-E03 offered E03 alone
-            // and the amend picker silently lost the episodes before it.
-            const eps = detail.titles
-              .flatMap((t) => {
-                const parsed = t.matched_episode ? parseEpisodeCode(t.matched_episode) : null;
-                if (!parsed || parsed.season !== effectiveAmendSeason) return [];
-                return parsed.episodes;
-              });
-            const unique = Array.from(new Set(eps)).sort((a, b) => a - b);
-            if (unique.length > 0) return unique;
-            return Array.from({ length: 26 }, (_, i) => i + 1);
-          })()}
+          seasonEpisodes={amendOptions.map((o) => o.episode)}
+          episodeNames={Object.fromEntries(amendOptions.map((o) => [o.episode, o.name]))}
+          episodesLoading={amendRosterLoading}
           onSubmit={async (target) => {
             await amendTitle(detail.id, amendTarget.titleId, target);
             onRefreshDetail();

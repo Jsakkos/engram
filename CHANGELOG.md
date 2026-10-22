@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-10-21
+
+_Highlights: settings export and import, a database backup before every upgrade, History search, review-page shortcuts, a minimum title length setting, and fixes for mounted ISOs, the Windows updater, movie extras and non-English discs._
+
 ### Added
 
 - **Minimum Title Length** in Settings sets MakeMKV's minimum title length (`--minlength`, 120 seconds by default, MakeMKV's own default). Lower it for discs whose specials run under two minutes, which MakeMKV otherwise hides from Engram entirely. The same value is used for every scan, rip and backup so title numbers stay consistent. (#771, thanks @tzimpel!)
@@ -29,6 +33,12 @@ All notable changes to Engram will be documented in this file.
 - The dashboard footer no longer shows made-up telemetry (`UNIT 07`, `BUFFER NOMINAL`, `CPU IDLE`...) or a platform-based `DRIVE READY`. The drive label now reflects the optical drives Engram detects (`2 DRIVES`, `1 DRIVE · BUSY` while a disc is being read, `IMPORT ONLY` when there are none), and the scrolling band reports the real ASR device with whether transcription is running, jobs per phase, and discs awaiting review. (#720)
 
 ### Fixed
+
+- Unmounting an ISO and mounting another one on the same drive letter now starts a new job right away; before, Engram did not notice the new disc until it was restarted. Unmounting removes the virtual drive letter outright, and Engram stopped checking a letter once it disappeared, so it still believed the first disc was in the drive. A drive letter that disappears now counts as an empty drive, the same as taking a disc out. (#769)
+
+- **Reassign** in History now lists every episode of the season. The picker was built only from episodes other tracks on the disc already held, so the one episode the disc was missing, the one a mis-filed track usually is, could never be chosen. It now reads the season's episode list, with episode titles, and falls back to a full numbered range when that list can't be loaded. (#770)
+
+- An episode track is no longer filed as an extra just because it is shorter than the show's listed runtime when other tracks of the same length on the disc already matched as episodes. Some shows list a 30-minute broadcast slot while the disc's episodes run 20 minutes, so a track that matching couldn't place on the first pass was then filed under Extras next to its matched siblings. Engram now keeps matching such a track, and sends it to review if it still can't be placed. (#770)
 
 - Settings no longer throws away unsaved edits when you click outside it, and Escape now closes it. The close button, Escape and an outside click all go through one path: Settings closes at once when nothing has changed, and otherwise asks **Discard unsaved changes?** with **Keep editing** selected. The first-run setup wizard ignores Escape and outside clicks entirely. (#711)
 
