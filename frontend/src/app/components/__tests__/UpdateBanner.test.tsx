@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 import { UpdateBanner } from "../UpdateBanner";
+import { ApiError, apiFetchVoid } from "../../../api/client";
 import type { UpdateStatus } from "../../../types";
 
 // The banner imports the toast helper; stub it so no portal is needed.
 vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn() } }));
+vi.mock("../../../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/client")>()),
+  apiFetchVoid: vi.fn(),
+}));
 
 function status(overrides: Partial<UpdateStatus>): UpdateStatus {
   return {
@@ -70,6 +76,22 @@ it("renders a failure notice when last_update_error is set", () => {
     expect(screen.getByText(/couldn't be applied/i)).toBeTruthy();
     const link = screen.getByRole("link", { name: /download manually/i }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("https://example/r");
+});
+
+it("shows the server's reason when the restart is refused with a 409 (#825)", async () => {
+    const reason = "Engram can't update itself: its install folder D:\\engram also holds things";
+    vi.mocked(apiFetchVoid).mockRejectedValueOnce(
+        new ApiError(409, "Conflict", JSON.stringify({ detail: reason })),
+    );
+    render(
+        <UpdateBanner
+            updateStatus={status({ is_frozen: true })}
+            onShowNotes={() => {}}
+            onDismiss={() => {}}
+        />,
+    );
+    fireEvent.click(screen.getByText(/Restart now/i));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(reason));
 });
 
 it("renders nothing when neither ready nor a failure", () => {

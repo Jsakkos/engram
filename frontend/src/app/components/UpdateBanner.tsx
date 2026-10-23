@@ -14,6 +14,15 @@ import { sv } from "./synapse";
 import { apiFetchVoid, ApiError } from "../../api/client";
 import type { UpdateStatus } from "../../types";
 
+function conflictDetail(body: string): string | null {
+    try {
+        const detail = JSON.parse(body)?.detail;
+        return typeof detail === "string" && detail.trim() ? detail.trim() : null;
+    } catch {
+        return null;
+    }
+}
+
 interface UpdateBannerProps {
     updateStatus: UpdateStatus | null;
     onShowNotes: () => void;
@@ -37,7 +46,12 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss }: UpdateBan
             toast.info("Restarting to apply update…");
         } catch (err) {
             if (err instanceof ApiError && err.status === 409) {
-                toast.error("A disc operation is in progress. Please wait before restarting.");
+                // 409 is also "the install folder holds your files" (#825); show the
+                // server's sentence when there is one.
+                toast.error(
+                    conflictDetail(err.body) ??
+                        "A disc operation is in progress. Please wait before restarting.",
+                );
             } else if (err instanceof ApiError && err.status === 400) {
                 toast.error("Updates cannot be applied in dev mode.");
             } else {
