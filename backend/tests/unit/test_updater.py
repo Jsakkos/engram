@@ -828,6 +828,18 @@ class TestRenderUpdateBat:
         assert 'call :retry_move "%NEWDIR%" "%INSTALL%"' in bat  # new into place
         assert 'move "%~1" "%~2"' in bat  # the one real rename, inside the retry helper
 
+    def test_never_clears_an_existing_new_dir(self):
+        """A `.new` dir that exists before the copy is not ours either (#825): the
+        helper stops without touching it, and that branch never reaches an rmdir."""
+        bat = self._bat()
+        guard = 'if exist "%NEWDIR%" goto new_dir_taken'
+        assert guard in bat
+        assert bat.index(guard) < bat.index('robocopy "%SRC%" "%NEWDIR%"')
+        assert 'rmdir /S /Q "%NEWDIR%"' not in bat[: bat.index('robocopy "%SRC%"')]
+        branch = bat[bat.index(":new_dir_taken") :]
+        assert "goto relaunch_old" in branch
+        assert "rmdir" not in branch[: branch.index("goto relaunch_old")]
+
     def test_never_clears_an_existing_old_dir(self):
         """An existing .old dir may hold the user's files from an earlier update (#825),
         so the helper refuses to swap rather than deleting it. _restart_windows picks an
@@ -2085,6 +2097,18 @@ class TestRestartWindowsOldDir:
             c._restart_windows()
         content = bat_path.read_text()
         assert f'set "OLDDIR={install.parent / "engram.old-0.16.0-2"}"' in content
+        assert (stale / "tv").is_dir()
+
+    def test_picks_an_unused_new_dir_name(self, monkeypatch, tmp_path):
+        """The startup sweep keeps a `.new` dir holding foreign files, so the helper
+        must not clear it either."""
+        c, install, bat_path = self._run(monkeypatch, tmp_path)
+        stale = install.parent / "engram.new-0.16.0"
+        (stale / "tv").mkdir(parents=True)
+        with pytest.raises(SystemExit):
+            c._restart_windows()
+        content = bat_path.read_text()
+        assert f'set "NEWDIR={install.parent / "engram.new-0.16.0-2"}"' in content
         assert (stale / "tv").is_dir()
 
     def test_passes_the_installs_own_build_entries(self, monkeypatch, tmp_path):

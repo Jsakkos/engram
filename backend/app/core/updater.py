@@ -945,14 +945,10 @@ class UpdateChecker:
         # The ``.new``/``.old`` siblings live next to the INSTALL (not staging), so the
         # swap is two fast atomic same-volume renames even when staging is on a
         # different drive than the install.
-        new_dir = install_dir.parent / f"{install_dir.name}.new-{version}"
-        # Never reuse an existing .old dir: one kept by an earlier update can hold the
-        # user's files (#825), and the helper refuses to swap rather than delete it.
-        old_dir = install_dir.parent / f"{install_dir.name}.old-{version}"
-        suffix = 2
-        while os.path.lexists(old_dir):
-            old_dir = install_dir.parent / f"{install_dir.name}.old-{version}-{suffix}"
-            suffix += 1
+        # Never reuse an existing .new/.old dir: one kept by an earlier update can hold
+        # the user's files (#825), and the helper refuses to go on rather than delete it.
+        new_dir = self._unused_sibling(install_dir, "new", version)
+        old_dir = self._unused_sibling(install_dir, "old", version)
         # What the helper may delete from the old dir once the new build is in: the
         # running build's own top-level entries, nothing else.
         ours = {Path(sys.executable).name.lower(), _BUILD_INTERNAL_DIR}
@@ -990,6 +986,16 @@ class UpdateChecker:
         logger.info(f"Update helper log -> {log_path} (home={Path.home()})")
         self._spawn_detached_helper(["cmd", "/c", str(bat_path)])
         os._exit(0)  # Hard exit: avoids asyncio catching SystemExit
+
+    @staticmethod
+    def _unused_sibling(install_dir: Path, kind: str, version: str) -> Path:
+        """``<install>.<kind>-<version>``, or the first ``-2``, ``-3``... that is free."""
+        candidate = install_dir.parent / f"{install_dir.name}.{kind}-{version}"
+        suffix = 2
+        while os.path.lexists(candidate):
+            candidate = install_dir.parent / f"{install_dir.name}.{kind}-{version}-{suffix}"
+            suffix += 1
+        return candidate
 
     @staticmethod
     def _render_update_bat(
@@ -1078,7 +1084,8 @@ class UpdateChecker:
             'cd /d "%TEMP%"',
             'echo [engram-update] cwd(after cd)=%CD% >> "%LOG%"',
             # --- copy staged build to a sibling of the install (never in place) ---
-            'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
+            # _restart_windows picks an unused name; something there now is not ours (#825).
+            'if exist "%NEWDIR%" goto new_dir_taken',
             'echo [engram-update] robocopy "%SRC%" to "%NEWDIR%" >> "%LOG%"',
             'robocopy "%SRC%" "%NEWDIR%" /MIR /R:3 /W:2 /NP /NFL /NDL >> "%LOG%" 2>&1',
             "set RC=%ERRORLEVEL%",
@@ -1143,6 +1150,13 @@ class UpdateChecker:
             'set "STEP=restore_failed"',
             'set "FAILPATH=%OLDDIR%"',
             'echo [engram-update] restore failed; kept "%OLDDIR%" and "%NEWDIR%" >> "%LOG%"',
+            "goto relaunch_old",
+            # Unlike :fail, this leaves NEWDIR alone: the helper did not create it.
+            ":new_dir_taken",
+            'echo [engram-update] "%NEWDIR%" already exists; not touching it >> "%LOG%"',
+            'set "STEP=new_dir_taken"',
+            'set "FAILPATH=%NEWDIR%"',
+            'set "REASON=a folder with that name already exists"',
             "goto relaunch_old",
             ":old_dir_taken",
             'echo [engram-update] "%OLDDIR%" already exists; not touching it >> "%LOG%"',
