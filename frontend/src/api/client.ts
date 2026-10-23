@@ -174,6 +174,16 @@ export async function setShowOrdering(tmdbId: number, ordering: string): Promise
   });
 }
 
+/** The backend's `{"detail": "..."}` sentence from an error body, or null. */
+export function apiErrorDetail(body: string): string | null {
+  try {
+    const detail = JSON.parse(body)?.detail;
+    return typeof detail === 'string' && detail.trim() ? detail.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Re-throw an {@link ApiError} as a plain Error carrying the backend's
  * `{"detail": "..."}` sentence, so a caller can show `e.message` verbatim

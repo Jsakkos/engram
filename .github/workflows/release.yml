@@ -158,18 +158,22 @@ jobs:
             $rel = $_.FullName.Substring($root.Length + 1) -replace '\\','/'
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
             "$hash  $rel"
-          } | Set-Content -Encoding ascii engram-windows-x64.manifest.sha256
-          Write-Host "manifest entries: $((Get-Content engram-windows-x64.manifest.sha256).Count)"
+          } | Set-Content -Encoding ascii engram-win-x64.manifest.sha256
+          Write-Host "manifest entries: $((Get-Content engram-win-x64.manifest.sha256).Count)"
 
+      # The name must never contain "windows" (#825): updaters up to v0.43.0 pick any
+      # .zip with "windows" in its name and install it with a helper that deletes
+      # everything inside the install dir. Keeping it out of their reach makes them
+      # fail with "no release asset" instead. See WINDOWS_ASSET_NAME in updater.py.
       - name: Package
-        run: Compress-Archive -Path backend/dist/engram -DestinationPath engram-windows-x64.zip
+        run: Compress-Archive -Path backend/dist/engram -DestinationPath engram-win-x64.zip
         shell: pwsh
       - uses: actions/upload-artifact@v7
         with:
-          name: engram-windows-x64
+          name: engram-win-x64
           path: |
-            engram-windows-x64.zip
-            engram-windows-x64.manifest.sha256
+            engram-win-x64.zip
+            engram-win-x64.manifest.sha256
 
   build-linux:
     name: Build Linux Executable
@@ -642,7 +646,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
-          name: engram-windows-x64
+          name: engram-win-x64
       - uses: actions/download-artifact@v8
         with:
           name: engram-linux-x64
@@ -660,7 +664,7 @@ jobs:
           name: engram-linux-arm64-headless
       - name: Generate SHA256 checksums
         run: |
-          sha256sum engram-windows-x64.zip engram-linux-x64.tar.gz engram-linux-arm64.tar.gz engram-macos-arm64.tar.gz engram-linux-x64-headless.tar.gz engram-linux-arm64-headless.tar.gz > sha256sums.txt
+          sha256sum engram-win-x64.zip engram-linux-x64.tar.gz engram-linux-arm64.tar.gz engram-macos-arm64.tar.gz engram-linux-x64-headless.tar.gz engram-linux-arm64-headless.tar.gz > sha256sums.txt
           cat sha256sums.txt
       - name: Generate release notes from CHANGELOG
         env:
@@ -703,8 +707,8 @@ jobs:
           name: ${{ inputs.tag || github.ref_name }}
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
-            engram-windows-x64.zip
-            engram-windows-x64.manifest.sha256
+            engram-win-x64.zip
+            engram-win-x64.manifest.sha256
             engram-linux-x64.tar.gz
             engram-linux-x64.manifest.sha256
             engram-linux-arm64.tar.gz

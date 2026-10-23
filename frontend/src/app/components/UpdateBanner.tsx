@@ -11,7 +11,7 @@ import { useState } from "react";
 import { ArrowUp, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { sv } from "./synapse";
-import { apiFetchVoid, ApiError } from "../../api/client";
+import { apiErrorDetail, apiFetchVoid, ApiError } from "../../api/client";
 import type { UpdateStatus } from "../../types";
 
 interface UpdateBannerProps {
@@ -26,6 +26,9 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss }: UpdateBan
 
     const showReady = !!updateStatus && updateStatus.state === "ready";
     const showFailure = !!updateStatus?.last_update_error && !failureDismissed;
+    // A notice that arrives with a success version is "updated, but the old folder was
+    // kept" (#825): the update itself worked, so there is nothing to download.
+    const updateSucceeded = !!updateStatus?.last_update_success_version;
     if (!showReady && !showFailure) return null;
 
     const isFrozen = updateStatus.is_frozen;
@@ -37,7 +40,12 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss }: UpdateBan
             toast.info("Restarting to apply update…");
         } catch (err) {
             if (err instanceof ApiError && err.status === 409) {
-                toast.error("A disc operation is in progress. Please wait before restarting.");
+                // 409 is also "the install folder holds your files" (#825); show the
+                // server's sentence when there is one.
+                toast.error(
+                    apiErrorDetail(err.body) ??
+                        "A disc operation is in progress. Please wait before restarting.",
+                );
             } else if (err instanceof ApiError && err.status === 400) {
                 toast.error("Updates cannot be applied in dev mode.");
             } else {
@@ -81,7 +89,7 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss }: UpdateBan
         >
             <X size={14} color={sv.magenta} style={{ flexShrink: 0 }} />
             <span style={{ flex: 1 }}>{updateStatus.last_update_error}</span>
-            {updateStatus.release_url && (
+            {updateStatus.release_url && !updateSucceeded && (
                 <a
                     href={updateStatus.release_url}
                     target="_blank"

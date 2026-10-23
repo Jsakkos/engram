@@ -5576,6 +5576,9 @@ async def restart_for_update(background_tasks: BackgroundTasks):
 
     try:
         await update_checker._check_no_active_jobs()
+        # Refuse here, not only in apply_update: that runs after this reply, where a
+        # refusal could only be logged (#825).
+        await update_checker._check_install_dir()
     except UpdateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
