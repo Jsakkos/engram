@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Review-page keyboard shortcuts no longer drop a key pressed the moment the page finishes loading. The shortcut listener used to start a moment after the page appeared, and the first track selection could overwrite an early `j`/`k`. This also ends the random review-shortcut failures in the frontend unit tests. (#716)
+
 ## [0.43.0] - 2026-10-22
 
 _Highlights: segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob) now filed under their TMDB segments, a **Test login** button for OpenSubtitles, settings that need a restart now say so with a **Restart now** button, and a shorter first-run Preferences step._
