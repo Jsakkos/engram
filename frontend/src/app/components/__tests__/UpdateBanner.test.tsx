@@ -78,6 +78,22 @@ it("renders a failure notice when last_update_error is set", () => {
     expect(link.getAttribute("href")).toBe("https://example/r");
 });
 
+it("does not offer a manual download after a successful update that kept the old folder", () => {
+    render(
+        <UpdateBanner
+            updateStatus={{
+                ...baseFailureTest,
+                last_update_success_version: "9.9.9",
+                last_update_error: "Updated to 9.9.9. The previous install was kept at D:\\engram.old-9.9.9",
+            }}
+            onShowNotes={() => {}}
+            onDismiss={() => {}}
+        />,
+    );
+    expect(screen.getByText(/previous install was kept/i)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /download manually/i })).toBeNull();
+});
+
 it("shows the server's reason when the restart is refused with a 409 (#825)", async () => {
     const reason = "Engram can't update itself: its install folder D:\\engram also holds things";
     vi.mocked(apiFetchVoid).mockRejectedValueOnce(

@@ -1984,6 +1984,48 @@ class TestCheckInstallDir:
             with pytest.raises(UpdateError, match="Staging"):
                 await c._check_install_dir()
 
+    async def test_unreadable_install_dir_refuses_with_a_reason(self, monkeypatch, tmp_path):
+        """An OSError listing the dir must become a 409 with a message, not a 500."""
+        c, _ = self._checker(monkeypatch, tmp_path)
+
+        def boom(*args, **kwargs):
+            raise PermissionError("Access is denied")
+
+        monkeypatch.setattr(UpdateChecker, "_install_dir_conflicts", staticmethod(boom))
+        with patch.object(c, "_broadcast", AsyncMock()):
+            with pytest.raises(UpdateError, match="Access is denied"):
+                await c._check_install_dir()
+        assert "Access is denied" in c.last_update_error
+
+    async def test_passing_check_clears_its_own_earlier_refusal(self, monkeypatch, tmp_path):
+        """Once the user moves their folders out, the banner must stop saying it can't."""
+        c, install = self._checker(monkeypatch, tmp_path)
+        (install / "tv").mkdir()
+        with patch.object(c, "_broadcast", AsyncMock()):
+            with pytest.raises(UpdateError):
+                await c._check_install_dir()
+            (install / "tv").rmdir()
+            await c._check_install_dir()
+        assert c.last_update_error is None
+
+    async def test_passing_check_keeps_an_unrelated_notice(self, monkeypatch, tmp_path):
+        c, _ = self._checker(monkeypatch, tmp_path)
+        c.last_update_error = "Update to 9.9.8 couldn't be applied automatically"
+        await c._check_install_dir()
+        assert c.last_update_error == "Update to 9.9.8 couldn't be applied automatically"
+
+    async def test_unreadable_config_still_checks_the_install_dir(
+        self, monkeypatch, in_memory_session_factory
+    ):
+        from sqlalchemy.exc import OperationalError
+
+        def broken_session():
+            raise OperationalError("SELECT", {}, Exception("database is locked"))
+
+        monkeypatch.setattr("app.core.updater.async_session", broken_session)
+        paths = await UpdateChecker()._configured_data_paths()
+        assert str(Path.home() / ".engram") in paths
+
     async def test_not_checked_off_windows(self, monkeypatch, tmp_path):
         """The POSIX path only replaces the binary, so nothing beside it is at risk."""
         c, install = self._checker(monkeypatch, tmp_path)

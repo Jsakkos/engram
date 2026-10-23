@@ -26,6 +26,9 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss }: UpdateBan
 
     const showReady = !!updateStatus && updateStatus.state === "ready";
     const showFailure = !!updateStatus?.last_update_error && !failureDismissed;
+    // A notice that arrives with a success version is "updated, but the old folder was
+    // kept" (#825): the update itself worked, so there is nothing to download.
+    const updateSucceeded = !!updateStatus?.last_update_success_version;
     if (!showReady && !showFailure) return null;
 
     const isFrozen = updateStatus.is_frozen;
@@ -86,7 +89,7 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss }: UpdateBan
         >
             <X size={14} color={sv.magenta} style={{ flexShrink: 0 }} />
             <span style={{ flex: 1 }}>{updateStatus.last_update_error}</span>
-            {updateStatus.release_url && (
+            {updateStatus.release_url && !updateSucceeded && (
                 <a
                     href={updateStatus.release_url}
                     target="_blank"

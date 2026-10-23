@@ -27,9 +27,11 @@ import zipfile
 from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
+from typing import NoReturn
 
 import httpx
 from loguru import logger
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import __version__
 from app.config import is_frozen, settings
@@ -97,6 +99,9 @@ class UpdateChecker:
         self.error: str | None = None
         self.last_update_error: str | None = None
         self.last_update_success_version: str | None = None
+        # The banner text of _check_install_dir's last refusal, so a later passing check
+        # clears that notice and nothing else.
+        self._install_refusal: str | None = None
         self._is_frozen: bool = is_frozen()
         self._current_version: str = __version__
         self._broadcaster = None  # injected by set_broadcaster()
@@ -794,26 +799,43 @@ class UpdateChecker:
         install_dir = Path(sys.executable).parent
         new_build = self.staging_path / "engram" if self.staging_path else None
         data_paths = await self._configured_data_paths()
-        conflicts = await asyncio.to_thread(
-            self._install_dir_conflicts,
-            install_dir,
-            new_build,
-            Path(sys.executable).name,
-            data_paths,
-        )
+        try:
+            conflicts = await asyncio.to_thread(
+                self._install_dir_conflicts,
+                install_dir,
+                new_build,
+                Path(sys.executable).name,
+                data_paths,
+            )
+        except OSError as exc:
+            # Can't tell what is in there, so don't swap it out; say why (not a bare 500).
+            logger.warning(f"Could not check {install_dir} before updating: {exc}", exc_info=True)
+            await self._refuse_update(
+                f"Engram couldn't check its install folder {install_dir} before updating "
+                f"({exc}), so it won't update itself. Download the update manually instead."
+            )
         if not conflicts:
+            if self._install_refusal and self.last_update_error == self._install_refusal:
+                # The user cleared the folder: drop the refusal from the banner.
+                self.last_update_error = None
+                self._install_refusal = None
+                await self._broadcast()
             return
         shown = ", ".join(conflicts[:5])
         if len(conflicts) > 5:
             shown += f" and {len(conflicts) - 5} more"
-        message = (
+        await self._refuse_update(
             f"Engram can't update itself: its install folder {install_dir} also holds "
             f"things it didn't install ({shown}). Updating replaces that whole folder, so "
             "move them to a folder outside it first (and update the paths in Settings), "
             "then try again."
         )
+
+    async def _refuse_update(self, message: str) -> NoReturn:
+        """Show ``message`` on the dashboard banner and raise it as an UpdateError."""
         logger.warning(f"Update refused: {message}")
         self.last_update_error = message
+        self._install_refusal = message
         await self._broadcast()
         raise UpdateError(message)
 
@@ -831,9 +853,11 @@ class UpdateChecker:
             async with async_session() as session:
                 result = await session.execute(select(AppConfig).limit(1))
                 config = result.scalar_one_or_none()
-        except Exception as exc:
+        except (SQLAlchemyError, OSError) as exc:
             # The install dir's own contents are still checked; this only adds paths.
-            logger.warning(f"Could not read configured paths for the update check: {exc}")
+            logger.warning(
+                f"Could not read configured paths for the update check: {exc}", exc_info=True
+            )
             return paths
         if config is not None:
             for field in (
