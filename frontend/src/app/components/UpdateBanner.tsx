@@ -11,17 +11,8 @@ import { useState } from "react";
 import { ArrowUp, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { sv } from "./synapse";
-import { apiFetchVoid, ApiError } from "../../api/client";
+import { apiErrorDetail, apiFetchVoid, ApiError } from "../../api/client";
 import type { UpdateStatus } from "../../types";
-
-function conflictDetail(body: string): string | null {
-    try {
-        const detail = JSON.parse(body)?.detail;
-        return typeof detail === "string" && detail.trim() ? detail.trim() : null;
-    } catch {
-        return null;
-    }
-}
 
 interface UpdateBannerProps {
     updateStatus: UpdateStatus | null;
@@ -49,7 +40,7 @@ export function UpdateBanner({ updateStatus, onShowNotes, onDismiss }: UpdateBan
                 // 409 is also "the install folder holds your files" (#825); show the
                 // server's sentence when there is one.
                 toast.error(
-                    conflictDetail(err.body) ??
+                    apiErrorDetail(err.body) ??
                         "A disc operation is in progress. Please wait before restarting.",
                 );
             } else if (err instanceof ApiError && err.status === 400) {
