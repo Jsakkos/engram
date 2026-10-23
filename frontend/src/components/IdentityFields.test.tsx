@@ -6,7 +6,7 @@ import IdentityFields from './IdentityFields';
 describe('IdentityFields', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         results: [
