@@ -392,7 +392,9 @@ function ReviewQueue() {
         const firstReview = active.find(
             (t) => !t.matched_episode || t.match_confidence < MATCHING_CONFIG.AUTO_MATCH_THRESHOLD,
         );
-        setSelectedTitleId((firstReview ?? active[0]).id);
+        // Functional, so a j/k pressed before this passive effect flushes is not
+        // overwritten by the stale `null` this closure saw.
+        setSelectedTitleId((current) => current ?? (firstReview ?? active[0]).id);
     }, [titles, selectedTitleId]);
 
     const handleEpisodeChange = (titleId: number, episodeCode: string) => {
