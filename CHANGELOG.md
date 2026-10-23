@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-10-22
+
+_Highlights: fixes a data-loss bug in the Windows in-app updater, which permanently deleted any folder kept inside the Engram folder (such as a library at `D:\engram\tv`). Windows users must install this release by hand, once; the steps are below._
+
 ### Fixed
 
 - **In-app updates on Windows could permanently delete folders kept inside the Engram folder.** If your TV or movie library, staging folder or backups sat inside the folder Engram runs from (for example `D:\engram\tv`, with Engram in `D:\engram`), a successful in-app update from any version between 0.15.3 and 0.43.0 deleted them together with the old build. The delete bypassed the Recycle Bin. The updater now removes only the previous build's own files, keeps the old folder (and says where) if anything else is in it, never clears an existing `.old` folder, and refuses to update while the Engram folder holds anything it didn't install, naming what is in the way. Folders elsewhere on the drive were never at risk. (#825)
