@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-22
+
+_Highlights: segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob) now filed under their TMDB segments, a **Test login** button for OpenSubtitles, settings that need a restart now say so with a **Restart now** button, and a shorter first-run Preferences step._
+
 ### Added
 
 - A **Test login** button next to the OpenSubtitles fields, in setup and in Settings. It logs in with the entered (or saved) credentials and says which part failed: the username or password, the API key, a rate limit or a used-up daily quota, or no connection. On success it shows how many downloads are left today. The password and key are never echoed back or logged. (#723)
