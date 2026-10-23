@@ -895,8 +895,10 @@ class UpdateChecker:
         if new_build is not None:
             try:
                 ours |= {p.name.lower() for p in new_build.iterdir()}
-            except OSError:
-                pass
+            except OSError as exc:
+                # Fall back to the launcher + _internal: that can only flag more entries
+                # as foreign, so the check gets stricter, never looser.
+                logger.debug(f"Could not list the staged build {new_build}: {exc}")
 
         conflicts: list[str] = []
         covered: list[str] = []
