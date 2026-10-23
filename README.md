@@ -85,10 +85,12 @@ No Python or Node.js required — the Config Wizard opens in your browser on fir
 
 | Platform | Download | Run |
 |----------|----------|-----|
-| Windows | `engram-windows-x64.zip` | `engram.exe` |
+| Windows | `engram-win-x64.zip` | `engram.exe` |
 | Linux (x64) | `engram-linux-x64.tar.gz` | `./engram/engram` |
 | Linux (arm64 / Jetson) | `engram-linux-arm64.tar.gz` | `./engram/engram` |
 | macOS | `engram-macos-arm64.tar.gz` | `./engram/engram` |
+
+Keep your libraries, staging folder and backups outside the folder you extract Engram into: an update replaces that whole folder.
 
 On Linux arm64 (e.g. NVIDIA Jetson), download `engram-linux-arm64.tar.gz`. ASR runs on the CPU out of the box; GPU acceleration needs an on-device build step — see [Jetson setup](docs/development/jetson.md).
 
