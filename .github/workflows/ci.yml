@@ -535,7 +535,10 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    # Pinned: Playwright's WebKit build targets a specific Ubuntu release and `ubuntu-latest`
+    # moved to 26.04 (2026-10), where the 24.04 WebKit build can't find libicudata.so.74.
+    # Bump together with a Playwright release that supports the new image.
+    runs-on: ubuntu-24.04
     needs: [detect-release, frontend-lint-build]
     if: needs.detect-release.outputs.is_release != 'true'
     defaults:
@@ -568,13 +571,16 @@ jobs:
         run: npm ci
       - name: Get Playwright version
         id: playwright-version
-        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        # ImageOS is a runner process env var, not available in the `env` expression context.
+        run: |
+          echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS}" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ steps.playwright-version.outputs.version }}-chromium-firefox-webkit
+          key: playwright-${{ steps.playwright-version.outputs.version }}-${{ steps.playwright-version.outputs.image }}-chromium-firefox-webkit
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium firefox webkit
