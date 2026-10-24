@@ -8,6 +8,7 @@ on:
     paths:
       - "docker/install-makemkv.sh"
       - ".github/workflows/makemkv-install.yml"
+      - "backend/scripts/check_makemkv_protocol.py"
 
 # See ci.yml for context on the Node 24 opt-in.
 env:
@@ -84,6 +85,19 @@ jobs:
             echo "::error::makemkvcon printed no MSG:1005 startup banner; robot-mode output changed or the binary did not start"
             exit 1
           fi
+
+      - name: Check robot-mode attribute ids against apdefs.h
+        # The no-disc run above cannot show TINFO/SINFO ids, so read them from
+        # the release's own header: a moved id would not error, the scan
+        # parser would silently read the wrong field.
+        run: |
+          VERSION=$(cat /tmp/makemkv-test/.installed-version)
+          mkdir -p /tmp/makemkv-src
+          curl -fsSL --max-time 300 --retry 3 --retry-delay 5 --retry-all-errors \
+            "https://www.makemkv.com/download/makemkv-oss-${VERSION}.tar.gz" \
+            | tar xz -C /tmp/makemkv-src --wildcards '*/makemkvgui/inc/lgpl/apdefs.h'
+          python3 backend/scripts/check_makemkv_protocol.py \
+            "/tmp/makemkv-src/makemkv-oss-${VERSION}/makemkvgui/inc/lgpl/apdefs.h"
 
       - name: Upload robot-mode sample
         if: always()
