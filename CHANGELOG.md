@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The review page can now assign one track to several consecutive episodes by hand, for a disc that holds two cartoon segments in one track and has no subtitles for the matcher to work from. Pick the first episode under **Manual**, then the last one under **+ Also covers**; the file is named with the range (`Show - S01E01-E02.mkv`) and the season roster counts every episode the track holds. Episodes another track already holds are labelled in the list. The server now rejects an episode range that runs backwards or crosses seasons instead of storing it as something nobody chose. (#830)
+
 ## [0.43.1] - 2026-10-22
 
 _Highlights: fixes a data-loss bug in the Windows in-app updater, which permanently deleted any folder kept inside the Engram folder (such as a library at `D:\engram\tv`). Windows users must install this release by hand, once; the steps are below._

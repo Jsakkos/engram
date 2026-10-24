@@ -2618,15 +2618,9 @@ class JobManager:
         code would otherwise sail through review and only fail at organize time,
         after the user thinks the disc is resolved.
         """
-        from app.core.episode_codes import normalize_episode_code, parse_episode_code
+        from app.core.episode_codes import canonical_assignment_code
 
-        if episode_code not in ("extra", "skip"):
-            if not parse_episode_code(episode_code):
-                raise ValueError(
-                    f"Invalid episode code: {episode_code!r} "
-                    "(expected SxxExx, a range like S01E01-E03, 'extra' or 'skip')"
-                )
-            episode_code = normalize_episode_code(episode_code)
+        episode_code = canonical_assignment_code(episode_code)
 
         async with async_session() as session:
             title = await session.get(DiscTitle, title_id)

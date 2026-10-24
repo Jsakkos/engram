@@ -13,7 +13,7 @@ from pathlib import Path
 from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
-from app.core.episode_codes import normalize_episode_code
+from app.core.episode_codes import canonical_assignment_code, normalize_episode_code
 from app.core.languages import language_name
 from app.core.organizer import check_library_writable
 from app.core.security import sanitize_log_value
@@ -2134,6 +2134,31 @@ class FinalizationCoordinator:
             return len(moved)
 
     @staticmethod
+    def _validated_decision_code(title: DiscTitle, episode_code: str | None) -> str | None:
+        """A review decision's code, canonical, or ``ValueError`` when malformed (#830).
+
+        No code (leave the pick alone) and a re-save of exactly what the title
+        already holds pass untouched: the review page re-submits pre-filled picks,
+        and one odd legacy value must not make the whole disc unsaveable.
+        """
+        if not episode_code or episode_code == title.matched_episode:
+            return episode_code
+        return canonical_assignment_code(episode_code)
+
+    @staticmethod
+    def _tv_skip_as_discard(
+        episode_code: str | None, conflict_resolution: str | None, *, is_tv: bool
+    ) -> tuple[str | None, str | None]:
+        """For TV, "skip" (keep the library copy) is exactly a Discard.
+
+        One rule for the batch pre-check and ``_apply_decision_fields``, so a code
+        the Discard throws away is never what fails the batch.
+        """
+        if is_tv and conflict_resolution == "skip":
+            return "skip", None
+        return episode_code, conflict_resolution
+
+    @staticmethod
     def _apply_decision_fields(
         title: DiscTitle,
         episode_code: str | None,
@@ -2154,8 +2179,10 @@ class FinalizationCoordinator:
         applied after the clear. For TV, "skip" (keep the library copy) is
         exactly a Discard, so it becomes one and the organizer never sees it.
         """
-        if is_tv and conflict_resolution == "skip":
-            episode_code, conflict_resolution = "skip", None
+        episode_code, conflict_resolution = FinalizationCoordinator._tv_skip_as_discard(
+            episode_code, conflict_resolution, is_tv=is_tv
+        )
+        episode_code = FinalizationCoordinator._validated_decision_code(title, episode_code)
 
         target_moved = (
             episode_code not in (None, "", "skip")
@@ -2435,11 +2462,21 @@ class FinalizationCoordinator:
 
             if job.content_type != ContentType.MOVIE:
                 # TV: record every decision and finalize once, all in this
-                # single session.
+                # single session. Every decision is checked before any title is
+                # touched, so one malformed code rejects the batch cleanly.
+                checked = []
                 for decision in decisions:
                     title = await session.get(DiscTitle, decision["title_id"])
                     if not title or title.job_id != job_id:
                         raise ValueError(f"Title {decision['title_id']} not found for this job")
+                    code, _ = self._tv_skip_as_discard(
+                        decision.get("episode_code"),
+                        decision.get("conflict_resolution"),
+                        is_tv=True,
+                    )
+                    self._validated_decision_code(title, code)
+                    checked.append((title, decision))
+                for title, decision in checked:
                     self._apply_decision_fields(
                         title,
                         decision.get("episode_code"),
