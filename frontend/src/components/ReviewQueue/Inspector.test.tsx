@@ -360,6 +360,12 @@ describe('Inspector: manual multi-episode assignment (#830)', () => {
         expect(onAssign).toHaveBeenCalledWith('S02E05-E06');
     });
 
+    it('shows a range ending past the roster as matched, not as one episode', () => {
+        renderInspector({ episodes: roster, selection: 'S01E03-E06' });
+        expect(manual()).toHaveValue('S01E03');
+        expect(alsoCovers()).toHaveDisplayValue(/S01E03-E06 \(as matched\)/);
+    });
+
     it('keeps a gapped matcher pick visible without rewriting it', () => {
         renderInspector({ episodes: roster, selection: 'S01E01E03' });
         expect(manual()).toHaveValue('S01E01');

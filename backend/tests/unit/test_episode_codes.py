@@ -135,6 +135,11 @@ class TestCanonicalAssignmentCode:
         # pre-filled picks, so rejecting one would make a matcher result unsaveable.
         assert canonical_assignment_code("S01E01E03") == "S01E01E03"
 
+    def test_descending_run_on_set_is_kept_as_parsed(self):
+        # No hyphen, so no range to run backwards: it is the set E05 + E02, the
+        # same reading parse_episode_code gives, and is stored in that order.
+        assert canonical_assignment_code("S01E05E02") == "S01E05E02"
+
     @pytest.mark.parametrize(
         "code",
         [
@@ -144,6 +149,7 @@ class TestCanonicalAssignmentCode:
             "garbage",
             "",
             "S01",
+            "EXTRA",  # pseudo-codes are lowercase; the review UI only sends those
         ],
     )
     def test_malformed_codes_are_rejected(self, code):

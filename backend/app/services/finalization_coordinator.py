@@ -2146,6 +2146,19 @@ class FinalizationCoordinator:
         return canonical_assignment_code(episode_code)
 
     @staticmethod
+    def _tv_skip_as_discard(
+        episode_code: str | None, conflict_resolution: str | None, *, is_tv: bool
+    ) -> tuple[str | None, str | None]:
+        """For TV, "skip" (keep the library copy) is exactly a Discard.
+
+        One rule for the batch pre-check and ``_apply_decision_fields``, so a code
+        the Discard throws away is never what fails the batch.
+        """
+        if is_tv and conflict_resolution == "skip":
+            return "skip", None
+        return episode_code, conflict_resolution
+
+    @staticmethod
     def _apply_decision_fields(
         title: DiscTitle,
         episode_code: str | None,
@@ -2166,9 +2179,9 @@ class FinalizationCoordinator:
         applied after the clear. For TV, "skip" (keep the library copy) is
         exactly a Discard, so it becomes one and the organizer never sees it.
         """
-        if is_tv and conflict_resolution == "skip":
-            episode_code, conflict_resolution = "skip", None
-
+        episode_code, conflict_resolution = FinalizationCoordinator._tv_skip_as_discard(
+            episode_code, conflict_resolution, is_tv=is_tv
+        )
         episode_code = FinalizationCoordinator._validated_decision_code(title, episode_code)
 
         target_moved = (
@@ -2456,7 +2469,12 @@ class FinalizationCoordinator:
                     title = await session.get(DiscTitle, decision["title_id"])
                     if not title or title.job_id != job_id:
                         raise ValueError(f"Title {decision['title_id']} not found for this job")
-                    self._validated_decision_code(title, decision.get("episode_code"))
+                    code, _ = self._tv_skip_as_discard(
+                        decision.get("episode_code"),
+                        decision.get("conflict_resolution"),
+                        is_tv=True,
+                    )
+                    self._validated_decision_code(title, code)
                     checked.append((title, decision))
                 for title, decision in checked:
                     self._apply_decision_fields(

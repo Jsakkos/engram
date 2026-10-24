@@ -128,12 +128,6 @@ export function Inspector({
     const picked = selectionIsCode ? parseEpisodeCode(selection as string) : null;
     const pickedFirst = picked ? picked.episodes[0] : null;
     const pickedIsRun = !!picked && picked.episodes.every((n, i) => n === picked.episodes[0] + i);
-    const alsoCoversValue =
-        !picked || picked.episodes.length === 1
-            ? ''
-            : pickedIsRun
-              ? String(picked.episodes[picked.episodes.length - 1])
-              : 'as-matched';
     // Later episodes the range can extend to: the roster when it describes the
     // picked season, else generated numbers (TMDB unavailable, or a pick in
     // another season than the roster's).
@@ -149,6 +143,16 @@ export function Inspector({
           : generateEpisodeOptions(picked.season, EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON)
                 .map((code) => ({ number: parseEpisodeCode(code)?.episodes[0] ?? 0, label: `through ${code}` }))
                 .filter((opt) => opt.number > (pickedFirst as number));
+    // A run whose last episode is not offered (e.g. the matcher's range ends past
+    // the roster) is shown as matched too: a controlled select with no matching
+    // option would fall back to "only this episode" and misstate the pick.
+    const pickedLast = picked ? picked.episodes[picked.episodes.length - 1] : null;
+    const alsoCoversValue =
+        !picked || picked.episodes.length === 1
+            ? ''
+            : pickedIsRun && laterEpisodes.some((opt) => opt.number === pickedLast)
+              ? String(pickedLast)
+              : 'as-matched';
     const assignThrough = (value: string) => {
         if (!picked || pickedFirst === null || value === 'as-matched') return;
         const last = value ? Number(value) : pickedFirst;

@@ -303,6 +303,31 @@ async def test_batch_review_resaves_an_unchanged_stored_value(client):
 
 
 @pytest.mark.asyncio
+async def test_batch_tv_skip_conflict_ignores_the_code_it_discards(client):
+    """A TV "keep the library copy" choice is a Discard, so the code that came
+    with it is never used and must not fail the batch (the single path agrees)."""
+    job, titles = await _make_tv_review_job(2)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/review/batch",
+        json={
+            "decisions": [
+                {
+                    "title_id": titles[0].id,
+                    "episode_code": "S01E05-E02",
+                    "conflict_resolution": "skip",
+                }
+            ]
+        },
+    )
+
+    assert resp.status_code == 200
+    async with async_session() as session:
+        reloaded = await session.get(DiscTitle, titles[0].id)
+        assert reloaded.matched_episode == "skip"
+
+
+@pytest.mark.asyncio
 async def test_single_review_rejects_a_cross_season_code(client):
     job, titles = await _make_tv_review_job(2)
 

@@ -100,7 +100,9 @@ def canonical_assignment_code(code: str) -> str:
     - a hyphenated range that runs backwards.
 
     A gapped run-on set ("S01E01E03") is accepted: the matcher and TheDiscDB
-    produce them, and the review page re-saves pre-filled picks.
+    produce them, and the review page re-saves pre-filled picks. Pseudo-codes are
+    matched exactly: the review UI sends them lowercase, and "EXTRA" is rejected
+    rather than stored as an unparseable episode.
     """
     if code in PSEUDO_CODES:
         return code
