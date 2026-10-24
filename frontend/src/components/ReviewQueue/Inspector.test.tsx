@@ -1,9 +1,10 @@
 import '@testing-library/jest-dom';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Inspector } from './Inspector';
 import type { DiscTitle } from '../../types';
 import type { LLMFeedback } from './llmFeedback';
+import type { RosterEpisode } from './types';
 
 vi.mock('sonner', () => ({
     toast: { success: vi.fn(), error: vi.fn() },
@@ -33,25 +34,29 @@ function renderInspector(props: {
     aiEpisodeMatchingEnabled?: boolean;
     aiKeyConfigured?: boolean;
     season?: number;
+    selection?: string;
+    episodes?: RosterEpisode[];
+    holders?: Map<string, number[]>;
+    onAssign?: (code: string) => void;
 } = {}) {
     return render(
         <Inspector
             title={props.title ?? makeTitle()}
             candidates={[]}
             suggestion={null}
-            selection={undefined}
+            selection={props.selection}
             action={undefined}
-            episodes={[]}
+            episodes={props.episodes ?? []}
             season={props.season ?? 1}
             coverage={{}}
-            holders={new Map()}
-            titleIndexById={{ 1: 1 }}
+            holders={props.holders ?? new Map()}
+            titleIndexById={{ 1: 1, 2: 2 }}
             isRematching={false}
             aiEpisodeMatchingEnabled={props.aiEpisodeMatchingEnabled ?? true}
             aiKeyConfigured={props.aiKeyConfigured ?? true}
             llmFeedback={props.llmFeedback ?? null}
             isLlmMatching={props.isLlmMatching ?? false}
-            onAssign={vi.fn()}
+            onAssign={props.onAssign ?? vi.fn()}
             onAction={vi.fn()}
             onRematch={vi.fn()}
             onDeepRematch={vi.fn()}
@@ -287,5 +292,77 @@ describe('Inspector: review reason notice', () => {
         expect(
             screen.queryByText((content) => content.includes('list index out of range')),
         ).not.toBeInTheDocument();
+    });
+});
+
+describe('Inspector: manual multi-episode assignment (#830)', () => {
+    const roster: RosterEpisode[] = [1, 2, 3, 4].map((n) => ({
+        episode_code: `S01E0${n}`,
+        episode_number: n,
+        name: `Part ${n}`,
+    }));
+    const manual = () => screen.getByRole('combobox', { name: /manual episode/i });
+    const alsoCovers = () => screen.getByRole('combobox', { name: /also covers/i });
+
+    it('offers no "also covers" until an episode is picked', () => {
+        renderInspector({ episodes: roster });
+        expect(screen.queryByRole('combobox', { name: /also covers/i })).not.toBeInTheDocument();
+    });
+
+    it('shows a combined selection in both pickers instead of a blank', () => {
+        renderInspector({ episodes: roster, selection: 'S01E01-E02' });
+        expect(manual()).toHaveValue('S01E01');
+        expect(alsoCovers()).toHaveValue('2');
+    });
+
+    it('extends a single pick into a canonical range', () => {
+        const onAssign = vi.fn();
+        renderInspector({ episodes: roster, selection: 'S01E01', onAssign });
+        expect(alsoCovers()).toHaveValue('');
+        fireEvent.change(alsoCovers(), { target: { value: '3' } });
+        expect(onAssign).toHaveBeenCalledWith('S01E01-E03');
+    });
+
+    it('only offers later episodes, so a range can never run backwards', () => {
+        renderInspector({ episodes: roster, selection: 'S01E02' });
+        const values = Array.from(alsoCovers().querySelectorAll('option')).map((o) => o.value);
+        expect(values).toEqual(['', '3', '4']);
+    });
+
+    it('narrows back to one episode', () => {
+        const onAssign = vi.fn();
+        renderInspector({ episodes: roster, selection: 'S01E01-E03', onAssign });
+        fireEvent.change(alsoCovers(), { target: { value: '' } });
+        expect(onAssign).toHaveBeenCalledWith('S01E01');
+    });
+
+    it('resets to a single episode when the first episode changes', () => {
+        const onAssign = vi.fn();
+        renderInspector({ episodes: roster, selection: 'S01E01-E02', onAssign });
+        fireEvent.change(manual(), { target: { value: 'S01E03' } });
+        expect(onAssign).toHaveBeenCalledWith('S01E03');
+    });
+
+    it('marks an episode another track already holds', () => {
+        renderInspector({
+            episodes: roster,
+            selection: 'S01E01',
+            holders: new Map([['S01E03', [2]]]),
+        });
+        expect(screen.getByRole('option', { name: /through E03.*#2/ })).toBeInTheDocument();
+    });
+
+    it('falls back to generated codes for the season when there is no roster', () => {
+        const onAssign = vi.fn();
+        renderInspector({ season: 2, selection: 'S02E05', onAssign });
+        expect(screen.getByRole('option', { name: 'through S02E06' })).toBeInTheDocument();
+        fireEvent.change(alsoCovers(), { target: { value: '6' } });
+        expect(onAssign).toHaveBeenCalledWith('S02E05-E06');
+    });
+
+    it('keeps a gapped matcher pick visible without rewriting it', () => {
+        renderInspector({ episodes: roster, selection: 'S01E01E03' });
+        expect(manual()).toHaveValue('S01E01');
+        expect(alsoCovers()).toHaveDisplayValue(/S01E01E03/);
     });
 });
