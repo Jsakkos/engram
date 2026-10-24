@@ -71,6 +71,12 @@ def contrib():
 
 
 @pytest.fixture(scope="session")
+def mkp():
+    """The check_makemkv_protocol.py module, loaded once per pytest session."""
+    return _load_script_module("check_makemkv_protocol")
+
+
+@pytest.fixture(scope="session")
 def nsc():
     """The normalize_subtitle_cache.py module, loaded once per pytest session."""
     return _load_script_module("normalize_subtitle_cache")
