@@ -1,5 +1,7 @@
 """Tests for configurable naming conventions (#26) and extras policy (#25)."""
 
+import pytest
+
 from app.core.organizer import (
     ALLOWED_MOVIE_PLACEHOLDERS,
     ALLOWED_TV_PLACEHOLDERS,
@@ -167,3 +169,112 @@ class TestValidateNamingFormat:
     def test_invalid_format_syntax(self):
         error = validate_naming_format("{unclosed", ALLOWED_TV_PLACEHOLDERS)
         assert error is not None
+
+
+# ---------------------------------------------------------------------------
+# {episode_title} placeholder (#826)
+# ---------------------------------------------------------------------------
+
+TITLED = "{show} - S{season:02d}E{episode:02d} - {episode_title}"
+
+
+class TestEpisodeTitlePlaceholder:
+    def test_title_is_rendered(self):
+        assert (
+            format_episode_filename(TITLED, "Show", 1, 1, episode_title="Pilot")
+            == "Show - S01E01 - Pilot"
+        )
+
+    def test_placeholder_is_allowed(self):
+        from app.core.organizer import ALLOWED_EPISODE_PLACEHOLDERS
+
+        assert validate_naming_format(TITLED, ALLOWED_EPISODE_PLACEHOLDERS) is None
+
+    def test_default_format_ignores_the_title(self):
+        assert (
+            format_episode_filename(
+                "{show} - S{season:02d}E{episode:02d}", "Show", 1, 1, episode_title="Pilot"
+            )
+            == "Show - S01E01"
+        )
+
+    @pytest.mark.parametrize("empty", [None, "", "   "])
+    def test_empty_trailing_title_drops_its_separator(self, empty):
+        assert format_episode_filename(TITLED, "Show", 1, 1, episode_title=empty) == "Show - S01E01"
+
+    def test_empty_middle_title_drops_one_separator(self):
+        fmt = "{show} - {episode_title} - S{season:02d}E{episode:02d}"
+        assert format_episode_filename(fmt, "Show", 1, 1, episode_title=None) == "Show - S01E01"
+
+    def test_empty_leading_title_drops_the_separator_after_it(self):
+        fmt = "{episode_title} - {show} S{season:02d}E{episode:02d}"
+        assert format_episode_filename(fmt, "Show", 1, 1, episode_title=None) == "Show S01E01"
+
+    def test_empty_title_before_a_year_keeps_the_year_clean(self):
+        fmt = "{show} - S{season:02d}E{episode:02d} - {episode_title} ({year})"
+        out = format_episode_filename(fmt, "Show", 1, 1, year=1999, episode_title=None)
+        assert out == "Show - S01E01 (1999)"
+
+    @pytest.mark.parametrize(
+        "fmt",
+        [
+            "{show} - S{season:02d}E{episode:02d} ({episode_title})",
+            "{show} - S{season:02d}E{episode:02d} [{episode_title}]",
+        ],
+    )
+    def test_empty_title_takes_its_brackets_with_it(self, fmt):
+        assert format_episode_filename(fmt, "Show", 1, 1, episode_title=None) == "Show - S01E01"
+
+    def test_dotted_style_separator_is_dropped(self):
+        fmt = "{show}.S{season:02d}E{episode:02d}.{episode_title}"
+        assert format_episode_filename(fmt, "Show", 1, 1, episode_title=None) == "Show.S01E01"
+
+    def test_illegal_characters_are_removed(self):
+        out = format_episode_filename(
+            TITLED, "Show", 1, 1, episode_title='Who: What? <Now> "Here" a/b\\c|d*'
+        )
+        assert out == "Show - S01E01 - Who What Now Here abcd"
+
+    def test_whitespace_left_by_removed_characters_is_collapsed(self):
+        out = format_episode_filename(TITLED, "Show", 1, 1, episode_title="Left / Right")
+        assert out == "Show - S01E01 - Left Right"
+
+    def test_trailing_dots_and_spaces_are_trimmed(self):
+        out = format_episode_filename(TITLED + " [x]", "Show", 1, 1, episode_title="Wait... ")
+        assert out == "Show - S01E01 - Wait [x]"
+
+    def test_control_characters_never_reach_the_filename(self):
+        out = format_episode_filename(TITLED, "Show", 1, 1, episode_title="Bad\x00Ti\ntle")
+        assert out == "Show - S01E01 - BadTitle"
+
+    def test_a_title_that_sanitizes_to_nothing_counts_as_empty(self):
+        out = format_episode_filename(TITLED, "Show", 1, 1, episode_title='?*"')
+        assert out == "Show - S01E01"
+
+    def test_very_long_titles_are_capped(self):
+        out = format_episode_filename(TITLED, "Show", 1, 1, episode_title="word " * 100)
+        prefix = "Show - S01E01 - "
+        assert out.startswith(prefix)
+        title = out[len(prefix) :]
+        assert 0 < len(title) <= 100
+        assert title == title.strip()
+
+    def test_braces_in_a_title_are_literal(self):
+        out = format_episode_filename(TITLED, "Show", 1, 1, episode_title="{show} {0}")
+        assert out == "Show - S01E01 - {show} {0}"
+
+    def test_multi_episode_range_is_not_spliced_into_a_title_that_looks_like_a_code(self):
+        # "E1 Rising" matches the E0*1 pattern the range splice searches for.
+        out = format_episode_filename(
+            TITLED, "Show", 1, 1, extra_episodes=[2], episode_title="E1 Rising"
+        )
+        assert out == "Show - S01E01-E02 - E1 Rising"
+
+    def test_multi_episode_with_empty_title(self):
+        out = format_episode_filename(TITLED, "Show", 1, 1, extra_episodes=[2], episode_title=None)
+        assert out == "Show - S01E01-E02"
+
+    def test_title_before_the_episode_token_still_gets_the_range(self):
+        fmt = "{episode_title} - {show} - S{season:02d}E{episode:02d}"
+        out = format_episode_filename(fmt, "Show", 1, 1, extra_episodes=[2], episode_title="A & B")
+        assert out == "A & B - Show - S01E01-E02"

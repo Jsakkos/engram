@@ -643,6 +643,36 @@ describe('ConfigWizard: TV naming convention', () => {
 
         expect(await screen.findByLabelText('Episode Filename Format')).toHaveValue('{show} {season}x{episode:02d}');
     });
+
+    it('previews {episode_title} and lists it as a placeholder (#826)', async () => {
+        mockApi({
+            naming_season_format: 'Season {season:02d}',
+            naming_episode_format: '{show} - S{season:02d}E{episode:02d} - {episode_title}',
+        });
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+
+        await screen.findByLabelText('Episode Filename Format');
+        expect(screen.getByText(/Preview: TV\/Season 01\/Breaking Bad - S01E05 - Gray Matter\.mkv/)).toBeInTheDocument();
+        expect(screen.getByText(/Placeholders:.*\{episode_title\}/)).toBeInTheDocument();
+    });
+
+    it('previews the default episode format unchanged', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+
+        await screen.findByLabelText('Naming Convention');
+        expect(screen.getByText(/Preview: TV\/Season 01\/Breaking Bad - S01E05\.mkv/)).toBeInTheDocument();
+    });
+
+    it('previews {year} and {tmdb_id} in the episode format', async () => {
+        mockApi({
+            naming_season_format: 'Season {season:02d}',
+            naming_episode_format: '{show} ({year}) {{tmdb-{tmdb_id}}} S{season}E{episode}',
+        });
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+
+        await screen.findByLabelText('Episode Filename Format');
+        expect(screen.getByText(/Breaking Bad \(2008\) \{tmdb-1396\} S1E5\.mkv/)).toBeInTheDocument();
+    });
 });
 
 describe('ConfigWizard: TheTVDB key copy', () => {

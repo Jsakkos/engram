@@ -1584,6 +1584,7 @@ class FinalizationCoordinator:
                     ordering=_title_ordering,
                     episode_group_id=ordering_group_id,
                     year=_tmdb_year,
+                    episode_namespace=_namespace,
                 )
             else:
                 org_result = await asyncio.to_thread(
@@ -1596,6 +1597,7 @@ class FinalizationCoordinator:
                     episode_group_id=ordering_group_id,
                     year=_tmdb_year,
                     conflict_resolution=_tv_conflict_strategy(cap["conflict_resolution"]),
+                    episode_namespace=_namespace,
                 )
 
             # Classification is independent of the file move: a failed extra still
@@ -2307,6 +2309,7 @@ class FinalizationCoordinator:
                                 ordering=_title_ordering,
                                 episode_group_id=ordering_group_id,
                                 year=_tmdb_year,
+                                episode_namespace=job.episode_namespace,
                             )
                         else:
                             org_result = await asyncio.to_thread(
@@ -2321,6 +2324,7 @@ class FinalizationCoordinator:
                                 conflict_resolution=_tv_conflict_strategy(
                                     disc_title.conflict_resolution
                                 ),
+                                episode_namespace=job.episode_namespace,
                             )
                     if org_result["success"]:
                         success_count += 1
@@ -2542,6 +2546,7 @@ class FinalizationCoordinator:
                             ordering=_title_ordering,
                             episode_group_id=ordering_group_id,
                             year=_tmdb_year,
+                            episode_namespace=job.episode_namespace,
                         )
                     else:
                         org_result = await asyncio.to_thread(
@@ -2556,6 +2561,7 @@ class FinalizationCoordinator:
                             conflict_resolution=_tv_conflict_strategy(
                                 disc_title.conflict_resolution
                             ),
+                            episode_namespace=job.episode_namespace,
                         )
 
                 if org_result["success"]:

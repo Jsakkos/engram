@@ -138,6 +138,31 @@ function renderMovieNamePreview(format: string): string {
         .replace(/\}\}/g, '}');
 }
 
+/**
+ * Preview of the episode filename for Breaking Bad S01E05. Handles every placeholder the
+ * backend accepts, including the zero-pad spec ("{episode:02d}"), so the hint stays honest
+ * when a format uses {year}, {tmdb_id} or {episode_title}.
+ */
+function renderEpisodeNamePreview(format: string): string {
+    const values: Record<string, string | number> = {
+        show: 'Breaking Bad',
+        season: 1,
+        episode: 5,
+        year: 2008,
+        tmdb_id: 1396,
+        episode_title: 'Gray Matter',
+    };
+    // Doubled braces are unescaped last so the Plex "{{tmdb-{tmdb_id}}}" form previews as "{tmdb-1396}".
+    return format
+        .replace(/\{(\w+)(?::0?(\d*)d)?\}/g, (match, name: string, width?: string) => {
+            if (!(name in values)) return match;
+            const value = values[name];
+            return typeof value === 'number' && width ? String(value).padStart(Number(width), '0') : String(value);
+        })
+        .replace(/\{\{/g, '{')
+        .replace(/\}\}/g, '}');
+}
+
 function SavedKeyBadge({ saved, text }: { saved: boolean; text: string }) {
     if (!saved) {
         return null;
@@ -1070,7 +1095,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 ]}
             />
             <span className="form-hint">
-                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
+                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{renderEpisodeNamePreview(config.namingEpisodeFormat)}.mkv
             </span>
         </div>
     );
@@ -2240,7 +2265,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         placeholder="{show} - S{season:02d}E{episode:02d}"
                                     />
                                     <span className="form-hint">
-                                        Placeholders: {'{show}'}, {'{season}'}, {'{episode}'}
+                                        Placeholders: {'{show}'}, {'{season}'}, {'{episode}'}, {'{episode_title}'}, {'{year}'}, {'{tmdb_id}'}.
+                                        Add {'{episode_title}'} for names like &quot;Show - S01E05 - Gray Matter&quot;; when a title is
+                                        unknown it is dropped along with its separator, and a track holding several episodes lists
+                                        their titles joined with &quot;&amp;&quot;.
                                     </span>
                                 </div>
                             </>

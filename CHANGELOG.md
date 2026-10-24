@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Episode titles in file names.** Add `{episode_title}` to the Episode Filename Format (Settings → Preferences → Naming & extras, with Naming Convention set to Custom) to get names like `Show - S01E05 - Gray Matter.mkv`. The default format is unchanged. The title comes from the same catalogue as the episode number (TMDB, or TheTVDB for a job on TheTVDB order); a track holding several episodes lists their titles joined with ` & `; and an unknown title is dropped together with its separator instead of leaving `Show - S01E05 - `. Characters a file name can't hold are removed and very long titles are cut at 100 characters. The settings preview now renders every placeholder. (#826, thanks BurgerMage27 on Discord!)
+
 ## [0.43.1] - 2026-10-22
 
 _Highlights: fixes a data-loss bug in the Windows in-app updater, which permanently deleted any folder kept inside the Engram folder (such as a library at `D:\engram\tv`). Windows users must install this release by hand, once; the steps are below._
