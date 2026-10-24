@@ -524,7 +524,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=1.13.0" },
     { name = "discord-py", specifier = ">=2.7.1" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10.0" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15.1" },
 ]
 
 [package.metadata.requires-dev]
