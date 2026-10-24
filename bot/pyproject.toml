@@ -9,7 +9,7 @@ dependencies = [
     "anthropic>=1.13.0",
     "discord.py>=2.7.1",
     "httpx>=0.28.1",
-    "pyjwt[crypto]>=2.10.0",
+    "pyjwt[crypto]>=2.15.1",
 ]
 
 [dependency-groups]
