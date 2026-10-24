@@ -8,7 +8,6 @@ same number.
 """
 
 import importlib
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -41,15 +40,20 @@ def _succeed(src, show, ep, *a, **k):
 
 
 @pytest.fixture(params=["library", "default"])
-def organize(request, monkeypatch) -> Mock:
+def organize(request, monkeypatch, tmp_path) -> Mock:
     """The TV organize call a sweep makes: ``organize_tv_episode`` when the job has a
-    library path, ``tv_organizer.organize`` otherwise. The mock records its kwargs."""
+    library path, ``tv_organizer.organize`` otherwise. The mock records its kwargs.
+
+    The library root lives under ``tmp_path``: finalize runs a writability preflight on it,
+    and a hard-coded ``/library`` is writable on Windows but not on a Linux runner."""
+    library = tmp_path / "library" / "tv"
+    library.mkdir(parents=True)
     m = Mock(side_effect=_succeed)
     monkeypatch.setattr(organizer_module.tv_organizer, "organize", m)
     monkeypatch.setattr(organizer_module, "organize_tv_episode", m)
     monkeypatch.setattr(
         "app.services.finalization_coordinator._library_path_for_job",
-        lambda job, kind: Path("/library/tv") if request.param == "library" else None,
+        lambda job, kind: library if request.param == "library" else None,
     )
     return m
 
