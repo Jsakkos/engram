@@ -4,6 +4,36 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-10-22
+
+_Highlights: fixes a data-loss bug in the Windows in-app updater, which permanently deleted any folder kept inside the Engram folder (such as a library at `D:\engram\tv`). Windows users must install this release by hand, once; the steps are below._
+
+### Fixed
+
+- **In-app updates on Windows could permanently delete folders kept inside the Engram folder.** If your TV or movie library, staging folder or backups sat inside the folder Engram runs from (for example `D:\engram\tv`, with Engram in `D:\engram`), a successful in-app update from any version between 0.15.3 and 0.43.0 deleted them together with the old build. The delete bypassed the Recycle Bin. The updater now removes only the previous build's own files, keeps the old folder (and says where) if anything else is in it, never clears an existing `.old` folder, and refuses to update while the Engram folder holds anything it didn't install, naming what is in the way. Folders elsewhere on the drive were never at risk. (#825)
+
+  **An update is carried out by the version you already have, so on Windows install this release by hand:** close Engram, move any library, staging or backup folders out of the Engram folder, then extract `engram-win-x64.zip` to a new folder and run `engram.exe` from there. Your settings and database live in `C:\Users\<you>\.engram` and carry over. The Windows download is now named `engram-win-x64.zip`, a name older versions don't recognise, so they cannot apply this release themselves; they report that no release asset was found.
+
+- Review-page keyboard shortcuts no longer drop a key pressed the moment the page finishes loading. The shortcut listener used to start a moment after the page appeared, and the first track selection could overwrite an early `j`/`k`. This also ends the random review-shortcut failures in the frontend unit tests. (#716)
+
+## [0.43.0] - 2026-10-22
+
+_Highlights: segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob) now filed under their TMDB segments, a **Test login** button for OpenSubtitles, settings that need a restart now say so with a **Restart now** button, and a shorter first-run Preferences step._
+
+### Added
+
+- A **Test login** button next to the OpenSubtitles fields, in setup and in Settings. It logs in with the entered (or saved) credentials and says which part failed: the username or password, the API key, a rate limit or a used-up daily quota, or no connection. On success it shows how many downloads are left today. The password and key are never echoed back or logged. (#723)
+
+- Settings that only apply after a restart now say so. After saving one (concurrent matches, GPU acceleration, staging cleanup, the stuck-job watchdog, LAN access), Settings offers **Restart now** on the packaged build, relaunching Engram and reconnecting the dashboard. The button is disabled with a reason while a disc operation is running, and a source or Docker run gets instructions instead. The GPU acceleration control offers it too once the GPU is enabled. Engram never restarts without that click. (#722)
+
+### Changed
+
+- The first-run **Preferences** step is now short. It asks only how to name your library and how to handle extras, and says the rest uses recommended defaults, changeable later in Settings. It fits on one screen without scrolling at 1366x768. Every other option (matching, cleanup, watchdog, notifications and the rest) is still in Settings, under Preferences, and no default value changed. The setup summary of paths and keys moved out of this step; Settings still shows it. (#726)
+
+### Fixed
+
+- Segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob and similar) are filed under the TMDB segments each disc track holds, such as `S02E11-E12`, instead of under a number that named an unrelated episode. The shared subtitle pack numbers these seasons by broadcast half-hour while TMDB lists every segment separately, so Hey Arnold! S2 Disc 2 was filed as `S02E06` to `S02E10` when it holds `S02E11-E12`, `S02E13`, `S02E14-E15`, `S02E16-E17` and `S02E18-E19`. The subtitle pack now records which segments each half-hour holds, and Engram files tracks by that. A season the pack cannot yet map is held for review with an explanation instead of being filed under the wrong number. Full effect needs the next nightly subtitle-pack update. (#760)
+
 ## [0.42.1] - 2026-10-22
 
 _Highlights: fixes for movie bonus discs (the wrong track filed as the movie, deleted titles still offered, a new **File all as extras** action) and for TV episodes misfiled as extras when TMDB lists the wrong runtime._

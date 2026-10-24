@@ -1,7 +1,7 @@
 {
     "name": "engram-frontend",
     "private": true,
-    "version": "0.42.1",
+    "version": "0.43.1",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -52,7 +52,7 @@
         "postcss": "^8.5.30",
         "sharp": "^0.35.5",
         "tailwindcss": "4.3.3",
-        "typescript": "^5.9.3",
+        "typescript": "~6.0.3",
         "typescript-eslint": "^8.59.4",
         "vite": "^8.2.2",
         "vitest": "^4.1.11"

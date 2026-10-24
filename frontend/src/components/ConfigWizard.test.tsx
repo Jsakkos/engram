@@ -56,7 +56,12 @@ const ASR_STATUS = {
 };
 
 /** Route the component's startup fetches (config, asr-status, detect-tools). */
-function mockApi(configOverrides: Record<string, unknown> = {}, options: { discordWebhookValid?: boolean } = {}) {
+function mockApi(configOverrides: Record<string, unknown> = {}, options: {
+    discordWebhookValid?: boolean;
+    putResponse?: Record<string, unknown>;
+    restartStatus?: Record<string, unknown>;
+    osResult?: Record<string, unknown>;
+} = {}) {
     const config = {
         setup_complete: true,
         staging_path: '/staging',
@@ -64,12 +69,20 @@ function mockApi(configOverrides: Record<string, unknown> = {}, options: { disco
         library_tv_path: '/tv',
         ...configOverrides,
     };
-    const { discordWebhookValid = true } = options;
+    const {
+        discordWebhookValid = true,
+        putResponse,
+        restartStatus = { mode: 'packaged', can_restart: true, hint: '', active_jobs: false },
+        osResult = { valid: true, version: 'Logged in, 17 downloads left today' },
+    } = options;
     vi.stubGlobal(
         'fetch',
-        vi.fn((input: RequestInfo | URL) => {
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
             const url = typeof input === 'string' ? input : input.toString();
             const json = async () => {
+                if (init?.method === 'PUT' && putResponse) return putResponse;
+                if (url.includes('/api/restart/status')) return restartStatus;
+                if (url.includes('/api/validate/opensubtitles')) return osResult;
                 if (url.includes('/api/asr-status')) return ASR_STATUS;
                 if (url.includes('/api/detect-tools'))
                     return {
@@ -850,5 +863,188 @@ describe('ConfigWizard: settings export/import (#731)', () => {
 
         fireEvent.click(within(screen.getByRole('navigation', { name: /settings sections/i })).getByRole('button', { name: 'Library Paths' }));
         expect(await screen.findByDisplayValue('/imported/tv')).toBeInTheDocument();
+    });
+});
+
+describe('ConfigWizard: restart prompt (#722)', () => {
+    const PUT_NEEDS_RESTART = {
+        status: 'updated',
+        restart_required: ['max_concurrent_matches'],
+        restart_required_labels: ['Concurrent matches'],
+    };
+
+    async function saveInSettings() {
+        const onComplete = vi.fn();
+        render(<ConfigWizard {...noop} onComplete={onComplete} isOnboarding={false} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+        return onComplete;
+    }
+
+    const restartPosts = () =>
+        (fetch as unknown as Mock).mock.calls.filter(
+            (c) => c[1]?.method === 'POST' && String(c[0]).endsWith('/api/restart'),
+        );
+
+    it('offers Restart now instead of closing when a startup-only setting changed', async () => {
+        mockApi({}, { putResponse: PUT_NEEDS_RESTART });
+        const onComplete = await saveInSettings();
+
+        const prompt = await screen.findByTestId('restart-prompt');
+        expect(prompt).toHaveTextContent('Concurrent matches');
+        expect(await screen.findByRole('button', { name: 'Restart now' })).toBeEnabled();
+        expect(onComplete).not.toHaveBeenCalled();
+        // Never restarts on its own: no POST until the user clicks.
+        expect(restartPosts()).toHaveLength(0);
+    });
+
+    it('Later closes the settings without restarting', async () => {
+        mockApi({}, { putResponse: PUT_NEEDS_RESTART });
+        const onComplete = await saveInSettings();
+        await screen.findByRole('button', { name: 'Restart now' });
+        fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+        expect(onComplete).toHaveBeenCalled();
+        expect(restartPosts()).toHaveLength(0);
+    });
+
+    it('disables Restart now with a reason while a job is active', async () => {
+        mockApi(
+            {},
+            {
+                putResponse: PUT_NEEDS_RESTART,
+                restartStatus: { mode: 'packaged', can_restart: true, hint: '', active_jobs: true },
+            },
+        );
+        await saveInSettings();
+        expect(await screen.findByRole('button', { name: 'Restart now' })).toBeDisabled();
+        expect(screen.getByText(/disc operation is in progress/i)).toBeInTheDocument();
+    });
+
+    it('shows instructions, not a button, on a source or Docker run', async () => {
+        mockApi(
+            {},
+            {
+                putResponse: PUT_NEEDS_RESTART,
+                restartStatus: {
+                    mode: 'source',
+                    can_restart: false,
+                    hint: 'Stop and start the backend (uvicorn) to apply this.',
+                    active_jobs: false,
+                },
+            },
+        );
+        await saveInSettings();
+        expect(await screen.findByTestId('restart-instructions')).toHaveTextContent('Stop and start');
+        expect(screen.queryByRole('button', { name: 'Restart now' })).not.toBeInTheDocument();
+    });
+
+    it('closes as before when nothing needing a restart changed', async () => {
+        const onComplete = await saveInSettings();
+        await waitFor(() => expect(onComplete).toHaveBeenCalled());
+        expect(screen.queryByTestId('restart-prompt')).not.toBeInTheDocument();
+    });
+
+    it('POSTs /api/restart only when Restart now is clicked', async () => {
+        mockApi({}, { putResponse: PUT_NEEDS_RESTART });
+        await saveInSettings();
+        fireEvent.click(await screen.findByRole('button', { name: 'Restart now' }));
+        await waitFor(() => expect(restartPosts()).toHaveLength(1));
+    });
+});
+
+describe('ConfigWizard: OpenSubtitles login test (#723)', () => {
+    async function openSubtitlesSection() {
+        render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        const button = within(nav)
+            .getAllByRole('button')
+            .find((b) => /metadata|subtitle/i.test(b.textContent ?? ''));
+        fireEvent.click(button!);
+    }
+
+    function fillCredentials() {
+        const field = (id: string) => document.getElementById(id) as HTMLInputElement;
+        fireEvent.change(field('osApiKey'), { target: { value: 'k' } });
+        fireEvent.change(field('osUsername'), { target: { value: 'u' } });
+        fireEvent.change(field('osPassword'), { target: { value: 'p' } });
+    }
+
+    it('disables Test login until a key, username and password are entered', async () => {
+        await openSubtitlesSection();
+        const test = await screen.findByRole('button', { name: 'Test login' });
+        expect(test).toBeDisabled();
+        fillCredentials();
+        expect(test).toBeEnabled();
+    });
+
+    it('reports the remaining downloads on success', async () => {
+        await openSubtitlesSection();
+        await screen.findByRole('button', { name: 'Test login' });
+        fillCredentials();
+        fireEvent.click(screen.getByRole('button', { name: 'Test login' }));
+        expect(await screen.findByText(/17 downloads left today/)).toBeInTheDocument();
+    });
+
+    it('shows the specific failure and clears it when a field changes', async () => {
+        mockApi({}, { osResult: { valid: false, error: 'OpenSubtitles rejected the API key.' } });
+        await openSubtitlesSection();
+        await screen.findByRole('button', { name: 'Test login' });
+        fillCredentials();
+        fireEvent.click(screen.getByRole('button', { name: 'Test login' }));
+        expect(await screen.findByText(/rejected the API key/)).toBeInTheDocument();
+        fireEvent.change(document.getElementById('osPassword') as HTMLInputElement, { target: { value: 'pp' } });
+        expect(screen.queryByText(/rejected the API key/)).not.toBeInTheDocument();
+    });
+});
+
+describe('ConfigWizard: first-run Preferences step (#726)', () => {
+    async function goToPreferences() {
+        mockApi({ tmdb_api_key: '***' });
+        render(<ConfigWizard {...noop} isOnboarding={true} />);
+        for (const heading of ['Tools & License', 'TMDB Read Access Token', 'Data Sharing', 'Preferences']) {
+            fireEvent.click(await screen.findByRole('button', { name: /^Next/ }));
+            await screen.findByRole('heading', { level: 3, name: heading });
+        }
+    }
+
+    it('asks only the library-dependent choices and points to Settings for the rest', async () => {
+        await goToPreferences();
+
+        expect(screen.getByText(/recommended defaults/i)).toBeInTheDocument();
+        expect(screen.getByLabelText('Naming Convention')).toBeInTheDocument();
+        expect(screen.getByLabelText('Extras Handling')).toBeInTheDocument();
+        // The tuning knobs are not asked on first run...
+        expect(screen.queryByText('Max Concurrent Matches')).not.toBeInTheDocument();
+        expect(screen.queryByText('GPU Acceleration')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Maintenance & watchdog/)).not.toBeInTheDocument();
+        expect(screen.queryByText('Minimum Title Length (seconds)')).not.toBeInTheDocument();
+    });
+
+    it('still sends every default unchanged when setup completes', async () => {
+        await goToPreferences();
+        fireEvent.click(screen.getByRole('button', { name: 'Complete Setup' }));
+        await waitFor(() => expect(noop.onComplete).toHaveBeenCalled());
+        const put = (fetch as unknown as Mock).mock.calls.find((c) => c[1]?.method === 'PUT');
+        const body = JSON.parse(put![1].body);
+        expect(body).toMatchObject({
+            max_concurrent_matches: 2,
+            enable_background_pretranscription: true,
+            pretranscribe_full_file: false,
+            conflict_resolution_default: 'ask',
+            episode_ordering_preference: 'aired',
+            staging_cleanup_policy: 'on_success',
+            extras_policy: 'keep',
+            watchdog_enabled: true,
+            always_review: false,
+            naming_season_format: 'Season {season:02d}',
+            naming_episode_format: '{show} - S{season:02d}E{episode:02d}',
+        });
+    });
+
+    it('keeps every one of those options reachable in Settings', async () => {
+        render(<ConfigWizard {...noop} isOnboarding={false} initialSection="preferences" />);
+        expect(await screen.findByText('Max Concurrent Matches')).toBeInTheDocument();
+        expect(screen.getByLabelText('Extras Handling')).toBeInTheDocument();
+        expect(screen.getByLabelText('Naming Convention')).toBeInTheDocument();
+        expect(screen.getByText(/Maintenance & watchdog/)).toBeInTheDocument();
     });
 });

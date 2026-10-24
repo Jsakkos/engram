@@ -8,33 +8,53 @@ Platform restart strategies:
   Windows:     .bat helper that, after this process exits, robocopies the staged
                build to a sibling dir, verifies it, swaps it in via two atomic
                same-volume renames, relaunches, and rolls back on any failure —
-               logging every step to ~/.engram/update_helper.log
+               logging every step to ~/.engram/update_helper.log. It deletes only the
+               previous build's own files: an install dir that holds anything else is
+               refused up front, and anything that slips through is kept (#825).
 """
 
 import asyncio
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
 import zipfile
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
+from typing import NoReturn
 
 import httpx
 from loguru import logger
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import __version__
-from app.config import is_frozen
+from app.config import is_frozen, settings
 from app.core.errors import ConfigurationError, EngramError
 from app.database import async_session
 
 GITHUB_API_URL = "https://api.github.com/repos/Jsakkos/engram/releases/latest"
 GITHUB_TAG_API_URL = "https://api.github.com/repos/Jsakkos/engram/releases/tags/v{version}"
 STAGING_BASE = Path.home() / ".engram" / "update"
+
+# The Windows build's release asset (#825). Every updater from v0.9.0 to v0.43.0 picks
+# the Windows asset by ``.zip`` + "windows" in the name, and the helper those versions
+# run deletes everything inside the install dir, user folders included. This name must
+# never contain "windows": that keeps those versions from installing a release made
+# after the fix, so they fail with "no release asset" and the user updates by hand once.
+WINDOWS_ASSET_NAME = "engram-win-x64.zip"
+
+# Top-level entries of a PyInstaller onedir build besides the launcher (engram.spec).
+_BUILD_INTERNAL_DIR = "_internal"
+# Names the Windows helper may delete inside the previous install. Anything else is left.
+_SAFE_ENTRY_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]*")
+# Staged-update dir names: a version (what _download creates) or its "unknown" fallback.
+_STAGED_VERSION_DIR = re.compile(r"\d+(\.\d+)*|unknown")
 
 
 class UpdateStatus(StrEnum):
@@ -79,6 +99,9 @@ class UpdateChecker:
         self.error: str | None = None
         self.last_update_error: str | None = None
         self.last_update_success_version: str | None = None
+        # The banner text of _check_install_dir's last refusal, so a later passing check
+        # clears that notice and nothing else.
+        self._install_refusal: str | None = None
         self._is_frozen: bool = is_frozen()
         self._current_version: str = __version__
         self._broadcaster = None  # injected by set_broadcaster()
@@ -112,6 +135,9 @@ class UpdateChecker:
         181-of-825-file ``0.15.2`` tree caught mid-rmtree). Leftover ``.pruning-*`` dirs
         from an earlier interrupted run are swept on entry. Best-effort: never let
         cleanup failures interfere with the update check.
+
+        Only dirs named like the ones _download creates are touched (#825): anything
+        else under the staging base is not Engram's to delete.
         """
         if not STAGING_BASE.exists():
             return
@@ -119,7 +145,10 @@ class UpdateChecker:
         for child in list(STAGING_BASE.iterdir()):
             if not child.is_dir():
                 continue
-            if ".pruning-" in child.name:
+            name, sep, _ = child.name.partition(".pruning-")
+            if not _STAGED_VERSION_DIR.fullmatch(name):
+                continue
+            if sep:
                 shutil.rmtree(child, ignore_errors=True)  # leftover from an interrupted prune
                 continue
             if self._is_older_or_equal(child.name, self._current_version):
@@ -138,7 +167,8 @@ class UpdateChecker:
         Helpers before #791 left one behind every time ``move_install`` failed, a full
         build copy per attempted version. Only ``.new-*`` dirs are removed: an
         ``.old-*`` dir can be the only runnable copy of the previous install after a
-        failed restore, so it is left for the user. Best-effort, like _prune_staging.
+        failed restore, so it is left for the user. A ``.new-*`` dir holding anything
+        but a build (#825) is left too. Best-effort, like _prune_staging.
         """
         parent = install_dir.parent
         if not parent.is_dir():
@@ -149,10 +179,20 @@ class UpdateChecker:
         except OSError as exc:
             logger.debug(f"Could not list {parent} for stale update dirs: {exc}")
             return
+        build = {Path(sys.executable).name.lower(), "engram.exe", _BUILD_INTERNAL_DIR}
         for child in children:
-            if child.name.startswith(prefix) and child.is_dir() and not child.is_symlink():
-                logger.info(f"Removing leftover update copy: {child}")
-                shutil.rmtree(child, ignore_errors=True)
+            if not (child.name.startswith(prefix) and child.is_dir() and not child.is_symlink()):
+                continue
+            try:
+                foreign = [p.name for p in child.iterdir() if p.name.lower() not in build]
+            except OSError as exc:
+                logger.debug(f"Could not list {child}: {exc}")
+                continue
+            if foreign:
+                logger.warning(f"Leaving {child}: it holds files Engram did not put there")
+                continue
+            logger.info(f"Removing leftover update copy: {child}")
+            shutil.rmtree(child, ignore_errors=True)
 
     async def _load_skipped_version(self) -> str | None:
         """Load the skipped version preference from AppConfig."""
@@ -198,6 +238,16 @@ class UpdateChecker:
         if data.get("result") == "success":
             self.last_update_success_version = version
             logger.info(f"Update applied successfully to {version}")
+            kept = data.get("kept")
+            if kept:
+                # The helper left the previous install in place because it held files
+                # Engram did not install (#825). Say where, so the user can move them back.
+                self.last_update_error = (
+                    f"Updated to {version}. The previous install was kept at {kept} "
+                    "because it holds files Engram didn't install. Move anything you "
+                    "need out of it (and update the paths in Settings), then delete it."
+                )
+                logger.warning(f"Previous install kept at {kept}: it holds foreign files")
         elif data.get("result") == "failed":
             step = data.get("step") or "unknown"
             self.last_update_error = self._describe_update_failure(
@@ -466,6 +516,9 @@ class UpdateChecker:
     def _select_asset(self, assets: list[dict]) -> dict | None:
         """Return the platform-appropriate release asset, or None if not found.
 
+        On Windows the renamed ``WINDOWS_ASSET_NAME`` wins over the legacy
+        ``engram-windows-x64.zip`` (see the constant for why it was renamed).
+
         On Linux the architecture matters: we ship both an x86_64 bundle
         (``engram-linux-x64.tar.gz``) and an aarch64 bundle
         (``engram-linux-arm64.tar.gz``), so an arm64 host (e.g. a Jetson) must
@@ -473,6 +526,10 @@ class UpdateChecker:
         """
         system = sys.platform
         is_arm = platform.machine().lower() in ("aarch64", "arm64")
+        if system == "win32":
+            renamed = next((a for a in assets if a.get("name") == WINDOWS_ASSET_NAME), None)
+            if renamed:
+                return renamed
         for asset in assets:
             name = asset.get("name", "").lower()
             if system == "win32" and name.endswith(".zip") and "windows" in name:
@@ -691,6 +748,7 @@ class UpdateChecker:
             raise
 
         if sys.platform == "win32":
+            await self._check_install_dir()
             self._restart_windows()
         else:
             self._restart_linux_macos()
@@ -723,6 +781,145 @@ class UpdateChecker:
                 raise UpdateError(
                     "A disc operation is in progress. Please wait until it finishes before restarting."
                 )
+
+    async def _check_install_dir(self) -> None:
+        """Refuse to update when the install dir holds anything Engram didn't install (#825).
+
+        The Windows swap moves the whole install dir aside, so a library, staging dir or
+        any other folder kept inside it goes with it. Helpers before #825 then deleted
+        the moved-aside dir with ``rmdir /S /Q``, which is how a 300 GB TV library
+        vanished. The helper no longer deletes anything it can't name, but the files
+        would still end up in the ``.old`` dir, away from the paths Settings points at,
+        so the update is refused up front with the list of what is in the way. The
+        notice also goes to the dashboard banner, since apply runs after the HTTP reply.
+        Only Windows: the POSIX path replaces the binary and leaves its folder alone.
+        """
+        if sys.platform != "win32":
+            return
+        install_dir = Path(sys.executable).parent
+        new_build = self.staging_path / "engram" if self.staging_path else None
+        data_paths = await self._configured_data_paths()
+        try:
+            conflicts = await asyncio.to_thread(
+                self._install_dir_conflicts,
+                install_dir,
+                new_build,
+                Path(sys.executable).name,
+                data_paths,
+            )
+        except OSError as exc:
+            # Can't tell what is in there, so don't swap it out; say why (not a bare 500).
+            logger.warning(f"Could not check {install_dir} before updating: {exc}", exc_info=True)
+            await self._refuse_update(
+                f"Engram couldn't check its install folder {install_dir} before updating "
+                f"({exc}), so it won't update itself. Download the update manually instead."
+            )
+        if not conflicts:
+            if self._install_refusal and self.last_update_error == self._install_refusal:
+                # The user cleared the folder: drop the refusal from the banner.
+                self.last_update_error = None
+                self._install_refusal = None
+                await self._broadcast()
+            return
+        shown = ", ".join(conflicts[:5])
+        if len(conflicts) > 5:
+            shown += f" and {len(conflicts) - 5} more"
+        await self._refuse_update(
+            f"Engram can't update itself: its install folder {install_dir} also holds "
+            f"things it didn't install ({shown}). Updating replaces that whole folder, so "
+            "move them to a folder outside it first (and update the paths in Settings), "
+            "then try again."
+        )
+
+    async def _refuse_update(self, message: str) -> NoReturn:
+        """Show ``message`` on the dashboard banner and raise it as an UpdateError."""
+        logger.warning(f"Update refused: {message}")
+        self.last_update_error = message
+        self._install_refusal = message
+        await self._broadcast()
+        raise UpdateError(message)
+
+    async def _configured_data_paths(self) -> list[str]:
+        """Every folder the user's data lives in: the configured paths, the DB, ~/.engram."""
+        paths = [str(Path.home() / ".engram")]
+        db_url = settings.database_url
+        if db_url.startswith("sqlite") and ":///" in db_url:
+            paths.append(db_url.split(":///", 1)[1])
+        try:
+            from sqlmodel import select
+
+            from app.models.app_config import AppConfig
+
+            async with async_session() as session:
+                result = await session.execute(select(AppConfig).limit(1))
+                config = result.scalar_one_or_none()
+        except (SQLAlchemyError, OSError) as exc:
+            # The install dir's own contents are still checked; this only adds paths.
+            logger.warning(
+                f"Could not read configured paths for the update check: {exc}", exc_info=True
+            )
+            return paths
+        if config is not None:
+            for field in (
+                "staging_path",
+                "library_movies_path",
+                "library_tv_path",
+                "import_watch_path",
+                "backup_path",
+                "subtitles_cache_path",
+                "discdb_export_path",
+            ):
+                value = getattr(config, field, None)
+                if value:
+                    paths.append(value)
+        return paths
+
+    @staticmethod
+    def _install_dir_conflicts(
+        install_dir: Path,
+        new_build: Path | None,
+        exe_name: str,
+        data_paths: list[str | None],
+    ) -> list[str]:
+        """List what in or under ``install_dir`` is not part of an Engram build.
+
+        Two kinds: top-level entries that neither the launcher, ``_internal`` nor the
+        new build accounts for, and configured data paths that sit inside the install
+        dir (even ones not created yet). Each is reported once, as a path.
+        """
+
+        def norm(path: str | Path) -> str:
+            return os.path.normcase(os.path.realpath(path))
+
+        ours = {exe_name.lower(), _BUILD_INTERNAL_DIR}
+        if new_build is not None:
+            try:
+                ours |= {p.name.lower() for p in new_build.iterdir()}
+            except OSError as exc:
+                # Fall back to the launcher + _internal: that can only flag more entries
+                # as foreign, so the check gets stricter, never looser.
+                logger.debug(f"Could not list the staged build {new_build}: {exc}")
+
+        conflicts: list[str] = []
+        covered: list[str] = []
+        for entry in sorted(install_dir.iterdir(), key=lambda p: p.name):
+            if entry.name.lower() not in ours:
+                conflicts.append(str(entry))
+                covered.append(norm(entry))
+
+        root = norm(install_dir)
+        for raw in data_paths:
+            if not raw:
+                continue
+            shown = Path(os.path.expanduser(raw))
+            path = norm(shown)
+            if not (path == root or path.startswith(root.rstrip(os.sep) + os.sep)):
+                continue
+            if any(path == c or path.startswith(c + os.sep) for c in covered):
+                continue
+            conflicts.append(str(shown))
+            covered.append(path)
+        return conflicts
 
     def _restart_linux_macos(self) -> None:
         """Replace binary in-place and exec the new version (Linux/macOS).
@@ -774,8 +971,15 @@ class UpdateChecker:
         # The ``.new``/``.old`` siblings live next to the INSTALL (not staging), so the
         # swap is two fast atomic same-volume renames even when staging is on a
         # different drive than the install.
-        new_dir = install_dir.parent / f"{install_dir.name}.new-{version}"
-        old_dir = install_dir.parent / f"{install_dir.name}.old-{version}"
+        # Never reuse an existing .new/.old dir: one kept by an earlier update can hold
+        # the user's files (#825), and the helper refuses to go on rather than delete it.
+        new_dir = self._unused_sibling(install_dir, "new", version)
+        old_dir = self._unused_sibling(install_dir, "old", version)
+        # What the helper may delete from the old dir once the new build is in: the
+        # running build's own top-level entries, nothing else.
+        ours = {Path(sys.executable).name.lower(), _BUILD_INTERNAL_DIR}
+        ours |= {p.name.lower() for p in new_engram_dir.iterdir()}
+        old_build_entries = [p.name for p in install_dir.iterdir() if p.name.lower() in ours]
         log_path = Path.home() / ".engram" / "update_helper.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         result_path = Path.home() / ".engram" / "update_result.txt"
@@ -794,6 +998,7 @@ class UpdateChecker:
             pid=pid,
             version=version,
             result_path=str(result_path),
+            old_build_entries=old_build_entries,
         )
         # cmd.exe requires CRLF line endings (LF-only batch files mishandle labels/goto);
         # write them explicitly so the helper is valid regardless of host platform.
@@ -809,6 +1014,16 @@ class UpdateChecker:
         os._exit(0)  # Hard exit: avoids asyncio catching SystemExit
 
     @staticmethod
+    def _unused_sibling(install_dir: Path, kind: str, version: str) -> Path:
+        """``<install>.<kind>-<version>``, or the first ``-2``, ``-3``... that is free."""
+        candidate = install_dir.parent / f"{install_dir.name}.{kind}-{version}"
+        suffix = 2
+        while os.path.lexists(candidate):
+            candidate = install_dir.parent / f"{install_dir.name}.{kind}-{version}-{suffix}"
+            suffix += 1
+        return candidate
+
+    @staticmethod
     def _render_update_bat(
         *,
         src: str,
@@ -821,6 +1036,7 @@ class UpdateChecker:
         version: str,
         result_path: str,
         move_attempts: int = 6,
+        old_build_entries: Sequence[str] | None = None,
     ) -> str:
         """Render the Windows update helper batch script (pure — testable off-Windows).
 
@@ -836,7 +1052,22 @@ class UpdateChecker:
         that the relaunched app reads to toast success / show a failure notice; a failure also
         records which path it was working on and the OS's reason. Logs every step to %LOG%;
         only deletes itself on success.
+
+        Nothing the helper did not create is ever deleted recursively (#825). After the
+        swap it removes only ``old_build_entries`` (the previous build's own top-level
+        entries; default: the launcher and ``_internal``) from the old dir, then the dir
+        itself only if that left it empty. Anything else keeps the dir, and its path goes
+        into the marker as ``kept=``. An existing ``.old`` dir is never cleared: the swap
+        fails instead (``_restart_windows`` picks an unused name).
         """
+        entries = [exe, _BUILD_INTERNAL_DIR] if old_build_entries is None else old_build_entries
+        # Only plain names: a rendered `..`, `&` or separator could reach outside the dir.
+        entries = [e for e in entries if _SAFE_ENTRY_NAME.fullmatch(e) and ".." not in e]
+        cleanup = []
+        for entry in entries:
+            # rmdir takes a directory, del a file; each is a no-op on the other kind.
+            cleanup.append(f'rmdir /S /Q "%OLDDIR%\\{entry}" >nul 2>&1')
+            cleanup.append(f'del /F /Q "%OLDDIR%\\{entry}" >nul 2>&1')
         lines = [
             "@echo off",
             "setlocal enableextensions",
@@ -879,7 +1110,8 @@ class UpdateChecker:
             'cd /d "%TEMP%"',
             'echo [engram-update] cwd(after cd)=%CD% >> "%LOG%"',
             # --- copy staged build to a sibling of the install (never in place) ---
-            'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
+            # _restart_windows picks an unused name; something there now is not ours (#825).
+            'if exist "%NEWDIR%" goto new_dir_taken',
             'echo [engram-update] robocopy "%SRC%" to "%NEWDIR%" >> "%LOG%"',
             'robocopy "%SRC%" "%NEWDIR%" /MIR /R:3 /W:2 /NP /NFL /NDL >> "%LOG%" 2>&1',
             "set RC=%ERRORLEVEL%",
@@ -897,7 +1129,8 @@ class UpdateChecker:
             'if not exist "%NEWDIR%\\_internal\\app\\static\\index.html" goto fail',
             'set "REASON="',
             # --- atomic swap: install -> .old, .new -> install ---
-            'rmdir /S /Q "%OLDDIR%" >nul 2>&1',
+            # An existing .old dir is never cleared: it can hold the user's files (#825).
+            'if exist "%OLDDIR%" goto old_dir_taken',
             'echo [engram-update] swapping install >> "%LOG%"',
             'set "STEP=move_install"',
             'set "FAILPATH=%INSTALL%"',
@@ -907,19 +1140,32 @@ class UpdateChecker:
             'set "FAILPATH=%NEWDIR%"',
             'call :retry_move "%NEWDIR%" "%INSTALL%"',
             "if errorlevel 1 goto restore_old",
-            # --- success ---
-            'echo [engram-update] success; relaunching >> "%LOG%"',
+            # --- success: remove the previous build's own entries, nothing else ---
+            'echo [engram-update] swapped; removing the previous build >> "%LOG%"',
+            'set "STEP=cleanup"',
+            *cleanup,
+            # Non-recursive: removes the old dir only if nothing but the build was in it.
+            'rmdir "%OLDDIR%" >nul 2>&1',
             'echo result=success>"%RESULT%"',
             'echo version=%VER%>>"%RESULT%"',
+            'if not exist "%OLDDIR%" goto old_dir_removed',
+            'echo [engram-update] kept "%OLDDIR%": it holds files Engram did not install >> "%LOG%"',
+            # Delayed expansion, like the failure marker below: the path is user-chosen.
+            "setlocal enabledelayedexpansion",
+            '>>"%RESULT%" echo(kept=!OLDDIR!',
+            "endlocal",
+            ":old_dir_removed",
+            'echo [engram-update] success; relaunching >> "%LOG%"',
             'start "" /D "%INSTALL%" "%EXE%" --updated',
             'echo [engram-update] done (success) >> "%LOG%"',
-            'rmdir /S /Q "%OLDDIR%" >nul 2>&1',
             '(goto) 2>nul & del "%~f0"',
             # --- rollback paths (bat NOT deleted — left with the log for diagnosis) ---
             ":restore_old",
             'echo [engram-update] swap failed; restoring previous install >> "%LOG%"',
             'set "STEP=swap_restore"',
-            'rmdir /S /Q "%INSTALL%" >nul 2>&1',
+            # The install path should be gone after the first move. Something there now is
+            # not ours to delete: only an empty dir is removed, else the restore fails.
+            'rmdir "%INSTALL%" >nul 2>&1',
             'call :retry_move "%OLDDIR%" "%INSTALL%"',
             "if errorlevel 1 goto restore_failed",
             'rmdir /S /Q "%NEWDIR%" >nul 2>&1',
@@ -931,6 +1177,19 @@ class UpdateChecker:
             'set "FAILPATH=%OLDDIR%"',
             'echo [engram-update] restore failed; kept "%OLDDIR%" and "%NEWDIR%" >> "%LOG%"',
             "goto relaunch_old",
+            # Unlike :fail, this leaves NEWDIR alone: the helper did not create it.
+            ":new_dir_taken",
+            'echo [engram-update] "%NEWDIR%" already exists; not touching it >> "%LOG%"',
+            'set "STEP=new_dir_taken"',
+            'set "FAILPATH=%NEWDIR%"',
+            'set "REASON=a folder with that name already exists"',
+            "goto relaunch_old",
+            ":old_dir_taken",
+            'echo [engram-update] "%OLDDIR%" already exists; not touching it >> "%LOG%"',
+            'set "STEP=old_dir_taken"',
+            'set "FAILPATH=%OLDDIR%"',
+            'set "REASON=a folder with that name already exists"',
+            "goto fail_no_swap",
             ":fail_no_swap",
             'echo [engram-update] could not move install aside; left untouched >> "%LOG%"',
             'rmdir /S /Q "%NEWDIR%" >nul 2>&1',

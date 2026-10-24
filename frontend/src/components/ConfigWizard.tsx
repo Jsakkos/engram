@@ -12,6 +12,8 @@ import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { PathStatusHint } from './PathStatusHint';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
 import { requestAiValidation } from '../utils/aiValidation';
+import RestartControls from './RestartControls';
+import { requestOpenSubtitlesValidation } from '../utils/opensubtitlesValidation';
 import { fetchLocalModels, isLocalProvider, localProviderDefaultUrl } from '../utils/localModels';
 import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
 import { requestDiscordWebhookTest } from '../utils/discordWebhookTest';
@@ -329,6 +331,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // lets the user continue without TMDB.
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string}>({status: 'idle'});
     const [aiValidation, setAiValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string, model?: string}>({status: 'idle'});
+    // OpenSubtitles login test (#723). Same invalid-vs-error split as the AI test.
+    const [osValidation, setOsValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', message?: string}>({status: 'idle'});
+    // Set after a save that changed a startup-only setting (#722); the backend
+    // names them in the PUT response, so no list of such settings lives here.
+    const [restartPrompt, setRestartPrompt] = useState<string[] | null>(null);
     const [localModels, setLocalModels] = useState<{models: string[]; error: string | null}>({
         models: [],
         error: null,
@@ -613,6 +620,21 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
 
     const handleInputChange = (field: keyof ConfigData, value: string | boolean | number) => {
         setConfig(prev => ({ ...prev, [field]: value }));
+        // An earlier result is about the old credentials; don't leave it standing.
+        if (field === 'opensubtitlesApiKey' || field === 'opensubtitlesUsername' || field === 'opensubtitlesPassword') {
+            setOsValidation({status: 'idle'});
+        }
+    };
+
+    const handleTestOpenSubtitles = async () => {
+        setOsValidation({status: 'testing'});
+        const result = await requestOpenSubtitlesValidation(
+            config.opensubtitlesApiKey,
+            config.opensubtitlesUsername,
+            config.opensubtitlesPassword,
+        );
+        if (result.status === 'valid') setOsValidation({status: 'valid', message: result.detail});
+        else setOsValidation({status: result.status, message: result.error});
     };
 
     const handleTestWebhook = async () => {
@@ -776,7 +798,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 throw new Error(`Failed to save config: ${response.status} ${errorText}`);
             }
 
-            await response.json();
+            const saved = await response.json().catch(() => ({}));
+            const restartLabels: string[] = Array.isArray(saved?.restart_required_labels)
+                ? saved.restart_required_labels
+                : [];
+            // First-run setup has no running jobs worth protecting and the app is
+            // about to start fresh anyway; only Settings offers the restart.
+            if (!isOnboarding && restartLabels.length > 0) {
+                setBaseline(config);
+                setRestartPrompt(restartLabels);
+                return;
+            }
             onComplete();
         } catch (error) {
             console.error('Failed to save config:', error);
@@ -990,6 +1022,58 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             </div>
         );
     };
+
+    // Shared by the first-run Preferences step and the full Settings group, so the
+    // two cannot drift. These are the only Preferences choices that depend on the
+    // user's library rather than on tuning (#726).
+    const extrasPolicyField = (
+        <div className="form-group">
+            <label htmlFor="extrasPolicy">Extras Handling</label>
+            <EngramSelect
+                id="extrasPolicy"
+                value={config.extrasPolicy}
+                onValueChange={(v) => handleInputChange('extrasPolicy', v)}
+                options={[
+                    { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
+                    { value: 'skip', label: 'Skip extras (don\'t rip bonus tracks, discard any that slip through)' },
+                    { value: 'ask', label: 'Ask me (show in Review Queue)' },
+                ]}
+            />
+            <span className="form-hint">
+                How to handle bonus content: TV tracks that match no episode runtime, and
+                movie titles that aren&apos;t the main feature. A movie&apos;s feature-length
+                cuts are always ripped.
+            </span>
+        </div>
+    );
+
+    const namingConventionField = (
+        <div className="form-group">
+            <label htmlFor="namingConvention">Naming Convention</label>
+            <EngramSelect
+                id="namingConvention"
+                value={namingSelection}
+                onValueChange={(v) => {
+                    const preset = NAMING_PRESETS.find((p) => p.id === v);
+                    setCustomNamingChosen(!preset);
+                    if (preset) {
+                        handleInputChange('namingSeasonFormat', preset.seasonFormat);
+                        handleInputChange('namingEpisodeFormat', preset.episodeFormat);
+                    }
+                }}
+                options={[
+                    { value: 'plex', label: 'Plex (Season 01 / Show - S01E01)' },
+                    { value: 'kodi', label: 'Kodi (Season 1 / Show - S01E01)' },
+                    { value: 'minimal', label: 'Minimal (S01 / Show - S01E01)' },
+                    // Custom formats are edited further down in Settings, not on first run.
+                    ...(isOnboarding ? [] : [{ value: 'custom', label: 'Custom' }]),
+                ]}
+            />
+            <span className="form-hint">
+                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
+            </span>
+        </div>
+    );
 
     const renderStepContent = () => {
         switch (step) {
@@ -1305,6 +1389,35 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             <span className="form-hint">
                                 Free accounts get 5 subtitle downloads/day. Used only for TV episode matching; skipped if not configured.
                             </span>
+                        </div>
+
+                        <div className="form-group">
+                            <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap'}}>
+                                <button
+                                    type="button"
+                                    onClick={handleTestOpenSubtitles}
+                                    disabled={
+                                        osValidation.status === 'testing' ||
+                                        (!config.opensubtitlesApiKey && !savedKeys.opensubtitles) ||
+                                        !config.opensubtitlesUsername ||
+                                        (!config.opensubtitlesPassword && !savedKeys.opensubtitles)
+                                    }
+                                    className="btn-secondary"
+                                    style={{padding: '0.25rem 0.75rem', fontSize: '0.85rem'}}
+                                >
+                                    {osValidation.status === 'testing' ? 'Testing...' : 'Test login'}
+                                </button>
+                                {osValidation.status === 'valid' && (
+                                    <span style={{color: '#22c55e', fontSize: '0.85rem'}}>✓ {osValidation.message || 'Logged in'}</span>
+                                )}
+                                {osValidation.status === 'invalid' && (
+                                    <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {osValidation.message}</span>
+                                )}
+                                {/* Amber, not red: the credentials weren't refused, the check failed. */}
+                                {osValidation.status === 'error' && (
+                                    <span style={{color: '#f59e0b', fontSize: '0.85rem'}}>⚠ {osValidation.message}</span>
+                                )}
+                            </div>
                         </div>
 
                         <h4 style={{marginTop: '1.5rem', marginBottom: '0.25rem', fontSize: '1rem', fontWeight: 600}}>
@@ -1778,6 +1891,23 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             }
 
             case 5:
+                if (isOnboarding) {
+                    // First run: the tuning knobs keep their recommended defaults and stay
+                    // reachable in Settings > Preferences. Only the two choices that depend
+                    // on how the user organizes their library are asked here (#726).
+                    return (
+                        <div className="wizard-step wizard-step-compact">
+                            <h3 className="step-title">Preferences</h3>
+                            <p className="step-description">
+                                Engram will use recommended defaults for everything else. You can change
+                                any of it later in Settings, under Preferences.
+                            </p>
+
+                            {namingConventionField}
+                            {extrasPolicyField}
+                        </div>
+                    );
+                }
                 return (
                     <div className="wizard-step">
                         <h3 className="step-title">Preferences</h3>
@@ -2063,49 +2193,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             </span>
                         </div>
 
-                        <div className="form-group">
-                            <label htmlFor="extrasPolicy">Extras Handling</label>
-                            <EngramSelect
-                                id="extrasPolicy"
-                                value={config.extrasPolicy}
-                                onValueChange={(v) => handleInputChange('extrasPolicy', v)}
-                                options={[
-                                    { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
-                                    { value: 'skip', label: 'Skip extras (don\'t rip bonus tracks, discard any that slip through)' },
-                                    { value: 'ask', label: 'Ask me (show in Review Queue)' },
-                                ]}
-                            />
-                            <span className="form-hint">
-                                How to handle bonus content: TV tracks that match no episode runtime, and
-                                movie titles that aren&apos;t the main feature. A movie&apos;s feature-length
-                                cuts are always ripped.
-                            </span>
-                        </div>
+                        {extrasPolicyField}
 
-                        <div className="form-group">
-                            <label htmlFor="namingConvention">Naming Convention</label>
-                            <EngramSelect
-                                id="namingConvention"
-                                value={namingSelection}
-                                onValueChange={(v) => {
-                                    const preset = NAMING_PRESETS.find((p) => p.id === v);
-                                    setCustomNamingChosen(!preset);
-                                    if (preset) {
-                                        handleInputChange('namingSeasonFormat', preset.seasonFormat);
-                                        handleInputChange('namingEpisodeFormat', preset.episodeFormat);
-                                    }
-                                }}
-                                options={[
-                                    { value: 'plex', label: 'Plex (Season 01 / Show - S01E01)' },
-                                    { value: 'kodi', label: 'Kodi (Season 1 / Show - S01E01)' },
-                                    { value: 'minimal', label: 'Minimal (S01 / Show - S01E01)' },
-                                    { value: 'custom', label: 'Custom' },
-                                ]}
-                            />
-                            <span className="form-hint">
-                                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
-                            </span>
-                        </div>
+                        {namingConventionField}
 
                         <div className="form-group">
                             <label htmlFor="namingTvShowFormat">Show Folder Format</label>
@@ -2636,6 +2726,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     </div>
                 )}
 
+                {restartPrompt && (
+                    <div className="restart-prompt" role="alert" data-testid="restart-prompt">
+                        <strong>Restart to apply</strong>
+                        <p>
+                            Saved. {restartPrompt.join(', ')} only {restartPrompt.length === 1 ? 'takes' : 'take'} effect
+                            after Engram restarts.
+                        </p>
+                        <RestartControls onLater={onComplete} />
+                    </div>
+                )}
+
                 <div className="wizard-actions">
                     {step > 1 && isOnboarding && (
                         <button className="btn-secondary" onClick={handleBack}>
@@ -2650,6 +2751,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             disabled={isSaving || !!discordTemplateErrors.completed || !!discordTemplateErrors.failed || !!discordTemplateErrors.review || !!discordTemplateErrors.ripped}
                         >
                             {step === totalSteps ? (isSaving ? 'Saving...' : 'Complete Setup') : 'Next →'}
+                        </button>
+                    ) : restartPrompt ? (
+                        <button className="btn-primary" onClick={onComplete}>
+                            Done
                         </button>
                     ) : (
                         <button

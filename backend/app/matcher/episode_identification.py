@@ -17,6 +17,7 @@ from scipy.sparse import vstack as scipy_vstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
+from app.core.episode_codes import episode_parts
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.audio_streams import (
@@ -26,7 +27,18 @@ from app.matcher.audio_streams import (
     probe_audio_streams,
 )
 from app.matcher.multi_episode import decompose_vote_runs
-from app.matcher.numbering_scheme import SCHEME_UNKNOWN, VALID_SCHEMES, usable_count
+from app.matcher.numbering_crosswalk import (
+    crosswalk_applies,
+    is_segmented_marker,
+    translate_codes,
+)
+from app.matcher.numbering_scheme import (
+    SCHEME_DIVERGENT,
+    SCHEME_TMDB_AIRED,
+    SCHEME_UNKNOWN,
+    VALID_SCHEMES,
+    usable_count,
+)
 from app.matcher.srt_utils import decode_utf16_bom, iter_srt_cues
 from app.matcher.srt_utils import is_watermark_block as _is_watermark_block
 from app.matcher.subtitle_utils import (
@@ -212,7 +224,22 @@ def stamp_numbering(match_stats: dict, numbering: dict | None) -> None:
     """
     if not numbering:
         return
-    match_stats["numbering_scheme"] = numbering["scheme"]
+    if crosswalk_applies(numbering):
+        # The references were translated through the pack's crosswalk on load
+        # (#760), so the codes this result carries ARE canonical TMDB coordinates
+        # even though the corpus itself is half-hour numbered. Stamping tmdb_aired
+        # is what lets the ordering projection and the conjoined-hint gate treat
+        # them as such; the pack's own statement is kept beside it.
+        match_stats["numbering_scheme"] = SCHEME_TMDB_AIRED
+        match_stats["numbering_crosswalk"] = True
+        match_stats["pack_numbering_scheme"] = SCHEME_DIVERGENT
+    else:
+        match_stats["numbering_scheme"] = numbering["scheme"]
+    if is_segmented_marker(numbering):
+        # The pack says this season is half-hour numbered segments. With no
+        # crosswalk applied, that is what holds the match for review and keeps it
+        # out of the fingerprint network (see matching_coordinator).
+        match_stats["numbering_segmented"] = True
     # usable_count, not a local isinstance check: bool is an int subclass in
     # Python, and the shared predicate already excludes it.
     if usable_count(numbering.get("roster_size")):
@@ -307,6 +334,22 @@ def _corpus_show_dir(cache_dir, key: str) -> Path:
     return Path(cache_dir) / "precomputed" / sanitize_filename(str(key))
 
 
+def season_marker(manifest, show_name: str, season: int, expected_tmdb_id) -> dict | None:
+    """The raw numbering marker the manifest records for show + season, or None.
+
+    Resolves the show exactly as the vector loader does (tmdb_id first, name
+    fallback, id-mismatch refusal), so a marker and the codes it describes always
+    come from the same show entry. Returns ``unknown`` markers too; callers that
+    need a usable scheme filter (see ``EpisodeMatcher.precomputed_numbering``).
+    """
+    _key, show_entry = _resolve_corpus_entry(manifest, show_name, expected_tmdb_id)
+    if not show_entry or _tmdb_id_mismatch(expected_tmdb_id, show_entry.get("tmdb_id")):
+        return None
+    numbering = show_entry.get("season_numbering")
+    marker = numbering.get(str(season)) if isinstance(numbering, dict) else None
+    return marker if isinstance(marker, dict) else None
+
+
 def precomputed_covers_season(
     cache_dir, show_name: str, season: int, manifest=None, expected_tmdb_id=None
 ) -> bool:
@@ -345,6 +388,20 @@ def precomputed_covers_season(
     return npz_path.exists() and index_path.exists()
 
 
+def _index_codes(cache_dir, manifest, show_name: str, season: int, expected_tmdb_id):
+    """The shipped index's own (untranslated) codes for show + season, or None."""
+    key, _ = _resolve_corpus_entry(manifest, show_name, expected_tmdb_id)
+    if key is None:
+        return None
+    index_path = _corpus_show_dir(cache_dir, key) / f"S{season:02d}.index.json"
+    try:
+        with open(index_path, encoding="utf-8") as fh:
+            codes = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return codes if isinstance(codes, list) and codes else None
+
+
 def precomputed_episode_codes(
     cache_dir, show_name: str, season: int, *, expected_tmdb_id=None
 ) -> list[str] | None:
@@ -362,14 +419,18 @@ def precomputed_episode_codes(
     ):
         return None
 
-    key, _ = _resolve_corpus_entry(manifest, show_name, expected_tmdb_id)
-    index_path = _corpus_show_dir(cache_dir, key) / f"S{season:02d}.index.json"
-    try:
-        with open(index_path, encoding="utf-8") as fh:
-            codes = json.load(fh)
-    except (OSError, json.JSONDecodeError):
+    codes = _index_codes(cache_dir, manifest, show_name, season, expected_tmdb_id)
+    if not codes:
         return None
-    return codes if isinstance(codes, list) and codes else None
+    # The codes a half-hour-numbered season's rows stand for in TMDB numbering,
+    # unmapped rows dropped: the same translation the vector loader applies, so
+    # the skip/heal/coverage readers agree with what the matcher will vote on.
+    translated = translate_codes(
+        codes, season_marker(manifest, show_name, season, expected_tmdb_id)
+    )
+    if translated is not None:
+        codes = [code for code in translated if code]
+    return codes
 
 
 # Season/episode token shared by reference-coverage and the runtime augmentation
@@ -414,11 +475,23 @@ def reference_coverage(
     and ignores SRTs. Cheap: one JSON read + one dir scan, no network.
     """
     cache_dir = Path(cache_dir)
-    pre_codes = set(
-        precomputed_episode_codes(cache_dir, show_name, season, expected_tmdb_id=tmdb_id) or []
-    )
+    # A crosswalked half-hour reference ("S02E11-E12", #760) covers every episode
+    # it holds, so expand combined codes before comparing per episode.
+    pre_codes = {
+        part
+        for code in precomputed_episode_codes(
+            cache_dir, show_name, season, expected_tmdb_id=tmdb_id
+        )
+        or []
+        for part in episode_parts(code)
+    }
     data_dir = cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
-    dl_codes = downloaded_episode_codes(data_dir, season)
+    # A segmented season never grafts scraped SRTs into the vote (#760), so one
+    # on disk does not make its episode covered.
+    segmented = is_segmented_marker(
+        season_marker(load_precomputed_manifest(cache_dir), show_name, season, tmdb_id)
+    )
+    dl_codes = set() if segmented else downloaded_episode_codes(data_dir, season)
     coverage: dict[str, str] = {}
     for ep in episode_numbers:
         code = f"S{season:02d}E{int(ep):02d}"
@@ -1519,15 +1592,22 @@ class EpisodeMatcher:
         hazard the per-call TF-IDF matcher below exists to avoid.
         """
         manifest = self._load_precomputed_manifest()
-        _key, show_entry = _resolve_corpus_entry(manifest, self.show_name, self.expected_tmdb_id)
-        if not show_entry:
-            return None
-        marker = (show_entry.get("season_numbering") or {}).get(str(season_number))
-        if not isinstance(marker, dict):
+        marker = season_marker(manifest, self.show_name, season_number, self.expected_tmdb_id)
+        if marker is None:
             return None
         scheme = marker.get("scheme")
         if scheme not in VALID_SCHEMES or scheme == SCHEME_UNKNOWN:
             return None
+        if crosswalk_applies(marker):
+            # Report the crosswalk only if it translates this index. The loader
+            # treats a map that matches none of the shipped codes as absent, and
+            # the stamp built from this marker must agree with the codes the vote
+            # actually used (#760). A copy: the manifest is shared and cached.
+            codes = _index_codes(
+                self.cache_dir, manifest, self.show_name, season_number, self.expected_tmdb_id
+            )
+            if translate_codes(codes or [], marker) is None:
+                marker = {k: v for k, v in marker.items() if k != "crosswalk"}
         return marker
 
     def _load_precomputed_season(self, season_number):
@@ -1601,12 +1681,31 @@ class EpisodeMatcher:
             )
             return None
 
+        # A half-hour-numbered season: relabel each row with the TMDB code(s) it
+        # holds and drop rows the crosswalk could not map. An unmapped row's own
+        # code names an unrelated TMDB segment (#760), so it must not vote at all.
+        marker = season_marker(manifest, self.show_name, season_number, self.expected_tmdb_id)
+        segmented = is_segmented_marker(marker)
+        translated = translate_codes(episode_codes, marker)
+        if translated is not None:
+            keep = [i for i, code in enumerate(translated) if code]
+            dropped = [episode_codes[i] for i, code in enumerate(translated) if not code]
+            ref_matrix = ref_matrix[keep]
+            episode_codes = [translated[i] for i in keep]
+            logger.info(
+                f"Translated {self.show_name} S{season_number:02d} half-hour references "
+                f"into TMDB segment codes ({len(keep)} kept"
+                + (f"; dropped unmapped {', '.join(dropped)})" if dropped else ")")
+            )
+
         ref_matrix, episode_codes = self._augment_with_downloaded_srts(
-            ref_matrix, episode_codes, season_number
+            ref_matrix, episode_codes, season_number, segmented=segmented
         )
         return ref_matrix, episode_codes, self._precomputed_idf
 
-    def _augment_with_downloaded_srts(self, ref_matrix, episode_codes, season_number):
+    def _augment_with_downloaded_srts(
+        self, ref_matrix, episode_codes, season_number, *, segmented: bool = False
+    ):
         """Graft downloaded SRTs for episodes the precomputed cache doesn't cover.
 
         The shipped cache can be incomplete (e.g. Mad Men S02 shipped without
@@ -1617,7 +1716,13 @@ class EpisodeMatcher:
 
         Additive and idempotent: returns the inputs unchanged when there is
         nothing to graft, and never raises — a bad SRT is skipped, not fatal.
+
+        Grafts nothing into a ``segmented`` (half-hour numbered) season (#760): a
+        scraped SRT there is named by a provider that also numbers by half-hour,
+        so its code would name an unrelated TMDB segment.
         """
+        if segmented:
+            return ref_matrix, episode_codes
         data_dir = self.cache_dir / "data" / corpus_dir_name(self.expected_tmdb_id, self.show_name)
         if not data_dir.is_dir():
             return ref_matrix, episode_codes
