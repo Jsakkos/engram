@@ -163,6 +163,7 @@ async def isolate_database(monkeypatch):
     # background tasks — patch it too, or a unit test that drives job_manager's
     # wired SimulationService instance directly writes to engram.db unnoticed.
     _sim_mod = importlib.import_module("app.services.simulation_service")
+    _ns_mod = importlib.import_module("app.services.episode_namespace_service")
 
     monkeypatch.setattr(_db_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_config_mod, "async_session", _unit_session_factory)
@@ -172,6 +173,7 @@ async def isolate_database(monkeypatch):
     monkeypatch.setattr(_match_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_prewarm_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_sim_mod, "async_session", _unit_session_factory)
+    monkeypatch.setattr(_ns_mod, "async_session", _unit_session_factory)
 
     # Redirect the cached sync engine in config_service so get_config_sync()
     # uses the in-memory test database instead of connecting to engram.db.
@@ -227,6 +229,9 @@ async def isolate_database(monkeypatch):
     _jm_inst._suppress_match_done.clear()
     _jm_inst._rematch_tasks.clear()
     _jm_inst._rematch_rerun.clear()
+    # Same for the live-match registry (#776): a count leaked by a task cancelled
+    # before its first step would make a later test's title id look live.
+    _jm_inst._matching._live_matches.clear()
 
     yield
 

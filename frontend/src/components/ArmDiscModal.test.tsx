@@ -5,7 +5,7 @@ import ArmDiscModal from './ArmDiscModal';
 
 describe('ArmDiscModal', () => {
   beforeEach(() => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'armed' }) }) as never;
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'armed' }) }) as never;
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -22,7 +22,7 @@ describe('ArmDiscModal', () => {
     fireEvent.click(screen.getByTestId('arm-submit'));
 
     await waitFor(() => expect(onArmed).toHaveBeenCalled());
-    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe('/api/manual/arm');
     expect(JSON.parse(init.body)).toMatchObject({
       drive_id: 'E:',
@@ -39,15 +39,15 @@ describe('ArmDiscModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /movie/i }));
     fireEvent.click(screen.getByTestId('arm-submit'));
 
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(JSON.parse(init.body).season).toBeNull();
   });
 
   it('surfaces a 409 as a readable conflict message', async () => {
     // apiFetchVoid reads the error body via res.text(), so the 409 detail must
     // come back as JSON text (mirrors the real ApiError.body contract).
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 409,
       statusText: 'Conflict',
@@ -68,8 +68,8 @@ describe('ArmDiscModal', () => {
     fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), { target: { value: 'The Office' } });
     fireEvent.click(screen.getByTestId('arm-submit'));
 
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(JSON.parse(init.body).drive_id).toBe('F:');
   });
 });

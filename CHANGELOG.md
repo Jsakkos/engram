@@ -4,6 +4,179 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-10-22
+
+_Highlights: fixes a data-loss bug in the Windows in-app updater, which permanently deleted any folder kept inside the Engram folder (such as a library at `D:\engram\tv`). Windows users must install this release by hand, once; the steps are below._
+
+### Fixed
+
+- **In-app updates on Windows could permanently delete folders kept inside the Engram folder.** If your TV or movie library, staging folder or backups sat inside the folder Engram runs from (for example `D:\engram\tv`, with Engram in `D:\engram`), a successful in-app update from any version between 0.15.3 and 0.43.0 deleted them together with the old build. The delete bypassed the Recycle Bin. The updater now removes only the previous build's own files, keeps the old folder (and says where) if anything else is in it, never clears an existing `.old` folder, and refuses to update while the Engram folder holds anything it didn't install, naming what is in the way. Folders elsewhere on the drive were never at risk. (#825)
+
+  **An update is carried out by the version you already have, so on Windows install this release by hand:** close Engram, move any library, staging or backup folders out of the Engram folder, then extract `engram-win-x64.zip` to a new folder and run `engram.exe` from there. Your settings and database live in `C:\Users\<you>\.engram` and carry over. The Windows download is now named `engram-win-x64.zip`, a name older versions don't recognise, so they cannot apply this release themselves; they report that no release asset was found.
+
+- Review-page keyboard shortcuts no longer drop a key pressed the moment the page finishes loading. The shortcut listener used to start a moment after the page appeared, and the first track selection could overwrite an early `j`/`k`. This also ends the random review-shortcut failures in the frontend unit tests. (#716)
+
+## [0.43.0] - 2026-10-22
+
+_Highlights: segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob) now filed under their TMDB segments, a **Test login** button for OpenSubtitles, settings that need a restart now say so with a **Restart now** button, and a shorter first-run Preferences step._
+
+### Added
+
+- A **Test login** button next to the OpenSubtitles fields, in setup and in Settings. It logs in with the entered (or saved) credentials and says which part failed: the username or password, the API key, a rate limit or a used-up daily quota, or no connection. On success it shows how many downloads are left today. The password and key are never echoed back or logged. (#723)
+
+- Settings that only apply after a restart now say so. After saving one (concurrent matches, GPU acceleration, staging cleanup, the stuck-job watchdog, LAN access), Settings offers **Restart now** on the packaged build, relaunching Engram and reconnecting the dashboard. The button is disabled with a reason while a disc operation is running, and a source or Docker run gets instructions instead. The GPU acceleration control offers it too once the GPU is enabled. Engram never restarts without that click. (#722)
+
+### Changed
+
+- The first-run **Preferences** step is now short. It asks only how to name your library and how to handle extras, and says the rest uses recommended defaults, changeable later in Settings. It fits on one screen without scrolling at 1366x768. Every other option (matching, cleanup, watchdog, notifications and the rest) is still in Settings, under Preferences, and no default value changed. The setup summary of paths and keys moved out of this step; Settings still shows it. (#726)
+
+### Fixed
+
+- Segment-format cartoons (Hey Arnold!, Dexter's Laboratory, SpongeBob and similar) are filed under the TMDB segments each disc track holds, such as `S02E11-E12`, instead of under a number that named an unrelated episode. The shared subtitle pack numbers these seasons by broadcast half-hour while TMDB lists every segment separately, so Hey Arnold! S2 Disc 2 was filed as `S02E06` to `S02E10` when it holds `S02E11-E12`, `S02E13`, `S02E14-E15`, `S02E16-E17` and `S02E18-E19`. The subtitle pack now records which segments each half-hour holds, and Engram files tracks by that. A season the pack cannot yet map is held for review with an explanation instead of being filed under the wrong number. Full effect needs the next nightly subtitle-pack update. (#760)
+
+## [0.42.1] - 2026-10-22
+
+_Highlights: fixes for movie bonus discs (the wrong track filed as the movie, deleted titles still offered, a new **File all as extras** action) and for TV episodes misfiled as extras when TMDB lists the wrong runtime._
+
+### Fixed
+
+- A movie disc whose tracks run about the same length could file a bonus track as the movie and the real pick into `Extras/`. The organizer took the biggest file in staging rather than the title Engram had chosen, and recorded every unmatched title at the movie's path, so a track still flagged as an extra showed as filed there. It now files exactly the chosen title. Choosing a bonus track with **Select** on the review page also clears its extra flag, so the job's record matches what was filed. (#814, thanks @katelovescode!)
+
+- The movie review page no longer offers **Select** on titles whose files were deleted when another title was selected. With nothing left to pick it says so, instead of asking for one of several feature-length titles, and the server refuses such a selection rather than trying to re-rip a disc that has left the drive. (#812, thanks @katelovescode!)
+
+- A bonus disc that identifies as the movie itself can now be finished. When even its longest title is far shorter than the movie's runtime, Engram holds the disc for review instead of filing a featurette as the film, and the movie review page has a new **File all as extras** action that files every title you kept into the movie's `Extras/` folder and completes the job. Extras added this way (or from a second movie disc) are numbered after the ones already there instead of replacing them. (#813, thanks @katelovescode!)
+
+- TV episodes are no longer filed as extras when TMDB lists the wrong episode length for the show. TMDB lists every MXC episode at 30 minutes while the DVD episodes run about 20, so every track on the disc missed the runtime check and went to Extras without being matched. Engram now also checks the disc itself: when no group of similar-length tracks on the disc fits TMDB's runtime, the tracks in the disc's episode-length group go on to matching, and one that can't be matched goes to review instead of Extras. Discs whose episodes do fit TMDB keep the existing check, so their featurettes are still filed as extras. (#801)
+
+## [0.42.0] - 2026-10-21
+
+_Highlights: settings export and import, a database backup before every upgrade, History search, review-page shortcuts, a minimum title length setting, and fixes for mounted ISOs, the Windows updater, movie extras and non-English discs._
+
+### Added
+
+- **Minimum Title Length** in Settings sets MakeMKV's minimum title length (`--minlength`, 120 seconds by default, MakeMKV's own default). Lower it for discs whose specials run under two minutes, which MakeMKV otherwise hides from Engram entirely. The same value is used for every scan, rip and backup so title numbers stay consistent. (#771, thanks @tzimpel!)
+
+- Engram now saves a copy of its database before upgrading it. When it starts on a new version, or finds the database's layout needs updating, it first writes `engram.db.bak-<previous-version>-<timestamp>` next to `engram.db`, keeping the three newest copies, so a bad upgrade can no longer cost you your API keys, settings or job history. The copy is made with SQLite's own backup, so it includes writes not yet folded into the main file, and a startup that crashes partway through an upgrade keeps its original copy rather than replacing it on every retry. If the copy can't be written, Engram logs a warning and starts anyway. The Troubleshooting guide explains where to find the copies and how to restore one. (#730)
+
+- Keyboard shortcuts for the review page. `J`/`K` (or the arrow keys) move between tracks, `1`, `2` and `3` accept the ranked candidate, `E` marks a track as an extra, `S` skips it, `/` jumps to the episode picker and `?` lists them all. Shortcuts pause while you type in a field or a dialog is open, never take Ctrl/Cmd/Alt chords, and the selected track now has a visible focus ring. (#716)
+
+- **Search on the History page.** A search box matches the volume label, detected or TMDB title, matched episode codes and error text, case-insensitively and across all pages. The query is kept in the URL (`/history?q=...`) so a search can be bookmarked, and the summary tiles follow it. (#727)
+
+- Settings can be exported to a file and imported on another install, from **Settings > Import & Export** or the first step of setup. Keys and passwords stay out of the file unless you tick **Include keys and passwords**. Before anything changes, an import shows every setting it would apply, with paths missing on this machine unticked and invalid values explained, and it goes through the same checks as saving in Settings. Setup status, LAN access and fingerprint-sharing consent are never carried over. (#731)
+
+### Changed
+
+- **Force advance** now only appears beside Cancel and Eject once a job looks stuck, meaning it has made no progress for three minutes. The backend reports this as `looks_stuck` / `stalled_for_seconds` on the job (REST and WebSocket), taken from the same activity clock the stale-job watchdog uses, and the button's tooltip says how long the job has been idle. On a healthy job Force stays one click away in a **More actions** menu. (#718)
+
+- The dashboard footer no longer shows made-up telemetry (`UNIT 07`, `BUFFER NOMINAL`, `CPU IDLE`...) or a platform-based `DRIVE READY`. The drive label now reflects the optical drives Engram detects (`2 DRIVES`, `1 DRIVE · BUSY` while a disc is being read, `IMPORT ONLY` when there are none), and the scrolling band reports the real ASR device with whether transcription is running, jobs per phase, and discs awaiting review. (#720)
+
+### Fixed
+
+- Unmounting an ISO and mounting another one on the same drive letter now starts a new job right away; before, Engram did not notice the new disc until it was restarted. Unmounting removes the virtual drive letter outright, and Engram stopped checking a letter once it disappeared, so it still believed the first disc was in the drive. A drive letter that disappears now counts as an empty drive, the same as taking a disc out. (#769)
+
+- **Reassign** in History now lists every episode of the season. The picker was built only from episodes other tracks on the disc already held, so the one episode the disc was missing, the one a mis-filed track usually is, could never be chosen. It now reads the season's episode list, with episode titles, and falls back to a full numbered range when that list can't be loaded. (#770)
+
+- An episode track is no longer filed as an extra just because it is shorter than the show's listed runtime when other tracks of the same length on the disc already matched as episodes. Some shows list a 30-minute broadcast slot while the disc's episodes run 20 minutes, so a track that matching couldn't place on the first pass was then filed under Extras next to its matched siblings. Engram now keeps matching such a track, and sends it to review if it still can't be placed. (#770)
+
+- Settings no longer throws away unsaved edits when you click outside it, and Escape now closes it. The close button, Escape and an outside click all go through one path: Settings closes at once when nothing has changed, and otherwise asks **Discard unsaved changes?** with **Keep editing** selected. The first-run setup wizard ignores Escape and outside clicks entirely. (#711)
+
+- The AI provider, API key and model fields in **Settings > Data Sharing > AI assistance** now show when either **AI-Powered Title Resolution** or **AI-Powered Episode Matching (TV)** is on. Before, a user who wanted only LLM episode matching could not reach them without also enabling title resolution. The episode-matching toggle now sits beside the title-resolution toggle, and the key hint names both features. (#546)
+
+- **Restart to Update** on Windows no longer fails at `move_install` on every update. Programs Engram starts inherit its working folder, which was the install folder, so a browser that Engram opened kept the install folder in use after Engram exited, and Windows refused to move it aside for the new version. Engram now moves off the install folder at startup, and the update helper retries a busy folder for up to 30 seconds before giving up. When it does give up, the notice names the folder and the reason Windows gave, the extra `engram.new-<version>` copy is no longer left beside the install, and copies left by earlier failed updates are removed on the next start. This takes effect from the update after the one that ships it: a version that is already failing still has to be replaced by hand once, and closing your browser first lets that go through. (#791)
+
+- The review page no longer opens straight into episode assignment for a disc whose show is unknown. It now leads with **Identify this disc** (the same dialog as **Wrong title?**) and holds the episode tools back until the show is confirmed, then unlocks without leaving the page. In heuristic-only mode (no TMDB token) a typed show name counts as confirmed, so those discs keep their **Review** button instead of being stranded. (#715)
+
+- The History summary tiles now count the same jobs as the table. They used to include jobs still in review or in progress, so the default view could read 5 total jobs above a 3-row table. The tiles follow the type and state filters. (#728)
+
+- The **Skip extras** setting now works on movie discs. It used to apply only to TV, so a movie disc ripped every bonus track and filed them all under `Extras/`. Now, when the disc is identified as a movie, titles that cannot be the feature are skipped before the rip (shown on the dashboard card with the reason, and UN-SKIP still works), and any that slip through are discarded rather than filed. Every feature-length cut is still ripped. **Ask me** now covers movies as well: the disc waits in review, where you discard the extras you don't want and keep the rest. (#773)
+
+- Re-identifying or naming a TV disc whose episodes were all filed no longer starts a second rip. Engram decided whether the disc had been ripped by looking for files in staging, which is empty once everything is filed, so the job went back to ripping a disc that had already left the drive. It now also checks the disc's tracks, and re-matches instead: filed episodes stay where they are, as with any re-match. (#774)
+
+- Force on a job stuck in Matching now clears a track left queued with no match running behind it. Force used to skip queued tracks, since they are normally waiting for a free match slot, so a track whose match had died kept the job in Matching for good. Tracks still waiting for a slot, or held until you answer a name or show question, are left alone, and the automatic stall check is unchanged. (#776)
+
+- **Re-match all** is refused for movie discs instead of running TV episode matching on the movie's tracks. The review page only offers it for TV, so this affected direct API calls. (#775)
+
+- Two discs that start at the same moment no longer get mixed up. With several ISOs mounted when Engram starts, each virtual drive's disc began in the same second, and both jobs were given the same staging folder because its name only went down to the second. Both rips wrote into that one folder, so each job matched and filed the other disc's episodes (a Season 1 disc could come out labelled as Season 2). Every job now gets a staging folder of its own, named after the job. (#768)
+
+- A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
+
+- TV tracks whose only audio is another language are no longer matched to a random episode. Engram used to transcribe them as if they were English and file or suggest whatever episode the noise landed on. It now checks each ripped file's audio tracks first: a track with no English audio goes to review with a note naming the language (for example "This track's only audio is Japanese"), and the job's review reason counts them. When the disc itself had an English track that MakeMKV's language settings left out of the rip, the note says so. On discs with several audio tracks, Engram now always transcribes the English one instead of whichever track the disc marks as default. Matching in a show's own language is planned next. (#241, thanks @wintheriscomming!)
+
+## [0.41.0] - 2026-10-20
+
+_Highlights: recover failed jobs from staging, Play-All tracks detected from the disc's own structure, import of MP4/TS files, and an external player for movie review._
+
+### Added
+
+- Failed jobs can be recovered without hunting through **Import**. When the staging folder still holds ripped files, the dashboard card and the History detail panel offer **Retry from staging**, which runs those files through import as a new job with the failed job's title and season (the disc is not needed, and the partial file of a track that was mid-rip is left out). History also offers **Open folder** (on the machine running Engram) and **Copy path**, and explains why retry is unavailable when the folder has been cleaned up. Tracks a failed job never ripped now read **Not ripped** instead of **Pending**. (#713)
+
+- Manual import now accepts `.mp4`, `.m4v`, `.ts` and `.m2ts` files as well as `.mkv`. Files are filed unchanged and keep their own extension in the library (an MP4 lands as `Show - S01E01.mp4`), and an existing copy of the same episode in another container counts as a conflict instead of becoming a duplicate. Picking a `BDMV` folder, its `STREAM` folder or a single stream clip imports the whole disc backup through MakeMKV, because those clips are fragments, not titles.
+
+- Movie review now has the same **Open in player** and **Copy stream URL** buttons as TV review, so you can watch each feature-length title in VLC or MPV before picking which cut to keep.
+- A **Getting Help & Reporting Issues** guide covering Trace, the support bot in the Engram Discord: run `/bug` or `/feature` and it gathers the details, checks for an existing issue, and drafts a GitHub issue you file with one click; attach a job's diagnostics bundle and it reads the logs for you. The README, Troubleshooting and Contributing pages, and GitHub's new-issue page, now point there.
+
+### Fixed
+
+- Re-matching a disc whose episodes were already filed no longer leaves the job stuck in Matching. Filed episodes stay where they are, and the disc goes to review with a note saying where they were filed. (#757)
+
+- TV discs no longer rip the "Play All" track. Engram used to spot it only when its length came within 20% of a tight group of similar-length episodes, which missed discs whose episodes vary by a few minutes or include a double-length episode, so a multi-hour duplicate was ripped and matched. Engram now checks the disc against itself: on a Blu-ray, a playlist built from the clips of two or more episodes is the Play-All; on a DVD, a track whose length and size equal the sum of two or more episode tracks is. The track is left out before the rip starts. The old length check remains for discs where neither applies, and extras reels and single-title discs are not flagged. (#634)
+
+- A track you skip once ripping has started is no longer ripped in full and then deleted. When every track on a disc is selected, Engram rips the whole disc in one MakeMKV pass, and a skip during that pass was only honored by deleting the finished file, so skipping the first few tracks while MakeMKV was still opening the disc could waste half an hour. The pass now stops as soon as MakeMKV reaches a skipped track, and the tracks still wanted are ripped one at a time. A track that is already being written when you skip it still finishes and is then discarded, so a skip never cuts off the track in progress. (#765)
+
+- A "Play All" track that Engram has already set aside no longer shows as queued with a SKIP button that does nothing. The dashboard was told every track on a newly identified disc was pending, including the full-disc Play All track that is never ripped, so pressing SKIP on it was refused by the server and the card stayed put. Tracks now arrive with their real state, and if the server ever refuses a skip or un-skip, the dashboard says why and refreshes the card. (#754)
+
+## [0.40.0] - 2026-10-17
+
+_Highlights: TheTVDB episode numbering for shows whose discs follow it, plus fixes for narrow windows, MakeMKV licence errors, post-rip review, GPU downloads on Windows and the Custom naming convention._
+
+### Added
+
+- TheTVDB episode numbering for shows whose discs follow it. When TheTVDB numbers a season differently from TMDB (Justice League's three-part pilot is one TMDB episode), the review page offers to switch the show; Engram then re-downloads subtitles and re-matches in TheTVDB numbering, without re-ripping, and files episodes under TheTVDB's numbers. Release builds include a TheTVDB key; Docker and source installs set `TVDB_API_KEY` or enter a key in Settings.
+
+### Fixed
+
+- The top bar no longer pushes the Settings button off-screen in narrow windows. Below 1100px the MANUAL and IMPORT buttons collapse to icons and the wordmark tagline is trimmed to a single line; below 900px the wordmark yields to the mark, so every control fits down to 768px (#712).
+- A job that fails because MakeMKV's licence has lapsed now says so. When the beta key has expired or the MakeMKV beta build is too old to run, the job's error (on the dashboard and in History) names the cause and the fix (copy the current key from the MakeMKV forum into Settings, or update MakeMKV) instead of the generic "No titles found on disc" or a raw rip error. (#714)
+- A failed `faster-whisper` import no longer reports "faster-whisper not installed" unless the package is really missing. A CUDA, ctranslate2 or av import problem now surfaces its own error type and message in the log and in the ASR status, so bug reports point at the real cause. (#760)
+- The review page no longer offers **Start rip** for a disc that has already been ripped. On a post-rip review (low-confidence matches, file conflicts) the button started a second full rip against a drive that was usually empty, failing the job, or holding a different disc, which was then ripped under this job's name. The button now appears only while the disc is still in the drive (nothing ripped yet, and no completed backup), and the server refuses such a start with a clear message. Partially ripped tracks still have their per-track re-rip. (#710)
+- Choosing **Custom** under Settings → Naming Convention works again. The dropdown ignored the click and stayed on Plex, Kodi or Minimal, so the season-folder and episode-filename fields never appeared. Those fields now also show for a saved custom episode format whose season folder matches a preset; before, the dropdown read "Custom" but the fields stayed hidden. (#777)
+- **Download & enable** for GPU acceleration works on Windows machines where it failed with `CERTIFICATE_VERIFY_FAILED`. The CUDA download was the one connection that checked certificates against the Windows store instead of the certificates Engram ships with, and Windows can be missing the root that files.pythonhosted.org uses. (#694)
+- A `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE` or `SSL_CERT_FILE` environment variable pointing at a file that does not exist no longer breaks TMDB validation and every other online lookup with "Could not find a suitable TLS CA certificate bundle". Engram logs a warning and uses its own certificates. A bundle that exists is still honoured.
+- When the CUDA libraries load at startup but the GPU model then fails to run, the ASR badge and the GPU settings now say it fell back to CPU, and the log records the error. Before, the badge kept showing "CUDA float16" while transcription ran on the CPU.
+
+## [0.39.0] - 2026-10-09
+
+_Highlights: "Skip extras" now skips short TV tracks before ripping instead of after._
+
+### Changed
+
+- **"Skip extras" now skips short TV tracks before ripping.** With the extras
+  policy set to *Skip*, bonus featurettes on a TV disc were ripped and only
+  discarded afterwards, so skipping them meant watching the dashboard and
+  pressing SKIP on each one before the rip reached it. Engram now skips tracks
+  that are clearly too short to be episodes before the rip starts. It compares
+  each track with the season's TMDB episode runtimes and with the disc's own
+  episode-length tracks, and skips only when both agree, so there is no fixed
+  minute cutoff for short-episode shows to trip over. Skipped tracks stay on the
+  card with the reason, and UN-SKIP puts any of them back in the rip queue.
+
+## [0.38.1] - 2026-10-03
+
+_Highlights: episode matching works again on the Windows, macOS and Linux downloads, which in v0.38.0 sent every TV disc to manual review._
+
+### Fixed
+
+- **Episode matching on the standalone builds.** Every v0.38.0 download (Windows,
+  macOS and Linux) shipped a newer audio library that the speech recognizer could
+  not open files with, so every transcription chunk failed and every TV disc fell
+  back to manual review. Engram now decodes the audio itself and hands the
+  recognizer the samples directly, so matching works again regardless of that
+  library's version. The Docker image was not affected. (#709, #735)
+
+## [0.38.0] - 2026-10-01
+
+_Highlights: a bigger English-only subtitle cache (about 1,380 shows), one-click GPU acceleration, the dashboard on React 19, and a fix for databases stuck partway through schema migrations._
+
 ### Removed
 
 - **Unused frontend dependencies.** 39 packages left over from the original UI
@@ -31,6 +204,13 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- **Enabling GPU acceleration no longer looks like it silently resets.** The settings
+  panel had a separate NVIDIA EULA checkbox that read as "turn CUDA on", but ticking it
+  saved nothing and started no download. The "Download & enable" button is now the only
+  control. The panel and the dashboard badge also tell "enabled, restart to apply" and
+  "enabled, but the CUDA libraries failed to load" apart from "not enabled", where before
+  all three offered "Enable" again. The backend now logs when a download starts, so a
+  log shows whether it ever began. (#694)
 - **Long-upgraded databases no longer get stuck partway through their schema
   migrations.** On a database first created by an older release, one migration
   tried to drop a column that Engram's startup had already removed, failed, and

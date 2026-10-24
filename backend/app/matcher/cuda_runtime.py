@@ -33,6 +33,7 @@ import io
 import os
 import platform
 import shutil
+import ssl
 import sys
 import tempfile
 import threading
@@ -205,12 +206,29 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _tls_context() -> ssl.SSLContext:
+    """Verify against the bundled certifi CA file, as httpx/requests do everywhere else.
+
+    A bare ``urlopen`` trusts only the OS store, and the Windows store fetches missing
+    roots lazily (when something like Edge first needs them), so a fresh machine failed
+    files.pythonhosted.org with CERTIFICATE_VERIFY_FAILED (#694). The OS store is loaded on
+    top rather than dropped, so a proxy CA installed only there keeps working.
+    """
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    ctx.load_default_certs()
+    return ctx
+
+
 def _download_verified(wheel: _Wheel, progress_cb=None, base: int = 0, total: int = 0) -> bytes:
     """Stream a pinned wheel, verifying its SHA256, reporting cumulative bytes via callback."""
     chunks: list[bytes] = []
     received = 0
     try:
-        with urllib.request.urlopen(wheel.url, timeout=120) as resp:  # noqa: S310 - pinned https
+        with urllib.request.urlopen(  # noqa: S310 - pinned https
+            wheel.url, timeout=120, context=_tls_context()
+        ) as resp:
             while True:
                 chunk = resp.read(1024 * 256)
                 if not chunk:
@@ -439,12 +457,17 @@ def start_background_download(on_done=None) -> bool:
     flip the config flag + broadcast). Returns False if a download is already running.
     """
     global _download_thread
+    total = download_size_bytes()
     with _state_lock:
         if _download_state["state"] in ("downloading", "installing"):
+            logger.info("CUDA runtime download already in progress; not starting another")
             return False
         _download_state.update(
-            {"state": "downloading", "downloaded": 0, "total": download_size_bytes(), "error": None}
+            {"state": "downloading", "downloaded": 0, "total": total, "error": None}
         )
+    # Without this line a log could not tell "never clicked" from "started" (#694): a
+    # successful start was silent, and only a failure or completion was logged.
+    logger.info(f"Starting CUDA runtime download ({total / 1e9:.1f} GB) -> {cuda_cache_dir()}")
 
     def _run():
         def _progress(done: int, total: int) -> None:

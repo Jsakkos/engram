@@ -1,5 +1,6 @@
 /**
- * Action buttons for the disc card (Cancel, Re-Identify, Review Needed).
+ * Action buttons for the disc card (Cancel, Re-Identify, Review Needed, and
+ * Retry from staging on a failed job).
  *
  * Synapse v2 vocabulary: monospace + uppercase labels, 1px tinted borders,
  * sharp 90° corners, sv-token glow on hover. All three buttons share a
@@ -31,11 +32,13 @@ interface ConfirmModalProps {
     confirmLabel: string;
     dismissLabel: string;
     confirmTone?: "red" | "cyan" | "amber";
+    /** Stacking override for callers that open this above another modal (the Settings overlay sits at 1000). */
+    zIndex?: number;
     onConfirm: () => void;
     onDismiss: () => void;
 }
 
-function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confirmTone = "red", onConfirm, onDismiss }: ConfirmModalProps) {
+export function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confirmTone = "red", zIndex, onConfirm, onDismiss }: ConfirmModalProps) {
     const dismissRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
@@ -62,6 +65,7 @@ function ConfirmModal({ titleId, title, body, confirmLabel, dismissLabel, confir
     return createPortal(
         <motion.div
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={zIndex === undefined ? undefined : { zIndex }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -129,6 +133,23 @@ interface ActionButtonsProps {
      *  relabels the button "Edit ID" instead of "Wrong title?" so it reads as
      *  a routine edit, not a correction of a mistake. */
     manualIdentity?: boolean;
+    /** Failed job whose staging folder still holds ripped files: re-run them
+     *  through import as a new job (#713). Only passed when a retry is possible. */
+    onRetryFromStaging?: () => void;
+    /** Backend says the job has made no progress past the stall threshold (#718).
+     *  Promotes Force advance from the overflow menu to a primary control. */
+    looksStuck?: boolean;
+    /** Seconds of inactivity, shown in the Force tooltip. */
+    stalledForSeconds?: number | null;
+}
+
+/** "6m 40s" / "45s" / "1h 5m": compact inactivity duration for tooltips. */
+function formatStall(seconds: number): string {
+    const s = Math.max(0, Math.floor(seconds));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${s % 60}s`;
+    return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
 // States where Force-advance makes sense (job is actively processing).
@@ -264,14 +285,79 @@ function ToneButton({ tone, onClick, title, ariaLabel, children, paddingX = 0, t
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onEject, isImport = false, emphasizeReIdentify = false, manualIdentity = false }: ActionButtonsProps) {
+/**
+ * Overflow ("···") menu for rarely-needed actions. Keeps a control reachable
+ * without giving it a slot on every healthy card.
+ */
+function OverflowMenu({ onForceAdvance }: { onForceAdvance: () => void }) {
+    const [open, setOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e: globalThis.MouseEvent) => {
+            if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+        document.addEventListener("mousedown", onDown);
+        document.addEventListener("keydown", onKey);
+        return () => {
+            document.removeEventListener("mousedown", onDown);
+            document.removeEventListener("keydown", onKey);
+        };
+    }, [open]);
+
+    return (
+        <div ref={rootRef} style={{ position: "relative" }}>
+            <ToneButton
+                tone={CYAN}
+                onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+                title="More actions"
+                ariaLabel="More actions"
+                testId="overflow-button"
+            >
+                <span aria-hidden style={{ fontSize: 14, letterSpacing: 0, lineHeight: 1 }}>⋯</span>
+            </ToneButton>
+            {open && (
+                <div
+                    role="menu"
+                    style={{
+                        position: "absolute", right: 0, top: BUTTON_HEIGHT + 4, zIndex: 30, minWidth: 170,
+                        background: sv.bg0, border: `1px solid ${sv.lineMid}`, boxShadow: `0 4px 18px ${sv.bg0}`,
+                    }}
+                >
+                    <button
+                        role="menuitem"
+                        onClick={(e) => { e.stopPropagation(); setOpen(false); onForceAdvance(); }}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 12px",
+                            background: "transparent", border: "none", color: sv.cyan, cursor: "pointer",
+                            fontFamily: sv.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase",
+                        }}
+                    >
+                        <IcoPlay size={12} />
+                        Force advance
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onEject, isImport = false, emphasizeReIdentify = false, manualIdentity = false, onRetryFromStaging, looksStuck = false, stalledForSeconds }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
-    const showAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
+    const canAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
+    // Force is the manual counterpart of the stale-job watchdog: a primary control
+    // only once the job looks stuck, otherwise tucked in the overflow menu (#718).
+    const showAdvance = canAdvance && looksStuck;
+    const showOverflow = canAdvance && !looksStuck;
     const showEject = !!onEject && EJECTABLE_STATES.includes(state) && !isImport;
+    const showRetry = !!onRetryFromStaging && state === "error";
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [showAdvanceModal, setShowAdvanceModal] = useState(false);
     const [showEjectModal, setShowEjectModal] = useState(false);
+    const [showRetryModal, setShowRetryModal] = useState(false);
 
     const handleCancel = (e: MouseEvent) => {
         e.stopPropagation();
@@ -327,8 +413,34 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     onDismiss={() => setShowEjectModal(false)}
                 />
             )}
+            {showRetryModal && (
+                <ConfirmModal
+                    titleId="retry-modal-title"
+                    title="Retry from staging?"
+                    body="The files this job already ripped run through import again as a new job, keeping its title and season. The disc is not needed, and this failed job stays in History."
+                    confirmLabel="Retry"
+                    dismissLabel="Not now"
+                    confirmTone="cyan"
+                    onConfirm={() => { setShowRetryModal(false); onRetryFromStaging!(); }}
+                    onDismiss={() => setShowRetryModal(false)}
+                />
+            )}
         </AnimatePresence>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {showRetry && (
+                <ToneButton
+                    tone={CYAN}
+                    onClick={(e) => { e.stopPropagation(); setShowRetryModal(true); }}
+                    title="Retry this job from the files left in staging"
+                    ariaLabel="Retry from staging"
+                    paddingX={10}
+                    testId="retry-from-staging-button"
+                >
+                    <IcoRetry size={12} />
+                    <span style={{ fontSize: 10 }}>Retry</span>
+                </ToneButton>
+            )}
+
             {showCancel && (
                 <ToneButton
                     tone={RED}
@@ -359,7 +471,11 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                 <ToneButton
                     tone={CYAN}
                     onClick={handleAdvance}
-                    title="Force this job to its next step"
+                    title={
+                        stalledForSeconds != null
+                            ? `No progress for ${formatStall(stalledForSeconds)}. Force this job to its next step`
+                            : "Force this job to its next step"
+                    }
                     ariaLabel="Force job to next step"
                     paddingX={10}
                 >
@@ -367,6 +483,8 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                     <span style={{ fontSize: 10 }}>Force</span>
                 </ToneButton>
             )}
+
+            {showOverflow && <OverflowMenu onForceAdvance={() => setShowAdvanceModal(true)} />}
 
             {onReIdentify && (
                 <ToneButton

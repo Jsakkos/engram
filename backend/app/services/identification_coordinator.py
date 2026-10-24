@@ -17,11 +17,14 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.disc_source import DiscSource
+from app.core.episode_runtime import find_short_titles
+from app.core.errors import MakeMKVLicenseError
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError, title_index_from_filename
 from app.core.fingerprint_disc_classifier import (
     identify_disc_via_network,
     network_titles_to_mappings,
 )
+from app.core.media_formats import list_video_files
 from app.core.tmdb_classifier import (
     TMDB_DEGRADED_AUTH_FAILED,
     TMDB_DEGRADED_NOT_CONFIGURED,
@@ -32,7 +35,7 @@ from app.core.tmdb_classifier import (
 )
 from app.database import async_session
 from app.models import DiscJob, JobState
-from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.models.disc_job import ContentType, DiscTitle, TitleState, any_title_ripped
 from app.services.event_broadcaster import EventBroadcaster
 from app.services.identity_prompts import (
     IdentityResumeResult,
@@ -204,6 +207,40 @@ def _apply_manual_identity(analysis, manual: ManualIdentity) -> None:
     analysis._discdb_signal = None
 
 
+async def _disc_already_ripped(session, job) -> bool:
+    """Whether a parked job's disc was already ripped, so resuming must not rip.
+
+    Staged media alone misses a fully filed disc: organizing empties staging,
+    yet the disc was ripped and has left the drive (#774). The job's titles
+    still record it.
+    """
+    if _has_staged_media(job):
+        return True
+    titles = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))
+    return any_title_ripped(titles.scalars())
+
+
+def _has_staged_media(job) -> bool:
+    """Whether this job's media is already on disk (ripped or imported).
+
+    Decides "resume matching" vs "disc not yet ripped" when a parked job is
+    re-identified or named. A manual import's files are listed in its manifest
+    and may sit in subfolders below ``staging_path`` (their common ancestor), in
+    any importable container; everything else is a flat staging directory of
+    MakeMKV output.
+    """
+    if job.import_manifest_json:
+        try:
+            files = json.loads(job.import_manifest_json).get("files", [])
+        except (ValueError, TypeError, AttributeError):
+            files = []
+        if any(Path(f).is_file() for f in files):
+            return True
+    if not job.staging_path:
+        return False
+    return bool(list_video_files(Path(job.staging_path)))
+
+
 def _resolve_show_year(tmdb_id: int | None, signal=None) -> int | None:
     """First-air year for a show, for library-folder disambiguation.
 
@@ -370,6 +407,157 @@ class IdentificationCoordinator:
         config = await get_config()
         return next_state_after_identify(config, drive_id)
 
+    async def _skip_short_titles_before_rip(
+        self,
+        job: DiscJob,
+        session,
+        job_id: int,
+        trust_identity: bool,
+        content_type_settled: bool = True,
+    ) -> None:
+        """Mark tracks too short to be episodes SKIPPED before the rip starts.
+
+        Only for ``extras_policy == "skip"``: a user who keeps or reviews extras
+        needs them ripped. The tracks land in exactly the state a manual "skip
+        the rip" produces, so the card shows them and the existing un-skip works
+        while the disc is still in the drive. Anything this lets through is still
+        caught by the post-rip extras check in matching.
+
+        TMDB runtimes are used only when ``trust_identity``; for a same-name twin
+        or an uncorroborated identity they could be the wrong show's, and the
+        filter falls back to the disc's own evidence.
+
+        A movie disc gets the movie rule instead (#773), but only once it is
+        settled as a movie: a disc parked over a movie-vs-TV conflict may be TV,
+        where its short titles are the episodes.
+        """
+        from app.services.config_service import get_config
+
+        config = await get_config()
+        if config.extras_policy != "skip":
+            return
+        if job.content_type == ContentType.MOVIE:
+            if content_type_settled:
+                await self._skip_movie_extras_before_rip(session, job_id, config)
+            return
+        if job.content_type != ContentType.TV:
+            return
+
+        runtimes: list[int] = []
+        wants_tmdb = bool(trust_identity and job.tmdb_id and job.detected_season)
+        if wants_tmdb:
+            from app.models.show_ordering import ShowOrderingPreference
+
+            # A show on TheTVDB numbering: TMDB's runtimes describe a different
+            # episode split (Justice League's one 72-minute TMDB pilot is three
+            # 25-minute discs tracks), so they cannot say what is too short here.
+            pref = await session.get(ShowOrderingPreference, job.tmdb_id)
+            if pref is not None and pref.ordering == "tvdb":
+                wants_tmdb = False
+        if wants_tmdb:
+            from app.matcher.tmdb_client import fetch_season_episode_runtimes
+
+            # lru_cached, and keyed on the job's FINAL identity: classification
+            # fetched runtimes for the label's identity, which a disc-network or
+            # DiscDB override may since have replaced. No try here: the fetch
+            # already catches and logs its network errors (with exc_info) and
+            # returns [], which drops the filter to its stricter disc-only rule.
+            runtimes = await asyncio.to_thread(
+                fetch_season_episode_runtimes, str(job.tmdb_id), job.detected_season
+            )
+
+        db_titles = (
+            (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+            .scalars()
+            .all()
+        )
+        # Play All rows (and anything else already decided) are not candidates.
+        decided = {
+            t.title_index
+            for t in db_titles
+            if t.state != TitleState.PENDING or not t.is_selected or t.is_extra
+        }
+        short = find_short_titles(
+            [(t.title_index, t.duration_seconds or 0) for t in db_titles],
+            runtimes,
+            exclude=decided,
+        )
+        if not short:
+            return
+
+        reasons = {s.index: s.reason for s in short}
+        skipped = await self._mark_skipped_before_rip(session, job_id, db_titles, reasons)
+        if runtimes:
+            evidence = "TMDB + disc"
+        elif wants_tmdb:
+            evidence = "disc only, TMDB runtimes unavailable"
+        else:
+            evidence = "disc only, no trusted TMDB show and season"
+        logger.info(
+            f"Job {job_id}: auto-skipped {len(skipped)} short track(s) before rip "
+            f"(extras policy 'skip', {evidence}): "
+            + "; ".join(f"title {dt.title_index}: {reasons[dt.title_index]}" for dt in skipped)
+        )
+
+    async def _skip_movie_extras_before_rip(self, session, job_id: int, config) -> None:
+        """Mark a movie disc's non-feature titles SKIPPED before the rip (#773).
+
+        The rule (:func:`find_movie_extras_before_rip`) never touches a title the
+        post-rip feature pick could choose; whatever it lets through is settled by
+        ``_resolve_multi_title_movie`` after the rip under the same policy.
+        """
+        from app.core.analyst import find_movie_extras_before_rip
+
+        db_titles = (
+            (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id)))
+            .scalars()
+            .all()
+        )
+        # Unlike the TV filter, is_extra does not exclude a title here: on a movie
+        # disc it is TheDiscDB's non-MainMovie tag, which is exactly what to skip.
+        candidates = [
+            (t.title_index, t.duration_seconds or 0)
+            for t in db_titles
+            if t.state == TitleState.PENDING and t.is_selected
+        ]
+        main_movie = {
+            m.index for m in self._get_discdb_mappings(job_id) if m.title_type == "MainMovie"
+        }
+        reasons = find_movie_extras_before_rip(
+            candidates,
+            min_feature_duration=config.analyst_movie_min_duration,
+            main_movie_indices=main_movie,
+        )
+        if not reasons:
+            return
+        skipped = await self._mark_skipped_before_rip(session, job_id, db_titles, reasons)
+        logger.info(
+            f"Job {job_id}: auto-skipped {len(skipped)} non-feature title(s) before rip "
+            f"(extras policy 'skip'): "
+            + "; ".join(f"title {dt.title_index}: {reasons[dt.title_index]}" for dt in skipped)
+        )
+
+    async def _mark_skipped_before_rip(
+        self, session, job_id: int, db_titles, reasons: dict[int, str]
+    ) -> list[DiscTitle]:
+        """Put ``reasons``' titles in the manual "skip the rip" state and broadcast."""
+        skipped: list[DiscTitle] = []
+        for dt in db_titles:
+            if dt.title_index in reasons:
+                dt.state = TitleState.SKIPPED
+                dt.is_selected = False
+                dt.match_details = json.dumps(
+                    {"reason": reasons[dt.title_index], "skipped": True, "auto_skipped": True}
+                )
+                session.add(dt)
+                skipped.append(dt)
+        await session.commit()
+        for dt in skipped:
+            await ws_manager.broadcast_title_update(
+                job_id, dt.id, TitleState.SKIPPED.value, match_details=dt.match_details
+            )
+        return skipped
+
     async def _hand_off_after_identify(self, job_id: int, state: JobState) -> None:
         """Run the phase chosen by :func:`next_state_after_identify`.
 
@@ -423,6 +611,11 @@ class IdentificationCoordinator:
                     await self._state_machine.transition_to_failed(
                         job, session, f"Cannot scan this job: {e}"
                     )
+                    return
+                except MakeMKVLicenseError as e:
+                    # Named, actionable message (expired key / old beta build)
+                    # rather than the generic "No titles found on disc".
+                    await self._state_machine.transition_to_failed(job, session, str(e))
                     return
                 except ScanTimeoutError:
                     await self._state_machine.transition_to_failed(
@@ -538,6 +731,12 @@ class IdentificationCoordinator:
                         source_filename=title.source_filename or None,
                         segment_count=title.segment_count,
                         segment_map=title.segment_map or None,
+                        audio_languages=json.dumps(title.audio_languages)
+                        if title.audio_languages
+                        else None,
+                        subtitle_languages=json.dumps(title.subtitle_languages)
+                        if title.subtitle_languages
+                        else None,
                     )
                     session.add(disc_title)
 
@@ -691,6 +890,17 @@ class IdentificationCoordinator:
                     )
                     return
 
+                # Before any branch below can hand the disc to the ripper. Gates
+                # A and B returned above: with no usable identity they rip
+                # permissively by design.
+                await self._skip_short_titles_before_rip(
+                    job,
+                    session,
+                    job_id,
+                    trust_identity=not _collision and not analysis.identity_unconfirmed,
+                    content_type_settled=(not analysis.needs_review or analysis.is_ambiguous_movie),
+                )
+
                 # Start subtitle download for ALL TV content — except when identity is
                 # ambiguous (same-name collision) or a no-year twin needs disambiguation.
                 # Downloading by the tentative name would fetch the wrong show's subtitles
@@ -725,7 +935,12 @@ class IdentificationCoordinator:
 
                         candidate_count = 0
                         for dt in db_titles:
-                            if dt.duration_seconds and dt.duration_seconds >= 80 * 60:
+                            # A title the extras policy skipped above stays skipped.
+                            if (
+                                dt.duration_seconds
+                                and dt.duration_seconds >= 80 * 60
+                                and dt.state != TitleState.SKIPPED
+                            ):
                                 dt.is_selected = True
                                 candidate_count += 1
                                 session.add(dt)
@@ -1030,7 +1245,7 @@ class IdentificationCoordinator:
         return signal
 
     async def identify_from_staging(self, job_id: int) -> None:
-        """Identify and process pre-ripped MKV files from staging."""
+        """Identify and process pre-ripped video files from staging."""
         from app.core.analyst import TitleInfo
 
         async with async_session() as session:
@@ -1047,18 +1262,18 @@ class IdentificationCoordinator:
                     mkv_files = sorted(Path(f) for f in manifest.get("files", []))
                     mkv_files = [f for f in mkv_files if f.exists()]
                 else:
-                    mkv_files = sorted(staging_dir.glob("*.mkv"))
+                    mkv_files = list_video_files(staging_dir)
 
                 if not mkv_files:
                     msg = (
-                        "No MKV files found from import manifest (all listed files are missing)"
+                        "No video files found from import manifest (all listed files are missing)"
                         if job.import_manifest_json
-                        else "No MKV files found in staging directory"
+                        else "No video files found in staging directory"
                     )
                     await self._state_machine.transition_to_failed(job, session, msg)
                     return
 
-                # Build TitleInfo objects from MKV files using ffprobe
+                # Build TitleInfo objects from the files using ffprobe (any container)
                 titles: list[TitleInfo] = []
                 for idx, mkv_file in enumerate(mkv_files):
                     duration = await self._probe_duration(mkv_file)
@@ -1387,13 +1602,10 @@ class IdentificationCoordinator:
                 raise ValueError(f"Cannot set name on job in state: {job.state}")
 
             mid_rip = job.state == JobState.RIPPING
-            # Post-rip detection (mirrors re_identify): staged .mkv files mean
-            # the disc already ripped (and was ejected at rip end) — resuming
-            # must route to matching/movie resolution, never a second rip.
-            has_ripped = False
-            if not mid_rip and job.staging_path:
-                staging = Path(job.staging_path)
-                has_ripped = staging.exists() and any(staging.glob("*.mkv"))
+            # Post-rip detection (mirrors re_identify): a ripped disc was ejected
+            # at rip end, so resuming must route to matching/movie resolution,
+            # never a second rip.
+            has_ripped = not mid_rip and await _disc_already_ripped(session, job)
 
             job.detected_title = name
             job.content_type = ContentType(content_type_str)
@@ -1516,11 +1728,8 @@ class IdentificationCoordinator:
             _prev_title = job.detected_title
             _prev_tmdb_id = job.tmdb_id
 
-            # Check if files already exist in staging (post-rip)
-            has_ripped = False
-            if job.staging_path:
-                staging = Path(job.staging_path)
-                has_ripped = staging.exists() and any(staging.glob("*.mkv"))
+            # Post-rip: staged files, or titles already ripped/filed (#774)
+            has_ripped = await _disc_already_ripped(session, job)
 
             # Update job metadata with user-corrected values
             job.detected_title = title

@@ -222,6 +222,117 @@ class TestJobEndpoints:
         response = await client.post("/api/jobs/999/start")
         assert response.status_code == 404
 
+    @pytest.mark.parametrize(
+        "ripped_state",
+        [TitleState.REVIEW, TitleState.MATCHED, TitleState.COMPLETED, TitleState.FAILED],
+    )
+    async def test_start_job_refuses_post_rip_review(self, client, monkeypatch, ripped_state):
+        """#710: a post-rip REVIEW_NEEDED job (low-confidence match, file conflict)
+        must not be ripped again. The disc is usually ejected, so a second rip
+        either fails the job or rips whatever disc is now in the drive."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        start = AsyncMock()
+        monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        titles = await _seed_titles(job.id, count=3)
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, titles[1].id)
+            t.state = ripped_state
+            await session.commit()
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 409
+        assert "already been ripped" in response.json()["detail"]
+        start.assert_not_awaited()
+
+    async def test_start_job_allows_pre_rip_review(self, client, monkeypatch):
+        """#710: a pre-rip review (name prompt, unclear movie vs TV) keeps its
+        Start rip. Skipped titles are excluded and do not count as ripped."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        start = AsyncMock()
+        monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        titles = await _seed_titles(job.id, count=3)
+        async with _unit_session_factory() as session:
+            t = await session.get(DiscTitle, titles[2].id)
+            t.state = TitleState.SKIPPED
+            t.is_selected = False
+            await session.commit()
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 200
+        start.assert_awaited_once_with(job.id)
+
+    async def test_start_job_refuses_after_completed_backup(self, client, monkeypatch):
+        """A backup whose re-scan cannot be reconciled parks in REVIEW_NEEDED with
+        every title still PENDING, but the drive was already released when the
+        copy finished. A full rip from there would re-back-up whatever disc is in
+        the drive, or rip the copy with unreconciled indices."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        start = AsyncMock()
+        monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED, backup_status="completed")
+        await _seed_titles(job.id, count=2)
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 409
+        assert "backup" in response.json()["detail"]
+        start.assert_not_awaited()
+
+    async def test_start_job_maps_manager_refusal_to_409(self, client, monkeypatch):
+        """start_ripping re-checks in its own session; if the state moved between
+        the route's check and that one, the refusal is still a 409, not a 500."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        monkeypatch.setattr(
+            job_manager, "start_ripping", AsyncMock(side_effect=ValueError("already ripped"))
+        )
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_titles(job.id, count=1)
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "already ripped"
+
+    async def test_start_job_counts_deselected_ripped_titles(self, client, monkeypatch):
+        """Movie extras are deselected AFTER they are ripped. A disc whose every
+        ripped title ended up deselected has still been ripped, so it must not
+        offer a fresh full rip."""
+        from unittest.mock import AsyncMock
+
+        from app.services.job_manager import job_manager
+
+        start = AsyncMock()
+        monkeypatch.setattr(job_manager, "start_ripping", start)
+        job = await _seed_job(state=JobState.REVIEW_NEEDED, content_type=ContentType.MOVIE)
+        titles = await _seed_titles(job.id, count=2)
+        async with _unit_session_factory() as session:
+            for seeded in titles:
+                t = await session.get(DiscTitle, seeded.id)
+                t.state = TitleState.REVIEW
+                t.is_selected = False
+            await session.commit()
+
+        response = await client.post(f"/api/jobs/{job.id}/start")
+
+        assert response.status_code == 409
+        start.assert_not_awaited()
+
     async def test_cancel_job_not_found(self, client):
         response = await client.post("/api/jobs/999/cancel")
         assert response.status_code == 404
@@ -609,6 +720,28 @@ class TestAsrStatusEndpoint:
         assert body["workers"] >= 1
         assert "max_concurrent_matches" in body
         assert "model" in body
+
+    async def test_asr_status_reports_enabled_gpu_that_fell_back_to_cpu(self, client):
+        """An enabled flag whose libs failed at startup is its own state, not "enable" (#694)."""
+        from unittest.mock import patch
+
+        from app.matcher import asr_models
+
+        await _seed_config(enable_gpu_acceleration=True)
+        asr_models.set_asr_device("cpu", gpu_fallback_reason="register_failed")
+        try:
+            with (
+                patch("app.matcher.asr_models.gpu_detected", return_value=True),
+                patch("app.matcher.cuda_runtime.is_supported_platform", return_value=True),
+                patch("app.matcher.cuda_runtime.is_cuda_runtime_installed", return_value=True),
+            ):
+                resp = await client.get("/api/asr-status")
+        finally:
+            asr_models.set_asr_device(None)
+        body = resp.json()
+        assert body["gpu_enabled"] is True
+        assert body["gpu_fallback_reason"] == "register_failed"
+        assert body["gpu_state"] == "enabled_not_active"
 
 
 # ---------------------------------------------------------------------------
@@ -1063,3 +1196,127 @@ class TestJobVisibilityInvariant:
         """A typo'd filter must 422, not silently return everything."""
         response = await client.get("/api/jobs/history?state=nonsense")
         assert response.status_code == 422
+
+
+class TestHistoryStatsMatchTable:
+    """The History tiles and the History table must describe the same job set."""
+
+    async def test_default_stats_exclude_in_flight_jobs(self, client):
+        await _seed_job(state=JobState.COMPLETED)
+        await _seed_job(state=JobState.FAILED, content_type=ContentType.MOVIE)
+        await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_job(state=JobState.RIPPING)
+
+        rows = (await client.get("/api/jobs/history")).json()
+        stats = (await client.get("/api/jobs/stats")).json()
+
+        assert stats["total_jobs"] == len(rows) == 2
+        assert stats["tv_count"] == 1
+        assert stats["movie_count"] == 1
+
+    async def test_stats_follow_the_state_filter(self, client):
+        await _seed_job(state=JobState.COMPLETED)
+        await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_job(state=JobState.REVIEW_NEEDED)
+
+        stats = (await client.get("/api/jobs/stats?state=review_needed")).json()
+        assert stats["total_jobs"] == 2
+        assert stats["completed_jobs"] == 0
+
+    async def test_stats_include_all_states_backstop(self, client):
+        for state in (JobState.RIPPING, JobState.REVIEW_NEEDED, JobState.COMPLETED):
+            await _seed_job(state=state)
+
+        stats = (await client.get("/api/jobs/stats?include_all_states=true")).json()
+        assert stats["total_jobs"] == 3
+
+    async def test_stats_follow_content_type_and_query(self, client):
+        await _seed_job(state=JobState.COMPLETED, detected_title="Frasier")
+        await _seed_job(
+            state=JobState.COMPLETED, detected_title="Heat", content_type=ContentType.MOVIE
+        )
+
+        by_type = (await client.get("/api/jobs/stats?content_type=movie")).json()
+        assert by_type["total_jobs"] == 1 and by_type["movie_count"] == 1
+
+        by_q = (await client.get("/api/jobs/stats?q=fras")).json()
+        assert by_q["total_jobs"] == 1 and by_q["tv_count"] == 1
+
+    async def test_stats_titles_count_only_filtered_jobs(self, client):
+        done = await _seed_job(state=JobState.COMPLETED)
+        parked = await _seed_job(state=JobState.REVIEW_NEEDED)
+        await _seed_titles(done.id, 2)
+        await _seed_titles(parked.id, 3)
+
+        stats = (await client.get("/api/jobs/stats")).json()
+        assert stats["total_titles_ripped"] == 2
+
+
+class TestHistorySearch:
+    async def _ids(self, client, q):
+        response = await client.get("/api/jobs/history", params={"q": q})
+        assert response.status_code == 200
+        return {j["id"] for j in response.json()}
+
+    async def test_matches_label_title_and_tmdb_name_case_insensitively(self, client):
+        a = await _seed_job(state=JobState.COMPLETED, volume_label="ARRESTED_DEV_S1")
+        b = await _seed_job(state=JobState.COMPLETED, detected_title="Inception")
+        c = await _seed_job(state=JobState.COMPLETED, tmdb_name="The Matrix")
+        assert await self._ids(client, "arrested") == {a.id}
+        assert await self._ids(client, "INCEPT") == {b.id}
+        assert await self._ids(client, "matrix") == {c.id}
+
+    async def test_matches_error_text(self, client):
+        failed = await _seed_job(state=JobState.FAILED, error_message="Disc unreadable at sector 9")
+        await _seed_job(state=JobState.COMPLETED)
+        assert await self._ids(client, "unreadable") == {failed.id}
+
+    async def test_matches_matched_episode_code(self, client):
+        job = await _seed_job(state=JobState.COMPLETED, detected_title="Other")
+        other = await _seed_job(state=JobState.COMPLETED, detected_title="Else")
+        async with _unit_session_factory() as session:
+            session.add(
+                DiscTitle(
+                    job_id=job.id,
+                    title_index=0,
+                    duration_seconds=60,
+                    file_size_bytes=1,
+                    matched_episode="S02E07",
+                )
+            )
+            session.add(
+                DiscTitle(
+                    job_id=other.id,
+                    title_index=0,
+                    duration_seconds=60,
+                    file_size_bytes=1,
+                    matched_episode="S01E01",
+                )
+            )
+            await session.commit()
+        assert await self._ids(client, "s02e07") == {job.id}
+
+    async def test_like_wildcards_are_literal(self, client):
+        pct = await _seed_job(state=JobState.COMPLETED, volume_label="100%_DONE")
+        await _seed_job(state=JobState.COMPLETED, volume_label="PLAIN")
+        assert await self._ids(client, "%") == {pct.id}
+        assert await self._ids(client, "_") == {pct.id}
+
+    async def test_search_composes_with_state_and_pagination(self, client):
+        for i in range(3):
+            await _seed_job(state=JobState.COMPLETED, detected_title=f"Needle {i}")
+        await _seed_job(state=JobState.REVIEW_NEEDED, detected_title="Needle parked")
+
+        default = await client.get("/api/jobs/history", params={"q": "needle", "per_page": 2})
+        assert len(default.json()) == 2
+        page2 = await client.get(
+            "/api/jobs/history", params={"q": "needle", "per_page": 2, "page": 2}
+        )
+        assert len(page2.json()) == 1
+        parked = await client.get("/api/jobs/history?q=needle&state=review_needed")
+        assert len(parked.json()) == 1
+
+    async def test_blank_query_is_ignored(self, client):
+        await _seed_job(state=JobState.COMPLETED)
+        response = await client.get("/api/jobs/history", params={"q": "   "})
+        assert len(response.json()) == 1

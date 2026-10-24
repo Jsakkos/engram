@@ -19,6 +19,17 @@ BASELINE_REV = "d9cbecac097c"
 COLUMN = "is_transcoding_enabled"
 
 
+def _pending_count() -> int:
+    """Revisions from BEFORE_DROP_REV (exclusive) up to head, from the script dir."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    import app.database as db_mod
+
+    script = ScriptDirectory.from_config(Config(str(db_mod._ALEMBIC_INI)))
+    return len(list(script.iterate_revisions("heads", BEFORE_DROP_REV))) - 1
+
+
 @pytest.fixture
 def alembic_db(tmp_path):
     """A temp SQLite DB with the full current schema, wired into Alembic.
@@ -195,7 +206,7 @@ class TestSelfHealFailureReporting:
         stuck = getattr(excinfo.value, db_mod._STUCK_REVISION_ATTR)
         assert f"revision {DROP_REV} failed" in stuck
         assert f"stays at {BEFORE_DROP_REV}" in stuck
-        assert "24 pending revision(s)" in stuck
+        assert f"{_pending_count()} pending revision(s)" in stuck
 
     def test_stuck_revision_logged_once_as_error_with_traceback(self, alembic_db, monkeypatch):
         import app.database as db_mod
@@ -213,5 +224,5 @@ class TestSelfHealFailureReporting:
         msg, kwargs = errors[0]
         assert kwargs.get("exc_info") is True
         assert f"revision {DROP_REV} failed" in msg
-        assert "24 pending revision(s)" in msg
+        assert f"{_pending_count()} pending revision(s)" in msg
         assert _current_rev(engine) == BEFORE_DROP_REV

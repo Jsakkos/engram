@@ -14,10 +14,11 @@ from sqlmodel import select
 
 from app.api.websocket import manager as ws_manager
 from app.core.episode_codes import normalize_episode_code
+from app.core.languages import language_name
 from app.core.organizer import check_library_writable
 from app.core.security import sanitize_log_value
 from app.database import async_session
-from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+from app.matcher.subtitle_utils import AUDIO_LANGUAGE_ERROR_CODE, REFERENCES_UNREADABLE_ERROR_CODE
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
@@ -32,16 +33,50 @@ from app.services.matching_coordinator import (
 logger = logging.getLogger(__name__)
 
 
-def _refused_for_references(title) -> bool:
-    """True when the matcher refused this title for lack of usable references."""
+_MATCHER_REFUSAL_CODES = {REFERENCES_UNREADABLE_ERROR_CODE, AUDIO_LANGUAGE_ERROR_CODE}
+
+
+def _title_details(title) -> dict:
     try:
         details = json.loads(title.match_details) if title.match_details else {}
     except (json.JSONDecodeError, TypeError):
-        return False
-    return isinstance(details, dict) and details.get("error") == REFERENCES_UNREADABLE_ERROR_CODE
+        return {}
+    return details if isinstance(details, dict) else {}
 
 
-def _ordering_for_title(match_details, ordering: str) -> str:
+def _refused_by_matcher(title) -> bool:
+    """True when the matcher refused this title without matching it at all.
+
+    Either the season's references were unusable, or the track's audio is another
+    language (#241). Neither says anything about which show or season the disc is.
+    """
+    return _title_details(title).get("error") in _MATCHER_REFUSAL_CODES
+
+
+def _language_review_summary(titles) -> str | None:
+    """One review-reason sentence for the tracks parked for their audio language."""
+    refused = [
+        t
+        for t in titles
+        if t.state == TitleState.REVIEW
+        and _title_details(t).get("error") == AUDIO_LANGUAGE_ERROR_CODE
+    ]
+    if not refused:
+        return None
+    names = list(
+        dict.fromkeys(
+            language_name(code)
+            for t in refused
+            for code in (_title_details(t).get("audio_languages") or [])
+            if code and code != "en"
+        )
+    )
+    verb = "has" if len(refused) == 1 else "have"
+    languages = f" ({', '.join(names)})" if names else ""
+    return f"{len(refused)} {verb} no English audio{languages}."
+
+
+def _ordering_for_title(match_details, ordering: str, namespace: str | None = None) -> str:
     """The output ordering to project ONE title through: ``ordering``, or "aired".
 
     The projection looks a matched code up as a canonical TMDB ``(season, episode)``
@@ -55,7 +90,17 @@ def _ordering_for_title(match_details, ordering: str) -> str:
     Degrading to "aired" keeps the matcher's own number in the filename. That
     number is at least the one the review page showed, which is the property the
     user actually relies on; projecting it would be precise about the wrong thing.
+
+    A TVDB-numbered job is never projected: its codes are TheTVDB coordinates,
+    which a TMDB episode group cannot resolve, even if the show preference has
+    since changed to "dvd" or "aired".
     """
+    if namespace == "tvdb":
+        return "tvdb"
+    if ordering == "tvdb" and namespace is not None and namespace != "tvdb":
+        # The show prefers TheTVDB numbering but this job fell back to TMDB numbering
+        # (TheTVDB outage), so the files are TMDB-numbered: do not label them "tvdb".
+        return "aired"
     if ordering == "aired":
         return ordering
     try:
@@ -111,7 +156,7 @@ def _detect_wrong_season(job, titles) -> bool:
     # A disc of titles the matcher REFUSED says nothing about which season it is:
     # it was never matched against anything. Re-running across every season would
     # hit the same refusal once per season.
-    if all(_refused_for_references(t) for t in episode_candidates):
+    if all(_refused_by_matcher(t) for t in episode_candidates):
         return False
     return True
 
@@ -161,7 +206,7 @@ def _detect_wrong_show(job, titles) -> dict | None:
     # A title the matcher refused (too few usable references) was never matched at
     # all, so a disc of refused titles says nothing about which show it is. Naming
     # the twin would send the user to re-identify instead of fixing the subtitles.
-    if all(_refused_for_references(t) for t in episode_candidates):
+    if all(_refused_by_matcher(t) for t in episode_candidates):
         return None
 
     twin = next((c for c in candidates if str(c.get("tmdb_id")) != str(job.tmdb_id)), None)
@@ -412,6 +457,22 @@ def _has_file_exists(existing: str | None) -> bool:
     return isinstance(parsed, dict) and parsed.get("error") == "file_exists"
 
 
+# Marks a movie title whose rip the Select cleanup deleted. The review page's
+# `isRemovedBySelect` (ReviewQueue/utils.ts) keys on the same string.
+UNSELECTED_BY_USER_REASON = "Unselected by user"
+
+
+def _is_unselected_by_cleanup(title: DiscTitle) -> bool:
+    """True for a movie title whose file was deleted when another was selected."""
+    if title.state != TitleState.FAILED or not title.match_details:
+        return False
+    try:
+        parsed = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(parsed, dict) and parsed.get("reason") == UNSELECTED_BY_USER_REASON
+
+
 def _clear_file_exists(existing: str | None) -> str | None:
     """Drop a resolved FILE_EXISTS reason so the review badge does not stay lit."""
     if not _has_file_exists(existing):
@@ -483,6 +544,8 @@ class FinalizationCoordinator:
     ) -> None:
         self._broadcaster = event_broadcaster
         self._state_machine = state_machine
+        # One "file as extras" per job at a time (see file_movie_as_extras).
+        self._file_as_extras_locks: dict[int, asyncio.Lock] = {}
 
         # Cross-coordinator callbacks (set by JobManager)
         self._run_ripping: callable = None
@@ -505,6 +568,12 @@ class FinalizationCoordinator:
         # own (a re-pin needs matched titles, which is success), but the set makes
         # "at most one cross-season sweep per job" explicit rather than emergent.
         self._season_retries: set[int] = set()
+        # Library paths of already-filed tracks that a re-match skipped, per job.
+        self._left_as_filed: dict[int, list[str]] = {}
+
+    def note_left_as_filed(self, job_id: int, organized_paths: list[str]) -> None:
+        """Remember filed tracks a re-match skipped, for the completion check to report."""
+        self._left_as_filed[job_id] = organized_paths
 
     def set_callbacks(
         self,
@@ -541,6 +610,7 @@ class FinalizationCoordinator:
         # budget too. The retry only fires on a total match failure, so restoring
         # it cannot make a job that is matching anything churn.
         self._season_retries.discard(job_id)
+        self._left_as_filed.pop(job_id, None)
 
     async def on_terminal_clear_conflicts(self, job_id: int, _state) -> None:
         """Terminal-state hook: drop conflict-escalation tracking for the job.
@@ -1110,6 +1180,25 @@ class FinalizationCoordinator:
                 )
                 return
 
+        left_as_filed = self._left_as_filed.pop(job_id, None)
+        if left_as_filed:
+            folders = ", ".join(sorted({str(Path(p).parent) for p in left_as_filed}))
+            filed_note = (
+                f"{len(left_as_filed)} track(s) were already filed to {folders} and were "
+                f"not re-matched. If that is the wrong season or show, move them by hand."
+            )
+            # Same gate as always_review below: park only if tracks are left to act on.
+            # Filed tracks never count here: setting organized_to also sets COMPLETED.
+            if has_review or has_matched:
+                if has_review:
+                    pending = sum(1 for t in matchable if t.state == TitleState.REVIEW)
+                    reason = f"{pending} title(s) need manual episode assignment. {filed_note}"
+                else:
+                    reason = f"{filed_note} Confirm the remaining tracks below."
+                await self._park_in_review(session, job, reason)
+                return
+            logger.warning(f"Job {sanitize_log_value(job_id)}: {sanitize_log_value(filed_note)}")
+
         # Manual-review override: hold every disc for confirmation, however
         # confident the matcher was. Placed AFTER the escalation ladders on
         # purpose — the user still wants the machine's best guess pre-filled,
@@ -1139,11 +1228,14 @@ class FinalizationCoordinator:
         # creates mid-run; this avoids even starting finalization when the
         # matcher already flagged a title for review.)
         if has_review:
-            await self._park_in_review(
-                session,
-                job,
-                f"{sum(1 for t in matchable if t.state == TitleState.REVIEW)} title(s) need manual episode assignment",
+            reason = (
+                f"{sum(1 for t in matchable if t.state == TitleState.REVIEW)} title(s) "
+                "need manual episode assignment"
             )
+            language_note = _language_review_summary(matchable)
+            if language_note:
+                reason = f"{reason}. {language_note}"
+            await self._park_in_review(session, job, reason)
         elif has_matched:
             try:
                 await self.finalize_disc_job(job_id)
@@ -1358,6 +1450,7 @@ class FinalizationCoordinator:
             ordering, ordering_group_id = await resolve_show_ordering(job.tmdb_id, session)
             _tmdb_id_str = str(job.tmdb_id) if job.tmdb_id else None
             _tmdb_year = job.tmdb_year
+            _namespace = job.episode_namespace
             _lib_path = _library_path_for_job(job, "tv")
             _staging_path = job.staging_path
             _detected_title = job.detected_title
@@ -1460,7 +1553,7 @@ class FinalizationCoordinator:
 
             # Per title: a code from a corpus numbered unlike the TMDB roster is not
             # a coordinate the episode group can resolve, so it keeps aired numbering.
-            _title_ordering = _ordering_for_title(cap["match_details"], ordering)
+            _title_ordering = _ordering_for_title(cap["match_details"], ordering, _namespace)
 
             if is_extra:
                 # Mirror the review path (apply_review / process_matched_titles):
@@ -1680,6 +1773,16 @@ class FinalizationCoordinator:
             if not title or title.job_id != job_id:
                 raise ValueError("Title not found for this job")
 
+            # Its rip was deleted when another title was selected. Selecting it
+            # would find no file and start a re-rip of a disc that has usually
+            # left the drive (#812); the review page no longer lists it.
+            if (
+                job.content_type == ContentType.MOVIE
+                and episode_code != "skip"
+                and _is_unselected_by_cleanup(title)
+            ):
+                raise ValueError("This title's file was removed when another title was selected")
+
             self._apply_decision_fields(
                 title,
                 episode_code,
@@ -1726,6 +1829,14 @@ class FinalizationCoordinator:
 
                     else:
                         # File exists — Post-Rip workflow
+                        # Select makes this title the feature. One the rip-end pick
+                        # had tagged as an extra stops being one, or it is filed as
+                        # the movie while its row still says is_extra (#814).
+                        statement = select(DiscTitle).where(DiscTitle.job_id == job_id)
+                        for t in (await session.execute(statement)).scalars().all():
+                            t.is_selected = t.id == title.id
+                            session.add(t)
+                        title.is_extra = False
                         job.state = JobState.ORGANIZING
                         await session.commit()
                         await self._broadcaster.broadcast_job_state_changed(job_id, job.state)
@@ -1736,15 +1847,24 @@ class FinalizationCoordinator:
                         # so the other files on the job are extras the reviewer
                         # never rejected, and deleting them here would lose them.
                         unselected_titles = []
+                        # Extras held for a keep/discard choice (extras_policy "ask",
+                        # #773) that the reviewer did not discard ride along into
+                        # Extras/ instead of being deleted with the other cuts. Only
+                        # `_apply_movie_extras_policy` puts a movie extra in REVIEW;
+                        # the frontend's `isHeldMovieExtra` (ReviewQueue/utils.ts)
+                        # uses the same is_extra + REVIEW test, keep them in step.
+                        kept_extras: list[DiscTitle] = []
                         if not _has_file_exists(title.match_details):
                             cleanup_statement = select(DiscTitle).where(
                                 DiscTitle.job_id == job_id,
                                 DiscTitle.id != title_id,
                                 DiscTitle.output_filename.isnot(None),
                             )
-                            unselected_titles = (
-                                (await session.execute(cleanup_statement)).scalars().all()
-                            )
+                            others = (await session.execute(cleanup_statement)).scalars().all()
+                            kept_extras = [
+                                t for t in others if t.is_extra and t.state == TitleState.REVIEW
+                            ]
+                            unselected_titles = [t for t in others if t not in kept_extras]
 
                         # A manual import's files are the user's originals, not
                         # regenerable rips: an unselected cut stays where it is.
@@ -1758,7 +1878,7 @@ class FinalizationCoordinator:
 
                                 unselected.state = TitleState.FAILED
                                 unselected.match_details = json.dumps(
-                                    {"reason": "Unselected by user"}
+                                    {"reason": UNSELECTED_BY_USER_REASON}
                                 )
                                 session.add(unselected)
                             except Exception as e:
@@ -1802,7 +1922,11 @@ class FinalizationCoordinator:
                                 tmdb_id=_tmdb_id,
                                 edition=_edition,
                                 already_clean=_already_clean,
-                                extra_files=[] if _is_import else None,
+                                extra_files=(
+                                    [Path(t.output_filename) for t in kept_extras]
+                                    if _is_import
+                                    else None
+                                ),
                             )
                         else:
                             org_result = await asyncio.to_thread(
@@ -1853,6 +1977,20 @@ class FinalizationCoordinator:
                                 organized_to=_org_to,
                                 output_filename=_out,
                             )
+                            extras_mapping = org_result.get("extras_mapping") or {}
+                            for extra in kept_extras:
+                                dest = extras_mapping.get(Path(extra.output_filename).name)
+                                extra.state = TitleState.COMPLETED
+                                extra.organized_from = Path(extra.output_filename).name
+                                extra.organized_to = str(dest) if dest else None
+                                session.add(extra)
+                                await ws_manager.broadcast_title_update(
+                                    job_id,
+                                    extra.id,
+                                    extra.state.value,
+                                    organized_from=extra.organized_from,
+                                    organized_to=extra.organized_to,
+                                )
                             job.progress_percent = 100.0
                             job.error_message = None
                             job.final_path = str(org_result["main_file"])
@@ -1889,6 +2027,111 @@ class FinalizationCoordinator:
 
             # TV: organize everything once all titles are resolved.
             await self._finalize_tv_if_resolved(session, job)
+
+    async def file_movie_as_extras(self, job_id: int) -> int:
+        """File every kept title of a movie job under the movie's ``Extras/``.
+
+        The review's answer for a disc with no feature on it, typically a bonus
+        disc that identified as the film (#813): every other movie action names
+        one title the feature. Kept means still holding a rip the reviewer did not
+        discard: discarded titles, rips an earlier Select deleted, and extras the
+        skip policy already settled stay as they are. The movie's own file is
+        never touched. Returns how many titles were filed.
+
+        Raises ValueError when the job is not a movie awaiting review or nothing
+        is left to file.
+        """
+        # Held for the whole action, and the session opened inside it, so a second
+        # request (a double click, a retried POST) reads the state the first one
+        # left instead of passing the REVIEW_NEEDED check alongside it and filing
+        # the same titles again past the first run's Extra N.
+        lock = self._file_as_extras_locks.setdefault(job_id, asyncio.Lock())
+        async with lock:
+            return await self._file_movie_as_extras_locked(job_id)
+
+    async def _file_movie_as_extras_locked(self, job_id: int) -> int:
+        from app.core import organizer
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if not job:
+                raise ValueError("Job not found")
+            if job.content_type != ContentType.MOVIE or job.state != JobState.REVIEW_NEEDED:
+                raise ValueError("Only a movie job awaiting review can be filed as extras")
+
+            statement = (
+                select(DiscTitle).where(DiscTitle.job_id == job_id).order_by(DiscTitle.title_index)
+            )
+            titles = [
+                t
+                for t in (await session.execute(statement)).scalars().all()
+                if t.state not in (TitleState.FAILED, TitleState.SKIPPED, TitleState.COMPLETED)
+                and t.matched_episode != "skip"
+                and t.output_filename
+                and Path(t.output_filename).exists()
+            ]
+            if not titles:
+                raise ValueError("Nothing is left to file as extras")
+
+            final_title = job.detected_title or job.volume_label
+            _already_clean = bool(job.tmdb_name) and final_title == job.tmdb_name
+            _tmdb_year = job.tmdb_year
+            _tmdb_id = job.tmdb_id
+            _lib_path = _library_path_for_job(job, "movie")
+            files = [Path(t.output_filename) for t in titles]
+            if not await self._state_machine.transition_to_organizing(job, session):
+                raise ValueError("Only a movie job awaiting review can be filed as extras")
+
+            try:
+                result = await asyncio.to_thread(
+                    organizer.organize_movie_extras,
+                    files,
+                    final_title,
+                    _tmdb_year,
+                    _lib_path,
+                    tmdb_id=_tmdb_id,
+                    already_clean=_already_clean,
+                )
+            except Exception as e:
+                # Anything outside the organizer's own guarded move (reading the
+                # naming config, say) must not leave the job stranded in ORGANIZING.
+                logger.error(f"Filing movie extras crashed: {e}", exc_info=True)
+                result = {"success": False, "extras_dir": None, "moved": {}, "error": str(e)}
+
+            moved = result.get("moved") or {}
+            for t in titles:
+                dest = moved.get(str(Path(t.output_filename)))
+                if dest is None:
+                    continue
+                t.state = TitleState.COMPLETED
+                t.is_extra = True
+                t.is_selected = False
+                t.organized_from = Path(t.output_filename).name
+                t.organized_to = str(dest)
+                t.match_details = _clear_file_exists(t.match_details)
+                session.add(t)
+                await ws_manager.broadcast_title_update(
+                    job_id,
+                    t.id,
+                    t.state.value,
+                    organized_from=t.organized_from,
+                    organized_to=t.organized_to,
+                    is_extra=True,
+                )
+
+            if not result["success"]:
+                await self._state_machine.transition_to_failed(
+                    job, session, error_message=result["error"]
+                )
+                logger.error(f"Failed to file movie extras: {result['error']}")
+                return len(moved)
+
+            job.final_path = str(result["extras_dir"])
+            job.progress_percent = 100.0
+            job.error_message = None
+            await self._state_machine.transition_to_completed(job, session)
+            logger.info(f"Filed {len(moved)} title(s) as extras in {result['extras_dir']}")
+            return len(moved)
 
     @staticmethod
     def _apply_decision_fields(
@@ -2034,7 +2277,9 @@ class FinalizationCoordinator:
                     _lib_path = _library_path_for_job(job, "tv")
                     # Per title: a code from a corpus numbered unlike the TMDB roster is not
                     # a coordinate the episode group can resolve, so it keeps aired numbering.
-                    _title_ordering = _ordering_for_title(disc_title.match_details, ordering)
+                    _title_ordering = _ordering_for_title(
+                        disc_title.match_details, ordering, job.episode_namespace
+                    )
                     if disc_title.matched_episode == "extra":
                         org_result = await asyncio.to_thread(
                             organize_tv_extras,
@@ -2267,7 +2512,9 @@ class FinalizationCoordinator:
                 _lib_path = _library_path_for_job(job, "tv")
                 # Per title: a code from a corpus numbered unlike the TMDB roster is not
                 # a coordinate the episode group can resolve, so it keeps aired numbering.
-                _title_ordering = _ordering_for_title(disc_title.match_details, ordering)
+                _title_ordering = _ordering_for_title(
+                    disc_title.match_details, ordering, job.episode_namespace
+                )
                 if disc_title.matched_episode == "extra":
                     org_result = await asyncio.to_thread(
                         organize_tv_extras,

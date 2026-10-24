@@ -4,11 +4,14 @@ Extracted from JobManager to isolate matching concerns.
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import re
 import time
+import weakref
 from collections import defaultdict
+from collections.abc import Coroutine
 from datetime import UTC
 from enum import StrEnum
 from pathlib import Path
@@ -18,16 +21,36 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.curator import curator as episode_curator
 from app.core.episode_codes import (
+    episode_parts,
     format_episode_code,
     is_multi_episode,
     parse_episode_code,
+)
+from app.core.episode_namespace import from_tmdb_code, namespace_context
+from app.core.episode_runtime import (
+    EPISODE_DURATION_OVER_TOLERANCE_MIN,
+    EPISODE_DURATION_UNDER_TOLERANCE_MIN,
+    conjoined_episode_count,
+    duration_matches_episode_runtime,
+    matches_disc_episode_group,
+    matches_sibling_episode_duration,
 )
 from app.core.errors import MatchingError
 from app.core.log_context import job_log_context
 from app.core.security import sanitize_log_value
 from app.database import async_session
+from app.matcher.audio_streams import (
+    AudioPlan,
+    follows_auto_pick,
+    plan_audio,
+    probe_audio_streams,
+)
 from app.matcher.numbering_scheme import SCHEME_DIVERGENT, SCHEME_TMDB_AIRED
-from app.matcher.subtitle_utils import REFERENCES_UNREADABLE_ERROR_CODE
+from app.matcher.subtitle_utils import (
+    AUDIO_LANGUAGE_ERROR_CODE,
+    REFERENCES_UNREADABLE_ERROR_CODE,
+    language_refusal_details,
+)
 from app.models import DiscJob, JobState
 from app.models.disc_job import DiscTitle, TitleState
 from app.services.event_broadcaster import EventBroadcaster
@@ -47,73 +70,44 @@ logger = logging.getLogger(__name__)
 STRICT_SCAN_POINTS = 37
 STRICT_MIN_VOTES = 4
 
-# Duration pre-filter tolerances (minutes). DVD/Blu-ray episode tracks run LONGER
-# than TMDB's nominal runtime: the physical track includes the "previously on"
-# recap, full end credits, and "next time" preview that the broadcast-slot runtime
-# figure omits. So the accept window is asymmetric — tight below an episode runtime,
-# lenient above it — mirroring analyst.py's movie tolerances. A symmetric window
-# centered on TMDB's underestimate wrongly rejected the season's longest real
-# episodes (Gilmore Girls S01E09 "Rory's Dance": disc 49.8min vs TMDB 44min) and
-# dumped them to Extras un-transcribed (bug report job 41).
-EPISODE_DURATION_UNDER_TOLERANCE_MIN = 5
-EPISODE_DURATION_OVER_TOLERANCE_MIN = 10
+# The episode-runtime windows (and why they are asymmetric) live in
+# app.core.episode_runtime, shared with the pre-rip short-title filter so a track
+# that filter keeps is judged by the same windows here.
+_duration_matches_episode_runtime = duration_matches_episode_runtime
+_conjoined_episode_count = conjoined_episode_count
 
 
-def _duration_matches_episode_runtime(title_minutes: float, runtimes: list[int]) -> bool:
-    """True if a track's duration is plausibly an episode for this season.
+async def matched_episode_sibling_minutes(session, job_id: int, title_id: int) -> list[float]:
+    """Durations (minutes) of the job's OTHER tracks already matched to an episode.
 
-    Asymmetric window: a track may fall up to ``UNDER`` minutes short of an episode
-    runtime or run up to ``OVER`` minutes past it (DVD recap + credits padding).
+    Feeds ``matches_sibling_episode_duration``: the extras pre-filter must not call
+    a track an extra on runtime grounds when it is as long as tracks on the same
+    disc that are known episodes (#770).
     """
-    return any(
-        (rt - EPISODE_DURATION_UNDER_TOLERANCE_MIN)
-        <= title_minutes
-        <= (rt + EPISODE_DURATION_OVER_TOLERANCE_MIN)
-        for rt in runtimes
+    result = await session.execute(
+        select(DiscTitle).where(DiscTitle.job_id == job_id, DiscTitle.id != title_id)
     )
+    return [
+        t.duration_seconds / 60
+        for t in result.scalars().all()
+        if t.state in (TitleState.MATCHED, TitleState.COMPLETED)
+        and not t.is_extra
+        and t.duration_seconds
+        and parse_episode_code(t.matched_episode)
+    ]
 
 
-# Cartoon and anthology discs put several short segments in one physical track:
-# TMDB catalogues each ~11-minute segment as its own episode, so a 23-minute track
-# matches no SINGLE runtime and was filed as an extra un-transcribed (issue #622).
-# The cap is set by evidence density, not taste: the positional vote runs that
-# actually decide the count need ~2 votes per run plus a seam, and the default scan
-# is 10 points, so 3 is the most a default scan can resolve. It also sits far below
-# the 80-minute Play All floor (analyst_movie_min_duration), and Play All titles are
-# deselected pre-rip anyway (identification_coordinator), so they never arrive here.
-MAX_CONJOINED_EPISODES = 3
+async def disc_title_durations(session, job_id: int) -> list[tuple[int, int]]:
+    """``(title_id, duration_seconds)`` for every track of the job.
 
-
-def _conjoined_episode_count(title_minutes: float, runtimes: list[int]) -> int | None:
-    """Smallest ``n`` in 2..MAX for which the track looks like n conjoined episodes.
-
-    Tests the duration against the sum of each run of ``n`` CONSECUTIVE runtimes,
-    since a conjoined track holds adjacent segments, reusing the same asymmetric
-    padding window as the single-episode gate (the recap/credits padding applies
-    once to the whole track, not once per segment).
-
-    This is an ADMISSION hint, not a verdict: windows for adjacent ``n`` can overlap,
-    and the authoritative count comes from the positional vote runs in
-    ``app.matcher.multi_episode``. Returns None when the track is not plausibly a
-    small concatenation, i.e. it is a genuine extra.
-
-    Callers must test ``_duration_matches_episode_runtime`` first; a track that is a
-    plain single episode is never reported here.
+    Feeds ``matches_disc_episode_group``: unlike the matched-sibling evidence this
+    needs no track to have matched yet, which is the first-pass case where TMDB's
+    runtime is wrong for the whole disc (#801).
     """
-    if not runtimes:
-        return None
-    for n in range(2, MAX_CONJOINED_EPISODES + 1):
-        if n > len(runtimes):
-            break
-        for i in range(len(runtimes) - n + 1):
-            total = sum(runtimes[i : i + n])
-            if (
-                (total - EPISODE_DURATION_UNDER_TOLERANCE_MIN)
-                <= title_minutes
-                <= (total + EPISODE_DURATION_OVER_TOLERANCE_MIN)
-            ):
-                return n
-    return None
+    result = await session.execute(
+        select(DiscTitle.id, DiscTitle.duration_seconds).where(DiscTitle.job_id == job_id)
+    )
+    return [(title_id, seconds) for title_id, seconds in result.all() if seconds]
 
 
 # Scan depth for a track the runtime pre-filter admitted as conjoined. A confident
@@ -277,6 +271,12 @@ RIP_FAILURE_ERROR_CODES = frozenset({"incomplete_rip", "rip_stalled", "rip_eject
 # confirmed verdict pre-fills the combined code (S01E01-E03) for them to confirm.
 MULTI_EPISODE_ERROR_CODE = "multi_episode_detected"
 
+# A match against a reference season the pack marks as numbered differently from
+# TMDB (broadcast half-hours instead of segments) that no crosswalk translated.
+# Its code is in the pack's numbering, which TMDB uses for an unrelated episode,
+# so it is held for a human rather than filed (#760).
+NUMBERING_DIVERGENT_ERROR_CODE = "numbering_divergent"
+
 # REVIEW reasons a deeper matcher pass cannot fix: never auto re-match these.
 # Defined here rather than in finalization_coordinator because that module imports
 # this one, and both the conflict re-match below and the review escalation there
@@ -290,6 +290,12 @@ _NON_REMATCHABLE_REVIEW_ERRORS = {
     # The matcher refused the title: too few reference subtitles held any text. A
     # deeper scan against the same references cannot change that.
     REFERENCES_UNREADABLE_ERROR_CODE,
+    # A deeper scan against the same half-hour corpus returns the same half-hour
+    # number; only a person (or a crosswalked pack) can translate it.
+    NUMBERING_DIVERGENT_ERROR_CODE,
+    # The track's audio is another language (or absent): a deeper scan of the same
+    # audio cannot change that (#241).
+    AUDIO_LANGUAGE_ERROR_CODE,
 } | set(RIP_FAILURE_ERROR_CODES)
 
 
@@ -351,6 +357,23 @@ def _is_multi_episode_result(match_details: dict | None) -> bool:
     return bool(isinstance(verdict, dict) and verdict.get("is_multi_episode"))
 
 
+def _contribution_season_episode(job, matched_episode: str | None) -> tuple[int, int] | None:
+    """(season, episode) in TMDB numbering for a fingerprint contribution, or None.
+
+    The network is TMDB-keyed, so a TheTVDB-numbered job's code is translated through
+    its persisted crosswalk first; None means no 1:1 TMDB equivalent (skip).
+    """
+    from app.core.episode_namespace import to_tmdb_code
+
+    code = to_tmdb_code(
+        getattr(job, "episode_namespace", None),
+        getattr(job, "episode_crosswalk_json", None),
+        matched_episode,
+    )
+    parsed = parse_episode_code(code) if code else None
+    return (parsed[0], parsed[1][0]) if parsed else None
+
+
 def _may_contribute_fingerprint(
     matched_episode: str | None, conjoined_hint: int | None, match_details: dict | None
 ) -> bool:
@@ -362,12 +385,26 @@ def _may_contribute_fingerprint(
     runtime pre-filter hint, the chunk-vote verdict, and a combined code already in
     matched_episode. Keeping them in one rule means a future writer of a combined
     code before the enqueue cannot slip past it.
+
+    A match held as ``numbering_divergent`` is refused too: its code is in the
+    pack's half-hour numbering, which TMDB uses for an unrelated segment, and the
+    enqueue runs before the hold (#760).
     """
     return bool(
         matched_episode
         and not conjoined_hint
         and not _is_multi_episode_result(match_details)
         and not is_multi_episode(matched_episode)
+        and not _is_untranslated_segmented_result(match_details)
+    )
+
+
+def _is_untranslated_segmented_result(details: dict | None) -> bool:
+    """A match against a segmented half-hour pack that no crosswalk translated."""
+    return (
+        isinstance(details, dict)
+        and details.get("numbering_scheme") == SCHEME_DIVERGENT
+        and details.get("numbering_segmented") is True
     )
 
 
@@ -415,35 +452,122 @@ def _apply_unreadable_references_review(title: "DiscTitle") -> bool:
     return True
 
 
+_RIP_LEFT_OUT_HINT = (
+    " The disc also has English audio, but MakeMKV's language settings left it out of the rip."
+)
+
+
+def _plan_file_audio(file_path: Path) -> AudioPlan:
+    """The English audio plan for a ripped file (same memoized probe the matcher uses)."""
+    return plan_audio(probe_audio_streams(file_path), "en")
+
+
+def _may_fingerprint(plan: AudioPlan) -> bool:
+    """Whether fpcalc on the whole file fingerprints the stream lookups now use.
+
+    fpcalc picks its own stream (the default-flagged one), while matching and the
+    chromaprint lookup windows use the planned stream. On a disc whose default
+    track is a dub they differ, and contributing would teach the shared network
+    the dub's fingerprint under an episode every lookup sends English for (#241).
+    """
+    return follows_auto_pick(plan)
+
+
+def _apply_language_review(title: "DiscTitle") -> bool:
+    """Park a title the curator refused for its audio. True if it did (issue #241).
+
+    The curator cannot see the disc scan, so the one fact only the database holds is
+    added here: when the scan listed English audio that the ripped file lacks,
+    MakeMKV's own language settings dropped it, and saying so is the actionable fix.
+    """
+    details = _title_details(title)
+    if details.get("error") != AUDIO_LANGUAGE_ERROR_CODE:
+        return False
+    title.state = TitleState.REVIEW
+    disc_languages = title.audio_language_list() or []
+    message = details.get("message") or ""
+    # What the file can be transcribed from: an English commentary is not English
+    # dialogue, so it must not suppress the hint. Older refusals lack the usable
+    # list; fall back to every stream.
+    file_languages = details.get("usable_audio_languages")
+    if file_languages is None:
+        file_languages = details.get("audio_languages") or []
+    if "en" in disc_languages and "en" not in file_languages and _RIP_LEFT_OUT_HINT not in message:
+        details["message"] = message + _RIP_LEFT_OUT_HINT
+        title.match_details = json.dumps(details)
+    return True
+
+
 def _route_unconfirmable_title(title: "DiscTitle", conjoined_hint: int | None) -> str | None:
     """Apply the review routing that overrides a matcher result, most specific first.
 
-    Unusable references come first: with no usable corpus there is no vote
+    Unusable audio and unusable references come first: either way there is no vote
     evidence at all, so a runtime-based multi-episode message would bury the cause.
     Returns the error code the title was routed under, or None if it was not.
     """
+    if _apply_language_review(title):
+        return AUDIO_LANGUAGE_ERROR_CODE
     if _apply_unreadable_references_review(title):
         return REFERENCES_UNREADABLE_ERROR_CODE
     if _apply_multi_episode_review(title, conjoined_hint):
         return MULTI_EPISODE_ERROR_CODE
+    if _apply_divergent_numbering_review(title):
+        return NUMBERING_DIVERGENT_ERROR_CODE
     return None
+
+
+def _apply_divergent_numbering_review(title: "DiscTitle") -> bool:
+    """Hold a match whose code is in a half-hour numbering no crosswalk translated.
+
+    Keyed on the pack saying the season is ``segmented``, never on ``divergent``
+    alone or the reference/roster count heuristic: a pack or scraped corpus that is
+    merely incomplete also has fewer references than the roster, its codes are real
+    TMDB coordinates, and holding every such match would bury ordinary seasons in
+    review. A crosswalked result is stamped ``tmdb_aired`` and never reaches this
+    branch. The matched code stays as the reviewer's pre-fill. Returns True if it
+    held the title.
+    """
+    matched = getattr(title, "matched_episode", None)
+    if not matched or title.state not in (TitleState.MATCHED, TitleState.REVIEW):
+        return False
+    details = _title_details(title)
+    if not _is_untranslated_segmented_result(details) or details.get("error"):
+        return False
+    title.state = TitleState.REVIEW
+    details["error"] = NUMBERING_DIVERGENT_ERROR_CODE
+    details["message"] = _divergent_numbering_message(f"{matched} may name the wrong episode")
+    title.match_details = json.dumps(details)
+    return True
+
+
+def _divergent_numbering_message(claim: str) -> str:
+    """The reviewer-facing explanation for codes in a half-hour pack's numbering."""
+    return (
+        "The reference subtitles for this season are numbered differently from TMDB "
+        f"(usually by broadcast half-hour instead of by segment), so {claim}. Check it "
+        "and assign the TMDB episode(s) this track holds."
+    )
 
 
 def _combined_code(codes: list) -> str | None:
     """The combined code for a verdict's playback-ordered codes, or None.
 
-    None when a code does not parse, a code is itself combined, fewer than two
-    episodes remain, or the codes span seasons: a filename carries one season, so
-    there is no honest combined name for a track that crosses one.
+    None when a code does not parse, fewer than two episodes remain, or the codes
+    span seasons: a filename carries one season, so there is no honest combined
+    name for a track that crosses one.
+
+    A code that is itself combined contributes every episode it holds. References
+    translated through a half-hour crosswalk are combined codes (#760), so a long
+    track can vote "S02E11-E12" then "S02E13"; that is S02E11-E13, not a refusal.
     """
     seasons: set[int] = set()
     episodes: list[int] = []
     for code in codes:
         parsed = parse_episode_code(code if isinstance(code, str) else None)
-        if parsed is None or len(parsed[1]) != 1:
+        if parsed is None:
             return None
         seasons.add(parsed[0])
-        episodes.append(parsed[1][0])
+        episodes.extend(e for e in parsed[1] if e not in episodes)
     if len(seasons) != 1 or len(episodes) < 2:
         return None
     return format_episode_code(seasons.pop(), episodes)
@@ -540,6 +664,24 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
     if not (confirmed_multi or conjoined_hint):
         return False
 
+    # A reference translated through the pack's half-hour crosswalk already names
+    # every segment its broadcast holds (#760). The runtime hint is a LOWER bound
+    # (conjoined_episode_count returns the smallest fitting n: a 22-minute
+    # Dexter's Laboratory track against 7-minute segments reads as 2), so a code
+    # holding at least that many answers the hint rather than contradicting it:
+    # nothing would vanish from the library, so there is nothing to ask a reviewer.
+    if (
+        not confirmed_multi
+        and details.get("numbering_crosswalk")
+        and len(episode_parts(title.matched_episode)) >= conjoined_hint
+    ):
+        logger.info(
+            f"Title {sanitize_log_value(getattr(title, 'id', None))}: runtime hint of "
+            f"~{conjoined_hint} conjoined episodes is explained by its crosswalked code "
+            f"{sanitize_log_value(title.matched_episode)}. Leaving the match as-is."
+        )
+        return False
+
     # A runtime-only hint against a corpus numbered differently from the roster is
     # not evidence: the hint fires on every track of the disc and no verdict can
     # ever clear it, so parking hands the reviewer a question the matcher already
@@ -591,6 +733,12 @@ def _apply_multi_episode_review(title: "DiscTitle", conjoined_hint: int | None) 
             "together, but the audio match could not confirm it "
             f"({multi_detail.get('reason', 'no verdict')}). "
             "Check it before assigning an episode."
+        )
+    if _is_untranslated_segmented_result(details):
+        # This routing takes the error slot before the numbering hold can, so it
+        # carries that warning itself: the codes above are half-hour numbers.
+        message = (
+            f"{message} {_divergent_numbering_message('these codes may name the wrong episodes')}"
         )
     if prior_error and prior_error != MULTI_EPISODE_ERROR_CODE and prior_message:
         message = f"{message} Also: {prior_message}"
@@ -658,6 +806,12 @@ class MatchingCoordinator:
         self._subtitle_ready: dict[int, asyncio.Event] = {}
         self._subtitle_tasks: dict[int, asyncio.Task] = {}
         self._match_semaphore: asyncio.Semaphore | None = None
+        # Match coroutines built per title id (see has_live_match). A QUEUED
+        # title with an unfinished one is waiting on _match_semaphore; one
+        # without is orphaned (#776). A set, since a re-match can overlap the
+        # tail of the previous match for the same title; weak, so a coroutine
+        # nobody scheduled does not pin its title as live.
+        self._live_matches: defaultdict[int, weakref.WeakSet] = defaultdict(weakref.WeakSet)
 
         # Cross-coordinator callbacks
         self._check_job_completion: callable = None
@@ -685,6 +839,17 @@ class MatchingCoordinator:
         task = self._subtitle_tasks.pop(job_id, None)
         if task is not None and not task.done():
             task.cancel()
+
+    async def _job_namespace(self, job_id: int) -> str:
+        """The job's episode namespace. Read fresh each time (one PK lookup) so
+        a switch from the review page is seen without cache invalidation."""
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            return (job.episode_namespace if job else None) or "tmdb"
+
+    def forget_episode_runtimes(self, job_id: int) -> None:
+        """Drop the cached runtimes after a namespace switch (24 vs 26 episodes)."""
+        self._episode_runtimes.pop(job_id, None)
 
     def get_discdb_mappings(self, job_id: int) -> list:
         """Get DiscDB mappings for a job."""
@@ -796,6 +961,23 @@ class MatchingCoordinator:
         # mappings persisted before `episodes` existed working off `episode`.
         _eps = getattr(mapping, "episodes", None) or [mapping.episode]
         episode_code = format_episode_code(mapping.season, _eps)
+        # DiscDB and the disc network publish TMDB numbering. A TheTVDB job
+        # takes the hint only when it maps 1:1; otherwise the matcher decides.
+        job = await session.get(DiscJob, job_id)
+        if job is not None and (job.episode_namespace or "tmdb") != "tmdb":
+            translated = from_tmdb_code(
+                job.episode_namespace, job.episode_crosswalk_json, episode_code
+            )
+            if translated is None:
+                logger.info(
+                    "Job %s: dropping %s hint %s for title %s; it has no 1:1 TheTVDB equivalent",
+                    sanitize_log_value(job_id),
+                    sanitize_log_value(origin),
+                    sanitize_log_value(episode_code),
+                    sanitize_log_value(title.title_index),
+                )
+                return False
+            episode_code = translated
         logger.info(
             f"Job {job_id}: {origin} applying disc-order fallback mapping for title "
             f"{title.title_index}: {episode_code} ({mapping.episode_title!r})"
@@ -943,7 +1125,15 @@ class MatchingCoordinator:
                     for m in mappings:
                         if m.index == title.title_index and m.season and m.episode:
                             _eps = getattr(m, "episodes", None) or [m.episode]
-                            title.matched_episode = format_episode_code(m.season, _eps)
+                            # The mappings are TMDB-numbered; translate into the
+                            # job's numbering, and skip a code with no 1:1 match.
+                            _code = from_tmdb_code(
+                                job.episode_namespace,
+                                job.episode_crosswalk_json,
+                                format_episode_code(m.season, _eps),
+                            )
+                            if _code is not None:
+                                title.matched_episode = _code
                             break
                 if is_multi_episode(title.matched_episode):
                     # Same rule as try_discdb_assignment: a combined code escapes
@@ -1011,7 +1201,7 @@ class MatchingCoordinator:
             lambda t, jid=job_id, tid=title_id: self.on_match_task_done(t, jid, tid)
         )
 
-    async def match_single_file(
+    def match_single_file(
         self,
         job_id: int,
         title_id: int,
@@ -1019,8 +1209,14 @@ class MatchingCoordinator:
         num_points: int | None = None,
         min_vote_count: int | None = None,
         advisory: bool = False,
-    ) -> None:
+    ) -> Coroutine[None, None, None]:
         """Run matching for a single ripped file, tagging logs with the job id.
+
+        A plain function returning the match coroutine, so the title counts as
+        having a live match from the moment a caller builds the coroutine for
+        ``create_task``, not from the task's first step (see ``has_live_match``).
+        Every match task in the app is built here, which is what makes the
+        registry complete.
 
         Self-tags so every matching log line carries ``job=<id>`` regardless of
         how this is reached — task spawn, direct ``await`` from an API handler
@@ -1029,11 +1225,44 @@ class MatchingCoordinator:
 
         ``advisory`` (manual per-track re-match) holds the result in REVIEW for
         confirmation instead of auto-organizing — see ``rematch_single_title``.
+
+        The episode namespace is bound later, in ``_run_match_single_file``
+        after the subtitle-ready wait, because imports and ``rerun_matching``
+        dispatch matches before ``decide_job_namespace`` has committed.
         """
+        coro = self._tracked_match(
+            job_id, title_id, file_path, num_points, min_vote_count, advisory
+        )
+        # Drop titles whose matches are all gone, so the map stays bounded.
+        for tid in [tid for tid, coros in self._live_matches.items() if not coros]:
+            del self._live_matches[tid]
+        self._live_matches[title_id].add(coro)
+        return coro
+
+    async def _tracked_match(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None,
+        min_vote_count: int | None,
+        advisory: bool,
+    ) -> None:
         with job_log_context(job_id):
             await self._run_match_single_file(
                 job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
             )
+
+    def has_live_match(self, title_id: int) -> bool:
+        """Whether a match task exists for this title, running or waiting for a slot.
+
+        Read from the coroutines themselves rather than a counter kept by their
+        body: one cancelled before its first step, or closed without ever being
+        scheduled, never runs its body but does end ``CORO_CLOSED``, and one
+        that is dropped unscheduled is garbage-collected out of the weak set.
+        """
+        coros = self._live_matches.get(title_id, ())
+        return any(inspect.getcoroutinestate(c) != inspect.CORO_CLOSED for c in coros)
 
     async def _llm_fallback_without_subtitles(
         self,
@@ -1163,6 +1392,27 @@ class MatchingCoordinator:
                     f"[MATCH] Title {title_id} (Job {job_id}): error waiting for subtitles: {e}"
                 )
 
+        # Bind the namespace only now: the subtitle download decides it
+        # (decide_job_namespace) before setting the ready event, and a match
+        # dispatched earlier (imports, rerun_matching) must see that decision.
+        # On a timeout this binds whatever is stored. Nothing above reads
+        # references, runtimes or rosters.
+        namespace = await self._job_namespace(job_id)
+        with namespace_context(namespace):
+            await self._match_after_subtitle_wait(
+                job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
+            )
+
+    async def _match_after_subtitle_wait(
+        self,
+        job_id: int,
+        title_id: int,
+        file_path: Path,
+        num_points: int | None = None,
+        min_vote_count: int | None = None,
+        advisory: bool = False,
+    ) -> None:
+        """Everything after the subtitle wait, run under the job's namespace."""
         # 2. Check subtitle status from database - BLOCK matching if failed
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -1180,15 +1430,26 @@ class MatchingCoordinator:
             # enabled, transcribe the ripped file (ASR) and match the transcript
             # against the TMDB synopsis — this needs no reference subtitles. Any
             # result is a REVIEW suggestion only (never auto-organized).
-            enriched = await self._llm_fallback_without_subtitles(
-                job_id, title_id, file_path, detected_title, detected_season
+            # The fallback transcribes in English too, so a track with no English
+            # audio skips it and is parked with the language reason (#241).
+            plan = await asyncio.to_thread(_plan_file_audio, file_path)
+            refused = plan.verdict in ("foreign", "no_audio")
+            enriched = (
+                None
+                if refused
+                else await self._llm_fallback_without_subtitles(
+                    job_id, title_id, file_path, detected_title, detected_season
+                )
             )
             async with async_session() as session:
                 title = await session.get(DiscTitle, title_id)
                 if title:
                     title.state = TitleState.REVIEW
                     title.match_confidence = 0.0
-                    if enriched:
+                    if refused:
+                        title.match_details = json.dumps(language_refusal_details(plan))
+                        _apply_language_review(title)
+                    elif enriched:
                         title.match_details = json.dumps(enriched)
                     else:
                         title.match_details = json.dumps(
@@ -1244,6 +1505,8 @@ class MatchingCoordinator:
             job_detected_title: str | None = None
             job_detected_season: int | None = None
             title_duration: float | None = None
+            sibling_minutes: list[float] = []
+            disc_durations: list[tuple[int, int]] = []
             async with async_session() as session:
                 job = await session.get(DiscJob, job_id)
                 title = await session.get(DiscTitle, title_id)
@@ -1252,6 +1515,10 @@ class MatchingCoordinator:
                     job_detected_title = job.detected_title
                     job_detected_season = job.detected_season
                     title_duration = title.duration_seconds
+                    sibling_minutes = await matched_episode_sibling_minutes(
+                        session, job_id, title_id
+                    )
+                    disc_durations = await disc_title_durations(session, job_id)
 
             if job_detected_season:
                 # No connection held across this (possibly networked) lookup.
@@ -1267,7 +1534,35 @@ class MatchingCoordinator:
                         # If so it is ADMITTED to matching, not filed: the
                         # positional vote runs decide what it actually holds.
                         conjoined_hint = _conjoined_episode_count(title_minutes, runtimes)
-                        if conjoined_hint:
+                        if matches_sibling_episode_duration(title_minutes, sibling_minutes):
+                            # TMDB's runtime is a broadcast slot; tracks on this very
+                            # disc that matched episodes are the better yardstick (#770).
+                            conjoined_hint = None
+                            logger.info(
+                                f"[MATCH] Title {sanitize_log_value(title_id)} "
+                                f"(Job {sanitize_log_value(job_id)}): duration "
+                                f"{title_minutes:.0f}min matches no TMDB runtime {runtimes} "
+                                f"but matches episodes already matched on this disc. "
+                                f"Proceeding with matching, not filing as an extra."
+                            )
+                        elif matches_disc_episode_group(title_id, disc_durations, runtimes):
+                            # No track has matched yet, but TMDB's runtime fits no
+                            # group of similar tracks on this disc while this track
+                            # sits in the disc's episode group: TMDB is the likelier
+                            # error. Let the matcher decide; a miss goes to review,
+                            # not silently into Extras (#801). Clearing the conjoined
+                            # hint loses nothing: the group check returns False whenever
+                            # a disc group fits a conjoined runtime.
+                            conjoined_hint = None
+                            logger.info(
+                                f"[MATCH] Title {sanitize_log_value(title_id)} "
+                                f"(Job {sanitize_log_value(job_id)}): duration "
+                                f"{title_minutes:.0f}min matches no TMDB runtime {runtimes} "
+                                f"but matches this disc's episode-length group, which no "
+                                f"TMDB runtime fits. Proceeding with matching, not filing "
+                                f"as an extra."
+                            )
+                        elif conjoined_hint:
                             # ids are sanitized because CodeQL traces them back to
                             # HTTP path params (py/log-injection). FastAPI coerces
                             # them to int so they cannot actually carry CR/LF, but
@@ -1407,9 +1702,25 @@ class MatchingCoordinator:
             else:
                 show_id = await asyncio.to_thread(fetch_show_id, detected_title)
             if show_id:
-                runtimes = await asyncio.to_thread(
-                    fetch_season_episode_runtimes, show_id, detected_season
+                from app.core.episode_namespace import (
+                    NAMESPACE_TVDB,
+                    current_namespace,
+                    season_runtimes,
                 )
+
+                if current_namespace() == NAMESPACE_TVDB:
+                    from app.services.config_service import get_config
+
+                    # get_config opens and releases its own short session, so
+                    # no pooled connection is held across the roster fetch.
+                    cfg = await get_config()
+                    runtimes = await asyncio.to_thread(
+                        season_runtimes, show_id, detected_season, cfg.tmdb_api_key
+                    )
+                else:
+                    runtimes = await asyncio.to_thread(
+                        fetch_season_episode_runtimes, show_id, detected_season
+                    )
             else:
                 runtimes = []
             self._episode_runtimes[job_id] = runtimes
@@ -1815,7 +2126,13 @@ class MatchingCoordinator:
 
                         cfg = await get_config()
                         fpcalc_path = await _resolve_fpcalc_path(cfg.fpcalc_path)
-                        if fpcalc_path:
+                        fingerprint_plan = await asyncio.to_thread(_plan_file_audio, file_path)
+                        if fpcalc_path and not _may_fingerprint(fingerprint_plan):
+                            logger.info(
+                                f"Skipping chromaprint for title {title.id}: the disc's "
+                                "default audio is not the stream matching used"
+                            )
+                        elif fpcalc_path:
                             ffmpeg_path = await _resolve_ffmpeg_path(cfg.ffmpeg_path)
                             extractor = ChromaprintExtractor(
                                 fpcalc_path=fpcalc_path, ffmpeg_path=ffmpeg_path
@@ -1855,9 +2172,9 @@ class MatchingCoordinator:
 
                             _cfg = await _get_config()
                             if _cfg.contribution_pseudonym:
-                                _parsed = parse_episode_code(title.matched_episode)
-                                season_num = _parsed[0] if _parsed else None
-                                episode_num = _parsed[1][0] if _parsed else None
+                                _se = _contribution_season_episode(job, title.matched_episode)
+                                season_num = _se[0] if _se else None
+                                episode_num = _se[1] if _se else None
                                 disc_hash = None
                                 if getattr(job, "content_hash", None):
                                     try:
@@ -1870,7 +2187,14 @@ class MatchingCoordinator:
                                         tmdb_id_val = int(job.tmdb_id)
                                     except (TypeError, ValueError):
                                         tmdb_id_val = 0
-                                if tmdb_id_val == 0:
+                                if _se is None:
+                                    # TheTVDB-numbered code with no 1:1 TMDB equivalent
+                                    # (or unparseable): the network is TMDB-keyed.
+                                    logger.debug(
+                                        f"Skipping contribution for title {title.id}: "
+                                        "episode code has no TMDB equivalent"
+                                    )
+                                elif tmdb_id_val == 0:
                                     # Skip enqueue rather than poison Phase 2 with
                                     # un-attributable contributions. The chromaprint
                                     # is still stored on DiscTitle for diagnostic use.
@@ -2487,6 +2811,11 @@ class MatchingCoordinator:
 
             from app.matcher.testing_service import download_subtitles
 
+            # Same binding as download_subtitles: the job's stored namespace
+            # picks the reference folder, and TVDB-numbered references must
+            # never be served from the TMDB-numbered precomputed pack.
+            namespace = await self._job_namespace(job_id)
+
             canonical_name: str | None = None
             os_error: str | None = None
             downloaded_total = 0
@@ -2494,9 +2823,14 @@ class MatchingCoordinator:
             episode_total = 0
             for season in seasons:
                 try:
-                    result = await asyncio.to_thread(
-                        download_subtitles, show_name, season, tmdb_id=tmdb_id
-                    )
+                    with namespace_context(namespace):
+                        result = await asyncio.to_thread(
+                            download_subtitles,
+                            show_name,
+                            season,
+                            tmdb_id=tmdb_id,
+                            use_precomputed=namespace != "tvdb",
+                        )
                 except Exception as e:  # noqa: BLE001 — one season failing must not abort the rest
                     logger.warning(f"Subtitle download failed for {show_name} S{season}: {e}")
                     continue
@@ -2574,6 +2908,16 @@ class MatchingCoordinator:
         from sqlalchemy import update
 
         try:
+            from app.services.episode_namespace_service import decide_job_namespace
+
+            # Never raises and manages its own short sessions; it is awaited
+            # outside any session block because it makes network calls.
+            await decide_job_namespace(job_id)
+            # Bind the STORED namespace, not decide's return value: matching
+            # reads the column (_job_namespace), so download and matching agree
+            # on the reference folder even when the decision did not persist.
+            namespace = await self._job_namespace(job_id)
+
             async with async_session() as session:
                 await session.execute(
                     update(DiscJob)
@@ -2587,7 +2931,16 @@ class MatchingCoordinator:
 
             from app.matcher.testing_service import download_subtitles
 
-            result = await asyncio.to_thread(download_subtitles, show_name, season, tmdb_id=tmdb_id)
+            # asyncio.to_thread copies this context, so the matcher's cache paths
+            # and precomputed reads see the namespace (episode_namespace.py).
+            with namespace_context(namespace):
+                result = await asyncio.to_thread(
+                    download_subtitles,
+                    show_name,
+                    season,
+                    tmdb_id=tmdb_id,
+                    use_precomputed=namespace != "tvdb",
+                )
 
             episodes = result["episodes"]
             # The precomputed vector cache covered the whole season, so no SRTs

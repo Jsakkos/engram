@@ -17,8 +17,15 @@ from pathlib import Path
 from loguru import logger
 
 from app import __version__
+from app.core.episode_namespace import (
+    NAMESPACE_TVDB,
+    current_namespace,
+    season_episode_count,
+    season_episodes,
+)
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
+from app.matcher.numbering_crosswalk import is_segmented_marker
 from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call, os_download_temp_name
 from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
@@ -361,8 +368,10 @@ def _precomputed_skip_result(
     we must NOT skip the download against it.
     """
     from app.matcher.episode_identification import (
+        load_precomputed_manifest,
         precomputed_covers_season,
         precomputed_episode_codes,
+        season_marker,
     )
 
     # Corpus guard first — returns False on an id mismatch (different same-named show).
@@ -385,9 +394,17 @@ def _precomputed_skip_result(
     # so two same-named shows never collide. Informational here — precomputed mode
     # reads vectors, not these SRTs — but kept consistent with the live cache key.
     series_cache_dir = cache_path / "data" / corpus_dir_name(expected_tmdb_id, show_name)
+    marker = season_marker(
+        load_precomputed_manifest(cache_path), show_name, season, expected_tmdb_id
+    )
     return {
         "show_name": show_name,
         "season": season,
+        # The pack's statement about how this season is numbered, so the heal can
+        # tell a half-hour corpus from an incomplete one (#760). Only "segmented"
+        # decides that: "divergent" alone also describes a merely incomplete pack.
+        "numbering_scheme": (marker or {}).get("scheme"),
+        "segmented": is_segmented_marker(marker),
         "total_episodes": len(codes),
         "episodes": [
             {"code": code, "status": "precomputed", "source": "precomputed"} for code in codes
@@ -483,7 +500,19 @@ def _heal_precomputed_gaps(
     any TMDB failure returns ``skip`` unchanged (the job still matches against the
     cache) instead of raising. An episode no provider can supply is logged as a
     hard gap and surfaced to the review UI via reference_coverage().
+
+    Never runs for a season the pack marks ``segmented`` (#760). A half-hour
+    corpus diffed against a segment roster yields a meaningless gap list, and the
+    scrapers that would fill it index the show by half-hour too, so what they
+    return would land under the wrong TMDB code and be grafted into the vote. A
+    season that is only ``divergent`` is an incomplete pack, which this heals.
     """
+    if skip.get("segmented"):
+        logger.info(
+            f"Precomputed cache for {show_name} S{season:02d} is numbered by broadcast "
+            "half-hour, not by TMDB segment; not healing gaps against the TMDB roster"
+        )
+        return skip
     precomputed_codes = {ep["code"] for ep in skip.get("episodes", [])}
     try:
         resolved_id = str(tmdb_id) if tmdb_id is not None else fetch_show_id(show_name)
@@ -634,6 +663,97 @@ def _reject_content_duplicates(series_cache_dir: str | Path, episodes: list[dict
     return episodes
 
 
+def _season_episode_count(show_id: str, season: int) -> int:
+    """Episodes in the season under the current namespace (TVDB counts 26 for
+    Justice League S1 where TMDB counts 24). TMDB path keeps the cached
+    ``fetch_season_details`` so its persistent cache is still used."""
+    from app.services.config_service import get_config_sync
+
+    if current_namespace() == NAMESPACE_TVDB:
+        return season_episode_count(show_id, season, get_config_sync().tmdb_api_key)
+    return fetch_season_details(show_id, season)
+
+
+def _season_episode_titles(show_id: str, season: int, tmdb_api_key: str) -> dict[int, str]:
+    """Episode number -> title for the season in the current namespace, the
+    ground truth OpenSubtitles metadata is validated against (TheTVDB's roster
+    for a TVDB job, so its E25/E26 are not rejected as out of range). The TMDB
+    path calls this module's ``fetch_season_episodes`` directly, as it always
+    has, so existing patches of that name keep working."""
+    if current_namespace() == NAMESPACE_TVDB:
+        episodes = season_episodes(show_id, season, tmdb_api_key)
+    else:
+        episodes = fetch_season_episodes(show_id, season, tmdb_api_key)
+    return {e["episode_number"]: e["name"] for e in episodes if e.get("episode_number") is not None}
+
+
+def _os_search_client(config):
+    """An OpenSubtitles client that can search but has not logged in, or None.
+
+    Search needs only the API key and spends no download quota. The shared client
+    from ``_os_client_and_reason`` is gated on a successful login and on the daily
+    download quota, so using it here made a night with a spent quota look like a
+    night with no release titles at all (#760).
+    """
+    api_key = getattr(config, "opensubtitles_api_key", None)
+    if not api_key:
+        return None
+    try:
+        from opensubtitlescom import OpenSubtitles as _OSApi
+    except ImportError:
+        return None
+    return _OSApi(_USER_AGENT, api_key)
+
+
+def season_release_titles(show_id: str, season: int) -> dict[int, list[str]] | None:
+    """Every OpenSubtitles ``release`` string for a season, grouped by episode number.
+
+    Evidence for the pack builder's half-hour to segment crosswalk (#760): a
+    release name often carries the episode titles actually in the file
+    (``S02E06.Ransom.Ms.Perfect``) even when the feature metadata names a
+    different, TMDB-aligned episode. One search call; nothing is downloaded, so no
+    download quota is spent. None when the API is unavailable or the search fails,
+    which the caller treats as "no title evidence", not as an error.
+    """
+    from app.services.config_service import get_config_sync
+
+    client = _os_search_client(get_config_sync())
+    if client is None:
+        logger.debug(
+            f"No OpenSubtitles release titles for tmdb {show_id} S{season:02d}: no API key"
+        )
+        return None
+    try:
+        response = os_api_call(
+            client.search,
+            parent_tmdb_id=show_id,
+            season_number=season,
+            languages="en",
+            type="episode",
+            max_attempts=4,
+            base_delay=1.0,
+        )
+    except Exception as e:
+        logger.warning(
+            f"OpenSubtitles release-title search failed for tmdb {show_id} S{season:02d}: {e}",
+            exc_info=True,
+        )
+        return None
+
+    # Read defensively: a response missing ``data``, or an upload with no or a
+    # non-text release, is junk to skip rather than a reason to lose the whole
+    # season's evidence. A release that is not text counts as naming nothing,
+    # which the crosswalk's unanimity rule treats as dissent.
+    releases: dict[int, list[str]] = {}
+    for subtitle in getattr(response, "data", None) or []:
+        episode = getattr(subtitle, "episode_number", None)
+        if not isinstance(episode, int) or getattr(subtitle, "season_number", None) != season:
+            continue
+        release = getattr(subtitle, "release", None)
+        releases.setdefault(episode, []).append(release if isinstance(release, str) else "")
+    return releases
+
+
 def download_subtitles(
     show_name: str, season: int, *, tmdb_id: int | None = None, use_precomputed: bool = True
 ) -> dict:
@@ -712,9 +832,10 @@ def download_subtitles(
                     config=config,
                 )
 
-    episode_count = fetch_season_details(show_id, season)
+    episode_count = _season_episode_count(show_id, season)
     if episode_count == 0:
-        raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on TMDB")
+        source = "TheTVDB" if current_namespace() == NAMESPACE_TVDB else "TMDB"
+        raise ValueError(f"No episodes found for {canonical_show_name} Season {season} on {source}")
 
     # Cache DIR is keyed by tmdb_id (fallback: sanitized canonical name) so two
     # same-named shows (e.g. Frasier 1993 #3452 vs the 2023 revival #195241) never
@@ -795,15 +916,11 @@ def download_subtitles(
                     max_attempts=4,
                     base_delay=1.0,
                 )
-                # TMDB episode titles for this season — the ground truth the OS
-                # metadata is validated against. Empty (e.g. no TMDB key / lookup
-                # failure) degrades validation to a no-op rather than rejecting
-                # everything.
-                episode_titles = {
-                    e["episode_number"]: e["name"]
-                    for e in fetch_season_episodes(show_id, season, config.tmdb_api_key)
-                    if e.get("episode_number") is not None
-                }
+                # Episode titles for this season in the job's namespace: the
+                # ground truth the OS metadata is validated against. Empty (e.g.
+                # no key / lookup failure) degrades validation to a no-op rather
+                # than rejecting everything.
+                episode_titles = _season_episode_titles(show_id, season, config.tmdb_api_key)
                 seen_api_eps: set[int] = set()
                 for subtitle in response.data or []:
                     ep_num = getattr(subtitle, "episode_number", None)

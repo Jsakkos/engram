@@ -38,7 +38,7 @@ from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
 from app.database import async_session
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
-from app.models.disc_job import ContentType, DiscTitle, TitleState
+from app.models.disc_job import ContentType, DiscTitle, TitleState, start_rip_refusal
 from app.services.backup_reconcile import ReconcileOutcome, reconcile_titles
 from app.services.cleanup_service import CleanupService
 from app.services.event_broadcaster import EventBroadcaster
@@ -102,6 +102,28 @@ _REVIEW_REASON_KEYS = ("error", "message", "forced_review")
 # classifyPromptJob substring, so the job is resolved on the review page (no
 # auto-modal) — same UX as that established path.
 _FALLBACK_IDENTITY_REVIEW_REASON = NO_TITLE_REVIEW_REASON
+
+
+def _is_policy_skipped_extra(title: DiscTitle) -> bool:
+    """True when extras_policy "skip" discarded this movie extra (#773)."""
+    if not (title.is_extra and title.state == TitleState.COMPLETED and title.match_details):
+        return False
+    try:
+        details = json.loads(title.match_details)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return (
+        isinstance(details, dict)
+        and details.get("auto_sorted") == "extras"
+        and details.get("action") == "skipped"
+    )
+
+
+# A movie disc held under extras_policy "ask" (#773). The movie review page keys
+# its notice on the extras in REVIEW, not on this wording.
+MOVIE_EXTRAS_REVIEW_REASON = (
+    "Bonus tracks found. Keep or discard each extra, then select the feature."
+)
 
 # Job-level failure wording that carries no diagnostic value on its own. A
 # force-advance may replace one of these with the specific reason it knows
@@ -198,6 +220,22 @@ def _has_existing_backup(dest: Path) -> bool:
 # Create domain-specific event broadcaster
 event_broadcaster = EventBroadcaster(ws_manager)
 
+# A job that has made no progress for this long "looks stuck" (#718): the dashboard
+# then offers Force advance as a primary control. Deliberately far below the
+# per-phase watchdog timeouts (10-30 min), which auto-advance on their own; this
+# is the point at which a person watching would reasonably start to wonder.
+STUCK_AFTER_SECONDS = 180
+# Seconds between pushes of the stall signal to connected clients.
+STALL_TICK_SECONDS = 10.0
+# States the watchdog times; a stall is only meaningful in these.
+_STALL_WATCHED_STATES = (
+    JobState.IDENTIFYING,
+    JobState.BACKING_UP,
+    JobState.RIPPING,
+    JobState.MATCHING,
+    JobState.ORGANIZING,
+)
+
 # Create job state machine
 state_machine = JobStateMachine(event_broadcaster)
 
@@ -231,6 +269,9 @@ class JobManager:
         # Stale-job watchdog: monotonic timestamp of the last progress signal per job.
         self._last_activity: dict[int, float] = {}
         self._watchdog_task: asyncio.Task | None = None
+        # Stall-signal push (#718): last looks_stuck value sent per job.
+        self._stall_task: asyncio.Task | None = None
+        self._stall_sent: dict[int, bool] = {}
         # Job ids whose in-flight task was cancelled BY US (reconcile_and_advance),
         # mapped to the reason. Cancellation is delivered at the target coroutine's
         # next await, so the entry is what lets its CancelledError handler tell an
@@ -376,18 +417,26 @@ class JobManager:
             resolve_asr_runtime,
             set_asr_device,
         )
-        from app.matcher.cuda_runtime import register_cuda_runtime
+        from app.matcher.cuda_runtime import is_cuda_runtime_installed, register_cuda_runtime
 
         asr_device = "cpu"
+        gpu_fallback = None
         if config.enable_gpu_acceleration and gpu_detected():
             if register_cuda_runtime():
                 asr_device = "cuda"
+            elif is_cuda_runtime_installed():
+                gpu_fallback = "register_failed"
+                logger.warning(
+                    "GPU acceleration is enabled and the CUDA runtime is installed, but its "
+                    "libraries could not be loaded; falling back to CPU."
+                )
             else:
+                gpu_fallback = "runtime_missing"
                 logger.warning(
                     "GPU acceleration is enabled but the CUDA runtime libraries are not "
                     "installed; falling back to CPU. Re-enable GPU in Settings to download them."
                 )
-        set_asr_device(asr_device)
+        set_asr_device(asr_device, gpu_fallback_reason=gpu_fallback)
 
         # Initialize matching concurrency limiter from REAL ASR capacity, so the
         # dashboard's MATCHING count can't exceed what can actually be transcribing.
@@ -403,6 +452,8 @@ class JobManager:
         # Start the stale-job watchdog
         if config.watchdog_enabled:
             self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+        # The stall signal is independent of the watchdog: it is advisory UI state.
+        self._stall_task = asyncio.create_task(self._stall_loop())
 
         logger.info(
             f"Job manager started (asr_device={_asr_runtime.device}, "
@@ -516,6 +567,15 @@ class JobManager:
                 # Expected: we just cancelled the watchdog loop above.
                 pass
             self._watchdog_task = None
+
+        if self._stall_task:
+            self._stall_task.cancel()
+            try:
+                await self._stall_task
+            except asyncio.CancelledError:
+                # Expected: we just cancelled the stall loop above.
+                pass
+            self._stall_task = None
 
         for job_id, task in self._active_jobs.items():
             task.cancel()
@@ -785,20 +845,25 @@ class JobManager:
                     )
                     return
 
-                staging_dir = (
-                    Path(db_config.staging_path).expanduser()
-                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                )
-
                 job = DiscJob(
                     drive_id=drive_letter,
                     volume_label=volume_label,
-                    staging_path=str(staging_dir),
                     state=JobState.IDENTIFYING,
                     content_hash=new_hash,
                 )
 
                 session.add(job)
+                # The staging directory carries the job id, assigned by this flush.
+                # A timestamp alone is per-second: two mounted ISOs announced at
+                # startup both got the same directory, and each job then matched
+                # and filed the other disc's rips (#768). The per-drive lock and
+                # cooldown above cannot help, because the two discs are in
+                # different drives.
+                await session.flush()
+                job.staging_path = str(
+                    Path(db_config.staging_path).expanduser()
+                    / f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{job.id}"
+                )
                 await session.commit()
                 await session.refresh(job)
 
@@ -1103,6 +1168,9 @@ class JobManager:
                 return
             self._spawn_rematch(job_id)
             return
+        if action == "rerun_matching":
+            # Not via rerun_matching(): re-identify has already restarted subtitles.
+            await self._reset_rematch_state(job_id)
 
         coro_factory = {
             "start_rip": self._run_ripping,
@@ -1235,8 +1303,36 @@ class JobManager:
                         title.state = TitleState.MATCHED
                         session.add(title)
                 await session.commit()
+                rematched_count = len(disc_titles)
             else:
+                rematchable: list[tuple[DiscTitle, Path]] = []
+                left_as_filed: list[str] = []
+                failed: list[DiscTitle] = []
                 for title in disc_titles:
+                    file_path = None
+                    if title.output_filename:
+                        file_path = Path(title.output_filename)
+                        if not file_path.exists():
+                            file_path = staging / file_path.name
+                    if file_path is None or not file_path.exists():
+                        # Reset to QUEUED, it would have no match task behind it.
+                        logger.warning(
+                            f"Job {sanitize_log_value(job_id)}: title "
+                            f"{sanitize_log_value(title.id)} not re-matched — no ripped file "
+                            f"found (organized_to={sanitize_log_value(title.organized_to)})"
+                        )
+                        if title.organized_to:
+                            left_as_filed.append(title.organized_to)
+                        else:
+                            title.state = TitleState.FAILED
+                            title.matched_episode = None
+                            title.match_confidence = 0.0
+                            title.match_details = json.dumps(
+                                {"reason": "Ripped file missing at re-match"}
+                            )
+                            session.add(title)
+                            failed.append(title)
+                        continue
                     # Reset title state for re-matching → QUEUED (enqueued; the
                     # QUEUED→MATCHING flip happens once a match slot is acquired).
                     title.state = TitleState.QUEUED
@@ -1244,28 +1340,35 @@ class JobManager:
                     title.match_confidence = 0.0
                     title.match_details = None
                     session.add(title)
+                    rematchable.append((title, file_path))
 
                 await session.commit()
 
-                # Start matching for each ripped file
-                for title in disc_titles:
-                    if title.output_filename:
-                        file_path = Path(title.output_filename)
-                        if not file_path.exists():
-                            file_path = staging / file_path.name
-                        if file_path.exists():
-                            # match_single_file self-tags the job log context.
-                            match_task = asyncio.create_task(
-                                self._matching.match_single_file(job_id, title.id, file_path)
-                            )
-                            match_task.add_done_callback(
-                                lambda t, jid=job_id, tid=title.id: (
-                                    self._matching.on_match_task_done(t, jid, tid)
-                                )
-                            )
+                for title in failed:
+                    await ws_manager.broadcast_title_update(
+                        job_id, title.id, title.state.value, error="Ripped file missing"
+                    )
+                if left_as_filed:
+                    self._finalization.note_left_as_filed(job_id, left_as_filed)
+
+                for title, file_path in rematchable:
+                    # match_single_file self-tags the job log context.
+                    match_task = asyncio.create_task(
+                        self._matching.match_single_file(job_id, title.id, file_path)
+                    )
+                    match_task.add_done_callback(
+                        lambda t, jid=job_id, tid=title.id: self._matching.on_match_task_done(
+                            t, jid, tid
+                        )
+                    )
+
+                if not rematchable:
+                    await self._finalization.check_job_completion(session, job_id)
+                rematched_count = len(rematchable)
 
             logger.info(
-                f"Job {job_id}: re-matching {len(disc_titles)} titles with corrected metadata"
+                f"Job {sanitize_log_value(job_id)}: re-matching {rematched_count} titles "
+                f"with corrected metadata"
             )
 
     async def start_ripping(self, job_id: int) -> None:
@@ -1286,6 +1389,15 @@ class JobManager:
 
             if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
                 raise ValueError(f"Cannot start job in state: {job.state}")
+
+            # Same guard as POST /api/jobs/{id}/start, so no future caller can
+            # re-rip a post-rip review (#710).
+            titles = (
+                await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
+            ).scalars()
+            refusal = start_rip_refusal(job, titles)
+            if refusal:
+                raise ValueError(refusal)
 
             # A resume from review honours backup_before_rip exactly as a
             # fresh identification does; next_state_after_identify is the one
@@ -1639,6 +1751,68 @@ class JobManager:
         else:
             self._last_activity[job_id] = time.monotonic()
 
+    def stall_state(
+        self, job_id: int, state: JobState, now: float | None = None
+    ) -> tuple[int | None, bool]:
+        """(seconds since last progress, looks_stuck) for a job, from the watchdog clock.
+
+        ``(None, False)`` when the state is not one the watchdog times (resting or
+        terminal) or the clock has no reading yet; no signal is not a stall.
+        """
+        if state not in _STALL_WATCHED_STATES:
+            return None, False
+        last = self._last_activity.get(job_id)
+        if last is None:
+            return None, False
+        stalled = max(0, int((now if now is not None else time.monotonic()) - last))
+        return stalled, stalled >= STUCK_AFTER_SECONDS
+
+    async def _broadcast_stall_changes(self) -> None:
+        """Push stall state for watched jobs; send on change, and keep a stuck
+        job's duration fresh. A cleared flag is sent once, then goes quiet."""
+        if not self._last_activity and not self._stall_sent:
+            return
+        async with async_session() as session:
+            result = await session.execute(
+                select(DiscJob.id, DiscJob.state).where(DiscJob.state.in_(_STALL_WATCHED_STATES))
+            )
+            rows = result.all()
+        now = time.monotonic()
+        seen: set[int] = set()
+        for job_id, state in rows:
+            seen.add(job_id)
+            # A MATCHING job with tracks QUEUED/MATCHING is draining the global
+            # match queue, not stuck. The watchdog refreshes its clock for that,
+            # but only when enabled and on its own cadence, so do it here too.
+            if state == JobState.MATCHING and await self._has_pending_match_work(job_id):
+                self._last_activity[job_id] = now
+            stalled, stuck = self.stall_state(job_id, state, now)
+            if stuck or self._stall_sent.get(job_id, False) != stuck:
+                await ws_manager.broadcast(
+                    {
+                        "type": "job_update",
+                        "job_id": job_id,
+                        "looks_stuck": stuck,
+                        "stalled_for_seconds": stalled if stuck else None,
+                    }
+                )
+            self._stall_sent[job_id] = stuck
+        # A job that left the watched set (finished, parked in review) drops its
+        # flag with its state change; just forget it here.
+        for gone in set(self._stall_sent) - seen:
+            del self._stall_sent[gone]
+
+    async def _stall_loop(self) -> None:
+        """Periodically push the stall signal (#718)."""
+        while True:
+            await asyncio.sleep(STALL_TICK_SECONDS)
+            try:
+                await self._broadcast_stall_changes()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"Stall signal tick failed: {e}", exc_info=True)
+
     def _start_prewarm_on_review(self, job_id: int, state: JobState, from_state: JobState) -> None:
         """on_transition observer: prewarm transcripts when a job parks in review."""
         if state == JobState.REVIEW_NEEDED:
@@ -1955,7 +2129,12 @@ class JobManager:
             await self._dispatch_title_match(job_id, title_id, file_path)
 
     async def reconcile_and_advance(
-        self, job_id: int, *, reason: str = "forced", failure_message: str | None = None
+        self,
+        job_id: int,
+        *,
+        reason: str = "forced",
+        failure_message: str | None = None,
+        user_initiated: bool = False,
     ) -> bool:
         """Force a stuck job to its next resting state (watchdog + manual advance).
 
@@ -1968,6 +2147,11 @@ class JobManager:
         QUEUED is deliberately NOT in the active set below: a queued track is draining
         the global match semaphore, not stuck, so the watchdog must never force it to
         review (a genuinely hung *active* match is caught by the per-track timeout).
+        ``user_initiated`` (the Force button) adds one exception: a QUEUED title
+        with no match task behind it (``MatchingCoordinator.has_live_match``) is
+        orphaned, not draining, and nothing else will ever move it (#776). Titles
+        parked QUEUED behind an unanswered identity prompt have no task by design
+        and are still left for the answer to release.
 
         ``reason`` tags the affected titles' ``match_details`` (audit trail).
         ``failure_message`` is the *user-facing* wording for the job as a whole, used
@@ -1995,9 +2179,15 @@ class JobManager:
 
             result = await session.execute(select(DiscTitle).where(DiscTitle.job_id == job_id))
             staging = Path(job.staging_path) if job.staging_path else None
+            reap_orphaned_queued = user_initiated and job.identity_prompt_json is None
 
             for title in result.scalars().all():
-                if not title.is_selected or title.state not in active:
+                orphaned = (
+                    reap_orphaned_queued
+                    and title.state == TitleState.QUEUED
+                    and not self._matching.has_live_match(title.id)
+                )
+                if not title.is_selected or (title.state not in active and not orphaned):
                     continue
                 file_path = self._find_title_file(title, staging)
                 if file_path is not None:
@@ -2393,6 +2583,12 @@ class JobManager:
                 job_id, title_id, episode_code, edition, conflict_resolution=conflict_resolution
             )
 
+    async def file_movie_as_extras(self, job_id: int) -> int:
+        """File a movie job's kept titles under the movie's Extras/ (#813)."""
+        with job_log_context(job_id):  # see apply_review (#563)
+            await self._prewarmer.cancel_and_wait(job_id)
+            return await self._finalization.file_movie_as_extras(job_id)
+
     async def apply_review_batch(self, job_id: int, decisions: list[dict]) -> None:
         """Apply several review decisions for a job in one atomic pass."""
         with job_log_context(job_id):  # see apply_review (#563)
@@ -2580,10 +2776,13 @@ class JobManager:
             f"{sanitize_log_value(title_id)} -> {sanitize_log_value(target.kind)}"
         )
 
+    def forget_episode_runtimes(self, job_id: int) -> None:
+        """Drop a job's cached episode runtimes (after an episode-namespace switch)."""
+        self._matching.forget_episode_runtimes(job_id)
+
     async def rerun_matching(self, job_id: int, source_preference: str | None = None) -> None:
         """Re-run episode matching for all titles in a job."""
-        # A full re-match starts conflict escalation over from the first tier.
-        self._finalization.reset_conflict_passes(job_id)
+        await self._reset_rematch_state(job_id)
         # If a previous subtitle download failed (e.g. unresolvable label that
         # has since been corrected via re-identification), give the user a
         # recovery path: retry subtitles when they hit "Re-match all".
@@ -2616,20 +2815,23 @@ class JobManager:
                     detected_season=job.detected_season,
                     conflict_status="",  # "" overwrites the merged-in stale value
                 )
-            elif job is not None and job.conflict_status is not None:
-                # Re-matching from a non-review state (e.g. an escalation pass is
-                # in flight): the in-memory counter was already reset above, so
-                # clear the persisted note too — "rerun starts over" must apply
-                # to the DB column, not just the counter.
-                job.conflict_status = None
-                job.updated_at = datetime.now(UTC)
-                await session.commit()
-                await ws_manager.broadcast_job_update(job_id, job.state.value, conflict_status="")
 
         if retry_args is not None:
             await self._matching.restart_subtitle_download(*retry_args)
 
         await self._rerun_matching(job_id, source_preference)
+
+    async def _reset_rematch_state(self, job_id: int) -> None:
+        """Start escalation over and clear its persisted note before a full re-match."""
+        self._finalization.reset_conflict_passes(job_id)
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            if job is None or job.conflict_status is None:
+                return
+            job.conflict_status = None
+            job.updated_at = datetime.now(UTC)
+            await session.commit()
+            await ws_manager.broadcast_job_update(job_id, job.state.value, conflict_status="")
 
     async def rematch_single_title(
         self,
@@ -3769,8 +3971,8 @@ class JobManager:
                     title_error_callback=on_title_error,
                     log_dir=get_makemkv_log_dir(job_id),
                     job_id=job_id,
-                    # Lets the extractor decide, at a title boundary, whether the
-                    # user's skips have left nothing wanted on the disc. None for
+                    # Lets the extractor stop the pass at the boundary of a title
+                    # the user skipped (#765). None for
                     # a per-title pass (see where native_to_scan is built), which
                     # drops skipped indices command-by-command instead.
                     disc_title_map=native_to_scan,
@@ -3834,9 +4036,8 @@ class JobManager:
                     # so discard it — nothing actually failed.
                     if result.aborted_for_skip:
                         logger.info(
-                            f"Job {safe_job}: full-disc pass stopped at a title "
-                            f"boundary because every remaining title was skipped "
-                            f"by the user — nothing left to rip"
+                            f"Job {safe_job}: full-disc pass stopped at a skipped "
+                            f"title's boundary and nothing wanted is left to rip"
                         )
                     result.stalled_titles = None
                     result.success = True
@@ -3874,8 +4075,9 @@ class JobManager:
                     result.success = True
                 else:
                     if result.aborted_for_skip:
-                        # A title was un-skipped between the boundary abort and
-                        # this check. Not a fault — rip what is still wanted.
+                        # The pass stopped at a skipped title with wanted titles
+                        # still ahead (#765). Not a fault: rip those per title,
+                        # exactly as a skip made before the rip would have.
                         logger.info(
                             f"Job {safe_job}: full-disc pass stopped for a skip, but "
                             f"{len(missing)} title(s) are still wanted; ripping them "
@@ -4183,6 +4385,12 @@ class JobManager:
                 _selected = ripped_titles[0]
             _edition = _selected.edition if _selected else None
             _selected_id = _selected.id if _selected else None
+            # Extras discarded under extras_policy "skip" carry the policy's own
+            # marker (`_apply_movie_extras_policy`); their rips stay in staging
+            # rather than being swept into Extras/ by the organizer's folder scan
+            # (#773). The marker, not COMPLETED, is the signal: an extra left
+            # COMPLETED by an earlier pass is no skip decision.
+            _move_extras = not any(_is_policy_skipped_extra(t) for t in ripped_titles)
             # A choice already recorded on the title wins; otherwise the configured
             # default applies. "ask" (the default default) parks a conflict in review.
             _conflict = await _movie_conflict_strategy(
@@ -4190,11 +4398,18 @@ class JobManager:
             )
             # None for library mode, which covers every disc rip.
             _lib_path = _library_path_for_job(job, "movie")
+            # The organizer files exactly the title chosen above. Left to its folder
+            # scan it takes the LARGEST MKV, which on a disc of similar-length
+            # tracks is not the one the feature pick (by duration/runtime) chose,
+            # so the feature went to Extras/ and an extra became the movie (#814).
+            # The folder stays the fallback for a title with no file on record.
             _main_file: Path | None = None
+            if _selected and _selected.output_filename:
+                _candidate = Path(_selected.output_filename)
+                if import_files or _candidate.exists():
+                    _main_file = _candidate
             _extra_files: list[Path] | None = None
             if import_files:
-                if _selected and _selected.output_filename:
-                    _main_file = Path(_selected.output_filename)
                 _extra_files = [
                     Path(t.output_filename)
                     for t in ripped_titles
@@ -4207,7 +4422,7 @@ class JobManager:
         if _lib_path is None and not import_files:
             organize_result = await asyncio.to_thread(
                 movie_organizer.organize,
-                output_dir,
+                _main_file or output_dir,
                 volume_label,
                 detected_title,
                 _tmdb_year,
@@ -4215,6 +4430,7 @@ class JobManager:
                 edition=_edition,
                 already_clean=_already_clean,
                 conflict_resolution=_conflict,
+                move_extras=_move_extras,
             )
         else:
             organize_result = await asyncio.to_thread(
@@ -4223,6 +4439,7 @@ class JobManager:
                 detected_title or volume_label,
                 _tmdb_year,
                 _lib_path,
+                move_extras=_move_extras,
                 conflict_resolution=_conflict,
                 tmdb_id=_tmdb_id,
                 edition=_edition,
@@ -4299,8 +4516,10 @@ class JobManager:
                         if output_basename and output_basename in extras_mapping:
                             t.organized_to = str(extras_mapping[output_basename])
                             t.is_extra = True
-                        else:
+                        elif _selected_id is None or t.id == _selected_id:
                             t.organized_to = str(organize_result.get("main_file") or "")
+                        # Anything else was not moved: it must not be recorded as
+                        # having been filed at the feature's path (#814).
                         session.add(t)
                         await ws_manager.broadcast_title_update(
                             job_id,
@@ -4399,12 +4618,19 @@ class JobManager:
         genuinely competing features (alternate cuts / obfuscation playlists)
         require a review.
 
+        The extras then follow ``extras_policy`` (#773): "keep" leaves them for the
+        organizer's ``Extras/``, "skip" completes them unorganized, and "ask"
+        parks the disc in review with each extra awaiting a keep/discard choice.
+
         Returns True when the job was sent to REVIEW_NEEDED (caller should stop).
         """
+        from app.services.config_service import get_config
+
         # job_id reaches this method from the /jobs/{job_id}/... review path param
         # (apply_review -> _run_ripping), so it is user-provided — sanitize before
         # logging to prevent CR/LF log forging (py/log-injection).
         safe_job = sanitize_log_value(job_id)
+        extras_policy = (await get_config()).extras_policy
         discdb_maps = self._matching.get_discdb_mappings(job_id)
         main_movie_idx = next((m.index for m in discdb_maps if m.title_type == "MainMovie"), None)
         if main_movie_idx is not None:
@@ -4417,7 +4643,10 @@ class JobManager:
                 f"Job {safe_job}: TheDiscDB auto-selected MainMovie "
                 f"title index {main_movie_idx}, skipping review"
             )
-            return False
+            extras = [dt for dt in ripped_titles if dt.is_extra]
+            return await self._apply_movie_extras_policy(
+                job, job_id, extras, extras_policy, session, needs_review=False
+            )
 
         decision = await self._resolve_movie_feature(job, ripped_titles)
 
@@ -4429,6 +4658,12 @@ class JobManager:
                 dt.is_selected = False
                 session.add(dt)
         await session.commit()
+
+        extras = [dt for dt in ripped_titles if dt.title_index in decision.extra_indices]
+        if await self._apply_movie_extras_policy(
+            job, job_id, extras, extras_policy, session, needs_review=decision.needs_review
+        ):
+            return True
 
         if decision.needs_review:
             reason = (
@@ -4450,6 +4685,62 @@ class JobManager:
             f"tagged {decision.extra_indices} as extras (no review)."
         )
         return False
+
+    async def _apply_movie_extras_policy(
+        self,
+        job: DiscJob,
+        job_id: int,
+        extras: list[DiscTitle],
+        extras_policy: str,
+        session,
+        *,
+        needs_review: bool,
+    ) -> bool:
+        """Settle a movie disc's non-feature titles per ``extras_policy`` (#773).
+
+        Mirrors ``MatchingCoordinator._handle_extras`` for TV: "skip" completes an
+        extra without organizing it (the rip stays in staging, like a skipped TV
+        extra), "ask" holds it in REVIEW so the reviewer keeps or discards it, and
+        "keep" leaves it for the organizer to file under ``Extras/``. Only titles
+        already ruled out as the feature reach here, so no policy can drop a cut.
+
+        Returns True when this parked the job in review itself (an "ask" disc whose
+        feature was otherwise settled). A disc that already needs a version pick
+        is parked by the caller with its own reason.
+        """
+        if extras_policy not in ("skip", "ask") or not extras:
+            return False
+
+        skip = extras_policy == "skip"
+        state = TitleState.COMPLETED if skip else TitleState.REVIEW
+        marker = {
+            "auto_sorted": "extras",
+            "action": "skipped" if skip else "review",
+            "reason": "Not the main feature",
+        }
+        for dt in extras:
+            dt.state = state
+            dt.is_extra = True
+            # Merged, not replaced, so earlier context (e.g. TheDiscDB's) survives.
+            dt.match_details = _merge_match_details(dt.match_details, marker)
+            session.add(dt)
+        await session.commit()
+        for dt in extras:
+            await ws_manager.broadcast_title_update(
+                job_id, dt.id, state.value, is_extra=True, match_details=dt.match_details
+            )
+        safe_job = sanitize_log_value(job_id)
+        logger.info(
+            f"Job {safe_job}: extras policy '{extras_policy}' applied to "
+            f"{len(extras)} non-feature title(s) {[dt.title_index for dt in extras]}"
+        )
+
+        if skip or needs_review:
+            return False
+        reason = MOVIE_EXTRAS_REVIEW_REASON
+        await state_machine.transition_to_review(job, session, reason=reason, broadcast=False)
+        await ws_manager.broadcast_job_update(job_id, JobState.REVIEW_NEEDED.value, error=reason)
+        return True
 
     async def _resolve_movie_feature(self, job: DiscJob, ripped_titles: list[DiscTitle]):
         """Decide which ripped title is the movie's main feature.
@@ -4707,6 +4998,7 @@ class JobManager:
         number of titles dispatched.
         """
         pending: list[tuple[int, Path]] = []
+        failed_ids: list[int] = []
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if job and job.content_type != ContentType.TV:
@@ -4727,11 +5019,22 @@ class JobManager:
                 if not file_path.exists():
                     logger.warning(
                         f"Job {sanitize_log_value(job_id)}: queued title "
-                        f"{sanitize_log_value(t.id)} skipped — ripped file missing "
+                        f"{sanitize_log_value(t.id)} failed — ripped file missing "
                         f"({sanitize_log_value(file_path.name)})"
                     )
+                    # Left QUEUED, it would have no match task behind it.
+                    t.state = TitleState.FAILED
+                    t.match_details = json.dumps({"reason": "Ripped file missing"})
+                    session.add(t)
+                    failed_ids.append(t.id)
                     continue
                 pending.append((t.id, file_path))
+            await session.commit()
+
+        for title_id in failed_ids:
+            await ws_manager.broadcast_title_update(
+                job_id, title_id, TitleState.FAILED.value, error="Ripped file missing"
+            )
 
         dispatched = 0
         for title_id, file_path in pending:

@@ -24,7 +24,7 @@ class TestMatchEpisodeViaLLM:
 
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=synopses,
             ),
             patch(
@@ -64,7 +64,7 @@ class TestMatchEpisodeViaLLM:
 
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=synopses,
             ),
             patch(
@@ -90,7 +90,7 @@ class TestMatchEpisodeViaLLM:
 
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=[{"episode_number": 1, "name": "X", "overview": "y"}],
             ),
             patch(
@@ -117,7 +117,7 @@ class TestMatchEpisodeViaLLM:
 
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=[],
             ),
             patch(
@@ -144,7 +144,7 @@ class TestMatchEpisodeViaLLM:
 
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=[{"episode_number": 1, "name": "X", "overview": "y"}],
             ),
             patch(
@@ -169,7 +169,7 @@ class TestMatchEpisodeViaLLM:
 
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=[{"episode_number": 1, "name": "X", "overview": "y"}],
             ),
             patch(
@@ -200,7 +200,7 @@ class TestMatchEpisodeViaLlmRaiseOnError:
         transcript = "the detective examined the case file carefully " * 20  # >500 chars
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=[{"episode_number": 1, "name": "Pilot", "overview": "x"}],
             ),
             patch(
@@ -230,7 +230,7 @@ class TestMatchEpisodeViaLlmRaiseOnError:
         transcript = "the detective examined the case file carefully " * 20
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=[{"episode_number": 1, "name": "Pilot", "overview": "x"}],
             ),
             patch(

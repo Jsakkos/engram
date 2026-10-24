@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SeasonRoster } from '../components/ReviewQueue/types';
 
 /**
@@ -16,8 +16,21 @@ export function useSeasonRoster(jobId: string | undefined, seasonOverride?: numb
     const [reloadKey, setReloadKey] = useState(0);
     const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
+    // Which job the held roster belongs to. A roster must never outlive its job:
+    // History mounts one panel and switches jobs under it, and a stale roster for
+    // the same season number would label another show's episodes (#770 review).
+    const rosterJobId = useRef<string | undefined>(undefined);
+
     useEffect(() => {
-        if (!jobId) return;
+        if (!jobId) {
+            rosterJobId.current = undefined;
+            setRoster(null);
+            return;
+        }
+        if (rosterJobId.current !== jobId) {
+            rosterJobId.current = jobId;
+            setRoster(null);
+        }
         let cancelled = false;
         setLoading(true);
         setError(null);

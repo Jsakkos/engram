@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react';
 import { Trash2, SkipForward } from 'lucide-react';
-import { toast } from 'sonner';
 import { IcoRetry } from '../../app/components/icons';
 import { SvActionButton, SvBadge, SvLabel, SvNotice, SvPanel, sv } from '../../app/components/synapse';
 import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
 import type { DiscTitle } from '../../types';
+import { PlayerControls } from './PlayerControls';
 import { displayEpisodeCode, episodeParts, isRealCode } from './coverage';
 import type { Candidate, CoverageEntry } from './coverage';
 import type { LLMSuggestion, RosterEpisode } from './types';
@@ -18,7 +18,12 @@ import {
     titleDisplayName,
 } from './utils';
 
-const REVIEW_NOTICE_CODES = new Set(['references_unreadable', 'multi_episode_detected']);
+const REVIEW_NOTICE_CODES = new Set([
+    'references_unreadable',
+    'multi_episode_detected',
+    'numbering_divergent',
+    'audio_language_unsupported',
+]);
 
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
@@ -26,17 +31,6 @@ const monoFaint: CSSProperties = { fontFamily: sv.mono, fontSize: 11, color: sv.
 
 function pct(value: number): string {
     return `${Math.round(value * 100)}%`;
-}
-
-/**
- * Ripped file for this track, if one exists on disk.
- *
- * `output_filename` is the staging copy written at rip time; `organized_to`
- * is where it landed after being moved into the library. A track parked in a
- * pre-rip review has neither, and gets no playback controls.
- */
-function hasPlayableFile(title: DiscTitle): boolean {
-    return !!(title.output_filename || title.organized_to);
 }
 
 /**
@@ -127,32 +121,6 @@ export function Inspector({
     const conflictWith = [...new Set(selectionParts.flatMap((code) => takenByOther(code)))];
     const inConflict = conflictWith.length > 0;
 
-    const playable = hasPlayableFile(title);
-    // Deliberately asymmetric. The href is followed by this browser, so a
-    // root-relative path is right and matches every other call site. The copied
-    // URL is pasted into a different application, where a relative path means
-    // nothing, so it must be absolute. location.origin is the address this
-    // browser actually reached the app on, so the copied URL works anywhere
-    // that address does, whether it is localhost, a LAN address, or the Vite
-    // dev port (whose proxy forwards any HTTP client, not just the browser).
-    // The corollary is the known limit: reach the dashboard on localhost and
-    // the copied URL only works in a player on this same machine. Reach it on
-    // a LAN address and it works from anywhere on the LAN.
-    const playlistHref = `/api/jobs/${title.job_id}/titles/${title.id}/playlist.m3u`;
-    const mediaUrl = `${window.location.origin}/api/jobs/${title.job_id}/titles/${title.id}/media`;
-
-    const copyStreamUrl = async () => {
-        try {
-            await navigator.clipboard.writeText(mediaUrl);
-            toast.success('Stream URL copied');
-        } catch {
-            // Clipboard access is denied in some browsers over plain HTTP. Show the
-            // URL so the operator can still select it by hand rather than getting
-            // a silently dead button.
-            toast.error(`Could not copy. URL: ${mediaUrl}`);
-        }
-    };
-
     const stateBadge = fileExists ? (
         <SvBadge state="warn" dot>File exists</SvBadge>
     ) : organizeFailed ? (
@@ -179,40 +147,7 @@ export function Inspector({
                         {formatDuration(title.duration_seconds)} · {formatSize(title.file_size_bytes)}
                         {title.video_resolution ? ` · ${title.video_resolution}` : ''} · {title.chapter_count} chapters
                     </div>
-                    {playable && (
-                        <div style={{ marginTop: 8 }}>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                {/* target=_blank protects unsaved review state: a 404 (staging
-                                    cleaned up since the page loaded) or 403 (LAN gate) would
-                                    otherwise navigate this tab to a raw JSON error body. On
-                                    success the attachment download closes the new tab itself. */}
-                                <SvActionButton
-                                    tone="cyan"
-                                    size="sm"
-                                    href={playlistHref}
-                                    target="_blank"
-                                    rel="noopener"
-                                    ariaLabel="Open in player (downloads a playlist file)"
-                                    title="Download a playlist that opens this track in your default video player"
-                                >
-                                    Open in player
-                                </SvActionButton>
-                                <SvActionButton
-                                    tone="neutral"
-                                    size="sm"
-                                    onClick={copyStreamUrl}
-                                    ariaLabel="Copy stream URL"
-                                    title="Copy the stream URL for your player's Open Network Stream"
-                                >
-                                    Copy stream URL
-                                </SvActionButton>
-                            </div>
-                            <div style={{ ...monoFaint, marginTop: 6, fontSize: 10 }}>
-                                Opens in your default player. Nothing happened? Copy the URL and use
-                                your player&apos;s &quot;Open Network Stream&quot;.
-                            </div>
-                        </div>
-                    )}
+                    <PlayerControls title={title} />
                 </div>
                 {stateBadge}
             </div>
@@ -318,7 +253,7 @@ export function Inspector({
                             No match data — use manual assignment below.
                         </div>
                     )}
-                    {candidates.map((cand) => {
+                    {candidates.map((cand, rank) => {
                         const others = takenByOther(cand.episodeCode);
                         const isGap = coverage[cand.episodeCode]?.status === 'missing';
                         const isSelected = selection === cand.episodeCode;
@@ -342,6 +277,14 @@ export function Inspector({
                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                                     <div style={{ minWidth: 0 }}>
                                         <div style={{ fontFamily: sv.mono, fontSize: 13, fontWeight: 600, color: sv.ink }}>
+                                            {rank < 3 && (
+                                                <kbd
+                                                    title={`Press ${rank + 1} to accept`}
+                                                    style={{ marginRight: 8, padding: '0 5px', fontSize: 10, color: sv.inkDim, border: `1px solid ${sv.lineMid}` }}
+                                                >
+                                                    {rank + 1}
+                                                </kbd>
+                                            )}
                                             {cand.episodeCode}
                                             {cand.episodeName && (
                                                 <span style={{ color: sv.inkDim, fontWeight: 400, fontSize: 11.5 }}> — {cand.episodeName}</span>
@@ -412,6 +355,8 @@ export function Inspector({
                             value={selection && /^S\d+E\d+$/i.test(selection) ? selection : ''}
                             onChange={(e) => e.target.value && onAssign(e.target.value)}
                             aria-label={`Manual episode for title ${title.title_index}`}
+                            aria-keyshortcuts="/"
+                            data-review-picker
                             style={{
                                 flex: 1,
                                 background: sv.bg0,

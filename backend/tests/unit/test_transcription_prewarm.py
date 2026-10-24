@@ -17,6 +17,7 @@ import pytest
 
 from app.matcher import transcript_store
 from app.matcher.asr_models import model_output_key
+from app.matcher.audio_streams import AudioPlan
 from app.matcher.episode_identification import EpisodeMatcher, canonical_scan_points
 from app.models import DiscJob, JobState
 from app.models.disc_job import ContentType, DiscTitle, TitleState
@@ -46,6 +47,19 @@ class FakeMatcher:
         self.audio_chunks = {}
         self.transcribe_calls: list[tuple[int, int, str]] = []
         self.honest_key: str | None = None  # None -> same as the config-derived key
+        self.l2_file_keys: list[str | None] = []
+        self.stream_index: int | None = None  # planned audio stream (issue #241)
+        self.verdict = "unprobed"
+
+    def audio_plan(self, video_file, language="en"):
+        return AudioPlan(self.verdict)
+
+    def transcript_file_key(self, video_file):
+        key = transcript_store.file_key_for(video_file)
+        return f"{key}#a{self.stream_index}" if key and self.stream_index else key
+
+    def _source_key(self, mkv_file):
+        return self._resolve_source(mkv_file)
 
     def _model_config(self):
         return dict(MODEL_CONFIG)
@@ -61,6 +75,7 @@ class FakeMatcher:
         self, video_file, start, length, model, *, file_key=None, model_key=None, temp_files=None
     ):
         self.transcribe_calls.append((int(start), int(length), model_key))
+        self.l2_file_keys.append(file_key)
         transcript_store.put(file_key, start, length, model_key, f"text-{start}")
         return f"text-{start}"
 
@@ -723,6 +738,28 @@ class TestWalkAwayRematch:
 
 
 class TestFailSoftGranularity:
+    async def test_audio_less_file_stops_after_first_chunk(
+        self, tmp_path, config_flags, model_loader, duration_stub
+    ):
+        """A title with no audio track fails every chunk identically (#793): stop
+        warming that file instead of logging the same failure ten times."""
+        from app.matcher.episode_identification import NoAudioStreamError
+
+        attempts: list[int] = []
+
+        class SilentMatcher(FakeMatcher):
+            def transcribe_chunk_cached(self, video_file, start, *args, **kwargs):
+                attempts.append(int(start))
+                raise NoAudioStreamError("no audio track")
+
+        p = TranscriptionPrewarmer(semaphore_provider=CountingSemaphore)
+        p._matcher = SilentMatcher()
+
+        job_id, _f = await _seed_review_job(tmp_path)
+        await _run_to_completion(p, job_id)
+
+        assert attempts == [int(OFFSETS[0])]
+
     async def test_single_chunk_failure_continues_remaining(
         self, tmp_path, config_flags, model_loader, duration_stub
     ):
@@ -771,3 +808,37 @@ class TestFailSoftGranularity:
                 assert transcript_store.get(file_key, off, CHUNK_LEN, CONFIG_KEY) is None
             else:
                 assert transcript_store.get(file_key, off, CHUNK_LEN, CONFIG_KEY) is not None
+
+
+class TestPrewarmAudioStream:
+    """The prewarm warms the stream the matcher will transcribe (issue #241)."""
+
+    async def test_prewarm_keys_spans_by_planned_stream(
+        self, tmp_path, config_flags, prewarmer, model_loader, duration_stub
+    ):
+        p, _ = prewarmer
+        p._matcher.stream_index = 1
+        job_id, f = await _seed_review_job(tmp_path)
+        plain_key = transcript_store.file_key_for(f)
+        # Cached under the plain (stream 0) key: must NOT count for stream 1.
+        for off in OFFSETS:
+            transcript_store.put(plain_key, off, CHUNK_LEN, CONFIG_KEY, "cached")
+
+        await _run_to_completion(p, job_id)
+
+        assert len(p._matcher.transcribe_calls) == len(OFFSETS)
+        assert set(p._matcher.l2_file_keys) == {plain_key + "#a1"}
+
+    @pytest.mark.parametrize("verdict", ["foreign", "no_audio"])
+    async def test_prewarm_skips_file_with_no_matchable_audio(
+        self, tmp_path, config_flags, prewarmer, model_loader, duration_stub, verdict
+    ):
+        p, sem = prewarmer
+        p._matcher.verdict = verdict
+        job_id, _ = await _seed_review_job(tmp_path)
+
+        await _run_to_completion(p, job_id)
+
+        assert model_loader == []
+        assert p._matcher.transcribe_calls == []
+        assert sem.acquires == 0

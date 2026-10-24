@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Save, Package } from 'lucide-react';
+import { Save, Package, Keyboard } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
+import { MovieExtrasOnlyAction } from './ReviewQueue/MovieExtrasOnlyAction';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
 import { useSeasonRoster } from '../hooks/useSeasonRoster';
@@ -13,14 +14,34 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { assignmentsByCode, buildCandidates, collidingCodes, computeCoverage, normalizeEpisodeCode, selectionCollides, suggestGapCode } from './ReviewQueue/coverage';
 import { SeasonRosterStrip } from './ReviewQueue/SeasonRosterStrip';
 import { OrderingSelector } from './ReviewQueue/OrderingSelector';
+import { TvdbSuggestionNotice } from './ReviewQueue/TvdbSuggestionNotice';
+import { TvdbAttribution } from './ReviewQueue/TvdbAttribution';
 import { TitleList } from './ReviewQueue/TitleList';
 import { Inspector } from './ReviewQueue/Inspector';
 import { llmErrorToFeedback, llmResultToFeedback, type LLMFeedback } from './ReviewQueue/llmFeedback';
-import { runLLMMatch, reassignEpisode, setShowOrdering, submitReviewBatch, rematchTitle } from '../api/client';
+import { runLLMMatch, reassignEpisode, setShowOrdering, setEpisodeNamespace, dismissTvdbSuggestion, submitReviewBatch, rematchTitle, reIdentifyJob } from '../api/client';
+import { IdentityGate } from './ReviewQueue/IdentityGate';
+import { ShortcutsOverlay } from './ReviewQueue/ShortcutsOverlay';
+import { useReviewShortcuts } from './ReviewQueue/useReviewShortcuts';
+import type { ReviewShortcut } from './ReviewQueue/keymap';
+import { isIdentityUnresolved } from './ReviewQueue/identity';
 import { getRerippableStateFromTitle } from './ReviewQueue/rerip';
+import { canStartRip, startRipErrorMessage } from './ReviewQueue/startRip';
 import { DamagedTrackNotice } from './ReviewQueue/DamagedTrackNotice';
+import { ReviewReasonNotice } from './ReviewQueue/ReviewReasonNotice';
 import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
+import { PlayerControls } from './ReviewQueue/PlayerControls';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
+
+/** Heading notice of the movie review, by `movieReviewNotice`. */
+const MOVIE_REVIEW_NOTICE_TEXT: Record<MovieReviewNotice, string> = {
+    conflict: '› THIS MOVIE IS ALREADY IN THE LIBRARY. REPLACE IT, KEEP BOTH, OR DISCARD THIS RIP.',
+    nothing_selectable:
+        '› NO TITLE IS LEFT TO SELECT AS THE FEATURE. FILE THE REST AS EXTRAS, OR CANCEL THIS JOB FROM THE DASHBOARD.',
+    held_extras:
+        '› BONUS TRACKS FOUND. DISCARD ANY YOU DON’T WANT, THEN SELECT THE FEATURE. THE REST GO TO EXTRAS.',
+    pick_version: '› MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.',
+};
 
 /** Uppercase mono caption styling, reused for metadata rows. */
 const monoLabelStyle: CSSProperties = {
@@ -111,12 +132,14 @@ function HeaderButton({
     onClick,
     disabled,
     icon,
+    ariaKeyShortcuts,
     children,
 }: {
     color: string;
     onClick: () => void;
     disabled?: boolean;
     icon?: ReactNode;
+    ariaKeyShortcuts?: string;
     children: ReactNode;
 }) {
     const base: CSSProperties = {
@@ -142,6 +165,7 @@ function HeaderButton({
         <button
             onClick={onClick}
             disabled={disabled}
+            aria-keyshortcuts={ariaKeyShortcuts}
             style={base}
             onMouseEnter={(e) => {
                 if (disabled) return;
@@ -181,6 +205,22 @@ function ReviewQueue() {
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
     const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
+    // null until /api/config answers; treated as configured so the identity
+    // step is never skipped on a slow or failed config fetch.
+    const [tmdbConfigured, setTmdbConfigured] = useState<boolean | null>(null);
+    const [identifyError, setIdentifyError] = useState<string | null>(null);
+    const [showShortcuts, setShowShortcuts] = useState(false);
+    // Set when a shortcut moved the selection, so focus follows it to the row
+    // (a click already has focus where it needs to be).
+    const focusRowRef = useRef(false);
+
+    // The show is not established, so episode assignment would target a roster
+    // nobody has chosen (#715). Held in a ref too so the websocket listener
+    // below, registered once per job, sees the live value.
+    const identityGated = !!job && isIdentityUnresolved(job, titles, { tmdbConfigured: tmdbConfigured ?? true });
+    const identityGatedRef = useRef(identityGated);
+    identityGatedRef.current = identityGated;
+    const refreshJobRef = useRef<() => Promise<void>>(async () => {});
 
     // Bulk multiselect — ids checked for bulk actions (independent of the
     // single inspected title). `lastBulkClickRef` anchors shift-click ranges.
@@ -199,16 +239,53 @@ function ReviewQueue() {
     // Persist a per-show ordering choice (#200), then refetch the roster so the
     // projection/divergence reflect it. Ordering is a show property, so it is
     // stored by tmdb_id rather than threaded through the review-batch decision.
+    //
+    // TheTVDB is not a projection: moving onto or off it changes the job's
+    // episode namespace, which re-downloads references and re-matches (the
+    // job leaves review for MATCHING), so those moves go through the job
+    // endpoint and then hand off to the dashboard like "re-match all" does.
+    const switchNamespace = async (namespace: 'tmdb' | 'tvdb') => {
+        if (!job) return;
+        await setEpisodeNamespace(job.id, namespace);
+        navigate('/');
+    };
+
     const handleOrderingChange = async (ordering: string) => {
         if (!roster?.show_id) return;
         setOrderingError(null);
+        const namespaceMove = ordering === 'tvdb' || roster.episode_source === 'tvdb';
         try {
+            if (ordering === 'tvdb') {
+                await switchNamespace('tvdb');
+                return;
+            }
+            if (roster.episode_source === 'tvdb') {
+                // Namespace first: if TheTVDB-to-TMDB is refused (job left
+                // review), the show preference must not have moved either.
+                if (!job) return;
+                await setEpisodeNamespace(job.id, 'tmdb');
+                // The switch already reset the show preference to the global
+                // default, which is what "aired" means. Only a DVD pick needs a
+                // follow-up write, and its failure is non-fatal: re-matching has
+                // started, so the page must still hand off.
+                if (ordering !== 'aired') {
+                    try {
+                        await setShowOrdering(roster.show_id, ordering);
+                    } catch (e) {
+                        console.error('Failed to set show ordering after namespace switch', e);
+                    }
+                }
+                navigate('/');
+                return;
+            }
             await setShowOrdering(roster.show_id, ordering);
             reloadRoster();
         } catch (e) {
             console.error('Failed to set show ordering', e);
             setOrderingError(
-                'Could not save the ordering preference — the selection was not applied. Please try again.',
+                namespaceMove && e instanceof Error
+                    ? e.message
+                    : 'Could not save the ordering preference: the selection was not applied. Please try again.',
             );
         }
     };
@@ -231,6 +308,13 @@ function ReviewQueue() {
         const numericJobId = jobId ? parseInt(jobId) : null;
         if (numericJobId === null || Number.isNaN(numericJobId)) return;
         return addMessageListener((msg) => {
+            // Re-identify runs in the background. While the identity step is up
+            // there are no in-progress picks to lose, so reload the whole job
+            // when it changes and the gate lifts without leaving the page.
+            if (msg.type === 'job_update' && msg.job_id === numericJobId && identityGatedRef.current) {
+                void refreshJobRef.current();
+                return;
+            }
             if (msg.type !== 'title_update' || msg.job_id !== numericJobId) return;
             setTitles((prev) =>
                 prev.map((t) =>
@@ -258,6 +342,7 @@ function ReviewQueue() {
         fetch('/api/config')
             .then((r) => r.ok ? r.json() : null)
             .then((data) => {
+                if (data) setTmdbConfigured(data.tmdb_configured ?? !!data.tmdb_api_key);
                 if (data?.ai_episode_matching_enabled) {
                     setAiEpisodeMatchingEnabled(true);
                 }
@@ -307,7 +392,9 @@ function ReviewQueue() {
         const firstReview = active.find(
             (t) => !t.matched_episode || t.match_confidence < MATCHING_CONFIG.AUTO_MATCH_THRESHOLD,
         );
-        setSelectedTitleId((firstReview ?? active[0]).id);
+        // Functional, so a j/k pressed before this passive effect flushes is not
+        // overwritten by the stale `null` this closure saw.
+        setSelectedTitleId((current) => current ?? (firstReview ?? active[0]).id);
     }, [titles, selectedTitleId]);
 
     const handleEpisodeChange = (titleId: number, episodeCode: string) => {
@@ -493,6 +580,25 @@ function ReviewQueue() {
         }
     };
 
+    refreshJobRef.current = fetchJobDetails;
+
+    const handleIdentify = async (
+        title: string,
+        contentType: 'tv' | 'movie',
+        season?: number,
+        tmdbId?: number,
+    ) => {
+        if (!jobId) return;
+        setIdentifyError(null);
+        try {
+            await reIdentifyJob(parseInt(jobId), title, contentType, season, tmdbId);
+            await fetchJobDetails();
+        } catch (err) {
+            console.error('Failed to identify disc:', err);
+            setIdentifyError(err instanceof Error ? err.message : 'Failed to identify the disc. Please try again.');
+        }
+    };
+
     // Re-fetch the job to inspect the state a preceding /review may have left it in.
     const fetchCurrentJob = async (): Promise<Job | null> => {
         try {
@@ -563,12 +669,33 @@ function ReviewQueue() {
             const response = await fetch(`/api/jobs/${jobId}/start`, { method: 'POST' });
             if (!response.ok) {
                 const text = await response.text();
-                throw new Error(`Failed to start: ${text}`);
+                throw new Error(startRipErrorMessage(text));
             }
             navigate('/');
         } catch (err) {
             console.error('Failed to start rip:', err);
             setError(err instanceof Error ? err.message : 'Failed to start ripping');
+        }
+    };
+
+    // A disc with no feature on it (#813): file every kept title under the
+    // movie's Extras/ and finish the job.
+    const handleFileAsExtras = async () => {
+        setIsSaving(true);
+        setError(null);
+        try {
+            const response = await fetch(`/api/jobs/${jobId}/review/file-as-extras`, { method: 'POST' });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Filing as extras failed: ${response.status} ${text}`);
+            }
+            navigate('/');
+        } catch (err) {
+            console.error('Failed to file movie as extras:', err);
+            setError(err instanceof Error ? err.message : 'Failed to file as extras');
+            await fetchJobDetails();
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -597,9 +724,11 @@ function ReviewQueue() {
             // The organize runs inside the request, so the job's state is already
             // settled. If it landed back in review (a library conflict, #685),
             // stay and show why instead of leaving the reviewer on the dashboard
-            // with nothing but another "needs review" notification.
+            // with nothing but another "needs review" notification. A discard
+            // that leaves the job in review (one extra of several, #773, or one
+            // of several cuts) stays too, so the rest can be decided.
             const current = await fetchCurrentJob();
-            if (matchAction === 'save' && current?.state === 'review_needed') {
+            if (current?.state === 'review_needed') {
                 await fetchJobDetails();
                 return;
             }
@@ -735,6 +864,47 @@ function ReviewQueue() {
 
     const assignedCount = Object.keys(selectedEpisodes).length;
 
+    // --- Keyboard shortcuts (#716) ---
+    // Registered before the early returns below so hook order is stable; only
+    // live on the TV inspector layout, and not behind the identity step.
+    useReviewShortcuts(!!job && job.content_type !== 'movie' && !identityGated, (shortcut: ReviewShortcut) => {
+        // A save/process is committing the current picks; don't stage new ones under it.
+        const busy = isSaving || isProcessing;
+        switch (shortcut.type) {
+            case 'help':
+                setShowShortcuts((open) => !open);
+                return;
+            case 'move': {
+                if (activeTitles.length === 0) return;
+                const at = activeTitles.findIndex((t) => t.id === selectedTitle?.id);
+                const next = Math.min(activeTitles.length - 1, Math.max(0, (at < 0 ? 0 : at) + shortcut.delta));
+                focusRowRef.current = true;
+                setSelectedTitleId(activeTitles[next].id);
+                return;
+            }
+            case 'accept': {
+                const pick = candidates[shortcut.rank - 1];
+                if (!busy && selectedTitle && pick) handleEpisodeChange(selectedTitle.id, pick.episodeCode);
+                return;
+            }
+            case 'extra':
+                if (!busy && selectedTitle) handleTitleAction(selectedTitle.id, 'extra');
+                return;
+            case 'skip':
+                if (!busy && selectedTitle) handleTitleAction(selectedTitle.id, 'skip');
+                return;
+            case 'focusPicker':
+                document.querySelector<HTMLElement>('[data-review-picker]')?.focus();
+                return;
+        }
+    });
+
+    useEffect(() => {
+        if (!focusRowRef.current || selectedTitleId === null) return;
+        focusRowRef.current = false;
+        document.querySelector<HTMLElement>(`[data-title-row="${selectedTitleId}"]`)?.focus();
+    }, [selectedTitleId]);
+
     // --- Render ---
 
     if (isLoading) {
@@ -801,13 +971,27 @@ function ReviewQueue() {
                 >
                     {error && <SvNotice tone="error">› ERROR: {error}</SvNotice>}
                     <SvNotice tone="warn">
-                        {titles.some((t) => t.state === 'review' && parseMatchDetails(t).error === 'file_exists')
-                            ? '› THIS MOVIE IS ALREADY IN THE LIBRARY. REPLACE IT, KEEP BOTH, OR DISCARD THIS RIP.'
-                            : '› MULTIPLE FEATURE-LENGTH TITLES DETECTED. SELECT THE CORRECT VERSION TO KEEP.'}
+                        {(() => {
+                            const notice = movieReviewNotice(titles);
+                            // The backend's reason says why it asked for a pick,
+                            // e.g. that no title is long enough to be the movie
+                            // (#813); the generic text is the fallback.
+                            return notice === 'pick_version' && job.review_reason
+                                ? `› ${job.review_reason.toUpperCase()}`
+                                : MOVIE_REVIEW_NOTICE_TEXT[notice];
+                        })()}
                     </SvNotice>
+                    {movieExtrasOnlyTitles(titles).length > 0 && (
+                        <MovieExtrasOnlyAction
+                            count={movieExtrasOnlyTitles(titles).length}
+                            movieName={job.detected_title || job.volume_label}
+                            disabled={isSaving}
+                            onConfirm={handleFileAsExtras}
+                        />
+                    )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {titles.map(title => (
+                        {movieReviewTitles(titles).map(title => (
                             <motion.div
                                 key={title.id}
                                 initial={{ opacity: 0, y: 10 }}
@@ -847,6 +1031,11 @@ function ReviewQueue() {
                                                 >
                                                     {titleDisplayName(title)}
                                                 </span>
+                                                {isHeldMovieExtra(title) && (
+                                                    <SvBadge size="sm" tone={sv.magenta} dot={false}>
+                                                        Extra · kept unless discarded
+                                                    </SvBadge>
+                                                )}
                                             </div>
                                             <div
                                                 style={{
@@ -863,28 +1052,37 @@ function ReviewQueue() {
                                                 </SvBadge>
                                                 <span>{title.chapter_count} chapters</span>
                                             </div>
+                                            {/* Telling cuts apart (theatrical vs extended) usually
+                                                means watching them, so the same external-player
+                                                handoff the TV inspector has. */}
+                                            <PlayerControls title={title} />
                                         </div>
 
-                                        {/* Edition input */}
-                                        <div style={{ width: 192 }}>
-                                            <SvTextInput
-                                                value={selectedEditions[title.id] || ''}
-                                                onChange={(v) => handleEditionChange(title.id, v)}
-                                                placeholder="Edition tag…"
-                                                list="edition-suggestions"
-                                                ariaLabel={`Edition tag for title ${title.title_index}`}
-                                            />
-                                        </div>
+                                        {/* Edition input + Select: the feature's. A held
+                                            extra is only kept or discarded (#773). */}
+                                        {!isHeldMovieExtra(title) && (
+                                            <div style={{ width: 192 }}>
+                                                <SvTextInput
+                                                    value={selectedEditions[title.id] || ''}
+                                                    onChange={(v) => handleEditionChange(title.id, v)}
+                                                    placeholder="Edition tag…"
+                                                    list="edition-suggestions"
+                                                    ariaLabel={`Edition tag for title ${title.title_index}`}
+                                                />
+                                            </div>
+                                        )}
 
                                         {/* Actions */}
                                         <div style={{ display: 'flex', gap: 8 }}>
-                                            <SvActionButton
-                                                tone="green"
-                                                onClick={() => handleSaveMovie(title.id, 'save')}
-                                                disabled={isSaving}
-                                            >
-                                                Select
-                                            </SvActionButton>
+                                            {!isHeldMovieExtra(title) && (
+                                                <SvActionButton
+                                                    tone="green"
+                                                    onClick={() => handleSaveMovie(title.id, 'save')}
+                                                    disabled={isSaving}
+                                                >
+                                                    Select
+                                                </SvActionButton>
+                                            )}
                                             <SvActionButton
                                                 tone="red"
                                                 onClick={() => handleSaveMovie(title.id, 'skip')}
@@ -920,16 +1118,26 @@ function ReviewQueue() {
                 subtitle={subtitleText}
                 onBack={() => navigate('/')}
                 maxWidth={sv.layoutMaxWidth}
-                right={
+                right={identityGated ? undefined : (
                     <>
                         <HeaderButton
-                            color={sv.cyan}
-                            onClick={handleStartRip}
-                            disabled={isSaving || isProcessing}
-                            icon={<IcoPlay size={12} />}
+                            color={sv.inkDim}
+                            onClick={() => setShowShortcuts(true)}
+                            icon={<Keyboard size={12} />}
+                            ariaKeyShortcuts="?"
                         >
-                            Start rip
+                            Keyboard shortcuts (?)
                         </HeaderButton>
+                        {canStartRip(job, titles) && (
+                            <HeaderButton
+                                color={sv.cyan}
+                                onClick={handleStartRip}
+                                disabled={isSaving || isProcessing}
+                                icon={<IcoPlay size={12} />}
+                            >
+                                Start rip
+                            </HeaderButton>
+                        )}
                         {assignedCount > 0 && (
                             <HeaderButton
                                 color={sv.yellow}
@@ -959,7 +1167,7 @@ function ReviewQueue() {
                             {isRematching ? 'Re-matching…' : 'Re-match all'}
                         </HeaderButton>
                     </>
-                }
+                )}
             />
 
             {/* Content — w-full so the max-width cap engages inside
@@ -976,6 +1184,7 @@ function ReviewQueue() {
                     </SvNotice>
                 )}
                 {job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>}
+                <ReviewReasonNotice reason={job.review_reason} />
                 {hasConflicts && (
                     <SvNotice tone="warn">
                         › {collisions.size} EPISODE CONFLICT{collisions.size > 1 ? 'S' : ''} — TWO TITLES SHARE AN EPISODE. RESOLVE BEFORE SAVING.
@@ -989,6 +1198,18 @@ function ReviewQueue() {
                 {rematchNotice && <SvNotice tone="warn">› {rematchNotice}</SvNotice>}
                 {orderingError && <SvNotice tone="warn">› {orderingError}</SvNotice>}
 
+                {/* Identity step (#715): until the show is established there is no
+                    roster to assign against, so lead with identifying the disc and
+                    withhold the episode tools. */}
+                {identityGated && (
+                    <IdentityGate
+                        job={job}
+                        trackCount={titles.length}
+                        error={identifyError}
+                        onIdentify={handleIdentify}
+                    />
+                )}
+                {!identityGated && (<>
                 {/* Season picker (#370) — only when the job's season is unknown. */}
                 {job.detected_season == null && (
                     <div style={{ marginBottom: 24 }}>
@@ -1032,6 +1253,18 @@ function ReviewQueue() {
                     </div>
                 )}
 
+                {roster?.tvdb_suggestion && roster.show_id && (
+                    <TvdbSuggestionNotice
+                        suggestion={roster.tvdb_suggestion}
+                        onSwitch={() => switchNamespace('tvdb')}
+                        onDismiss={async () => {
+                            await dismissTvdbSuggestion(roster.show_id as number);
+                            reloadRoster();
+                        }}
+                    />
+                )}
+                {roster?.namespace_note && <SvNotice tone="warn">› {roster.namespace_note}</SvNotice>}
+
                 {/* Episode ordering (#200) — only when a divergent ordering exists. */}
                 {roster?.ordering_available && roster?.ordering_diverges && roster.ordering_options && (
                     <div style={{ marginBottom: 24 }}>
@@ -1040,8 +1273,13 @@ function ReviewQueue() {
                         </div>
                         <OrderingSelector
                             options={roster.ordering_options}
-                            current={roster.current_ordering ?? 'aired'}
+                            current={effectiveOrdering(roster)}
                             onChange={handleOrderingChange}
+                            reselectable={
+                                roster.current_ordering === 'tvdb' && roster.episode_source !== 'tvdb'
+                                    ? 'aired'
+                                    : undefined
+                            }
                         />
                     </div>
                 )}
@@ -1049,8 +1287,9 @@ function ReviewQueue() {
                 {/* Season roster */}
                 {roster?.available && rosterEpisodes.length > 0 && (
                     <div style={{ marginBottom: 24 }}>
-                        <div style={{ marginBottom: 12 }}>
+                        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
                             <SvLabel>Season roster — coverage across this disc</SvLabel>
+                            {roster.episode_source === 'tvdb' && <TvdbAttribution />}
                         </div>
                         {missingRefCodes.length > 0 && (
                             <div
@@ -1267,7 +1506,9 @@ function ReviewQueue() {
                         )}
                     </div>
                 </div>
+                </>)}
             </div>
+            {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
         </SvAtmosphere>
     );
 }

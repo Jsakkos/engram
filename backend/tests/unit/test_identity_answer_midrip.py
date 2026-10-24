@@ -496,7 +496,8 @@ class TestResumeMoviePostRip:
         refreshed = await _get_job(job.id)
         assert refreshed.state == JobState.COMPLETED
         assert refreshed.final_path == str(out_file)
-        assert organize_calls == [(tmp_path, "UNREADABLE", "Inception")]
+        # The selected title's own file, not the staging folder (#814).
+        assert organize_calls == [(ripped, "UNREADABLE", "Inception")]
         assert (await _get_title(title.id)).state == TitleState.COMPLETED
 
     async def test_multi_title_goes_through_feature_resolution(self, tmp_path, monkeypatch):
@@ -524,3 +525,128 @@ class TestResumeMoviePostRip:
 
         resolve.assert_awaited_once()
         organize.assert_not_called()
+
+
+@pytest.mark.unit
+class TestPostRipDetectionSeesImportedContainers:
+    """An imported .mp4/.ts job is post-rip: answering it must never start a rip."""
+
+    async def test_re_identify_mp4_only_staging_job_reruns_matching(self, ws_calls, tmp_path):
+        (tmp_path / "Frasier - 01.mp4").write_text("")
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED, staging=str(tmp_path), identity_prompt_json=None
+        )
+        coord = _coord()
+
+        result = await coord.re_identify(job.id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+        assert result["has_ripped"] is True
+        assert result["resume_action"] == "rerun_matching"
+        assert (await _get_job(job.id)).state == JobState.MATCHING
+
+    async def test_set_name_on_ts_staging_job_goes_to_matching(self, ws_calls, tmp_path):
+        (tmp_path / "recording.ts").write_text("")
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED,
+            staging=str(tmp_path),
+            identity_prompt_json=None,
+            review_reason="Disc label unreadable",
+        )
+        coord = _coord()
+
+        result = await coord.set_name_and_resume(job.id, "Eureka", "tv", season=1)
+
+        assert result["resume_action"] == "dispatch_matches"
+        assert (await _get_job(job.id)).state == JobState.MATCHING
+
+    async def test_manifest_files_in_subfolders_count_as_staged(self, ws_calls, tmp_path):
+        # A multi-disc import's staging_path is the files' common ancestor, which
+        # holds no media itself: the manifest is what says the files exist.
+        f = tmp_path / "Disc 1" / "e1.mp4"
+        f.parent.mkdir()
+        f.write_text("")
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED,
+            staging=str(tmp_path),
+            identity_prompt_json=None,
+            import_manifest_json=json.dumps({"root": str(tmp_path), "files": [str(f)]}),
+        )
+        coord = _coord()
+
+        result = await coord.re_identify(job.id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+        assert result["has_ripped"] is True
+        assert result["resume_action"] == "rerun_matching"
+
+
+@pytest.mark.unit
+class TestFullyFiledDiscIsNotRippedAgain:
+    """#774: once every track is filed, staging is empty, but the disc was still
+    ripped (and ejected). An identity answer must re-match, never start a rip."""
+
+    async def _seed_filed_job(self, tmp_path):
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED, staging=str(tmp_path), identity_prompt_json=None
+        )
+        async with _unit_session_factory() as session:
+            for index in (0, 1):
+                session.add(
+                    DiscTitle(
+                        job_id=job.id,
+                        title_index=index,
+                        duration_seconds=1380,
+                        state=TitleState.COMPLETED,
+                        output_filename=str(tmp_path / f"disc_t0{index}.mkv"),
+                        organized_to=f"/library/TV/Frasier/Season 01/S01E0{index + 1}.mkv",
+                    )
+                )
+            await session.commit()
+        return job
+
+    async def test_re_identify_reruns_matching(self, ws_calls, tmp_path):
+        job = await self._seed_filed_job(tmp_path)
+        coord = _coord()
+
+        result = await coord.re_identify(job.id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+        assert result["has_ripped"] is True
+        assert result["resume_action"] == "rerun_matching"
+        assert (await _get_job(job.id)).state == JobState.MATCHING
+
+    async def test_set_name_dispatches_matches(self, ws_calls, tmp_path):
+        job = await self._seed_filed_job(tmp_path)
+        coord = _coord()
+
+        result = await coord.set_name_and_resume(job.id, "Frasier", "tv", season=1)
+
+        assert result["resume_action"] == "dispatch_matches"
+        assert (await _get_job(job.id)).state == JobState.MATCHING
+
+    async def test_interrupted_rip_does_not_start_a_full_rip(self, ws_calls, tmp_path):
+        """A track that failed mid-rip left no file, but the rip did start: same
+        rule as start_rip_refusal (#710), so a resume never starts a second full
+        rip that the Start rip button would refuse."""
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED, staging=str(tmp_path), identity_prompt_json=None
+        )
+        await _add_title(job.id, 0, TitleState.FAILED)
+        await _add_title(job.id, 1, TitleState.PENDING)
+        coord = _coord()
+
+        result = await coord.re_identify(job.id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+        assert result["has_ripped"] is True
+        assert result["resume_action"] == "rerun_matching"
+
+    async def test_pending_titles_with_empty_staging_still_rip(self, ws_calls, tmp_path):
+        """Pre-rip review: titles never left PENDING, so a rip is still correct."""
+        job = await _seed_job(
+            state=JobState.REVIEW_NEEDED, staging=str(tmp_path), identity_prompt_json=None
+        )
+        await _add_title(job.id, 0, TitleState.PENDING)
+        coord = _coord()
+
+        result = await coord.re_identify(job.id, "Frasier", "tv", season=1, tmdb_id=195241)
+
+        assert result["has_ripped"] is False
+        assert result["resume_action"] == "start_rip"

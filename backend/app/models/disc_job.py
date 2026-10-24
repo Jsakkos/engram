@@ -1,5 +1,7 @@
 """DiscJob model - the core state machine for disc processing."""
 
+import json
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -44,6 +46,58 @@ class TitleState(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"  # User skipped this track before ripping; excluded, not a failure
+
+
+# Title states that mean "MakeMKV has not touched this track yet".
+_PRE_RIP_TITLE_STATES = frozenset({TitleState.PENDING, TitleState.SKIPPED})
+
+
+def any_title_ripped(titles: Iterable["DiscTitle"]) -> bool:
+    """Whether MakeMKV has produced any of these titles, filed or not.
+
+    Staging alone cannot answer this: once every track is organized into the
+    library, staging is empty although the disc was ripped and ejected (#774).
+
+    A title interrupted mid-rip (RIPPING or FAILED, no file) counts as ripped,
+    the same rule ``start_rip_refusal`` applies: a resume must not start a
+    second full rip that the Start rip button would refuse. Such a job recovers
+    through per-title re-rip.
+    """
+    return any(
+        t.state not in _PRE_RIP_TITLE_STATES or t.output_filename or t.organized_to for t in titles
+    )
+
+
+def start_rip_refusal(job: "DiscJob", titles: Iterable["DiscTitle"]) -> str | None:
+    """Why a full rip may not start for this job, or None when it may.
+
+    REVIEW_NEEDED covers both a pre-rip review (name prompt, unclear movie vs
+    TV) and a post-rip one (low-confidence match, file conflict); the state
+    alone cannot tell them apart. This is the one place that does, and both
+    ``POST /api/jobs/{id}/start`` (via ``JobManager.start_ripping``) and the
+    review page's Start rip button (``canStartRip``) gate on it (#710). Either
+    way the disc has already left the drive, so a second full rip fails the job
+    or rips whatever disc is now inserted under this job's identity.
+
+    - Any title has left PENDING/SKIPPED: the disc was ripped. Partially
+      ripped jobs recover through per-title re-rip instead. Deselected titles
+      count too: movie extras are deselected AFTER they are ripped, and before
+      a rip a deselected title is only ever PENDING or SKIPPED anyway.
+    - A completed backup: the drive was released when the copy finished, even
+      though every title can still be PENDING (an unreconcilable backup
+      re-scan parks here before any rip).
+    """
+    if any(t.state not in _PRE_RIP_TITLE_STATES for t in titles):
+        return (
+            "This disc has already been ripped, so it cannot be started again. "
+            "Finish the review, or re-rip individual tracks instead."
+        )
+    if job.backup_status == "completed":
+        return (
+            "This disc has already been copied to a backup and released from the "
+            "drive, so it cannot be started again. Re-import the backup to continue."
+        )
+    return None
 
 
 class DiscJob(SQLModel, table=True):
@@ -158,6 +212,21 @@ class DiscJob(SQLModel, table=True):
     # on the job card so degraded heuristic-only results name their cause (#243).
     # None when TMDB participated normally.
     tmdb_degraded_reason: str | None = None
+    # Which episode numbering this job's matched_episode codes, references and
+    # filenames use (TheTVDB spec 2026-10-08). "tmdb" is the canonical default;
+    # "tvdb" means TheTVDB official order. server_default so rows that predate
+    # the column read "tmdb", not NULL.
+    episode_namespace: str = Field(
+        default="tmdb", sa_column_kwargs={"server_default": text("'tmdb'")}
+    )
+    # JSON {"season", "tmdb", "tvdb"} when TheTVDB numbers this season
+    # differently; drives the review-page suggestion. None = no divergence known.
+    tvdb_divergence_json: str | None = None
+    # Prose shown on review/history when a TVDB job had to fall back to TMDB.
+    episode_namespace_note: str | None = None
+    # JSON {"S01E04": "S01E02", ...}: TVDB code -> TMDB code, 1:1 pairs only.
+    # Persisted so contribution/export translate without a network call.
+    episode_crosswalk_json: str | None = None
 
     # Title information (JSON stored as string for simplicity)
     titles_json: str | None = None  # List of titles with durations
@@ -230,6 +299,14 @@ class DiscTitle(SQLModel, table=True):
     segment_count: int = 0
     segment_map: str | None = None  # e.g., "1,2,3"
 
+    # Disc stream languages from the MakeMKV scan (SINFO attr 3), JSON lists of
+    # normalized codes in stream order, null for an untagged stream (issue #241).
+    # None = not known (legacy rows, imports). They describe the DISC: the ripped
+    # file decides what can be transcribed, because MakeMKV's language settings
+    # may leave streams out. Evidence for review messages, not routing authority.
+    audio_languages: str | None = Field(default=None)
+    subtitle_languages: str | None = Field(default=None)
+
     # Organization tracking
     organized_from: str | None = None  # Source filename
     organized_to: str | None = None  # Destination path
@@ -252,3 +329,13 @@ class DiscTitle(SQLModel, table=True):
     # stays CANONICAL (aired order); these only describe the filename projection.
     episode_ordering: str | None = Field(default=None)  # e.g. "dvd"; None = aired/default
     episode_group_id: str | None = Field(default=None)  # TMDB group id used, if any
+
+    def audio_language_list(self) -> list[str | None] | None:
+        """The scan's audio languages, or None when unknown or unreadable."""
+        try:
+            parsed = json.loads(self.audio_languages) if self.audio_languages else None
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not isinstance(parsed, list) or not all(v is None or isinstance(v, str) for v in parsed):
+            return None
+        return parsed

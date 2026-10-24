@@ -1,8 +1,6 @@
 import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { toast } from 'sonner';
 import { Inspector } from './Inspector';
 import type { DiscTitle } from '../../types';
 import type { LLMFeedback } from './llmFeedback';
@@ -164,7 +162,9 @@ describe('Inspector: organize failure (#563)', () => {
 });
 
 describe('Inspector — external player controls', () => {
-    it('renders both controls when the track has a ripped file', () => {
+    // Behaviour of the controls themselves is covered in PlayerControls.test.tsx;
+    // this only pins that the TV inspector still mounts them.
+    it('renders the controls when the track has a ripped file', () => {
         renderInspector({
             title: makeTitle({ output_filename: 'C:\\staging\\title_01.mkv' }),
         });
@@ -173,115 +173,12 @@ describe('Inspector — external player controls', () => {
         expect(screen.getByRole('button', { name: /copy stream url/i })).toBeInTheDocument();
     });
 
-    it('renders the controls for an organized track with no staging copy', () => {
-        renderInspector({
-            title: makeTitle({
-                output_filename: null,
-                organized_to: 'C:\\tv\\Show\\Season 01\\Show - S01E01.mkv',
-            }),
-        });
-
-        expect(screen.getByRole('link', { name: /open in player/i })).toBeInTheDocument();
-    });
-
     it('hides the controls when the track has no file at all', () => {
         renderInspector({
             title: makeTitle({ output_filename: null, organized_to: null }),
         });
 
         expect(screen.queryByRole('link', { name: /open in player/i })).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /copy stream url/i })).not.toBeInTheDocument();
-    });
-
-    it('points the player link at the playlist endpoint for this job and title', () => {
-        renderInspector({
-            title: makeTitle({
-                id: 42,
-                job_id: 7,
-                output_filename: 'C:\\staging\\title_01.mkv',
-            }),
-        });
-
-        const link = screen.getByRole('link', { name: /open in player/i });
-        expect(link).toHaveAttribute('href', '/api/jobs/7/titles/42/playlist.m3u');
-    });
-
-    it('opens the player link in a new tab so an error cannot discard review state', () => {
-        renderInspector({
-            title: makeTitle({ output_filename: 'C:\\staging\\title_01.mkv' }),
-        });
-
-        const link = screen.getByRole('link', { name: /open in player/i });
-        expect(link).toHaveAttribute('target', '_blank');
-        expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
-    });
-
-    it('copies an absolute media URL to the clipboard', async () => {
-        const writeText = vi.fn().mockResolvedValue(undefined);
-        const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-        Object.assign(navigator, { clipboard: { writeText } });
-
-        try {
-            renderInspector({
-                title: makeTitle({
-                    id: 42,
-                    job_id: 7,
-                    output_filename: 'C:\\staging\\title_01.mkv',
-                }),
-            });
-
-            await userEvent.click(screen.getByRole('button', { name: /copy stream url/i }));
-
-            expect(writeText).toHaveBeenCalledWith(
-                `${window.location.origin}/api/jobs/7/titles/42/media`,
-            );
-        } finally {
-            if (originalClipboard) {
-                Object.defineProperty(navigator, 'clipboard', originalClipboard);
-            } else {
-                delete (navigator as { clipboard?: unknown }).clipboard;
-            }
-        }
-    });
-
-    it('shows an error toast with the URL when the clipboard is unavailable', async () => {
-        // Real-world target case: plain-HTTP LAN access is a non-secure context,
-        // where `navigator.clipboard` is undefined and the call throws
-        // synchronously. The copy control must never fail silently.
-        const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
-        delete (navigator as { clipboard?: unknown }).clipboard;
-
-        try {
-            renderInspector({
-                title: makeTitle({
-                    id: 42,
-                    job_id: 7,
-                    output_filename: 'C:\\staging\\title_01.mkv',
-                }),
-            });
-
-            await userEvent.click(screen.getByRole('button', { name: /copy stream url/i }));
-
-            expect(toast.error).toHaveBeenCalledWith(
-                expect.stringContaining(`${window.location.origin}/api/jobs/7/titles/42/media`),
-            );
-        } finally {
-            if (originalClipboard) {
-                Object.defineProperty(navigator, 'clipboard', originalClipboard);
-            } else {
-                delete (navigator as { clipboard?: unknown }).clipboard;
-            }
-        }
-    });
-
-    it('shows the standing hint whenever the controls render', () => {
-        // The hint is permanent, not error-triggered: a failed .m3u handoff
-        // gives the page no signal to react to.
-        renderInspector({
-            title: makeTitle({ output_filename: 'C:\\staging\\title_01.mkv' }),
-        });
-
-        expect(screen.getByText(/open network stream/i)).toBeInTheDocument();
     });
 });
 
@@ -308,6 +205,36 @@ describe('Inspector: review reason notice', () => {
         });
         expect(
             screen.getByText((content) => content.includes('appears to contain 3 episodes')),
+        ).toBeInTheDocument();
+    });
+
+    it('shows why a half-hour-numbered match was held', () => {
+        const message =
+            'The reference subtitles for this season are numbered differently from TMDB (usually by broadcast half-hour instead of by segment), so S02E06 may name the wrong episode. Check it and assign the TMDB episode(s) this track holds.';
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({ error: 'numbering_divergent', message }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('numbered differently from TMDB')),
+        ).toBeInTheDocument();
+    });
+
+    it('shows why a non-English track was not matched', () => {
+        const message =
+            "This track's only audio is Japanese, and Engram matches episodes by English dialogue, so it could not be matched automatically. Assign the episode by hand.";
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({
+                    error: 'audio_language_unsupported',
+                    audio_languages: ['ja'],
+                    message,
+                }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('only audio is Japanese')),
         ).toBeInTheDocument();
     });
 

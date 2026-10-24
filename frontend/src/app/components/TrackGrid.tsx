@@ -121,9 +121,29 @@ function SourceChip({ source }: { source: string }) {
 
 export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus, onSkipTrack, onUnskipTrack }: TrackGridProps) {
   const passInfo = parsePassInfo(conflictStatus);
+  const autoSkipped = tracks.filter(t => t.autoSkipReason).length;
   return (
     <div data-testid="sv-track-grid" style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <SvLabel>TRACK STATUS</SvLabel>
+
+      {/* A wrong auto-skip is only cheap to undo while the disc is still in the
+          drive, so say it happened at card level, not just on each muted track. */}
+      {autoSkipped > 0 && (
+        <div
+          data-testid="auto-skip-note"
+          style={{
+            fontFamily: sv.mono,
+            fontSize: 10,
+            color: sv.inkDim,
+            padding: "6px 10px",
+            border: `1px solid ${sv.line}`,
+            background: `${sv.bg2}66`,
+          }}
+        >
+          Auto-skipped {autoSkipped} short track{autoSkipped === 1 ? "" : "s"} (extras policy: skip).
+          {onUnskipTrack && " Un-skip any you want ripped."}
+        </div>
+      )}
 
       <div
         style={{
@@ -343,22 +363,41 @@ export const TrackGrid = React.memo(function TrackGrid({ tracks, conflictStatus,
               {/* Skipped: opted out of the rip — muted, struck-through mark so the
                   card visually recedes from active tracks. */}
               {track.state === "skipped" && (
-                <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span aria-hidden style={{ fontFamily: sv.mono, fontSize: 10, color: `${sv.inkDim}99` }}>
-                    ✕
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: sv.mono,
-                      fontSize: 10,
-                      color: sv.inkDim,
-                      letterSpacing: "0.18em",
-                      textDecoration: "line-through",
-                      textDecorationColor: `${sv.inkDim}66`,
-                    }}
-                  >
-                    SKIPPED, WILL NOT RIP
-                  </span>
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span aria-hidden style={{ fontFamily: sv.mono, fontSize: 10, color: `${sv.inkDim}99` }}>
+                      ✕
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 10,
+                        color: sv.inkDim,
+                        letterSpacing: "0.18em",
+                        textDecoration: "line-through",
+                        textDecorationColor: `${sv.inkDim}66`,
+                      }}
+                    >
+                      {track.autoSkipReason ? "AUTO-SKIPPED, WILL NOT RIP" : "SKIPPED, WILL NOT RIP"}
+                    </span>
+                  </div>
+                  {track.autoSkipReason && (
+                    <div
+                      data-testid={`auto-skip-reason-${track.id}`}
+                      title={track.autoSkipReason}
+                      style={{
+                        fontFamily: sv.mono,
+                        fontSize: 10,
+                        color: `${sv.inkDim}cc`,
+                        marginTop: 3,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {track.autoSkipReason}
+                    </div>
+                  )}
                 </div>
               )}
 

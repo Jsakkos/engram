@@ -77,6 +77,19 @@ class AiValidationRequest(BaseModel):
     base_url: str | None = None
 
 
+class OpenSubtitlesValidationRequest(BaseModel):
+    """Request model for the OpenSubtitles credential test (#723).
+
+    Every field is optional and blank means "use the saved value", field by
+    field, so a user can retest after changing only the password without
+    retyping the key. Secrets are accepted but never returned or logged.
+    """
+
+    api_key: str | None = None
+    username: str | None = None
+    password: str | None = None
+
+
 class ValidationResponse(BaseModel):
     """Response model for validation endpoints."""
 
@@ -702,6 +715,125 @@ async def validate_tmdb(request: TmdbValidationRequest) -> ValidationResponse:
         )
     except Exception as e:
         return ValidationResponse(valid=False, error=f"Validation failed: {str(e)}")
+
+
+_OS_API_BASE = "https://api.opensubtitles.com/api/v1"
+
+
+def _opensubtitles_http_client() -> httpx.AsyncClient:
+    """Factory seam so tests script the provider and never reach the real API."""
+    return httpx.AsyncClient(timeout=10.0)
+
+
+@router.post("/validate/opensubtitles", response_model=ValidationResponse)
+async def validate_opensubtitles(
+    request: OpenSubtitlesValidationRequest,
+    _: None = Depends(require_localhost_or_lan),
+) -> ValidationResponse:
+    """Log in to OpenSubtitles with the entered (or saved) credentials (#723).
+
+    Tells the failure modes apart, because each has a different fix: a wrong
+    username or password (401), a rejected API key (403), a rate limit (429), an
+    exhausted daily download quota (login succeeds but ``remaining_downloads`` is
+    0), and a network problem. Gated like the AI test since it makes a real
+    outbound request with the user's credentials. The password and key are only
+    ever sent to OpenSubtitles; nothing here echoes or logs them, and provider
+    error bodies are not relayed because they can quote the submitted values.
+    """
+    from app import __version__
+
+    api_key = (request.api_key or "").strip()
+    username = (request.username or "").strip()
+    password = request.password or ""
+    if not (api_key and username and password):
+        from app.services.config_service import get_config
+
+        config = None
+        try:
+            config = await get_config()
+        except Exception:  # noqa: BLE001 — a validator must never 500
+            logger.warning("OpenSubtitles validation could not read the stored config")
+        if config is not None:
+            api_key = api_key or (getattr(config, "opensubtitles_api_key", "") or "").strip()
+            username = username or (getattr(config, "opensubtitles_username", "") or "").strip()
+            password = password or (getattr(config, "opensubtitles_password", "") or "")
+
+    if not api_key:
+        return ValidationResponse(valid=False, error="No API key entered or saved")
+    if not username or not password:
+        return ValidationResponse(valid=False, error="No username or password entered or saved")
+
+    headers = {
+        "Api-Key": api_key,
+        # OpenSubtitles requires "AppName vX.Y.Z".
+        "User-Agent": f"Engram v{__version__}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with _opensubtitles_http_client() as http:
+            login = await http.post(
+                f"{_OS_API_BASE}/login",
+                headers=headers,
+                json={"username": username, "password": password},
+            )
+            if login.status_code == 401:
+                return ValidationResponse(
+                    valid=False, error="OpenSubtitles rejected the username or password"
+                )
+            if login.status_code == 403:
+                return ValidationResponse(
+                    valid=False,
+                    error=(
+                        "OpenSubtitles rejected the API key. Check it is an API consumer "
+                        "key from opensubtitles.com, not your account password"
+                    ),
+                )
+            if login.status_code == 429:
+                return ValidationResponse(
+                    valid=False,
+                    error="OpenSubtitles is rate limiting this key. Wait a minute and retry",
+                )
+            if login.status_code != 200:
+                return ValidationResponse(
+                    valid=False, error=f"OpenSubtitles returned status {login.status_code}"
+                )
+
+            # Best effort: the login itself proves the credentials, the quota is a
+            # bonus, so a failure here must not turn a good login into an error.
+            remaining: int | None = None
+            try:
+                token = login.json().get("token")
+                if token:
+                    infos = await http.get(
+                        f"{_OS_API_BASE}/infos/user",
+                        headers={**headers, "Authorization": f"Bearer {token}"},
+                    )
+                    if infos.status_code == 200:
+                        value = (infos.json().get("data") or {}).get("remaining_downloads")
+                        remaining = int(value) if value is not None else None
+            except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+                logger.debug("OpenSubtitles quota lookup failed", exc_info=True)
+    except httpx.TimeoutException:
+        return ValidationResponse(valid=False, error="OpenSubtitles timed out (10s)")
+    except httpx.HTTPError:
+        return ValidationResponse(
+            valid=False, error="Cannot reach OpenSubtitles. Check your internet connection"
+        )
+    except Exception as e:  # noqa: BLE001 — a validator must never 500
+        logger.warning("OpenSubtitles validation raised %s", type(e).__name__)
+        return ValidationResponse(valid=False, error="Validation failed unexpectedly")
+
+    if remaining == 0:
+        return ValidationResponse(
+            valid=False,
+            error=(
+                "Login works, but today's download quota is used up. "
+                "It resets daily; subtitle downloads from OpenSubtitles will fail until then"
+            ),
+        )
+    detail = "Logged in" if remaining is None else f"Logged in, {remaining} downloads left today"
+    return ValidationResponse(valid=True, version=detail)
 
 
 @router.post("/validate/discord-template", response_model=ValidationResponse)

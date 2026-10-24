@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { transformJobToDiscData } from './adapters';
+import { transformJobToDiscData, withoutIdentityReview } from './adapters';
 import type { DiscTitle, Job, TitleState } from './index';
 
 /** Minimal valid Job; override only the fields a test cares about. */
@@ -298,5 +298,56 @@ describe('transformJobToDiscData — subtitle enrichment for terminal states', (
     );
     expect(disc.subtitle).toContain('THE_OFFICE_S2D1');
     expect(disc.subtitle).not.toContain('E01');
+  });
+});
+
+describe('transformJobToDiscData: auto-skipped short tracks', () => {
+  const AUTO = JSON.stringify({
+    reason: 'Short track (6m): under the 38m TMDB episode runtime',
+    skipped: true,
+    auto_skipped: true,
+  });
+
+  it('surfaces the backend reason on an auto-skipped track', () => {
+    const disc = transformJobToDiscData(makeJob({ state: 'ripping' }), [
+      makeTitle('skipped', 1, { match_details: AUTO }),
+    ]);
+    expect(disc.tracks?.[0].autoSkipReason).toBe(
+      'Short track (6m): under the 38m TMDB episode runtime',
+    );
+  });
+
+  it('leaves a manual skip unmarked', () => {
+    const manual = JSON.stringify({ reason: 'Skipped by user', skipped: true });
+    const disc = transformJobToDiscData(makeJob({ state: 'ripping' }), [
+      makeTitle('skipped', 1, { match_details: manual }),
+    ]);
+    expect(disc.tracks?.[0].autoSkipReason).toBeUndefined();
+  });
+
+  it('clears once un-skipped, even though the stale match_details survives the WS merge', () => {
+    const disc = transformJobToDiscData(makeJob({ state: 'ripping' }), [
+      makeTitle('pending', 1, { match_details: AUTO }),
+    ]);
+    expect(disc.tracks?.[0].autoSkipReason).toBeUndefined();
+  });
+});
+
+describe('withoutIdentityReview — heuristic-only mode', () => {
+  const identityDisc = transformJobToDiscData(
+    makeJob({ tmdb_id: null }),
+    [makeTitle('pending', 1)],
+  );
+
+  it('clears identityReview so the card offers Review when TMDB is not configured', () => {
+    expect(identityDisc.identityReview).toBe(true);
+    const [relaxed] = withoutIdentityReview([identityDisc]);
+    expect(relaxed.identityReview).toBe(false);
+  });
+
+  it('leaves discs untouched (same reference) when none carry identityReview', () => {
+    const plain = { ...identityDisc, identityReview: false };
+    const input = [plain];
+    expect(withoutIdentityReview(input)[0]).toBe(plain);
   });
 });

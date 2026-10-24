@@ -38,15 +38,31 @@ def get_makemkv_log_dir(job_id: int) -> Path:
     return Path.home() / ".engram" / "logs" / "makemkv" / str(job_id)
 
 
+def _tvdb_safe_code(job: DiscJob, code: str | None) -> str | None:
+    """The TMDB code TheDiscDB should receive, or None for a TheTVDB-numbered
+    title with no 1:1 TMDB equivalent (it is then exported without an episode)."""
+    from app.core.episode_namespace import to_tmdb_code
+
+    return to_tmdb_code(job.episode_namespace, job.episode_crosswalk_json, code)
+
+
+_UNSET = object()
+
+
 def _derive_title_type(
     title: DiscTitle,
     content_type: ContentType,
     discdb_mappings: list[dict] | None,
+    episode_code: str | None | object = _UNSET,
 ) -> str | None:
     """Derive the title type for export.
 
     Uses DiscDB mappings if available, otherwise infers from Engram data.
+    ``episode_code`` is the TMDB-numbered code (see ``_tvdb_safe_code``), not the raw
+    ``matched_episode``, so an untranslatable TheTVDB title is not typed "Episode".
     """
+    if episode_code is _UNSET:
+        episode_code = title.matched_episode
     # Check DiscDB mappings first
     if discdb_mappings:
         for mapping in discdb_mappings:
@@ -56,7 +72,7 @@ def _derive_title_type(
     # Infer from Engram data
     if title.is_extra:
         return "Extra"
-    if content_type == ContentType.TV and title.matched_episode:
+    if content_type == ContentType.TV and episode_code:
         return "Episode"
     if content_type == ContentType.MOVIE and title.is_selected:
         return "MainMovie"
@@ -106,7 +122,8 @@ def generate_export(
         if match_source:
             match_sources.append(match_source)
 
-        season, episode = discdb_episode_fields(title.matched_episode)
+        export_code = _tvdb_safe_code(job, title.matched_episode)
+        season, episode = discdb_episode_fields(export_code)
 
         title_entries.append(
             {
@@ -117,7 +134,9 @@ def generate_export(
                 "chapter_count": title.chapter_count,
                 "segment_count": title.segment_count,
                 "segment_map": title.segment_map,
-                "title_type": _derive_title_type(title, job.content_type, discdb_mappings),
+                "title_type": _derive_title_type(
+                    title, job.content_type, discdb_mappings, export_code
+                ),
                 "season": season,
                 "episode": episode,
                 "match_confidence": title.match_confidence,
@@ -148,6 +167,7 @@ def generate_export(
         "identification": {
             "tmdb_id": job.tmdb_id,
             "detected_title": job.detected_title,
+            # Exported as-is for TheTVDB-numbered jobs: a season, not an episode code.
             "detected_season": job.detected_season,
             "classification_source": job.classification_source,
             "classification_confidence": job.classification_confidence,

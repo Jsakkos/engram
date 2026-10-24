@@ -4,12 +4,16 @@ import { QRCodeSVG } from 'qrcode.react';
 import { FEATURES } from '../config/constants';
 import { EngramSelect } from './ui/EngramSelect';
 import { SvActionButton } from '../app/components/synapse/SvActionButton';
+import { ConfirmModal } from '../app/components/DiscCard/ActionButtons';
 import { BootstrapLibraryFlow } from './BootstrapLibraryFlow';
 import GpuAccelerationSetting from './GpuAccelerationSetting';
+import SettingsTransferSection from './SettingsTransferSection';
 import BackgroundEffectsSetting from './BackgroundEffectsSetting';
 import { PathStatusHint } from './PathStatusHint';
 import { requestTmdbValidation } from '../utils/tmdbValidation';
 import { requestAiValidation } from '../utils/aiValidation';
+import RestartControls from './RestartControls';
+import { requestOpenSubtitlesValidation } from '../utils/opensubtitlesValidation';
 import { fetchLocalModels, isLocalProvider, localProviderDefaultUrl } from '../utils/localModels';
 import { requestDiscordTemplateValidation } from '../utils/discordTemplateValidation';
 import { requestDiscordWebhookTest } from '../utils/discordWebhookTest';
@@ -48,6 +52,8 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
     { key: 'metadata', label: 'Metadata & Subtitles', step: 3 },
     { key: 'sharing', label: 'Data Sharing', step: 4 },
     { key: 'preferences', label: 'Preferences', step: 5 },
+    // Settings mode only: the onboarding stepper stops at step 5 (STEP_LABELS).
+    { key: 'transfer', label: 'Import & Export', step: 6 },
 ];
 
 // DOM id of the GPU control wrapper, used as a deep-link scroll target.
@@ -161,6 +167,7 @@ interface ConfigData {
     stagingCleanupPolicy: string;
     stagingCleanupDays: number;
     extrasPolicy: string;
+    makemkvMinTitleLength: number;
     alwaysReview: boolean;
     backupBeforeRip: boolean;
     backupPath: string;
@@ -189,6 +196,7 @@ interface ConfigData {
     opensubtitlesApiKey: string;
     opensubtitlesUsername: string;
     opensubtitlesPassword: string;
+    tvdbApiKey: string;
     allowLanAccess: boolean;
     discordWebhookUrl: string;
     discordTemplateCompleted: string;
@@ -228,6 +236,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // Settings mode can deep-link to a section; onboarding always starts at step 1.
     const [step, setStep] = useState(() => (!isOnboarding ? resolveSection(initialSection)?.step : undefined) ?? 1);
     const [isLoading, setIsLoading] = useState(true);
+    // Bumped after a settings import (#731) to re-run the config load below.
+    const [configReloadKey, setConfigReloadKey] = useState(0);
+    const [showOnboardingImport, setShowOnboardingImport] = useState(false);
     // A deep-linked control (e.g. the GPU toggle) to scroll into view once the
     // settings body has rendered. Consumed once.
     const pendingScrollAnchor = useRef<string | null>(
@@ -255,6 +266,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         stagingCleanupPolicy: 'on_success',
         stagingCleanupDays: 7,
         extrasPolicy: 'keep',
+        makemkvMinTitleLength: 120,
         alwaysReview: false,
         backupBeforeRip: false,
         backupPath: '',
@@ -283,6 +295,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         opensubtitlesApiKey: '',
         opensubtitlesUsername: '',
         opensubtitlesPassword: '',
+        tvdbApiKey: '',
         allowLanAccess: false,
         discordWebhookUrl: '',
         discordTemplateCompleted: '',
@@ -296,6 +309,11 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         discordMentionReview: '',
         dashboardBaseUrl: '',
     });
+    // The config as loaded from the server (plus tool auto-detection fills). Dirty
+    // state is the form compared against this, so editing a field back to its
+    // original value is clean again and merely opening a section is not an edit.
+    const [baseline, setBaseline] = useState<ConfigData | null>(null);
+    const [confirmingDiscard, setConfirmingDiscard] = useState(false);
     const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [discordTemplateErrors, setDiscordTemplateErrors] = useState<{completed: string; failed: string; review: string; ripped: string}>({completed: '', failed: '', review: '', ripped: ''});
@@ -304,13 +322,20 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     const [isDetecting, setIsDetecting] = useState(false);
     const [showMakemkvOverride, setShowMakemkvOverride] = useState(false);
     const [showFfmpegOverride, setShowFfmpegOverride] = useState(false);
-    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, ai: boolean, discord: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, ai: false, discord: false});
+    const [savedKeys, setSavedKeys] = useState<{makemkv: boolean, tmdb: boolean, opensubtitles: boolean, tvdb: boolean, ai: boolean, discord: boolean}>({makemkv: false, tmdb: false, opensubtitles: false, tvdb: false, ai: false, discord: false});
+    // Whether some TheTVDB key is usable (a stored override or the built-in one).
+    const [tvdbConfigured, setTvdbConfigured] = useState(false);
     // 'error' ("couldn't check") is deliberately distinct from 'invalid' ("token
     // rejected"): conflating them sent users hunting for a token problem that may
     // not exist (#243). 'error' never counts as validated, but the gate still
     // lets the user continue without TMDB.
     const [tmdbValidation, setTmdbValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string}>({status: 'idle'});
     const [aiValidation, setAiValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', error?: string, model?: string}>({status: 'idle'});
+    // OpenSubtitles login test (#723). Same invalid-vs-error split as the AI test.
+    const [osValidation, setOsValidation] = useState<{status: 'idle' | 'testing' | 'valid' | 'invalid' | 'error', message?: string}>({status: 'idle'});
+    // Set after a save that changed a startup-only setting (#722); the backend
+    // names them in the PUT response, so no list of such settings lives here.
+    const [restartPrompt, setRestartPrompt] = useState<string[] | null>(null);
     const [localModels, setLocalModels] = useState<{models: string[]; error: string | null}>({
         models: [],
         error: null,
@@ -329,6 +354,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     const [tmdbContinueAnyway, setTmdbContinueAnyway] = useState(false);
     const [tmdbGatePrompted, setTmdbGatePrompted] = useState(false);
     const [showBootstrapFlow, setShowBootstrapFlow] = useState(false);
+    // "Custom" is a choice, not something derivable from the formats: picking it while
+    // the formats still equal a preset must stick, or the select snaps back to the preset.
+    // Deliberately sticky: typing a preset-equal format keeps "Custom" until a preset is picked.
+    const [customNamingChosen, setCustomNamingChosen] = useState(false);
+    const namingSelection = customNamingChosen
+        ? 'custom'
+        : (NAMING_PRESETS.find(
+              (p) =>
+                  p.seasonFormat === config.namingSeasonFormat &&
+                  p.episodeFormat === config.namingEpisodeFormat,
+          )?.id ?? 'custom');
 
     const totalSteps = STEP_LABELS.length;
 
@@ -350,6 +386,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         }
     }, [config.allowLanAccess, fetchNetworkInfo]);
 
+    // Either AI feature uses the one provider/key/model below, so the connection
+    // fields show when at least one of them is on (#546).
+    const aiProviderNeeded = config.aiIdentificationEnabled || config.aiEpisodeMatchingEnabled;
+
     // Populate the model dropdown whenever a local provider or its endpoint
     // changes. The fetch doubles as a reachability check, which is why the local
     // path does not need a separate Test button to tell the user their server is
@@ -362,7 +402,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // `cancelled` flag then guards the state update for a reply that lands after
     // the inputs changed again.
     useEffect(() => {
-        if (!config.aiIdentificationEnabled || !isLocalProvider(config.aiProvider)) {
+        if (!aiProviderNeeded || !isLocalProvider(config.aiProvider)) {
             setLocalModels({models: [], error: null});
             return;
         }
@@ -377,7 +417,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [config.aiIdentificationEnabled, config.aiProvider, config.aiLocalBaseUrl]);
+    }, [aiProviderNeeded, config.aiProvider, config.aiLocalBaseUrl]);
 
     // Load existing config on mount
     useEffect(() => {
@@ -393,11 +433,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     makemkv: data.makemkv_key === '***',
                     tmdb: data.tmdb_api_key === '***',
                     opensubtitles: data.opensubtitles_api_key === '***',
+                    tvdb: data.tvdb_api_key === '***',
                     ai: data.ai_api_key === '***',
                     discord: data.discord_webhook_url === '***',
                 });
+                setTvdbConfigured(data.tvdb_configured === true);
                 // Note: API keys are redacted as "***" for security
-                setConfig({
+                const loaded: ConfigData = {
                     stagingPath: data.staging_path || '',
                     makemkvPath: data.makemkv_path || '',
                     makemkvKey: data.makemkv_key === '***' ? '' : (data.makemkv_key || ''),
@@ -419,6 +461,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     stagingCleanupPolicy: data.staging_cleanup_policy || 'on_success',
                     stagingCleanupDays: data.staging_cleanup_days ?? 7,
                     extrasPolicy: data.extras_policy || 'keep',
+                    makemkvMinTitleLength: data.makemkv_min_title_length ?? 120,
                     alwaysReview: data.always_review ?? false,
                     backupBeforeRip: data.backup_before_rip ?? false,
                     backupPath: data.backup_path || '',
@@ -448,6 +491,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     opensubtitlesApiKey: data.opensubtitles_api_key === '***' ? '' : (data.opensubtitles_api_key || ''),
                     opensubtitlesUsername: data.opensubtitles_username || '',
                     opensubtitlesPassword: data.opensubtitles_password === '***' ? '' : (data.opensubtitles_password || ''),
+                    tvdbApiKey: data.tvdb_api_key === '***' ? '' : (data.tvdb_api_key || ''),
                     allowLanAccess: data.allow_lan_access ?? false,
                     discordWebhookUrl: data.discord_webhook_url === '***' ? '' : (data.discord_webhook_url || ''),
                     discordTemplateCompleted: data.discord_template_completed || '',
@@ -460,7 +504,9 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     discordNotifyRipped: data.discord_notify_ripped ?? false,
                     discordMentionReview: data.discord_mention_review || '',
                     dashboardBaseUrl: data.dashboard_base_url || '',
-                });
+                };
+                setConfig(loaded);
+                setBaseline(loaded);
             } catch (error) {
                 console.error('Failed to load config:', error);
             } finally {
@@ -468,7 +514,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             }
         };
         loadConfig();
-    }, []);
+    }, [configReloadKey]);
 
     // Live Discord template validation, debounced. The real enforcement is
     // server-side (PUT /api/config re-validates before persisting) — this is
@@ -553,11 +599,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             setToolDetection(data);
 
             // Update config paths from detection if currently empty
+            // Detection fills are not user edits, so they move the baseline too.
+            // Otherwise merely visiting the Tools section would arm the discard prompt.
+            const fillDetected = (field: 'makemkvPath' | 'ffmpegPath', path: string) => {
+                setConfig(prev => (prev[field] ? prev : { ...prev, [field]: path }));
+                setBaseline(prev => (prev && !prev[field] ? { ...prev, [field]: path } : prev));
+            };
             if (data.makemkv.found && data.makemkv.path && !config.makemkvPath) {
-                setConfig(prev => ({ ...prev, makemkvPath: data.makemkv.path! }));
+                fillDetected('makemkvPath', data.makemkv.path);
             }
             if (data.ffmpeg.found && data.ffmpeg.path && !config.ffmpegPath) {
-                setConfig(prev => ({ ...prev, ffmpegPath: data.ffmpeg.path! }));
+                fillDetected('ffmpegPath', data.ffmpeg.path);
             }
         } catch (error) {
             console.error('Tool detection failed:', error);
@@ -568,6 +620,21 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
 
     const handleInputChange = (field: keyof ConfigData, value: string | boolean | number) => {
         setConfig(prev => ({ ...prev, [field]: value }));
+        // An earlier result is about the old credentials; don't leave it standing.
+        if (field === 'opensubtitlesApiKey' || field === 'opensubtitlesUsername' || field === 'opensubtitlesPassword') {
+            setOsValidation({status: 'idle'});
+        }
+    };
+
+    const handleTestOpenSubtitles = async () => {
+        setOsValidation({status: 'testing'});
+        const result = await requestOpenSubtitlesValidation(
+            config.opensubtitlesApiKey,
+            config.opensubtitlesUsername,
+            config.opensubtitlesPassword,
+        );
+        if (result.status === 'valid') setOsValidation({status: 'valid', message: result.detail});
+        else setOsValidation({status: result.status, message: result.error});
     };
 
     const handleTestWebhook = async () => {
@@ -608,6 +675,40 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         }
     };
 
+    const isDirty = baseline !== null && JSON.stringify(config) !== JSON.stringify(baseline);
+
+    // The one close path. The close button, Escape and a backdrop click all land
+    // here: clean closes at once, dirty asks first. Keep further close affordances
+    // routed through this rather than calling onClose directly.
+    const requestClose = () => {
+        if (isDirty) {
+            setConfirmingDiscard(true);
+        } else {
+            onClose();
+        }
+    };
+
+    // Escape and outside clicks are the accidental gestures. The first-run wizard
+    // is a required flow, so they do nothing there; its close button is the only
+    // way out and still goes through requestClose.
+    const requestDismiss = () => {
+        if (!isOnboarding) requestClose();
+    };
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            // A nested layer (open Radix select, discard prompt, library flow)
+            // owns this Escape.
+            if (e.key !== 'Escape' || e.defaultPrevented) return;
+            if (confirmingDiscard || showBootstrapFlow) return;
+            requestDismiss();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    // requestDismiss closes over isDirty/isOnboarding/onClose; re-bind when they change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [confirmingDiscard, showBootstrapFlow, isDirty, isOnboarding, onClose]);
+
     const handleBack = () => {
         if (step > 1) {
             setStep(step - 1);
@@ -645,6 +746,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     staging_cleanup_policy: config.stagingCleanupPolicy,
                     staging_cleanup_days: config.stagingCleanupDays,
                     extras_policy: config.extrasPolicy,
+                    makemkv_min_title_length: config.makemkvMinTitleLength,
                     always_review: config.alwaysReview,
                     backup_before_rip: config.backupBeforeRip,
                     backup_path: config.backupPath,
@@ -674,6 +776,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     ...optional('opensubtitles_api_key', config.opensubtitlesApiKey),
                     opensubtitles_username: config.opensubtitlesUsername,
                     ...optional('opensubtitles_password', config.opensubtitlesPassword),
+                    ...optional('tvdb_api_key', config.tvdbApiKey),
                     allow_lan_access: config.allowLanAccess,
                     ...optional('discord_webhook_url', config.discordWebhookUrl),
                     discord_template_completed: config.discordTemplateCompleted,
@@ -695,7 +798,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 throw new Error(`Failed to save config: ${response.status} ${errorText}`);
             }
 
-            await response.json();
+            const saved = await response.json().catch(() => ({}));
+            const restartLabels: string[] = Array.isArray(saved?.restart_required_labels)
+                ? saved.restart_required_labels
+                : [];
+            // First-run setup has no running jobs worth protecting and the app is
+            // about to start fresh anyway; only Settings offers the restart.
+            if (!isOnboarding && restartLabels.length > 0) {
+                setBaseline(config);
+                setRestartPrompt(restartLabels);
+                return;
+            }
             onComplete();
         } catch (error) {
             console.error('Failed to save config:', error);
@@ -910,6 +1023,58 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         );
     };
 
+    // Shared by the first-run Preferences step and the full Settings group, so the
+    // two cannot drift. These are the only Preferences choices that depend on the
+    // user's library rather than on tuning (#726).
+    const extrasPolicyField = (
+        <div className="form-group">
+            <label htmlFor="extrasPolicy">Extras Handling</label>
+            <EngramSelect
+                id="extrasPolicy"
+                value={config.extrasPolicy}
+                onValueChange={(v) => handleInputChange('extrasPolicy', v)}
+                options={[
+                    { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
+                    { value: 'skip', label: 'Skip extras (don\'t rip bonus tracks, discard any that slip through)' },
+                    { value: 'ask', label: 'Ask me (show in Review Queue)' },
+                ]}
+            />
+            <span className="form-hint">
+                How to handle bonus content: TV tracks that match no episode runtime, and
+                movie titles that aren&apos;t the main feature. A movie&apos;s feature-length
+                cuts are always ripped.
+            </span>
+        </div>
+    );
+
+    const namingConventionField = (
+        <div className="form-group">
+            <label htmlFor="namingConvention">Naming Convention</label>
+            <EngramSelect
+                id="namingConvention"
+                value={namingSelection}
+                onValueChange={(v) => {
+                    const preset = NAMING_PRESETS.find((p) => p.id === v);
+                    setCustomNamingChosen(!preset);
+                    if (preset) {
+                        handleInputChange('namingSeasonFormat', preset.seasonFormat);
+                        handleInputChange('namingEpisodeFormat', preset.episodeFormat);
+                    }
+                }}
+                options={[
+                    { value: 'plex', label: 'Plex (Season 01 / Show - S01E01)' },
+                    { value: 'kodi', label: 'Kodi (Season 1 / Show - S01E01)' },
+                    { value: 'minimal', label: 'Minimal (S01 / Show - S01E01)' },
+                    // Custom formats are edited further down in Settings, not on first run.
+                    ...(isOnboarding ? [] : [{ value: 'custom', label: 'Custom' }]),
+                ]}
+            />
+            <span className="form-hint">
+                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
+            </span>
+        </div>
+    );
+
     const renderStepContent = () => {
         switch (step) {
             case 1:
@@ -919,6 +1084,28 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         <p className="step-description">
                             Where should Engram save your ripped media?
                         </p>
+
+                        {isOnboarding && (
+                            <div className="form-group">
+                                {showOnboardingImport ? (
+                                    <SettingsTransferSection
+                                        importOnly
+                                        onImported={() => {
+                                            setShowOnboardingImport(false);
+                                            setConfigReloadKey((k) => k + 1);
+                                        }}
+                                    />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="transfer-link"
+                                        onClick={() => setShowOnboardingImport(true)}
+                                    >
+                                        Restoring from another install? Import a settings file
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         <div className="form-group">
                             <label htmlFor="stagingPath">Staging Directory</label>
@@ -1203,6 +1390,68 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 Free accounts get 5 subtitle downloads/day. Used only for TV episode matching; skipped if not configured.
                             </span>
                         </div>
+
+                        <div className="form-group">
+                            <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap'}}>
+                                <button
+                                    type="button"
+                                    onClick={handleTestOpenSubtitles}
+                                    disabled={
+                                        osValidation.status === 'testing' ||
+                                        (!config.opensubtitlesApiKey && !savedKeys.opensubtitles) ||
+                                        !config.opensubtitlesUsername ||
+                                        (!config.opensubtitlesPassword && !savedKeys.opensubtitles)
+                                    }
+                                    className="btn-secondary"
+                                    style={{padding: '0.25rem 0.75rem', fontSize: '0.85rem'}}
+                                >
+                                    {osValidation.status === 'testing' ? 'Testing...' : 'Test login'}
+                                </button>
+                                {osValidation.status === 'valid' && (
+                                    <span style={{color: '#22c55e', fontSize: '0.85rem'}}>✓ {osValidation.message || 'Logged in'}</span>
+                                )}
+                                {osValidation.status === 'invalid' && (
+                                    <span style={{color: '#ef4444', fontSize: '0.85rem'}}>✗ {osValidation.message}</span>
+                                )}
+                                {/* Amber, not red: the credentials weren't refused, the check failed. */}
+                                {osValidation.status === 'error' && (
+                                    <span style={{color: '#f59e0b', fontSize: '0.85rem'}}>⚠ {osValidation.message}</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <h4 style={{marginTop: '1.5rem', marginBottom: '0.25rem', fontSize: '1rem', fontWeight: 600}}>
+                            TheTVDB <span style={{fontWeight: 400, fontSize: '0.85rem', opacity: 0.7}}>(Optional)</span>
+                        </h4>
+                        <p className="step-description" style={{marginTop: 0}}>
+                            Used for shows whose discs follow TheTVDB's episode numbering.{' '}
+                            {tvdbConfigured
+                                ? 'Only enter a key to override the one in use.'
+                                : 'No TheTVDB key is configured. Release builds include one; Docker and source installs can set the TVDB_API_KEY environment variable or enter a key here.'}{' '}
+                            <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">Episode data: TheTVDB</a>
+                        </p>
+                        <div className="form-group">
+                            <label htmlFor="tvdbApiKey">
+                                API Key override
+                                <SavedKeyBadge saved={savedKeys.tvdb} text="Key saved" />
+                            </label>
+                            <input
+                                id="tvdbApiKey"
+                                type="password"
+                                value={config.tvdbApiKey}
+                                onChange={(e) => handleInputChange('tvdbApiKey', e.target.value)}
+                                placeholder={
+                                    savedKeys.tvdb
+                                        ? 'Enter new key to replace existing'
+                                        : tvdbConfigured
+                                          ? 'Leave blank to use the built-in key'
+                                          : 'Enter your TheTVDB API key'
+                                }
+                            />
+                            {tvdbConfigured && !savedKeys.tvdb && (
+                                <span className="form-hint">Built-in key in use.</span>
+                            )}
+                        </div>
                     </div>
                 );
 
@@ -1368,13 +1617,29 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                 <span className="checkbox-text">
                                     <strong>AI-Powered Title Resolution</strong>
                                     <span className="checkbox-hint">
-                                        When TMDB lookup fails (obscure titles, abbreviations), use an LLM to identify the disc. Requires an API key below.
+                                        When TMDB lookup fails (obscure titles, abbreviations), use an LLM to identify the disc. Uses the provider and API key below.
                                     </span>
                                 </span>
                             </label>
                         </div>
 
-                        {config.aiIdentificationEnabled && (
+                        <div className="form-group checkbox-group">
+                            <label className="checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    checked={config.aiEpisodeMatchingEnabled}
+                                    onChange={(e) => handleInputChange('aiEpisodeMatchingEnabled', e.target.checked)}
+                                />
+                                <span className="checkbox-text">
+                                    <strong>AI-Powered Episode Matching (TV)</strong>
+                                    <span className="checkbox-hint">
+                                        When episode matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        {aiProviderNeeded && (
                             <>
                                 <div className="wizard-grid">
                                 <div className="form-group">
@@ -1420,7 +1685,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                         }}
                                     />
                                     <span className="form-hint">
-                                        API key for {providerLabel}. Used only when TMDB lookup fails.
+                                        API key for {providerLabel}. Used by title resolution (when TMDB lookup fails) and by episode matching.
                                     </span>
                                 </div>
                                 )}
@@ -1527,21 +1792,6 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                                     </div>
                                 )}
                                 </div>
-                                <div className="form-group checkbox-group">
-                                    <label className="checkbox-label">
-                                        <input
-                                            type="checkbox"
-                                            checked={config.aiEpisodeMatchingEnabled}
-                                            onChange={(e) => handleInputChange('aiEpisodeMatchingEnabled', e.target.checked)}
-                                        />
-                                        <span className="checkbox-text">
-                                            <strong>AI-Powered Episode Matching (TV)</strong>
-                                            <span className="checkbox-hint">
-                                                When episode matching can't identify a TV episode, send the cleaned transcript and TMDB synopses to your AI provider for a suggested episode. Always confirmed via the review queue — never auto-organizes. <em>Gemini Flash-Lite recommended for best accuracy on this task.</em>
-                                            </span>
-                                        </span>
-                                    </label>
-                                </div>
                             </>
                         )}
 
@@ -1641,6 +1891,23 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
             }
 
             case 5:
+                if (isOnboarding) {
+                    // First run: the tuning knobs keep their recommended defaults and stay
+                    // reachable in Settings > Preferences. Only the two choices that depend
+                    // on how the user organizes their library are asked here (#726).
+                    return (
+                        <div className="wizard-step wizard-step-compact">
+                            <h3 className="step-title">Preferences</h3>
+                            <p className="step-description">
+                                Engram will use recommended defaults for everything else. You can change
+                                any of it later in Settings, under Preferences.
+                            </p>
+
+                            {namingConventionField}
+                            {extrasPolicyField}
+                        </div>
+                    );
+                }
                 return (
                     <div className="wizard-step">
                         <h3 className="step-title">Preferences</h3>
@@ -1909,51 +2176,26 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         </div>
 
                         <div className="form-group">
-                            <label htmlFor="extrasPolicy">Extras Handling</label>
-                            <EngramSelect
-                                id="extrasPolicy"
-                                value={config.extrasPolicy}
-                                onValueChange={(v) => handleInputChange('extrasPolicy', v)}
-                                options={[
-                                    { value: 'keep', label: 'Keep all extras (organize to Extras/ folder)' },
-                                    { value: 'skip', label: 'Skip extras (discard after ripping)' },
-                                    { value: 'ask', label: 'Ask me (show in Review Queue)' },
-                                ]}
+                            <label htmlFor="makemkvMinTitleLength">Minimum Title Length (seconds)</label>
+                            <input
+                                id="makemkvMinTitleLength"
+                                type="number"
+                                min={0}
+                                max={3600}
+                                value={config.makemkvMinTitleLength}
+                                onChange={(e) => handleInputChange('makemkvMinTitleLength', Math.max(0, Math.min(3600, parseInt(e.target.value) || 0)))}
                             />
                             <span className="form-hint">
-                                How to handle bonus content that doesn&apos;t match any episode runtime.
+                                MakeMKV ignores titles shorter than this. 120 is MakeMKV&apos;s default;
+                                lower it for discs whose specials run under two minutes. 0 shows every
+                                title, including menu loops and copy-protection playlists. Change it
+                                between discs, not while one is being ripped.
                             </span>
                         </div>
 
-                        <div className="form-group">
-                            <label htmlFor="namingConvention">Naming Convention</label>
-                            <EngramSelect
-                                id="namingConvention"
-                                value={
-                                    NAMING_PRESETS.find(
-                                        (p) =>
-                                            p.seasonFormat === config.namingSeasonFormat &&
-                                            p.episodeFormat === config.namingEpisodeFormat,
-                                    )?.id ?? 'custom'
-                                }
-                                onValueChange={(v) => {
-                                    const preset = NAMING_PRESETS.find((p) => p.id === v);
-                                    if (preset) {
-                                        handleInputChange('namingSeasonFormat', preset.seasonFormat);
-                                        handleInputChange('namingEpisodeFormat', preset.episodeFormat);
-                                    }
-                                }}
-                                options={[
-                                    { value: 'plex', label: 'Plex (Season 01 / Show - S01E01)' },
-                                    { value: 'kodi', label: 'Kodi (Season 1 / Show - S01E01)' },
-                                    { value: 'minimal', label: 'Minimal (S01 / Show - S01E01)' },
-                                    { value: 'custom', label: 'Custom' },
-                                ]}
-                            />
-                            <span className="form-hint">
-                                Preview: TV/{config.namingSeasonFormat.replace('{season:02d}', '01').replace('{season:d}', '1')}/{config.namingEpisodeFormat.replace('{show}', 'Breaking Bad').replace('{season:02d}', '01').replace('{season:d}', '1').replace('{episode:02d}', '05').replace('{episode:d}', '5')}.mkv
-                            </span>
-                        </div>
+                        {extrasPolicyField}
+
+                        {namingConventionField}
 
                         <div className="form-group">
                             <label htmlFor="namingTvShowFormat">Show Folder Format</label>
@@ -1973,7 +2215,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                             </span>
                         </div>
 
-                        {!NAMING_PRESETS.some((p) => p.seasonFormat === config.namingSeasonFormat) && (
+                        {namingSelection === 'custom' && (
                             <>
                                 <div className="form-group">
                                     <label htmlFor="namingSeasonFormat">Season Folder Format</label>
@@ -2400,6 +2642,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     </div>
                 );
 
+            case 6:
+                return (
+                    <div className="wizard-step">
+                        <h3 className="step-title">Import & Export</h3>
+                        <p className="step-description">
+                            Move your settings to another install, or restore them after a reinstall.
+                        </p>
+                        <SettingsTransferSection onImported={() => setConfigReloadKey((k) => k + 1)} />
+                    </div>
+                );
+
             default:
                 return null;
         }
@@ -2422,13 +2675,13 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
 
     return (
         <>
-        <div className="wizard-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+        <div className="wizard-overlay" onClick={requestDismiss} role="dialog" aria-modal="true" aria-labelledby="wizard-title">
             <div className="wizard-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2 className="modal-title" id="wizard-title">{isOnboarding ? 'Setup Wizard' : 'Settings'}</h2>
                     <button
                         className="modal-close"
-                        onClick={onClose}
+                        onClick={requestClose}
                         aria-label={isOnboarding ? 'Close setup wizard' : 'Close settings'}
                     >
                         &times;
@@ -2473,6 +2726,17 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                     </div>
                 )}
 
+                {restartPrompt && (
+                    <div className="restart-prompt" role="alert" data-testid="restart-prompt">
+                        <strong>Restart to apply</strong>
+                        <p>
+                            Saved. {restartPrompt.join(', ')} only {restartPrompt.length === 1 ? 'takes' : 'take'} effect
+                            after Engram restarts.
+                        </p>
+                        <RestartControls onLater={onComplete} />
+                    </div>
+                )}
+
                 <div className="wizard-actions">
                     {step > 1 && isOnboarding && (
                         <button className="btn-secondary" onClick={handleBack}>
@@ -2488,6 +2752,10 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                         >
                             {step === totalSteps ? (isSaving ? 'Saving...' : 'Complete Setup') : 'Next →'}
                         </button>
+                    ) : restartPrompt ? (
+                        <button className="btn-primary" onClick={onComplete}>
+                            Done
+                        </button>
                     ) : (
                         <button
                             className="btn-primary"
@@ -2500,6 +2768,21 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
                 </div>
             </div>
         </div>
+
+        {confirmingDiscard && (
+            <ConfirmModal
+                titleId="discard-changes-title"
+                title="Discard unsaved changes?"
+                body={isOnboarding
+                    ? 'Closing setup now throws away what you have entered so far.'
+                    : 'You have edits that have not been saved. Closing Settings will throw them away.'}
+                confirmLabel="Discard"
+                dismissLabel="Keep editing"
+                zIndex={1100}
+                onConfirm={onClose}
+                onDismiss={() => setConfirmingDiscard(false)}
+            />
+        )}
 
         {showBootstrapFlow && (
             <BootstrapLibraryFlow onClose={() => setShowBootstrapFlow(false)} />

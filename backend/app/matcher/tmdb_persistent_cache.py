@@ -44,6 +44,8 @@ TTL_MOVIE = 90 * 86400  # a released movie's runtime is effectively immutable
 # long TTL keeps the canonical->output projection off the network on re-rips.
 TTL_EPISODE_GROUPS = 30 * 86400
 TTL_EPISODE_GROUP = 30 * 86400
+# TheTVDB season rosters share this KV table under a "tvdb_roster:" prefix.
+TTL_TVDB_ROSTER = 7 * 86400
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tmdb_cache (

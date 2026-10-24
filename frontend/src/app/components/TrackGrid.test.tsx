@@ -160,3 +160,32 @@ describe("TrackGrid — skip affordance", () => {
     expect(screen.getByTestId("unskip-track-9")).toBeInTheDocument();
   });
 });
+
+describe("TrackGrid: auto-skipped short tracks", () => {
+  const reason = "Short track (6m): under the 38m TMDB episode runtime";
+
+  it("shows the reason per track and a card-level count", () => {
+    render(
+      <TrackGrid
+        onUnskipTrack={() => {}}
+        tracks={[
+          makeTrack({ id: "1", state: "pending" }),
+          makeTrack({ id: "2", state: "skipped", autoSkipReason: reason }),
+          makeTrack({ id: "3", state: "skipped", autoSkipReason: reason }),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("auto-skip-note")).toHaveTextContent(
+      "Auto-skipped 2 short tracks (extras policy: skip). Un-skip any you want ripped.",
+    );
+    expect(screen.getByTestId("auto-skip-reason-2")).toHaveTextContent(reason);
+    expect(screen.getAllByText("AUTO-SKIPPED, WILL NOT RIP")).toHaveLength(2);
+    expect(screen.getByTestId("unskip-track-2")).toBeInTheDocument();
+  });
+
+  it("manual skips get no note and keep the plain label", () => {
+    render(<TrackGrid tracks={[makeTrack({ id: "1", state: "skipped" })]} />);
+    expect(screen.queryByTestId("auto-skip-note")).not.toBeInTheDocument();
+    expect(screen.getByText("SKIPPED, WILL NOT RIP")).toBeInTheDocument();
+  });
+});

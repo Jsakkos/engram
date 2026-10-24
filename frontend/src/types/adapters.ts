@@ -4,6 +4,7 @@ import { formatDurationLongFloored } from '../utils/formatting';
 import { getRerippableStateFromTitle } from '../components/ReviewQueue/rerip';
 import { parseEpisodeCode } from '../components/ReviewQueue/coverage';
 import { classifyPromptJob } from '../app/promptSelection';
+import { isIdentityUnresolved } from '../components/ReviewQueue/identity';
 
 /**
  * Adapter layer to transform backend API types into UI component types
@@ -41,17 +42,6 @@ export function mapTitleStateToTrackState(
   };
 
   return stateMap[titleState] || 'pending';
-}
-
-/** Count of same-name TMDB twins recorded on the job (0 when absent/malformed). */
-function countCandidates(candidatesJson?: string | null): number {
-  if (!candidatesJson) return 0;
-  try {
-    const parsed = JSON.parse(candidatesJson);
-    return Array.isArray(parsed) ? parsed.length : 0;
-  } catch {
-    return 0;
-  }
 }
 
 /**
@@ -96,6 +86,16 @@ function computeEpisodeRangeSummary(titles: DiscTitle[]): string | null {
     .join(' · ');
 }
 
+/**
+ * Heuristic-only mode (no TMDB token): a `tmdb_id` can never be resolved, so the
+ * "identify this disc first" treatment would hide Review on every card with no
+ * way to clear it. Drop the flag so the card offers Review, and the review page
+ * (which applies the same rule via isIdentityUnresolved) accepts the typed name.
+ */
+export function withoutIdentityReview(discs: DiscData[]): DiscData[] {
+  return discs.map((d) => (d.identityReview ? { ...d, identityReview: false } : d));
+}
+
 export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData {
   // Determine media type - handle case-insensitively
   const contentTypeLower = job.content_type?.toLowerCase();
@@ -110,20 +110,8 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
   const displayType = mediaType === 'movie' ? 'MOVIE' : mediaType === 'tv' ? 'TV' : 'DETECTING';
 
   // "Identity review" = the disc is in review to confirm WHICH show it is, not to
-  // assign episodes. The episode review queue is a dead end here. Primary signal:
-  // a null tmdb_id (the analyst withholds the id for an ambiguous/unconfirmed
-  // disc). Fallback: a same-name collision (>=2 twins) the analyst kept a
-  // best-guess id for (the no-year-twin case) — but only while nothing has been
-  // ripped/matched yet, so a genuine post-rip wrong-show disc keeps its button.
-  const hasProcessedTitles = titles.some(
-    // 'failed' is intentionally excluded: a fully-failed job transitions to FAILED
-    // state (not review_needed), so the outer state guard makes this unreachable.
-    t => t.state === 'matched' || t.state === 'review' || t.state === 'completed',
-  );
-  const identityReview =
-    job.state === 'review_needed' &&
-    (job.tmdb_id == null ||
-      (countCandidates(job.candidates_json) >= 2 && !hasProcessedTitles));
+  // assign episodes. See isIdentityUnresolved for the signals.
+  const identityReview = isIdentityUnresolved(job, titles);
 
   // Which identify prompt this disc should surface (name / season /
   // reidentify), if any. classifyPromptJob is state-aware: live identity
@@ -173,6 +161,8 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     tmdbDegradedReason: job.tmdb_degraded_reason || undefined,
     backupStatus: job.backup_status ?? undefined,
     backupStatusReason: job.backup_status_reason ?? undefined,
+    looksStuck: job.looks_stuck ?? false,
+    stalledForSeconds: job.stalled_for_seconds ?? null,
     identityReview,
     identitySource: job.classification_source,
     tmdbId: job.tmdb_id ?? null,
@@ -304,6 +294,7 @@ function transformDiscTitleToTrack(title: DiscTitle, _job: Job): Track {
 
     // Error info (from WebSocket error_message or match_details.reason for FAILED titles)
     errorMessage: title.error_message || extractErrorReason(title) || undefined,
+    autoSkipReason: extractAutoSkipReason(title, trackState),
   };
 }
 
@@ -325,11 +316,21 @@ interface MatchDetails {
   episode?: string;
   reason?: string;
   method?: string;       // e.g. "full_transcription" for the whole-file fallback
+  auto_skipped?: boolean; // skipped pre-rip as too short to be an episode
 }
 
 function extractErrorReason(title: DiscTitle): string | null {
   if (title.state !== 'failed' || !title.match_details) return null;
   return parseMatchDetails(title).reason || null;
+}
+
+/** The backend's reason for skipping a too-short track before the rip. Gated on
+ *  the SKIPPED state: an un-skip broadcast carries no match_details, so the
+ *  merged title keeps the stale flag after the track returns to PENDING. */
+function extractAutoSkipReason(title: DiscTitle, trackState: TrackState): string | undefined {
+  if (trackState !== 'skipped') return undefined;
+  const details = parseMatchDetails(title);
+  return details.auto_skipped ? details.reason || 'Too short to be an episode' : undefined;
 }
 
 function extractMatchCandidates(title: DiscTitle): MatchCandidate[] | undefined {

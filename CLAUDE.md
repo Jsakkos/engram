@@ -202,6 +202,10 @@ React 19 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at lo
 
 Playwright-based E2E tests (10 spec files) that use simulation endpoints to test the full UI workflow without physical discs. Test scenarios include disc flow, progress display, review flow, error recovery, visual verification, realistic disc scenarios, and screenshot capture.
 
+### Discord support bot (`bot/`)
+
+Separate `uv` project (never imports `backend/`), deployed with Docker from `deploy/discord-bot/`. Claude Haiku 5.5 answers from the user-facing docs (fetched from `main`, sent whole as one cached system block) and drafts GitHub issues; **filing only happens when a person presses the draft's button**, in bot code, never as a model tool. Anything published to GitHub goes through `bot/engram_bot/sanitize.py` (defuses `@` mentions incl. `@claude`, escapes HTML). Docs pages the bot loads are `BOT_DOCS_INCLUDE` globs in `config.py`; moving or renaming user-facing docs may need that list updated. The bot parses the diagnostics `.zip` (`bot/engram_bot/diagnostics.py`), keying on `report.md`'s `**Engram version**:` lines and `### Job Context` entries; changing `_build_markdown_summary`'s format means updating that parser and the fixture in `bot/tests/test_diagnostics.py`. After filing, the bot polls GitHub (`followup.py`) to post issue closes, releases and relayed maintainer comments back into the thread; replies go to GitHub only through the reporter's **Reply on GitHub** form. Commands from `bot/`: `uv sync`, `uv run pytest`, `uv run ruff check .`. Setup: `bot/README.md`; design: `docs/superpowers/specs/2026-10-11-discord-support-bot-design.md`.
+
 ## Key Patterns
 
 - **Async everywhere**: Backend uses async SQLAlchemy sessions, asyncio tasks for background jobs, and async subprocess for MakeMKV CLI calls
@@ -220,6 +224,13 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
   `Extras/` and reporting success. "Nothing here is an episode" is far more often a failed
   match than a genuine bonus disc, and the mis-file is invisible until someone browses the
   library. Independent of `always_review` — this is the floor, not the override.
+- **Movie bonus discs are held too (#813).** `select_movie_main_feature` returns
+  `no_feature` (review, nothing tagged as an extra) when even the longest title is far
+  short of the TMDB runtime, instead of filing a featurette as the movie. The review's
+  way out is `POST /api/jobs/{id}/review/file-as-extras` (`file_movie_as_extras`), which
+  files every kept title under `Movies/Name (Year)/Extras/`. The organizer files exactly
+  the title the job selected (never "the largest MKV"), and extras numbering continues
+  past ones already in the folder (`_move_extras`), so a second disc never overwrites.
 - **Episode codes are multi-episode capable**: `app/core/episode_codes.py` owns parsing and
   canonicalization. One track can hold several TMDB episodes (`S01E01-E03`) — real for
   segment-format shows, where TMDB numbers ~7min segments and the DVD carries the assembled
@@ -229,6 +240,58 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
   form; roster coverage counts the track against every episode it claims. The DiscDB export
   publishes the range form too (`"1-2"`), which is TheDiscDB's own convention for a combined
   title — not the first episode alone.
+- **Half-hour packs are translated, not trusted (#760)**: the subtitle pack numbers
+  segment-format seasons by broadcast half-hour (IMDb/OpenSubtitles numbering) under TMDB-looking
+  codes, so pack `S02E06` can be TMDB `S02E11-E12`. Such seasons carry `scheme: "divergent"` and,
+  when the builder could derive one, a `crosswalk` (corpus code to TMDB code) in the manifest
+  marker; derivation lives in `app/matcher/numbering_crosswalk.py` (release-title anchors that
+  must be unanimous across a feature's uploads, plus TMDB air-date gap fill). Every reader of
+  precomputed codes goes through `translate_codes` (`precomputed_episode_codes`,
+  `_load_precomputed_season`), which drops unmapped references; `stamp_numbering` then records
+  `tmdb_aired` + `numbering_crosswalk`. The scheme stays `divergent` so older clients are
+  unaffected (no `CACHE_FORMAT_VERSION` bump). **`divergent` is not "half-hour numbered"**: an
+  ordinary season the pack is merely missing episodes of is divergent too, and its codes are
+  real TMDB coordinates. Everything half-hour specific keys on the builder's explicit
+  `segmented: true` (`is_segmented_season`: most air-date groups hold 2+ episodes of at most
+  15 minutes; read through `is_segmented_marker`): crosswalk derivation, no gap-healing or
+  scraped-SRT grafting, the `numbering_divergent` review hold, and refusing fingerprint
+  contributions. Packs published before the flag existed get none of it.
+  Spec: `docs/superpowers/specs/2026-10-20-multipart-episode-matching-design.md`.
+- **A job's episode numbering is a value: `DiscJob.episode_namespace` (`tmdb` | `tvdb`).**
+  TMDB aired order is the identity unless a job opts into TheTVDB official order (per show,
+  via the review-page suggestion when the two catalogues disagree, e.g. Justice League S1:
+  24 vs 26). Under `tvdb`, `matched_episode`, references, the review roster and filenames
+  are TVDB-numbered. The namespace is decided in `MatchingCoordinator.download_subtitles`;
+  the STORED value rides in a ContextVar (`app/core/episode_namespace.py`), bound there and
+  in `download_subtitles_all_seasons`, the match path, and the roster, manual-subtitle
+  and LLM routes. The match path binds AFTER the subtitle-ready wait
+  (`_run_match_single_file`), not at task entry: imports and `rerun_matching` dispatch
+  matches before the decision commits, so binding earlier would match in a stale
+  namespace. A tvdb job is never projected through a TMDB episode group
+  (`_ordering_for_title` returns "tvdb"). Chokepoints: `corpus_dir_name` (`@tvdb` suffix), `load_precomputed_manifest`
+  and `EpisodeMatcher._load_precomputed_manifest` (hidden under tvdb); the matcher's
+  reference-file cache is keyed by the resolved reference dir; the chromaprint prepass is
+  skipped. Under tvdb `season_episodes` never falls back to TMDB (returns `[]`, so an outage
+  fails visibly). TMDB-keyed boundaries translate through the job's persisted 1:1 crosswalk
+  or omit: disc contribution, per-track fingerprint contribution, corrected re-contribution,
+  TheDiscDB export, inbound DiscDB/network hints. `POST /api/jobs/{id}/episode-namespace`
+  is allowed only in REVIEW_NEEDED. Cache scripts skip `*@tvdb` dirs so they are never
+  published. `tests/unit/test_matched_episode_consumers.py` fails until a new
+  `matched_episode` parser is classified. TheTVDB's free tier requires the in-app attribution
+  link (`TvdbAttribution.tsx`); the key ships via the `TVDB_API_KEY` secret. Spec:
+  `docs/superpowers/specs/2026-10-08-thetvdb-episode-namespace-design.md`.
+- **The ripped file's audio decides ASR, not the disc scan (#241).** `app/matcher/audio_streams.py`
+  probes a file once (ffprobe, memoized) and `EpisodeMatcher.audio_plan` picks the stream:
+  `match` / `untagged` / `unprobed` transcribe (with `-map 0:a:<n>`; the stream ffmpeg would
+  pick by itself keeps the legacy cache keys, any other adds `#a<n>`), `foreign` / `no_audio`
+  make the curator refuse with `audio_language_unsupported` after the chromaprint prepass. The
+  prewarm reads the same plan. fpcalc fingerprints the whole file (its own stream pick), so
+  chromaprint extraction/contribution is skipped when that pick differs from the planned stream.
+  MakeMKV's language settings can drop disc tracks from the rip, so `DiscTitle.audio_languages`
+  (SINFO attr 3 at scan time) is evidence for the review message only. TINFO attr 28 is
+  MakeMKV's *metadata* language, not the audio language. Codes go through
+  `app/core/languages.py` (`fre`/`fra`, `ger`/`deu` both occur). Spec:
+  `docs/superpowers/specs/2026-10-20-non-english-content-design.md`.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
 - **A job's MakeMKV source is a value, not a drive.** `DiscSource`
   (`app/core/disc_source.py`) answers "is this a physical drive?" once, for eject, sentinel
@@ -241,6 +304,13 @@ Playwright-based E2E tests (10 spec files) that use simulation endpoints to test
   the same drive would run two makemkvcon processes at once. Every scan/rip call site reads
   the source, not `drive_id` (they did not, and the backup was silently ripping from the
   ejected drive).
+- **Import containers live in one place**: `app/core/media_formats.py` (`IMPORTABLE_VIDEO_EXTENSIONS`
+  = mkv/mp4/m4v/ts/m2ts) gates the import scanner and browse, names organized files
+  (`library_suffix`: the source's extension, never a forced `.mkv`), and picks the review media
+  Content-Type. Rips and staging stay `*.mkv` globs because MakeMKV only writes MKV. Conflicts are
+  per *slot*, not per name: `organizer._existing_media` treats `S01E01.mkv` and `S01E01.mp4` as
+  one episode. A pick inside `BDMV`/`VIDEO_TS` (e.g. a `STREAM/*.m2ts` clip) is redirected to the
+  enclosing backup by `import_scanner.enclosing_disc_backup`. `.vob` is deliberately unsupported.
 - **Import path ownership**: a staging path is owned by an *in-flight* job (hard block, not overridable) and merely recorded by a *completed* one (soft block, overridable via `force_keys`). `FAILED` never blocks. Rules live in `app/services/import_guard.py`; `POST /api/import/start` returns `{job_ids, blocked[]}` and never 409s.
 - **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.
 - **Review playback is a handoff, never a transcode.** The media endpoint serves
@@ -546,5 +616,6 @@ For development without physical discs:
 - **`[Unreleased]`** holds entries accumulated between releases; move its content into the new `## [X.Y.Z]` section as part of the release PR. Extraction targets a concrete version and never returns `[Unreleased]`.
 - **Parallel-PR conflicts auto-resolve.** `CHANGELOG.md merge=union` in `.gitattributes` (git's built-in union driver, no per-clone config) combines concurrent `[Unreleased]` entries automatically on `git rebase`. Cosmetic caveats (bullet order, rare duplicate subsection headers) are absorbed by the release-PR curation pass; release extraction is unaffected. Full assessment: `docs/superpowers/reviews/2026-06-02-changelog-conflict-friction.md`.
 - **Release flow**: a `chore: release vX.Y.Z` PR (bump the version files + write the CHANGELOG section) → squash-merge → `tag-release.yml` tags from `main` → `release.yml` builds binaries and publishes the release with the extracted notes.
+- **No merge queue; `main` does not require up-to-date branches.** GitHub rejects the `merge_queue` ruleset rule on this user-owned repo (422, 2026-10-21), so `main` stays on classic protection with `CI Gate` as the only required check and `strict: false`: a green PR that is BEHIND can merge without an update-branch + 20 min CI re-run (`gh pr merge --auto --squash`). The cost is that two PRs green on their own can break `main` together; CI on `main` catches it. `--admin` still bypasses (`enforce_admins` off). The `merge_group` triggers in `ci.yml` stay, so a queue works as-is if the repo moves to an organization.
 - **Preview locally**: `python3 backend/scripts/extract_changelog.py --version X.Y.Z` (or `uv run python …` on Windows) prints exactly what the release body will contain.
 - **Contributor credit is automated.** External contributors are listed in each release body via `backend/scripts/contributors.py --release-section` (wired into `release.yml`, appended between the changelog body and the Full Changelog footer) and thanked on PR merge by `contributor-welcome.yml`. Convention: changelog entries for external contributions append `(#NNN, thanks @user!)`. As part of the `chore: release` PR, regenerate `CONTRIBUTORS.md` with `python backend/scripts/contributors.py --roster --repo Jsakkos/engram > CONTRIBUTORS.md` (a human commit — protected `main` rejects bot pushes, GH006). "Who counts as external" (owner + bots excluded) lives once in `contributors.py`.

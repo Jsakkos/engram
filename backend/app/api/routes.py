@@ -30,11 +30,33 @@ from sqlmodel import select
 # bodies, forming an import cycle). Imported here rather than re-exported by alias:
 # all three names are used directly below, and tests key dependency_overrides on
 # these exact objects via app.api.routes.
-from app.api.guards import require_debug, require_localhost, require_localhost_or_lan
+# Re-exported: tests and callers import these from routes. They live in
+# config_models so config_transfer can use them without an import cycle.
+from app.api.config_models import ConfigUpdate, validate_config_update  # noqa: F401
+from app.api.guards import (
+    check_trusted_host,
+    require_custom_header,
+    require_debug,
+    require_localhost,
+    require_localhost_or_lan,
+    require_trusted_host,
+)
 from app.config import settings
 from app.core.discdb_exporter import get_makemkv_log_dir
 from app.core.episode_codes import parse_episode_code
 from app.core.errors import AIProviderError
+from app.core.media_formats import (
+    IMPORTABLE_VIDEO_EXTENSIONS,
+    is_importable_video,
+    list_video_files,
+    media_type_for,
+)
+from app.core.restarter import (
+    RESTART_REQUIRED_FIELDS,
+    changed_restart_fields,
+    restart_now,
+    restart_support,
+)
 from app.core.security import (
     is_allowed_image_url,
     is_within_configured_roots,
@@ -43,6 +65,7 @@ from app.core.security import (
 )
 from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import get_session
+from app.matcher import tvdb_client
 from app.matcher.coverage_tracker import get_cache_status
 from app.matcher.episode_identification import reference_coverage
 from app.matcher.manual_subtitle_import import (
@@ -52,9 +75,9 @@ from app.matcher.manual_subtitle_import import (
     classify_files,
     commit_files,
 )
-from app.matcher.tmdb_client import fetch_season_episodes, get_number_of_seasons
+from app.matcher.tmdb_client import get_number_of_seasons
 from app.models import TERMINAL_JOB_STATES, DiscJob, JobState
-from app.models.disc_job import ContentType, DiscTitle
+from app.models.disc_job import ContentType, DiscTitle, start_rip_refusal
 from app.services.identity_prompts import BLOCKING_KINDS
 from app.services.import_guard import ImportBlock
 
@@ -137,8 +160,24 @@ class JobResponse(BaseModel):
     # import from an MKV import (both carry drive_id "import"), and the one
     # that says whether a rip read the disc or the copy.
     source_spec: str | None = None
+    # Watchdog-derived stall signal (#718), computed per request from the job
+    # manager's activity clock. The WebSocket carries the same two keys via
+    # JobManager._broadcast_stall_changes, so REST and WS agree.
+    stalled_for_seconds: int | None = None
+    looks_stuck: bool = False
 
     model_config = {"from_attributes": True}
+
+
+def _job_response(job: DiscJob) -> JobResponse:
+    """Serialize a job with its live stall signal attached."""
+    from app.services.job_manager import job_manager
+
+    resp = JobResponse.model_validate(job)
+    stalled, stuck = job_manager.stall_state(job.id, job.state)
+    resp.stalled_for_seconds = stalled
+    resp.looks_stuck = stuck
+    return resp
 
 
 class TitleResponse(BaseModel):
@@ -218,6 +257,11 @@ class JobDetailResponse(BaseModel):
     # Why classification ran without TMDB (key absent/rejected); None when TMDB
     # participated normally (#243).
     tmdb_degraded_reason: str | None = None
+    # TheTVDB episode namespace (spec 2026-10-08): which numbering the job
+    # matched in, why it fell back (if it did), and any recorded divergence.
+    episode_namespace: str = "tmdb"
+    episode_namespace_note: str | None = None
+    tvdb_divergence_json: str | None = None
     # Classification
     classification_source: str = "heuristic"
     classification_confidence: float = 0.0
@@ -268,6 +312,7 @@ class ConfigResponse(BaseModel):
 
     makemkv_path: str
     makemkv_key: str
+    makemkv_min_title_length: int
     staging_path: str
     library_movies_path: str
     library_tv_path: str
@@ -276,6 +321,10 @@ class ConfigResponse(BaseModel):
     # so the dashboard health banner reads this boolean instead of sniffing the
     # masked value (#243).
     tmdb_configured: bool
+    tvdb_api_key: str  # "***" if an override is stored
+    # True when SOME TheTVDB key is usable (override or built-in), so the UI
+    # can say "built in" without exposing whether one is baked in.
+    tvdb_configured: bool
     max_concurrent_matches: int
     enable_gpu_acceleration: bool
     # Background pre-transcription (transcript cache prewarmer)
@@ -372,109 +421,6 @@ class ConfigResponse(BaseModel):
     dashboard_base_url: str = ""
 
 
-class ConfigUpdate(BaseModel):
-    """Request model for updating configuration."""
-
-    makemkv_path: str | None = None
-    makemkv_key: str | None = None
-    staging_path: str | None = None
-    library_movies_path: str | None = None
-    library_tv_path: str | None = None
-    tmdb_api_key: str | None = None
-    max_concurrent_matches: int | None = None
-    enable_gpu_acceleration: bool | None = None
-    # Background pre-transcription (transcript cache prewarmer)
-    enable_background_pretranscription: bool | None = None
-    pretranscribe_full_file: bool | None = None
-    ffmpeg_path: str | None = None
-    conflict_resolution_default: str | None = None
-    # Analyst thresholds
-    analyst_movie_min_duration: int | None = None
-    analyst_tv_duration_variance: int | None = None
-    analyst_tv_min_cluster_size: int | None = None
-    analyst_tv_min_duration: int | None = None
-    analyst_tv_max_duration: int | None = None
-    analyst_movie_dominance_threshold: float | None = None
-    # Ripping coordination
-    ripping_file_poll_interval: float | None = None
-    ripping_stability_checks: int | None = None
-    ripping_file_ready_timeout: float | None = None
-    # Sentinel monitoring
-    sentinel_poll_interval: float | None = None
-    # Stale-job watchdog
-    watchdog_enabled: bool | None = None
-    watchdog_poll_seconds: int | None = None
-    timeout_identifying_seconds: int | None = None
-    timeout_ripping_seconds: int | None = None
-    timeout_matching_seconds: int | None = None
-    timeout_organizing_seconds: int | None = None
-    timeout_backing_up_seconds: int | None = None
-    # Disc backup
-    backup_before_rip: bool | None = None
-    backup_path: str | None = None
-    # Drive behavior
-    auto_eject_enabled: bool | None = None
-    # Staging cleanup
-    staging_cleanup_policy: str | None = None
-    staging_cleanup_days: int | None = None
-    # Extras & naming
-    extras_policy: str | None = None
-    always_review: bool | None = None
-    naming_season_format: str | None = None
-    naming_episode_format: str | None = None
-    naming_movie_format: str | None = None
-    naming_movie_file_format: str | None = None
-    naming_tv_show_format: str | None = None
-    # Episode ordering (#200) — global default output ordering
-    episode_ordering_preference: str | None = None
-    # AI identification
-    ai_identification_enabled: bool | None = None
-    ai_provider: str | None = None
-    ai_api_key: str | None = None
-    ai_model: str | None = None
-    ai_local_base_url: str | None = None
-    ai_episode_matching_enabled: bool | None = None
-    # Staging watcher
-    staging_watch_enabled: bool | None = None
-    # TheDiscDB
-    discdb_enabled: bool | None = None
-    # TheDiscDB Contributions
-    discdb_contributions_enabled: bool | None = None
-    discdb_contribution_tier: int | None = None
-    discdb_export_path: str | None = None
-    discdb_api_key: str | None = None
-    discdb_api_url: str | None = None
-    # OpenSubtitles.com
-    opensubtitles_api_key: str | None = None
-    opensubtitles_username: str | None = None
-    opensubtitles_password: str | None = None
-    # Import watch folder
-    import_watch_path: str | None = None
-    import_destination_mode: str | None = None
-    # Network access
-    allow_lan_access: bool | None = None
-    # Onboarding
-    setup_complete: bool | None = None
-    # Chromaprint fingerprinting (Phase 1)
-    fpcalc_path: str | None = None
-    enable_fingerprint_contributions: bool | None = None
-    # Chromaprint Phase 2
-    fingerprint_server_url: str | None = None
-    fingerprint_disclosure_accepted: bool | None = None
-    # Notifications
-    discord_webhook_url: str | None = None
-    discord_template_completed: str | None = None
-    discord_template_failed: str | None = None
-    discord_template_review: str | None = None
-    discord_template_ripped: str | None = None
-    discord_notify_completed: bool | None = None
-    discord_notify_failed: bool | None = None
-    discord_notify_review: bool | None = None
-    discord_notify_ripped: bool | None = None
-    discord_mention_review: str | None = None
-    dashboard_base_url: str | None = None
-
-
 # How a reviewer answers a "file already exists in library" conflict (#685).
 # Omitted = the configured conflict_resolution_default for a movie, "ask" for a TV
 # track (the default never applies to TV). A TV "skip" is recorded as a Discard.
@@ -551,7 +497,7 @@ RECENT_TERMINAL_JOB_LIMIT = 10
 
 # Routes
 @router.get("/jobs", response_model=list[JobResponse])
-async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJob]:
+async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[JobResponse]:
     """List active disc jobs (excludes cleared/archived jobs).
 
     The dashboard is a recency window, but the cap applies to *finished* jobs
@@ -589,7 +535,64 @@ async def list_jobs(session: AsyncSession = Depends(get_session)) -> list[DiscJo
         )
         .order_by(DiscJob.created_at.desc())
     )
-    return list(result.scalars().all())
+    return [_job_response(j) for j in result.scalars().all()]
+
+
+# Escape character for the History search LIKE patterns.
+_LIKE_ESCAPE = "\\"
+
+
+def _history_search_clause(q: str):
+    """Case-insensitive substring match across the text a user would search by.
+
+    Covers the volume label, detected and TMDB titles, the failure text, and
+    any title's matched episode code. ``%``, ``_`` and the escape character are
+    escaped so a query like ``100%`` is literal, not a wildcard.
+    """
+    escaped = q.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
+    escaped = escaped.replace("%", _LIKE_ESCAPE + "%").replace("_", _LIKE_ESCAPE + "_")
+    pattern = f"%{escaped}%"
+    episode_hit = (
+        select(DiscTitle.id)
+        .where(
+            DiscTitle.job_id == DiscJob.id,
+            DiscTitle.matched_episode.ilike(pattern, escape=_LIKE_ESCAPE),
+        )
+        .exists()
+    )
+    return or_(
+        DiscJob.volume_label.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.detected_title.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.tmdb_name.ilike(pattern, escape=_LIKE_ESCAPE),
+        DiscJob.error_message.ilike(pattern, escape=_LIKE_ESCAPE),
+        episode_hit,
+    )
+
+
+def _history_filters(
+    state: JobState | None,
+    include_all_states: bool,
+    content_type: str | None,
+    q: str | None = None,
+) -> list:
+    """WHERE clauses defining the History job set.
+
+    The one definition shared by ``/jobs/history`` (the table) and
+    ``/jobs/stats`` (the tiles), so the two can never count different jobs.
+    Defaults to finished jobs (terminal states); an explicit ``state`` is
+    honoured for any state and ``include_all_states`` drops the state filter,
+    which is what keeps History the backstop for a long-parked review job.
+    """
+    clauses: list = []
+    if state is not None:
+        clauses.append(DiscJob.state == state)
+    elif not include_all_states:
+        clauses.append(DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
+    if content_type:
+        clauses.append(DiscJob.content_type == content_type)
+    if q and q.strip():
+        clauses.append(_history_search_clause(q.strip()))
+    return clauses
 
 
 @router.get("/jobs/history", response_model=list[HistoryJobResponse])
@@ -599,9 +602,13 @@ async def get_job_history(
     content_type: str | None = None,
     state: JobState | None = None,
     include_all_states: bool = False,
+    q: str | None = Query(None, max_length=200),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict]:
     """Get job history with pagination and filtering.
+
+    ``q`` is a case-insensitive text search (label, titles, episode codes,
+    error text) applied before paging, so it spans every page.
 
     Defaults to finished jobs (completed/failed), which is what "history" means
     to a user. An explicit ``state`` is honoured for *any* state, and
@@ -609,14 +616,7 @@ async def get_job_history(
     history a guaranteed backstop: every job ever created is reachable from
     here, including a REVIEW_NEEDED job that has been parked for weeks.
     """
-    query = select(DiscJob)
-
-    if state is not None:
-        query = query.where(DiscJob.state == state)
-    elif not include_all_states:
-        query = query.where(DiscJob.state.in_(list(TERMINAL_JOB_STATES)))
-    if content_type:
-        query = query.where(DiscJob.content_type == content_type)
+    query = select(DiscJob).where(*_history_filters(state, include_all_states, content_type, q))
 
     query = (
         query.order_by(DiscJob.completed_at.desc().nulls_last(), DiscJob.created_at.desc())
@@ -630,9 +630,20 @@ async def get_job_history(
 
 
 @router.get("/jobs/stats", response_model=StatsResponse)
-async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
-    """Get job analytics and statistics."""
-    all_jobs = await session.execute(select(DiscJob))
+async def get_job_stats(
+    content_type: str | None = None,
+    state: JobState | None = None,
+    include_all_states: bool = False,
+    q: str | None = Query(None, max_length=200),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Get job analytics for the same job set ``/jobs/history`` would list.
+
+    Takes the History filters so the summary tiles describe exactly the rows
+    the table shows (see ``_history_filters``), not every job ever created.
+    """
+    filters = _history_filters(state, include_all_states, content_type, q)
+    all_jobs = await session.execute(select(DiscJob).where(*filters))
     jobs = list(all_jobs.scalars().all())
 
     completed = [j for j in jobs if j.state == JobState.COMPLETED]
@@ -641,7 +652,11 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
     movie_jobs = [j for j in jobs if j.content_type == ContentType.MOVIE]
 
     # Total titles ripped
-    title_count_result = await session.execute(select(func.count(DiscTitle.id)))
+    title_count_result = await session.execute(
+        select(func.count(DiscTitle.id)).where(
+            DiscTitle.job_id.in_(select(DiscJob.id).where(*filters))
+        )
+    )
     total_titles = title_count_result.scalar() or 0
 
     # Avg processing time (for completed jobs with both timestamps)
@@ -669,7 +684,7 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
 
     # Recent 10 jobs
     recent_result = await session.execute(
-        select(DiscJob).order_by(DiscJob.created_at.desc()).limit(10)
+        select(DiscJob).where(*filters).order_by(DiscJob.created_at.desc()).limit(10)
     )
     recent = recent_result.scalars().all()
 
@@ -708,9 +723,9 @@ async def get_job_stats(session: AsyncSession = Depends(get_session)) -> dict:
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job(job: DiscJob = Depends(get_job_or_404)) -> DiscJob:
+async def get_job(job: DiscJob = Depends(get_job_or_404)) -> JobResponse:
     """Get a specific job by ID."""
-    return job
+    return _job_response(job)
 
 
 @router.get("/jobs/{job_id}/titles", response_model=list[TitleResponse])
@@ -782,6 +797,14 @@ class SeasonRosterResponse(BaseModel):
     ordering_diverges: bool = False
     current_ordering: str = "aired"
     ordering_options: list[OrderingOption] = []
+    # TheTVDB episode namespace (spec 2026-10-08). episode_source is the
+    # numbering the roster (and the job's matching) uses, "tmdb" or "tvdb", and
+    # drives the attribution link; tvdb_suggestion (the stored divergence:
+    # {"season", "tmdb", "tvdb"} episode counts) drives the "numbered
+    # differently" notice; namespace_note explains a fallback to TMDB.
+    episode_source: str = "tmdb"
+    tvdb_suggestion: dict | None = None
+    namespace_note: str | None = None
 
 
 @router.get("/jobs/{job_id}/season-roster", response_model=SeasonRosterResponse)
@@ -827,21 +850,31 @@ async def get_season_roster(
         )
 
     season_num = effective_season
+    # Imported here (not at module level) so tests can patch season_episodes.
+    from app.core.episode_namespace import NAMESPACE_TVDB, namespace_context, season_episodes
     from app.services.config_service import get_config
 
     config = await get_config()
-    # fetch_season_episodes does a synchronous requests.get; run it off the
-    # event loop so a slow TMDB call doesn't stall other requests / WS pushes.
-    episodes_raw = await asyncio.to_thread(
-        fetch_season_episodes, str(job.tmdb_id), season_num, config.tmdb_api_key
-    )
+    namespace = job.episode_namespace or "tmdb"
+    # The roster comes from the job's numbering: TheTVDB for a TVDB job, TMDB
+    # otherwise. The fetch is a synchronous HTTP call; run it off the event loop
+    # so a slow lookup doesn't stall other requests / WS pushes. to_thread copies
+    # the context, so the bound namespace reaches the worker thread.
+    with namespace_context(namespace):
+        episodes_raw = await asyncio.to_thread(
+            season_episodes, str(job.tmdb_id), season_num, config.tmdb_api_key
+        )
     if not episodes_raw:
+        # A TVDB job never falls back to TMDB numbering, so name the real source.
+        source_name = "TheTVDB" if namespace == NAMESPACE_TVDB else "TMDB"
         return SeasonRosterResponse(
             available=False,
             season_number=season_num,
             show_id=job.tmdb_id,
             season_count=season_count,
-            reason="Could not load season episodes from TMDB",
+            reason=f"Could not load season episodes from {source_name}",
+            episode_source=namespace,
+            namespace_note=job.episode_namespace_note,
         )
 
     # Map this season's matched episodes → the title ids claiming them.
@@ -870,14 +903,16 @@ async def get_season_roster(
     cache_dir = Path(config.subtitles_cache_path).expanduser()
     episode_numbers = [ep["episode_number"] for ep in episodes_raw]
     try:
-        coverage = await asyncio.to_thread(
-            reference_coverage,
-            cache_dir,
-            job.tmdb_id,
-            job.detected_title or "",
-            season_num,
-            episode_numbers,
-        )
+        # Bound so the scan reads the namespace's own reference folder.
+        with namespace_context(namespace):
+            coverage = await asyncio.to_thread(
+                reference_coverage,
+                cache_dir,
+                job.tmdb_id,
+                job.detected_title or "",
+                season_num,
+                episode_numbers,
+            )
     except Exception as e:  # noqa: BLE001 — coverage is decoration, not load-bearing
         logger.debug(
             "Reference-coverage scan failed for show %s S%s: %s",
@@ -928,6 +963,48 @@ async def get_season_roster(
         current_ordering,
     )
 
+    # TheTVDB is offered beside the TMDB orderings once Engram knows TVDB
+    # numbers this season differently, while the job already uses it, or while
+    # the show prefers it (a job that fell back to TMDB during a TheTVDB outage
+    # keeps the option, so the selector never shows a current value that has no
+    # matching option).
+    if namespace == NAMESPACE_TVDB or job.tvdb_divergence_json or current_ordering == "tvdb":
+        if not any(o.get("ordering") == "tvdb" for o in ordering_data["options"]):
+            ordering_data["options"].append(
+                {
+                    "ordering": "tvdb",
+                    "label": "TheTVDB",
+                    "tmdb_type": 0,
+                    "diverges": True,
+                    "projection": {},
+                }
+            )
+        ordering_data["available"] = True
+        ordering_data["diverges"] = True
+        if namespace == NAMESPACE_TVDB:
+            ordering_data["current"] = "tvdb"
+            # The TMDB options' projections were computed from TMDB episode
+            # groups over TheTVDB roster pairs, which is meaningless. Keep the
+            # options (so the user can switch back) but without a projection.
+            for option in ordering_data["options"]:
+                if option.get("ordering") != "tvdb":
+                    option["projection"] = {}
+                    option["diverges"] = False
+
+    from app.models.show_ordering import ShowOrderingPreference
+
+    pref = await session.get(ShowOrderingPreference, job.tmdb_id)
+    tvdb_suggestion = None
+    if (
+        namespace != NAMESPACE_TVDB
+        and job.tvdb_divergence_json
+        and not (pref and pref.tvdb_suggestion_dismissed)
+    ):
+        try:
+            tvdb_suggestion = json.loads(job.tvdb_divergence_json)
+        except (json.JSONDecodeError, TypeError):
+            tvdb_suggestion = None
+
     return SeasonRosterResponse(
         available=True,
         season_number=season_num,
@@ -938,6 +1015,9 @@ async def get_season_roster(
         ordering_diverges=ordering_data["diverges"],
         current_ordering=ordering_data["current"],
         ordering_options=[OrderingOption(**o) for o in ordering_data["options"]],
+        episode_source=namespace,
+        tvdb_suggestion=tvdb_suggestion,
+        namespace_note=job.episode_namespace_note,
     )
 
 
@@ -1019,13 +1099,18 @@ async def preview_manual_subtitles(
     config = await get_config()
     cache_dir = Path(config.subtitles_cache_path).expanduser()
 
-    results = await asyncio.to_thread(
-        classify_files,
-        cache_dir,
-        job.tmdb_id,
-        job.detected_title,
-        [PreviewInputFile(filename=f.filename, content=f.content) for f in request.files],
-    )
+    from app.core.episode_namespace import namespace_context
+
+    # Classified against the job's numbering, so a TVDB job's upload is checked
+    # against (and later filed into) its TVDB-numbered reference folder.
+    with namespace_context(job.episode_namespace):
+        results = await asyncio.to_thread(
+            classify_files,
+            cache_dir,
+            job.tmdb_id,
+            job.detected_title,
+            [PreviewInputFile(filename=f.filename, content=f.content) for f in request.files],
+        )
     return ManualSubtitlePreviewResponse(
         results=[
             ManualSubtitlePreviewResult(
@@ -1057,18 +1142,22 @@ async def commit_manual_subtitles(
     config = await get_config()
     cache_dir = Path(config.subtitles_cache_path).expanduser()
 
-    outcomes = await asyncio.to_thread(
-        commit_files,
-        cache_dir,
-        job.tmdb_id,
-        job.detected_title,
-        [
-            CommitInputFile(
-                filename=f.filename, season=f.season, episode=f.episode, content=f.content
-            )
-            for f in request.files
-        ],
-    )
+    from app.core.episode_namespace import namespace_context
+
+    # Filed in the job's numbering (see preview_manual_subtitles).
+    with namespace_context(job.episode_namespace):
+        outcomes = await asyncio.to_thread(
+            commit_files,
+            cache_dir,
+            job.tmdb_id,
+            job.detected_title,
+            [
+                CommitInputFile(
+                    filename=f.filename, season=f.season, episode=f.episode, content=f.content
+                )
+                for f in request.files
+            ],
+        )
     return ManualSubtitleCommitResponse(
         outcomes=[
             ManualSubtitleCommitOutcome(
@@ -1118,6 +1207,9 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "identity_prompt_json": job.identity_prompt_json,
         "conflict_status": job.conflict_status,
         "tmdb_degraded_reason": job.tmdb_degraded_reason,
+        "episode_namespace": job.episode_namespace or "tmdb",
+        "episode_namespace_note": job.episode_namespace_note,
+        "tvdb_divergence_json": job.tvdb_divergence_json,
         "classification_source": job.classification_source,
         "classification_confidence": job.classification_confidence,
         "tmdb_id": job.tmdb_id,
@@ -1158,16 +1250,128 @@ async def get_job_detail(
 
 
 @router.post("/jobs/{job_id}/start")
-async def start_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
+async def start_job(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
     """Start ripping a disc."""
     if job.state not in (JobState.IDLE, JobState.REVIEW_NEEDED):
         raise HTTPException(status_code=400, detail=f"Cannot start job in state: {job.state}")
 
+    # REVIEW_NEEDED is also the state of a post-rip review, where the disc has
+    # usually left the drive; a full rip from there re-rips it (#710).
+    titles = (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))).scalars()
+    refusal = start_rip_refusal(job, titles)
+    if refusal:
+        raise HTTPException(status_code=409, detail=refusal)
+
     # Import here to avoid circular imports
     from app.services.job_manager import job_manager
 
-    await job_manager.start_ripping(job.id)
+    try:
+        await job_manager.start_ripping(job.id)
+    except ValueError as e:
+        # start_ripping re-checks in its own session; a state change between the
+        # two checks (a double click, say) is still a conflict, not a 500.
+        raise HTTPException(status_code=409, detail=str(e)) from e
     return {"status": "started", "job_id": job.id}
+
+
+async def _assess_recovery(job: DiscJob, session: AsyncSession):
+    from app.services.failed_job_recovery import assess_staging_recovery
+
+    titles = (await session.execute(select(DiscTitle).where(DiscTitle.job_id == job.id))).scalars()
+    return await asyncio.to_thread(assess_staging_recovery, job, list(titles))
+
+
+@router.get("/jobs/{job_id}/recovery")
+async def get_job_recovery(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """What a failed job can still do: retry from staging, and why not (#713)."""
+    recovery = await _assess_recovery(job, session)
+    return {
+        "job_id": job.id,
+        "staging_path": recovery.staging_path,
+        "staging_exists": recovery.staging_exists,
+        "file_count": len(recovery.files),
+        "can_retry": recovery.can_retry,
+        "reason": recovery.reason,
+    }
+
+
+@router.post(
+    "/jobs/{job_id}/retry-from-staging",
+    dependencies=[Depends(require_localhost_or_lan)],
+)
+async def retry_job_from_staging(
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Run a failed job's ripped files through the import pipeline as a new job.
+
+    The failed job stays FAILED; the retry is a separate job pre-filled with its
+    identity. It reads only files already in staging, never the disc.
+    """
+    from app.services.job_manager import job_manager
+
+    recovery = await _assess_recovery(job, session)
+    if not recovery.can_retry:
+        raise HTTPException(status_code=409, detail=recovery.reason)
+
+    content_type = job.content_type.value if job.content_type else "unknown"
+    result = await job_manager.create_job_from_staging(
+        staging_path=recovery.staging_path,
+        volume_label=job.volume_label or "",
+        content_type=content_type,
+        detected_title=job.detected_title,
+        detected_season=job.detected_season,
+        destination_mode=job.destination_mode or "library",
+        # A retried disc rip must not carry the drive letter (the retry never
+        # touches the drive), and must not be "import" either: cleanup treats an
+        # import's staging as the user's own source folder and never deletes it.
+        drive_id="import" if job.drive_id == "import" else "staging",
+        import_manifest=recovery.retry_manifest,
+    )
+    if result.job_id is None:
+        ids = ", ".join(f"#{i}" for i in result.blocking_job_ids)
+        detail = (
+            f"Job {ids} is already processing this staging folder."
+            if result.block is ImportBlock.IN_FLIGHT
+            else f"Job {ids} already imported this staging folder."
+        )
+        raise HTTPException(status_code=409, detail=detail)
+    logger.info(
+        "Retried failed job %s from staging as job %s",
+        sanitize_log_value(job.id),
+        sanitize_log_value(result.job_id),
+    )
+    return {"job_id": result.job_id, "retried_from": job.id}
+
+
+@router.post("/jobs/{job_id}/open-staging", dependencies=[Depends(require_localhost)])
+async def open_job_staging(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """Open a job's staging folder in the host's file manager.
+
+    Host-only: a LAN peer would be opening a window on someone else's screen.
+    The path is read from the job row, never from the request.
+    """
+    from app.services import failed_job_recovery
+
+    staging = Path(job.staging_path) if job.staging_path else None
+    if staging is None or not await asyncio.to_thread(staging.is_dir):
+        raise HTTPException(status_code=404, detail="The staging folder no longer exists")
+    try:
+        await asyncio.to_thread(failed_job_recovery.open_in_file_manager, staging)
+    except OSError as exc:
+        logger.warning(
+            "Could not open staging folder for job %s: %s",
+            sanitize_log_value(job.id),
+            sanitize_log_value(str(exc)),
+        )
+        raise HTTPException(status_code=500, detail="Could not open the folder") from exc
+    return {"status": "opened", "job_id": job.id}
 
 
 @router.post("/jobs/{job_id}/cancel")
@@ -1222,7 +1426,9 @@ async def advance_job(job: DiscJob = Depends(get_job_or_404)) -> dict:
 
     from app.services.job_manager import job_manager
 
-    advanced = await job_manager.reconcile_and_advance(job.id, reason="manual advance")
+    advanced = await job_manager.reconcile_and_advance(
+        job.id, reason="manual advance", user_initiated=True
+    )
     if not advanced:
         raise HTTPException(status_code=400, detail="Job could not be advanced")
     return {"status": "advanced", "job_id": job.id}
@@ -1341,6 +1547,28 @@ async def submit_review(
         # e.g. an unknown title_id — a client error, not a server fault.
         raise HTTPException(status_code=422, detail=str(e)) from e
     return {"status": "reviewed", "job_id": job.id}
+
+
+@router.post("/jobs/{job_id}/review/file-as-extras")
+async def file_movie_as_extras(job: DiscJob = Depends(get_job_or_404)) -> dict:
+    """File every kept title of a movie job under the movie's Extras/ (#813).
+
+    The review's answer for a disc with no feature on it, such as a bonus disc
+    that identified as the film. Completes the job; the movie's own file is
+    never touched.
+    """
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(status_code=400, detail="Job is not awaiting review")
+
+    from app.services.job_manager import job_manager
+
+    try:
+        count = await job_manager.file_movie_as_extras(job.id)
+    except ValueError as e:
+        # Not a movie, or nothing left to file. The coordinator re-checks the
+        # state on a fresh row, so a job that moved on lands here too.
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return {"status": "filed", "job_id": job.id, "count": count}
 
 
 @router.post("/jobs/{job_id}/review/batch")
@@ -1674,11 +1902,14 @@ async def get_config() -> ConfigResponse:
     return ConfigResponse(
         makemkv_path=config.makemkv_path,
         makemkv_key="***" if config.makemkv_key else "",  # Redacted
+        makemkv_min_title_length=config.makemkv_min_title_length,
         staging_path=config.staging_path,
         library_movies_path=config.library_movies_path,
         library_tv_path=config.library_tv_path,
         tmdb_api_key="***" if config.tmdb_api_key else "",  # Redacted
         tmdb_configured=bool(config.tmdb_api_key),
+        tvdb_api_key="***" if config.tvdb_api_key else "",  # Redacted
+        tvdb_configured=bool(tvdb_client.resolve_api_key(config)),
         max_concurrent_matches=config.max_concurrent_matches,
         enable_gpu_acceleration=config.enable_gpu_acceleration,
         # Background pre-transcription (transcript cache prewarmer)
@@ -1841,169 +2072,13 @@ async def update_config(config: ConfigUpdate) -> dict:
         k: v for k, v in config.model_dump().items() if v is not None or k in _nullable_fields
     }
 
-    # Validate fingerprint_server_url against SSRF before persisting
-    if update_data.get("fingerprint_server_url"):
-        from app.core.security import is_safe_remote_url
+    update_data = await validate_config_update(update_data)
 
-        if not is_safe_remote_url(update_data["fingerprint_server_url"]):
-            raise HTTPException(
-                status_code=422,
-                detail="fingerprint_server_url must be an http/https URL pointing to a non-internal host",
-            )
+    # Which startup-only settings this save actually changes (#722), read before
+    # the write so "changed" means changed, not merely present in the payload.
+    from app.services.config_service import get_config
 
-    # Validate discord_webhook_url against SSRF before persisting
-    if update_data.get("discord_webhook_url"):
-        from app.core.security import is_safe_remote_url
-
-        if not is_safe_remote_url(update_data["discord_webhook_url"]):
-            raise HTTPException(
-                status_code=422,
-                detail="discord_webhook_url must be an http/https URL pointing to a non-internal host",
-            )
-
-    # Validate the AI model override before persisting. The Gemini adapter
-    # interpolates this into a request URL path, so an unchecked value stored
-    # here becomes a request-forgery primitive executed on the next match.
-    # A blank value is the documented way to revert to the provider default and
-    # is deliberately allowed through.
-    if update_data.get("ai_model"):
-        from app.core.ai_client import _is_safe_model_name
-
-        if not _is_safe_model_name(update_data["ai_model"]):
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "ai_model must be a plain model id such as 'gemini-2.5-flash-lite' "
-                    "or 'anthropic/claude-haiku-4-5-20251001'"
-                ),
-            )
-
-    # Validated on write for the same reason ai_model is: this value is
-    # interpolated into an outbound request URL, so an unchecked value stored
-    # here becomes a request-forgery primitive executed on the next match. A
-    # blank value is the documented way to revert to the provider default and is
-    # deliberately allowed through.
-    if update_data.get("ai_local_base_url"):
-        from app.core.security import is_safe_local_ai_url
-
-        if not is_safe_local_ai_url(update_data["ai_local_base_url"]):
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "ai_local_base_url must be a plain http(s) URL with no credentials "
-                    "or query string, such as 'http://localhost:11434/v1'"
-                ),
-            )
-
-    # Validate Discord notification templates before persisting
-    from app.core.discord_notifier import validate_discord_template
-
-    for field in (
-        "discord_template_completed",
-        "discord_template_failed",
-        "discord_template_review",
-        "discord_template_ripped",
-    ):
-        if update_data.get(field):
-            error = validate_discord_template(update_data[field])
-            if error:
-                raise HTTPException(status_code=422, detail=f"{field}: {error}")
-
-    # Validate the dashboard base URL. NOT is_safe_remote_url; see the docstring
-    # on is_safe_dashboard_url. A LAN address is the expected value and the
-    # server never fetches this URL.
-    if update_data.get("dashboard_base_url"):
-        from app.core.security import is_safe_dashboard_url
-
-        if not is_safe_dashboard_url(update_data["dashboard_base_url"]):
-            raise HTTPException(
-                status_code=422,
-                detail="dashboard_base_url must be an http/https URL with no embedded credentials",
-            )
-
-    # Validate naming format strings before persisting
-    from app.core.organizer import (
-        ALLOWED_EPISODE_PLACEHOLDERS,
-        ALLOWED_MOVIE_FILE_PLACEHOLDERS,
-        ALLOWED_MOVIE_PLACEHOLDERS,
-        ALLOWED_TV_PLACEHOLDERS,
-        ALLOWED_TV_SHOW_PLACEHOLDERS,
-        validate_naming_format,
-    )
-
-    format_checks = [
-        ("naming_season_format", ALLOWED_TV_PLACEHOLDERS),
-        ("naming_episode_format", ALLOWED_EPISODE_PLACEHOLDERS),
-        ("naming_movie_format", ALLOWED_MOVIE_PLACEHOLDERS),
-        ("naming_movie_file_format", ALLOWED_MOVIE_FILE_PLACEHOLDERS),
-        ("naming_tv_show_format", ALLOWED_TV_SHOW_PLACEHOLDERS),
-    ]
-    for field, allowed in format_checks:
-        if field in update_data:
-            error = validate_naming_format(update_data[field], allowed)
-            if error:
-                raise HTTPException(status_code=400, detail=f"{field}: {error}")
-
-    # Tidy every path the user gave us before it is validated or stored: strip the
-    # quotes Windows' "Copy as path" adds, expand ~, settle separators, and put a
-    # UNC path into one canonical spelling so "//server/share" and
-    # "\\server\share" are the same setting rather than two that behave alike.
-    from app.core.paths import normalize_user_path
-
-    for _field in (
-        "library_movies_path",
-        "library_tv_path",
-        "staging_path",
-        "import_watch_path",
-        "subtitles_cache_path",
-        "discdb_export_path",
-    ):
-        if update_data.get(_field):
-            update_data[_field] = normalize_user_path(update_data[_field])
-
-    # Validate library paths are actually writable before persisting (#563).
-    # A path Engram cannot write to used to be accepted silently and only
-    # surfaced as an opaque organize failure after a full rip: the exact
-    # trap Docker users fall into with PUID/volume mismatches.
-    from app.core.organizer import check_library_writable
-    from app.services.config_service import get_config as get_current_config
-
-    # Only validate a path the user actually CHANGED. ConfigWizard PUTs the full
-    # config object on every save, so validating unconditionally would let a
-    # transiently unreachable library (NAS reboot, externally changed perms)
-    # block saving any unrelated setting until the path was fixed.
-    #
-    # create=False: only an EXISTING but unwritable path is rejected. Validating
-    # must not create directories as a side effect, and a path on a share that
-    # is not mounted yet is not an error to save.
-    _path_fields = ("library_movies_path", "library_tv_path", "staging_path")
-    if any(update_data.get(f) for f in _path_fields):
-        _current = await get_current_config()
-        for field in _path_fields:
-            new_value = update_data.get(field)
-            if not new_value or new_value == getattr(_current, field, None):
-                continue
-            reason = await asyncio.to_thread(check_library_writable, new_value, create=False)
-            if reason:
-                raise HTTPException(status_code=422, detail=f"{field}: {reason}")
-
-    # Validate extras_policy
-    if "extras_policy" in update_data:
-        if update_data["extras_policy"] not in ("keep", "skip", "ask"):
-            raise HTTPException(
-                status_code=400,
-                detail="extras_policy must be 'keep', 'skip', or 'ask'",
-            )
-
-    # Validate episode_ordering_preference (#200) — reject absolute (deferred) and unknowns
-    if "episode_ordering_preference" in update_data:
-        from app.core.episode_ordering import ALLOWED_ORDERINGS
-
-        if update_data["episode_ordering_preference"] not in ALLOWED_ORDERINGS:
-            raise HTTPException(
-                status_code=422,
-                detail=f"episode_ordering_preference must be one of {sorted(ALLOWED_ORDERINGS)}",
-            )
+    restart_required = changed_restart_fields(await get_config(), update_data)
 
     # Keep the disclosure-acceptance timestamp consistent with the flag,
     # server-side: stamp it on accept, clear it on explicit revoke.
@@ -2026,7 +2101,107 @@ async def update_config(config: ConfigUpdate) -> dict:
 
         await job_manager.resume_parked_discs()
 
-    return {"status": "updated", "persisted": True}
+    return {
+        "status": "updated",
+        "persisted": True,
+        "restart_required": restart_required,
+        "restart_required_labels": [RESTART_REQUIRED_FIELDS[f] for f in restart_required],
+    }
+
+
+async def _read_settings_body(request: Request) -> object:
+    """The JSON body of a settings-import request, size-capped (#731)."""
+    from app.services.config_transfer import MAX_IMPORT_BYTES
+
+    # Parsed only when declared JSON, as FastAPI does for its own body params: a
+    # cross-site form or text/plain POST needs no CORS preflight, so accepting
+    # one would let any web page the user visits rewrite their settings.
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(status_code=415, detail="Send the settings file as application/json.")
+    body = await request.body()
+    if len(body) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="The settings file is too large.")
+    try:
+        return json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(
+            status_code=400, detail="The settings file is not valid JSON."
+        ) from None
+
+
+def _require_trusted_host(request: Request) -> None:
+    """403 unless the Host header names this machine in a way DNS rebinding can't.
+
+    A rebinding page reaches the loopback API under the attacker's own host name,
+    and same-origin rules then let it read the response. That is harmless for a
+    redacted response and not for an export carrying plaintext keys, so that one
+    response accepts only loopback names and IP literals (what LAN users type).
+    No configured host name is trusted: ``dashboard_base_url`` is writable by the
+    same rebinding page through ``PUT /api/config``, so it cannot vouch.
+    """
+    check_trusted_host(
+        request,
+        "Exporting keys and passwords is only allowed when the dashboard is opened "
+        "by IP address or as localhost. Open it that way, or export without keys.",
+    )
+
+
+@router.get("/config/export", dependencies=[Depends(require_localhost_or_lan)])
+async def export_settings(request: Request, include_secrets: bool = False) -> JSONResponse:
+    """Download the configuration as a settings file (#731).
+
+    Keys and passwords are left out unless ``include_secrets`` is set. The flag
+    is the only thing in the URL; secret values travel in the body alone.
+    """
+    from app.services.config_transfer import build_export
+
+    if include_secrets:
+        _require_trusted_host(request)
+    data = await build_export(include_secrets)
+    suffix = "-with-keys" if include_secrets else ""
+    filename = f"engram-settings-{datetime.now(UTC):%Y-%m-%d}{suffix}.json"
+    return JSONResponse(
+        data,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post("/config/import/preview", dependencies=[Depends(require_localhost_or_lan)])
+async def preview_settings_import(request: Request) -> dict:
+    """Show what importing a settings file would change, field by field. Writes nothing."""
+    from app.services.config_transfer import SettingsFileError, preview_import
+
+    data = await _read_settings_body(request)
+    try:
+        return await preview_import(data)
+    except SettingsFileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@router.post("/config/import/apply", dependencies=[Depends(require_localhost_or_lan)])
+async def apply_settings_import(request: Request) -> dict:
+    """Apply the chosen keys of a settings file: ``{"file": {...}, "keys": [...]}``.
+
+    Stateless: the client re-sends the file it previewed, and every selected key
+    is validated again. Any bad key refuses the whole request and writes nothing.
+    """
+    from app.services.config_transfer import ImportRejected, SettingsFileError, apply_import
+
+    body = await _read_settings_body(request)
+    keys = body.get("keys") if isinstance(body, dict) else None
+    if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+        raise HTTPException(status_code=400, detail="keys must be a list of setting names.")
+    try:
+        applied = await apply_import(body.get("file"), keys)
+    except SettingsFileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except ImportRejected as exc:
+        raise HTTPException(status_code=422, detail={"errors": exc.errors}) from None
+    return {"applied": applied}
 
 
 @router.get("/parked-discs")
@@ -2470,10 +2645,8 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
         )
 
     # --- Collect all media files, skipping Extras ---
-    _MEDIA_EXTENSIONS = {".mkv", ".mp4", ".m2ts"}
-
     all_media: set[Path] = set()
-    for ext in _MEDIA_EXTENSIONS:
+    for ext in IMPORTABLE_VIDEO_EXTENSIONS:
         for p in root.rglob(f"*{ext}"):
             # rglob follows symlinks; skip any hit whose real path escapes the
             # scanned tree so a crafted symlink can't surface outside files.
@@ -3056,12 +3229,15 @@ async def import_browse(path: str = "") -> dict:
     and from LAN peers only when the user has enabled allow_lan_access (so
     headless/Docker deployments accessed from another device can import). Returns
     directory names with a shallow direct-child
-    MKV count, plus selectable .mkv files. Never returns file contents. Empty
+    video count, plus selectable video files (``app.core.media_formats``). The
+    wire names ``mkv_count`` and ``type: "mkv"`` predate non-MKV import and are
+    kept for compatibility; they cover every importable container. Never returns
+    file contents. Empty
     path returns the drive roots (Windows) or / and home (POSIX).
 
     A directory holding BDMV/VIDEO_TS and a .iso file are reported as their own
     types: they are scanned and extracted through the normal pipeline rather
-    than filed like ready-made MKVs.
+    than filed like ready-made videos.
     """
     from app.core import import_scanner
 
@@ -3099,14 +3275,14 @@ async def import_browse(path: str = "") -> dict:
                     count = 0
                     try:
                         for f in os.scandir(entry.path):
-                            if f.is_file(follow_symlinks=False) and f.name.lower().endswith(".mkv"):
+                            if f.is_file(follow_symlinks=False) and is_importable_video(f.name):
                                 count += 1
                     except OSError:
                         count = 0
                     entries.append(
                         {"name": entry.name, "path": entry.path, "type": "dir", "mkv_count": count}
                     )
-                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".mkv"):
+                elif entry.is_file(follow_symlinks=False) and is_importable_video(entry.name):
                     entries.append({"name": entry.name, "path": entry.path, "type": "mkv"})
                 elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".iso"):
                     entries.append({"name": entry.name, "path": entry.path, "type": "iso"})
@@ -3188,7 +3364,9 @@ async def import_start(req: ImportStartRequest) -> ImportStartResponse:
 
     scan = await asyncio.to_thread(import_scanner.scan, p)
     if not scan.units and not scan.disc_images:
-        raise HTTPException(status_code=400, detail="No MKV files or disc backups found to import")
+        raise HTTPException(
+            status_code=400, detail="No video files or disc backups found to import"
+        )
 
     root_str = str(scan.root)
     force_keys = set(req.force_keys)
@@ -3305,7 +3483,7 @@ class StagingImportRequest(BaseModel):
 
 @router.post("/staging/import")
 async def import_from_staging(request: StagingImportRequest) -> dict:
-    """Import pre-ripped MKV files from a staging directory.
+    """Import pre-ripped video files from a staging directory.
 
     Creates a real job that skips the ripping phase and proceeds
     directly to identification, matching, and organization.
@@ -3324,9 +3502,11 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
             status_code=404, detail=f"Staging directory not found: {request.staging_path}"
         )
 
-    mkv_files = sorted(staging_dir.glob("*.mkv"))
-    if not mkv_files:
-        raise HTTPException(status_code=404, detail=f"No MKV files found in {request.staging_path}")
+    video_files = list_video_files(staging_dir)
+    if not video_files:
+        raise HTTPException(
+            status_code=404, detail=f"No video files found in {request.staging_path}"
+        )
 
     result = await job_manager.create_job_from_staging(
         staging_path=str(staging_dir),
@@ -3344,10 +3524,10 @@ async def import_from_staging(request: StagingImportRequest) -> dict:
             "job_id": None,
             "reason": result.block.value,
             "blocking_job_ids": list(result.blocking_job_ids),
-            "titles_count": len(mkv_files),
+            "titles_count": len(video_files),
         }
 
-    return {"status": "created", "job_id": result.job_id, "titles_count": len(mkv_files)}
+    return {"status": "created", "job_id": result.job_id, "titles_count": len(video_files)}
 
 
 @router.get("/staging/orphaned")
@@ -3522,6 +3702,7 @@ async def _collect_environment() -> dict:
             "extras_policy": config.extras_policy,
             "always_review": config.always_review,
             "discdb_enabled": config.discdb_enabled,
+            "makemkv_min_title_length": config.makemkv_min_title_length,
         },
     }
 
@@ -4425,14 +4606,15 @@ async def stream_title_media(
 ) -> FileResponse:
     """Stream a ripped track for playback in an external player.
 
-    Serves the raw MKV untouched. Browsers cannot decode it (MKV container,
-    MPEG-2/HEVC video, DTS/TrueHD/AC3 audio), so this is consumed by VLC/MPV
+    Serves the raw file untouched (a rip is MKV; a manual import may be MP4 or
+    a transport stream). Browsers cannot decode disc-native codecs (MPEG-2/HEVC
+    video, DTS/TrueHD/AC3 audio), so this is consumed by VLC/MPV
     and friends via the companion playlist endpoint, not by a <video> element.
     Starlette's FileResponse implements Range/206/416, so seeking works without
     any handling here.
     """
     path = await _resolve_title_media_path(job, title_id, session)
-    return FileResponse(path, media_type="video/x-matroska", filename=path.name)
+    return FileResponse(path, media_type=media_type_for(path), filename=path.name)
 
 
 @router.get(
@@ -4492,6 +4674,13 @@ async def rematch_job(
         raise HTTPException(
             status_code=409,
             detail=f"Cannot re-match in state: {job.state.value}",
+        )
+    # rerun_matching is TV episode matching; on a movie it would assign episode
+    # codes to feature tracks.
+    if job.content_type != ContentType.TV:
+        raise HTTPException(
+            status_code=409,
+            detail="Re-match applies only to TV discs",
         )
 
     from app.services.job_manager import job_manager
@@ -4637,7 +4826,8 @@ async def get_show_ordering(
         "tmdb_id": tmdb_id,
         "ordering": effective,
         "episode_group_id": group_id,
-        "source": "show" if pref else "default",
+        "source": "show" if (pref and pref.ordering) else "default",
+        "tvdb_suggestion_dismissed": bool(pref and pref.tvdb_suggestion_dismissed),
     }
 
 
@@ -4659,6 +4849,8 @@ async def set_show_ordering(
     from app.models.show_ordering import ShowOrderingPreference
     from app.services.config_service import get_config
 
+    # "tvdb" is deliberately rejected here: switching to TheTVDB goes through the
+    # dedicated job endpoint (it must re-match the job), not a bare preference write.
     if request.ordering not in episode_ordering.ALLOWED_ORDERINGS:
         raise HTTPException(
             status_code=422,
@@ -4685,6 +4877,91 @@ async def set_show_ordering(
     await session.commit()
 
     return {"tmdb_id": tmdb_id, "ordering": request.ordering, "episode_group_id": group_id}
+
+
+class EpisodeNamespaceRequest(BaseModel):
+    """Switch a job between TMDB and TheTVDB numbering (spec 2026-10-08)."""
+
+    namespace: Literal["tmdb", "tvdb"]
+
+
+# Job ids with a numbering switch currently running (see set_job_episode_namespace).
+_namespace_switches_in_flight: set[int] = set()
+
+
+@router.post("/jobs/{job_id}/episode-namespace")
+async def set_job_episode_namespace(
+    request: EpisodeNamespaceRequest,
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Switch numbering, re-download references in it, and re-match. No re-rip.
+
+    Only allowed in review: the re-match resets every title to QUEUED, which
+    would strand a finished job's history rows, race in-flight TMDB matches
+    while MATCHING, and race finalization while ORGANIZING.
+
+    The show's preference moves with the job, so later discs start in the
+    chosen numbering. Already-organized files are never renamed.
+    """
+    from app.services import episode_namespace_service as svc
+    from app.services.job_manager import job_manager
+
+    if job.state != JobState.REVIEW_NEEDED:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode numbering can only be changed while the disc is in review.",
+        )
+
+    # The job is read through the request session (get_session, via
+    # get_job_or_404), never a module-level async_session: unit tests redirect
+    # only the former to the test database. The switch changes neither the
+    # show, the season nor the TMDB id, so the values read here stay current.
+    # Snapshot them and release the connection before the TheTVDB round trips.
+    job_id = job.id
+    show_name, season, tmdb_id = job.detected_title, job.detected_season, job.tmdb_id
+    await session.close()
+
+    # A double-click or a second tab must not start two switches (and two
+    # concurrent re-matches) for one job. Single-process server, so an
+    # in-memory set is the whole story; the service re-checks the state too.
+    if job_id in _namespace_switches_in_flight:
+        raise HTTPException(
+            status_code=409,
+            detail="Episode numbering is already being changed for this disc.",
+        )
+    _namespace_switches_in_flight.add(job_id)
+    try:
+        try:
+            await svc.switch_job_namespace(job_id, request.namespace)
+        except svc.TvdbUnavailableError:
+            raise HTTPException(
+                status_code=503,
+                detail="TheTVDB is unavailable right now; numbering was not changed.",
+            ) from None
+        except svc.NotInReviewError:
+            raise HTTPException(
+                status_code=409,
+                detail="Episode numbering can only be changed while the disc is in review.",
+            ) from None
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
+
+        job_manager.forget_episode_runtimes(job_id)
+        await job_manager._matching.restart_subtitle_download(job_id, show_name, season, tmdb_id)
+        await job_manager.rerun_matching(job_id)
+    finally:
+        _namespace_switches_in_flight.discard(job_id)
+    return {"job_id": job_id, "episode_namespace": request.namespace}
+
+
+@router.post("/shows/{tmdb_id}/tvdb-suggestion/dismiss")
+async def dismiss_tvdb_suggestion(tmdb_id: int) -> dict:
+    """Stop suggesting TheTVDB numbering for this show."""
+    from app.services import episode_namespace_service as svc
+
+    await svc.dismiss_tvdb_suggestion(tmdb_id)
+    return {"tmdb_id": tmdb_id, "tvdb_suggestion_dismissed": True}
 
 
 @dataclass(frozen=True)
@@ -4767,31 +5044,36 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     if not file_path:
         return LLMMatchOutcome.failed("transcription_failed")
 
-    transcript = await asyncio.to_thread(episode_curator._matcher.transcribe_full, file_path)
-    if not transcript:
-        return LLMMatchOutcome.failed("transcription_failed")
+    from app.core.episode_namespace import namespace_context
 
-    try:
-        suggestion = await match_episode_via_llm(
-            transcript=transcript,
-            show_name=job.detected_title,
-            season=job.detected_season,
-            tmdb_show_id=str(tmdb_show_id),
-            ai_provider=config.ai_provider,
-            ai_api_key=config.ai_api_key,
-            ai_model=getattr(config, "ai_model", "") or None,
-            ai_local_base_url=getattr(config, "ai_local_base_url", "") or "",
-            tmdb_api_key=config.tmdb_api_key,
-            raise_on_error=True,
-        )
-    except AIProviderError as e:
-        logger.warning(
-            "LLM match: provider error for title %s -> llm_error (%s)",
-            sanitize_log_value(title.id),
-            e.code,
-            exc_info=True,
-        )
-        return LLMMatchOutcome.failed("llm_error", detail=e.code, message=str(e))
+    # The candidate episode list comes from season_episodes, so binding the job's
+    # namespace offers (and answers in) TVDB numbering for a TVDB job.
+    with namespace_context(job.episode_namespace):
+        transcript = await asyncio.to_thread(episode_curator._matcher.transcribe_full, file_path)
+        if not transcript:
+            return LLMMatchOutcome.failed("transcription_failed")
+
+        try:
+            suggestion = await match_episode_via_llm(
+                transcript=transcript,
+                show_name=job.detected_title,
+                season=job.detected_season,
+                tmdb_show_id=str(tmdb_show_id),
+                ai_provider=config.ai_provider,
+                ai_api_key=config.ai_api_key,
+                ai_model=getattr(config, "ai_model", "") or None,
+                ai_local_base_url=getattr(config, "ai_local_base_url", "") or "",
+                tmdb_api_key=config.tmdb_api_key,
+                raise_on_error=True,
+            )
+        except AIProviderError as e:
+            logger.warning(
+                "LLM match: provider error for title %s -> llm_error (%s)",
+                sanitize_log_value(title.id),
+                e.code,
+                exc_info=True,
+            )
+            return LLMMatchOutcome.failed("llm_error", detail=e.code, message=str(e))
 
     if not suggestion:
         return LLMMatchOutcome.failed("no_match")
@@ -5024,7 +5306,15 @@ async def get_update_status():
     return update_checker.get_status()
 
 
-def _gpu_state(*, device: str, detected: bool, installed: bool, downloading: dict) -> str:
+def _gpu_state(
+    *,
+    device: str,
+    detected: bool,
+    installed: bool,
+    downloading: dict,
+    enabled: bool = False,
+    fallback_reason: str | None = None,
+) -> str:
     """Collapse the GPU situation into one badge state for the dashboard/settings UI."""
     from app.matcher.cuda_runtime import is_supported_platform
 
@@ -5035,10 +5325,22 @@ def _gpu_state(*, device: str, detected: bool, installed: bool, downloading: dic
         return "active"
     if not is_supported_platform():
         return "unsupported_os"  # macOS / non-NVIDIA arch — CTranslate2 has no GPU path
-    if detected:
-        # NVIDIA GPU present but not running on it: either not enabled or libs not downloaded.
-        return "available_not_installed" if not installed else "available_not_enabled"
-    return "unavailable"  # supported OS but no NVIDIA GPU
+    if not detected:
+        return "unavailable"  # supported OS but no NVIDIA GPU
+    if enabled:
+        # The reason is pinned at startup, so "runtime_missing" goes stale once the user
+        # downloads the libraries in-session: by then only a restart is missing.
+        if fallback_reason == "runtime_missing" and installed:
+            return "restart_pending"
+        # Startup tried the GPU and fell back: say so, rather than offering "Enable" again
+        # for a setting that is already on (#694).
+        if fallback_reason is not None:
+            return "enabled_not_active"
+        # Enabled since startup with the libraries in place: only a restart is missing.
+        if installed:
+            return "restart_pending"
+    # NVIDIA GPU present but not running on it: either not enabled or libs not downloaded.
+    return "available_not_installed" if not installed else "available_not_enabled"
 
 
 @router.get("/asr-status")
@@ -5049,7 +5351,12 @@ async def get_asr_status():
     can't claim CUDA while silently running on CPU. The ``gpu_*`` fields drive the opt-in
     download toggle in settings.
     """
-    from app.matcher.asr_models import detect_asr_device, gpu_detected, resolve_asr_runtime
+    from app.matcher.asr_models import (
+        detect_asr_device,
+        gpu_detected,
+        gpu_fallback_reason,
+        resolve_asr_runtime,
+    )
     from app.matcher.cuda_runtime import (
         download_size_bytes,
         get_download_state,
@@ -5063,6 +5370,7 @@ async def get_asr_status():
     detected = gpu_detected()
     installed = is_cuda_runtime_installed()
     download = get_download_state()
+    fallback = gpu_fallback_reason() if device != "cuda" else None
     return {
         "device": device,
         "compute_type": runtime.compute_type,
@@ -5076,8 +5384,14 @@ async def get_asr_status():
         "gpu_runtime_installed": installed,
         "gpu_download_size_bytes": download_size_bytes(),
         "gpu_download": download,
+        "gpu_fallback_reason": fallback,
         "gpu_state": _gpu_state(
-            device=device, detected=detected, installed=installed, downloading=download
+            device=device,
+            detected=detected,
+            installed=installed,
+            downloading=download,
+            enabled=config.enable_gpu_acceleration,
+            fallback_reason=fallback,
         ),
     }
 
@@ -5093,6 +5407,7 @@ async def _finish_gpu_enable(success: bool, error: str | None) -> None:
         # the UI must still learn the download finished.
         try:
             await update_db_config(enable_gpu_acceleration=True)
+            logger.info("GPU acceleration enabled after CUDA runtime download; restart to apply")
         except Exception:
             logger.error("Failed to persist enable_gpu_acceleration flag", exc_info=True)
     await event_broadcaster.broadcast_gpu_status(get_download_state())
@@ -5117,18 +5432,22 @@ async def enable_gpu_acceleration():
     from app.services.config_service import update_config as update_db_config
     from app.services.job_manager import event_broadcaster
 
+    logger.info("GPU acceleration enable requested")
     if not is_supported_platform():
+        logger.warning("GPU enable rejected: platform has no CUDA runtime asset")
         raise HTTPException(
             status_code=400,
             detail="GPU acceleration requires an NVIDIA GPU on Windows or Linux "
             "(CTranslate2 has no GPU path on macOS).",
         )
     if not gpu_detected():
+        logger.warning("GPU enable rejected: no NVIDIA GPU visible to CTranslate2")
         raise HTTPException(status_code=400, detail="No NVIDIA GPU detected on this machine.")
 
     # Already have the libraries (downloaded earlier, or dev `uv sync -E gpu`): just arm it.
     if is_cuda_runtime_installed():
         await update_db_config(enable_gpu_acceleration=True)
+        logger.info("GPU acceleration enabled (CUDA runtime already installed); restart to apply")
         return {"status": "ready", "restart_required": True, "gpu_download": get_download_state()}
 
     def _on_done(success: bool, error: str | None) -> None:
@@ -5176,6 +5495,64 @@ async def skip_update_version(body: SkipVersionRequest):
     return {"ok": True}
 
 
+@router.get("/restart/status", dependencies=[Depends(require_localhost_or_lan)])
+async def restart_status() -> dict:
+    """Whether Engram can restart itself, and whether a job is in the way (#722)."""
+    support = restart_support()
+    try:
+        await update_checker._check_no_active_jobs()
+        active = False
+    except UpdateError:
+        active = True
+    return {
+        "mode": support.mode,
+        "can_restart": support.can_restart,
+        "hint": support.hint,
+        "active_jobs": active,
+    }
+
+
+@router.post(
+    "/restart",
+    dependencies=[
+        Depends(require_localhost_or_lan),
+        Depends(require_custom_header),
+        Depends(require_trusted_host),
+    ],
+)
+async def restart_backend(background_tasks: BackgroundTasks):
+    """Relaunch a packaged build so startup-only settings apply (#722).
+
+    Same guards as ``/updates/restart``: packaged builds only, and never while a
+    disc operation is running. The relaunch runs after the response is sent.
+    """
+    support = restart_support()
+    if not support.can_restart:
+        raise HTTPException(status_code=400, detail=support.hint)
+    try:
+        await update_checker._check_no_active_jobs()
+    except UpdateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    async def _do_restart() -> None:
+        try:
+            # Re-check: a disc inserted since the guard above would start makemkvcon,
+            # which the exec/exit below would orphan.
+            await update_checker._check_no_active_jobs()
+            from app.services.job_manager import job_manager
+
+            # Stop the drive sentinel and background tasks first, as shutdown does.
+            await job_manager.stop()
+            restart_now()
+        except UpdateError:
+            logger.warning("Restart cancelled: a disc operation started meanwhile")
+        except Exception as exc:  # noqa: BLE001 - nothing to return to by now
+            logger.error(f"Restart failed: {exc}", exc_info=True)
+
+    background_tasks.add_task(_do_restart)
+    return {"ok": True}
+
+
 @router.post("/updates/restart")
 async def restart_for_update(background_tasks: BackgroundTasks):
     """Schedule update application after response is sent.
@@ -5199,6 +5576,9 @@ async def restart_for_update(background_tasks: BackgroundTasks):
 
     try:
         await update_checker._check_no_active_jobs()
+        # Refuse here, not only in apply_update: that runs after this reply, where a
+        # refusal could only be logged (#825).
+        await update_checker._check_install_dir()
     except UpdateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

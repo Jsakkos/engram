@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Merge queue: GitHub builds a temporary `gh-readonly-queue/main/...` branch
+  # (the PR squashed onto the latest main) and waits for the required "CI Gate"
+  # check on it before landing. Without this trigger a queued PR waits forever.
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -41,12 +46,16 @@ jobs:
         shell: bash
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-          HEAD_MSG: ${{ github.event.head_commit.message }}
+          # push: the head commit; merge_group: the queue's squash commit, whose
+          # subject is the PR title, so the `chore: release v` match still works.
+          HEAD_MSG: ${{ github.event.head_commit.message || github.event.merge_group.head_commit.message }}
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.sha }}
+          MG_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           # Clamp to the first line: head_commit.message carries the full body,
           # and `grep '^'` matches the start of EVERY line, so a body line that
@@ -61,6 +70,10 @@ jobs:
           # github.event.before is all-zeros and the diff cannot resolve.
           if [ "$EVENT_NAME" = "pull_request" ]; then
             base="$PR_BASE_SHA"; head="$PR_HEAD_SHA"
+          elif [ "$EVENT_NAME" = "merge_group" ]; then
+            # There is no PR payload and no `before` SHA here; without this the
+            # diff would fail and fail-safe into running the frozen build always.
+            base="$MG_BASE_SHA"; head="$MG_HEAD_SHA"
           else
             base="$PUSH_BEFORE"; head="$PUSH_AFTER"
           fi
@@ -141,12 +154,33 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: uv sync --no-install-project
       - run: uvx ruff check
       - run: uvx ruff format --check
+
+  discord-bot:
+    name: Discord Bot
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bot
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "bot/uv.lock"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
 
   backend-test-unit:
     name: Backend Tests (unit)
@@ -168,7 +202,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies (Linux)
@@ -225,7 +259,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies
@@ -272,7 +306,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: uv sync --no-install-project
@@ -316,7 +350,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies
@@ -422,7 +456,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: uv sync --no-install-project
@@ -459,7 +493,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "npm"
@@ -485,7 +519,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "npm"
@@ -501,7 +535,10 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    # Pinned: Playwright's WebKit build targets a specific Ubuntu release and `ubuntu-latest`
+    # moved to 26.04 (2026-10), where the 24.04 WebKit build can't find libicudata.so.74.
+    # Bump together with a Playwright release that supports the new image.
+    runs-on: ubuntu-24.04
     needs: [detect-release, frontend-lint-build]
     if: needs.detect-release.outputs.is_release != 'true'
     defaults:
@@ -509,7 +546,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "npm"
@@ -519,7 +556,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies
@@ -534,13 +571,16 @@ jobs:
         run: npm ci
       - name: Get Playwright version
         id: playwright-version
-        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        # ImageOS is a runner process env var, not available in the `env` expression context.
+        run: |
+          echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS}" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ steps.playwright-version.outputs.version }}-chromium-firefox-webkit
+          key: playwright-${{ steps.playwright-version.outputs.version }}-${{ steps.playwright-version.outputs.image }}-chromium-firefox-webkit
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium firefox webkit
@@ -582,7 +622,7 @@ jobs:
 
       # Frontend build + bundle, mirroring release.yml: engram.spec expects the
       # static assets at app/static, and a missing bundle changes what is frozen.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "npm"
@@ -600,7 +640,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install system dependencies
@@ -672,6 +712,7 @@ jobs:
       - detect-release
       - changelog-version-check
       - backend-lint
+      - discord-bot
       - backend-test-unit
       - backend-test-integration
       - backend-coverage

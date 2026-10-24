@@ -4,6 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from app.core.languages import language_name
 from app.matcher.srt_utils import SubtitleReader, clean_text, decode_utf16_bom, has_dialogue_cues
 
 _HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
@@ -13,6 +14,38 @@ _HTML_MARKERS = ("<!doctype", "<html", "<head", "<body", "<div")
 # routed to review by the matching coordinator, and never auto re-matched: a deeper
 # scan against the same unreadable corpus cannot help.
 REFERENCES_UNREADABLE_ERROR_CODE = "references_unreadable"
+
+# match_details["error"] when a track's audio cannot be matched by its dialogue:
+# every usable audio stream is another language, or the file has no audio at all
+# (issue #241). Produced by the curator before ASR, routed to review, and never
+# auto re-matched: a deeper scan of the same audio cannot change its language.
+AUDIO_LANGUAGE_ERROR_CODE = "audio_language_unsupported"
+
+
+def language_refusal_details(plan) -> dict:
+    """match_details for a track the curator refused for its audio (an ``AudioPlan``)."""
+    if plan.verdict == "no_audio":
+        message = (
+            "This track has no audio, so it could not be matched by its dialogue. "
+            "Assign the episode by hand."
+        )
+    else:
+        # Commentary and audio description are not the track's dialogue: an
+        # English commentary must not make the note read "only audio is Japanese
+        # and English, and Engram matches by English dialogue".
+        spoken = plan.usable_languages or plan.languages
+        names = list(dict.fromkeys(language_name(c) for c in spoken if c))
+        message = (
+            f"This track's only audio is {' and '.join(names) or 'in another language'}, "
+            "and Engram matches episodes by English dialogue, so it could not be matched "
+            "automatically. Assign the episode by hand."
+        )
+    return {
+        "error": AUDIO_LANGUAGE_ERROR_CODE,
+        "audio_languages": list(plan.languages),
+        "usable_audio_languages": list(plan.usable_languages),
+        "message": message,
+    }
 
 
 def _looks_like_srt(header: str) -> bool:
@@ -299,7 +332,13 @@ def corpus_dir_name(tmdb_id, show_name: str) -> str:
     2023 revival #195241) never collide into one directory. Falls back to the
     sanitized show name only when no tmdb_id is known (legacy caches, or a flat
     import that never resolved an id).
+
+    Under a TheTVDB-numbered job (``episode_namespace`` context) the name gains
+    an ``@tvdb`` suffix: those references are numbered differently and must
+    never share a folder with the TMDB-numbered ones (spec 2026-10-08).
     """
+    from app.core.episode_namespace import corpus_dir_suffix
+
     if tmdb_id is not None and str(tmdb_id).strip():
-        return str(tmdb_id)
-    return sanitize_filename(show_name)
+        return f"{tmdb_id}{corpus_dir_suffix()}"
+    return f"{sanitize_filename(show_name)}{corpus_dir_suffix()}"

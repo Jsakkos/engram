@@ -59,6 +59,18 @@ export function AsrStatusBadge({ onOpenSettings }: { onOpenSettings?: () => void
   } else if (gpuState === "installing") {
     accent = CYAN;
     label = "ASR: GPU installing…";
+  } else if (gpuState === "restart_pending") {
+    accent = CYAN;
+    label = "ASR: CPU · GPU after restart";
+    title = "GPU acceleration is enabled. Restart the backend to transcribe on the GPU.";
+  } else if (gpuState === "enabled_not_active") {
+    accent = AMBER;
+    label = "ASR: CPU · GPU failed to load →";
+    clickable = true;
+    title =
+      status.gpu_fallback_reason === "runtime_missing"
+        ? "GPU acceleration is on, but the CUDA runtime is not installed. Click to download it in Settings."
+        : "GPU acceleration is on, but the CUDA libraries failed to load at startup. Click for details in Settings.";
   } else if (
     gpuState === "available_not_enabled" ||
     gpuState === "available_not_installed" ||

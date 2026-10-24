@@ -3,6 +3,10 @@
 Moves ripped files from staging to the library with proper naming conventions:
 - Movies: Library/Movies/Movie Name (Year)/Movie Name (Year).mkv
 - TV: Library/TV/Show Name/Season XX/Show Name - SXXEXX.mkv
+
+Files are moved untouched, so the destination keeps the SOURCE's extension
+(``library_suffix``): a manual import of an MP4 lands as ``.mp4``, never as an
+MP4 wearing a ``.mkv`` name. Rips are always ``.mkv``.
 """
 
 import contextlib
@@ -14,6 +18,8 @@ import shutil
 import time
 import uuid
 from pathlib import Path
+
+from app.core.media_formats import IMPORTABLE_VIDEO_EXTENSIONS, library_suffix, list_video_files
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +323,25 @@ def clean_movie_name(raw_name: str) -> str:
     return name
 
 
+def _existing_media(dest_file: Path) -> Path | None:
+    """The file already occupying ``dest_file``'s library slot, if any.
+
+    The slot is the name WITHOUT its container: ``Show - S01E01.mkv`` and
+    ``Show - S01E01.mp4`` are the same episode to Plex/Jellyfin, which would list
+    both. So an existing file under the same stem with any other importable video
+    extension is a conflict too, not only an exact-name match.
+    """
+    if dest_file.exists():
+        return dest_file
+    for suffix in sorted(IMPORTABLE_VIDEO_EXTENSIONS):
+        if suffix == dest_file.suffix.lower():
+            continue
+        sibling = dest_file.with_suffix(suffix)
+        if sibling.exists():
+            return sibling
+    return None
+
+
 def resolve_conflict(dest_file: Path, conflict_resolution: str) -> tuple[Path | None, dict | None]:
     """Resolve a destination-file conflict according to the chosen strategy.
 
@@ -326,16 +351,19 @@ def resolve_conflict(dest_file: Path, conflict_resolution: str) -> tuple[Path | 
     - ("skip") returns (None, {"skipped": True})
     - ("ask"/unknown) returns (None, {...}) with FILE_EXISTS conflict details
 
-    When dest_file does not exist, returns (dest_file, None) unchanged.
+    "Exists" means the slot is taken in any video container (``_existing_media``),
+    so overwrite replaces an ``.mkv`` with an incoming ``.mp4`` rather than leaving
+    both. When the slot is free, returns (dest_file, None) unchanged.
     The early_return dict carries only conflict-specific keys; callers merge it
     with their own result shape.
     """
-    if not dest_file.exists():
+    existing = _existing_media(dest_file)
+    if existing is None:
         return dest_file, None
 
     if conflict_resolution == "overwrite":
-        logger.info(f"Overwriting existing file: {dest_file}")
-        dest_file.unlink()
+        logger.info(f"Overwriting existing file: {existing}")
+        existing.unlink()
         return dest_file, None
 
     if conflict_resolution == "rename":
@@ -343,21 +371,21 @@ def resolve_conflict(dest_file: Path, conflict_resolution: str) -> tuple[Path | 
         counter = 2
         while True:
             versioned = dest_file.with_stem(f"{dest_file.stem} (v{counter})")
-            if not versioned.exists():
+            if _existing_media(versioned) is None:
                 logger.info(f"Renaming to avoid conflict: {versioned}")
                 return versioned, None
             counter += 1
 
     if conflict_resolution == "skip":
-        logger.info(f"Skipping file due to conflict: {dest_file}")
+        logger.info(f"Skipping file due to conflict: {existing}")
         return None, {"success": True, "skipped": True}
 
     # "ask" or unknown — return conflict info for user review
     return None, {
         "success": False,
-        "error": f"File already exists: {dest_file}",
+        "error": f"File already exists: {existing}",
         "error_code": "FILE_EXISTS",
-        "existing_path": str(dest_file),
+        "existing_path": str(existing),
     }
 
 
@@ -484,8 +512,8 @@ def check_library_writable(library_path: Path | str | None, *, create: bool = Tr
 
 
 def find_main_movie_file(staging_dir: Path) -> Path | None:
-    """Find the main movie file (largest MKV) in a staging directory."""
-    mkv_files = list(staging_dir.glob("*.mkv"))
+    """Find the main movie file (largest video file) in a staging directory."""
+    mkv_files = list_video_files(staging_dir)
 
     if not mkv_files:
         return None
@@ -495,9 +523,90 @@ def find_main_movie_file(staging_dir: Path) -> Path | None:
 
 
 def find_extras(staging_dir: Path, main_file: Path) -> list[Path]:
-    """Find extra/bonus content files (all MKVs except the main movie)."""
-    mkv_files = list(staging_dir.glob("*.mkv"))
+    """Find extra/bonus content files (all video files except the main movie)."""
+    mkv_files = list_video_files(staging_dir)
     return [f for f in mkv_files if f != main_file]
+
+
+def _movie_library_root(library_path: Path | None) -> tuple[Path | None, str | None]:
+    """The movies library root, created if needed, or ``(None, error)``."""
+    # Imported function-locally to avoid a circular import with config_service.
+    from app.services.config_service import get_config_sync
+
+    if library_path is None:
+        library_path = Path(get_config_sync().library_movies_path)
+    if not library_path or str(library_path) in ("", ".", "./library/movies"):
+        return None, "Library path not configured. Please set Movies Library path in Settings."
+    try:
+        library_path = Path(library_path)
+        library_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Ensured library path exists: {library_path}")
+    except Exception as e:
+        return None, f"Cannot create library directory {library_path}: {e}"
+    return library_path, None
+
+
+def _move_extras(extras: list[Path], extras_dir: Path) -> dict[str, Path]:
+    """Move ``extras`` into ``extras_dir`` as ``Extra N``, returning name -> destination.
+
+    Numbering continues past extras already in the folder, so a second disc of
+    the same movie (or a bonus disc) adds to them instead of overwriting them:
+    ``move_media_file`` replaces whatever sits at its destination.
+    """
+    extras_dir.mkdir(parents=True, exist_ok=True)
+    mapping: dict[str, Path] = {}
+    i = 1
+    for extra in extras:
+        while _existing_media(extras_dir / f"Extra {i}{library_suffix(extra)}") is not None:
+            i += 1
+        extra_dest = extras_dir / f"Extra {i}{library_suffix(extra)}"
+        logger.info(f"Moving extra: {extra.name} -> {extra_dest}")
+        move_media_file(extra, extra_dest)
+        mapping[extra.name] = extra_dest
+        i += 1
+    return mapping
+
+
+def organize_movie_extras(
+    files: list[Path],
+    movie_name: str,
+    year: int | None = None,
+    library_path: Path | None = None,
+    *,
+    tmdb_id: str | int | None = None,
+    already_clean: bool = False,
+) -> dict:
+    """File every one of ``files`` under the movie's ``Extras/``, with no feature.
+
+    For a disc that carries only bonus content for a movie (#813): the folder is
+    named exactly as ``organize_movie`` names it, so the extras land beside the
+    film whether or not it is in the library yet.
+
+    Returns:
+        dict with 'success', 'extras_dir', 'moved', 'error' keys. 'moved' maps each
+        source path (``str``, the full path: an import can hold two files of the same
+        name in different folders) to its destination. On a failed move it still
+        lists the files already moved.
+    """
+    from app.services.config_service import get_config_sync
+
+    library_path, error = _movie_library_root(library_path)
+    if error:
+        return {"success": False, "extras_dir": None, "moved": {}, "error": error}
+
+    clean_name = movie_name if already_clean else clean_movie_name(movie_name)
+    folder_name = format_movie_folder(
+        get_config_sync().naming_movie_format, clean_name, year, tmdb_id
+    )
+    extras_dir = library_path / folder_name / "Extras"
+    moved: dict[str, Path] = {}
+    try:
+        for f in files:
+            moved[str(f)] = _move_extras([f], extras_dir)[f.name]
+    except Exception as e:
+        logger.exception("Error filing movie extras")
+        return {"success": False, "extras_dir": extras_dir, "moved": moved, "error": str(e)}
+    return {"success": True, "extras_dir": extras_dir, "moved": moved, "error": None}
 
 
 def organize_movie(
@@ -543,31 +652,14 @@ def organize_movie(
     # Imported function-locally to avoid a circular import with config_service.
     from app.services.config_service import get_config_sync
 
-    if library_path is None:
-        library_path = Path(get_config_sync().library_movies_path)
-
-    # Validate library path
-    if not library_path or str(library_path) in ("", ".", "./library/movies"):
+    library_path, error = _movie_library_root(library_path)
+    if error:
         return {
             "success": False,
             "main_file": None,
             "extras": [],
             "extras_mapping": {},
-            "error": "Library path not configured. Please set Movies Library path in Settings.",
-        }
-
-    # Ensure library path exists
-    try:
-        library_path = Path(library_path)
-        library_path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Ensured library path exists: {library_path}")
-    except Exception as e:
-        return {
-            "success": False,
-            "main_file": None,
-            "extras": [],
-            "extras_mapping": {},
-            "error": f"Cannot create library directory {library_path}: {e}",
+            "error": error,
         }
 
     # Check if input is a file (manual selection) or directory (auto-detect)
@@ -584,7 +676,7 @@ def organize_movie(
                 "main_file": None,
                 "extras": [],
                 "extras_mapping": {},
-                "error": "No MKV files found in staging directory",
+                "error": "No video files found in staging directory",
             }
 
     # Clean the movie name unless the caller says it is already canonical.
@@ -616,7 +708,7 @@ def organize_movie(
     # be blank (a user who cleared naming_movie_format), which would otherwise file
     # the movie as a bare ".mkv". Fall back to the folder name, which has its own
     # guard and degrades to the bare title.
-    file_name = f"{file_stem or folder_name}.mkv"
+    file_name = f"{file_stem or folder_name}{library_suffix(main_file)}"
 
     # Create destination directory
     dest_dir = library_path / folder_name
@@ -635,7 +727,6 @@ def organize_movie(
         # Move main movie
         move_media_file(main_file, dest_file)
 
-        moved_extras = []
         extras_mapping: dict[str, Path] = {}
 
         # Move extras if requested
@@ -645,16 +736,8 @@ def organize_movie(
             else:
                 extras = [f for f in extra_files if f != main_file and f.exists()]
             if extras:
-                extras_dir = dest_dir / "Extras"
-                extras_dir.mkdir(exist_ok=True)
-
-                for i, extra in enumerate(extras, 1):
-                    extra_name = f"Extra {i}.mkv"
-                    extra_dest = extras_dir / extra_name
-                    logger.info(f"Moving extra: {extra.name} -> {extra_dest}")
-                    move_media_file(extra, extra_dest)
-                    moved_extras.append(extra_dest)
-                    extras_mapping[extra.name] = extra_dest
+                extras_mapping = _move_extras(extras, dest_dir / "Extras")
+        moved_extras = list(extras_mapping.values())
 
         # Clean up empty staging directory
         try:
@@ -712,6 +795,7 @@ class MovieOrganizer:
         edition: str | None = None,
         already_clean: bool = False,
         conflict_resolution: str = "ask",
+        move_extras: bool = True,
     ) -> dict:
         """Organize a movie from staging to library.
 
@@ -722,6 +806,7 @@ class MovieOrganizer:
             staging_dir,
             movie_name,
             year,
+            move_extras=move_extras,
             conflict_resolution=conflict_resolution,
             tmdb_id=tmdb_id,
             edition=edition,
@@ -806,8 +891,10 @@ def organize_tv_episode(
     # in the DB and the fingerprint key stay canonical. Aired/no-tmdb_id is a no-op.
     # Every part of a multi-episode code is projected, so a range stays contiguous
     # in the output ordering rather than mixing orderings within one filename.
+    # A TheTVDB-numbered job ("tvdb") is never projected: its code is already the
+    # output number.
     out_season, out_episodes = season_num, list(episode_nums)
-    if ordering != "aired" and tmdb_id:
+    if ordering not in ("aired", "tvdb") and tmdb_id:
         from app.core.episode_ordering import project_episode
 
         projected: list[int] = []
@@ -846,7 +933,7 @@ def organize_tv_episode(
         tmdb_id=tmdb_id,
         extra_episodes=out_episodes[1:],
     )
-    filename = f"{ep_stem}.mkv"
+    filename = f"{ep_stem}{library_suffix(source_file)}"
 
     # Build destination path. The show folder may carry year/tmdb-id so same-name
     # shows (Frasier 1993 vs 2023) coexist; default "{show}" == bare clean_show.
@@ -931,10 +1018,11 @@ def organize_tv_extras(
     show_folder = format_tv_show_folder(cfg.naming_tv_show_format, clean_show, year, tmdb_id)
     season_folder = format_season_folder(cfg.naming_season_format, season)
 
+    suffix = library_suffix(source_file)
     if title_index is not None:
-        extra_name = f"{clean_show} Disc {disc_number} Extra t{title_index:02d}.mkv"
+        extra_name = f"{clean_show} Disc {disc_number} Extra t{title_index:02d}{suffix}"
     else:
-        extra_name = f"{clean_show} Disc {disc_number} Extra {extra_index}.mkv"
+        extra_name = f"{clean_show} Disc {disc_number} Extra {extra_index}{suffix}"
 
     # Build destination path
     library_path = Path(library_path)
@@ -943,11 +1031,12 @@ def organize_tv_extras(
 
     logger.info(f"Organizing TV extra: {source_file.name} -> {dest_file}")
 
-    if dest_file.exists():
+    existing = _existing_media(dest_file)
+    if existing is not None:
         return {
             "success": False,
             "final_path": None,
-            "error": f"Destination file already exists: {dest_file}",
+            "error": f"Destination file already exists: {existing}",
             "error_code": "FILE_EXISTS",
         }
 

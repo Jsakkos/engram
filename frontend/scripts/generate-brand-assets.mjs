@@ -26,6 +26,7 @@ const ICONS_WIN = join(BRAND_DIR, "app-icons", "windows");
 const ICONS_MAC = join(BRAND_DIR, "app-icons", "macos");
 const ICONS_MAC_ISET = join(ICONS_MAC, "iconset");
 const ICONS_LINUX = join(BRAND_DIR, "app-icons", "linux");
+const BOT = join(BRAND_DIR, "bot");
 
 async function rasterize(svgPath, size) {
   const svg = readFileSync(svgPath);
@@ -48,7 +49,7 @@ function pack({ buffers, format }) {
 }
 
 async function main() {
-  for (const dir of [FAVICONS, ICONS_WIN, ICONS_MAC, ICONS_MAC_ISET, ICONS_LINUX]) {
+  for (const dir of [FAVICONS, ICONS_WIN, ICONS_MAC, ICONS_MAC_ISET, ICONS_LINUX, BOT]) {
     mkdirSync(dir, { recursive: true });
   }
 
@@ -127,6 +128,15 @@ async function main() {
     console.log(`  · engram-${size}.png`);
   }
 
+  // ── Discord bot avatar ────────────────────────────────────────────────
+  // One 1024 PNG serves both Discord slots (General Information → App Icon
+  // and Bot → Icon); Discord downsamples it itself.
+  console.log("▸ Rendering Discord bot avatar…");
+
+  const botAvatar = await rasterize(join(SOURCES, "bot-avatar.svg"), 1024);
+  writeFileSync(join(BOT, "trace-avatar-1024.png"), botAvatar);
+  console.log("  · trace-avatar-1024.png");
+
   // ── Manifest ──────────────────────────────────────────────────────────
   // Only the array-valued keys hold file paths; `generated` is a scalar
   // metadata field. Counting via an explicit filter (rather than
@@ -142,6 +152,7 @@ async function main() {
       MAC_SIZES.map((s) => `app-icons/macos/iconset/icon_${s}x${s}.png`)
     ),
     linux: LINUX_SIZES.map((s) => `app-icons/linux/engram-${s}.png`),
+    bot: ["bot/trace-avatar-1024.png"],
   };
   const manifest = { generated: new Date().toISOString(), ...fileGroups };
   // Trailing newline keeps the pre-commit end-of-file-fixer happy.

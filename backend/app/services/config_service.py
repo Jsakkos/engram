@@ -183,6 +183,22 @@ def read_allow_lan_sync() -> bool | None:
     return bool(row[0])
 
 
+# Credentials: redacted by GET /api/config, never blanked by an empty string on
+# write, and left out of a settings export unless the user opts in (#731).
+SECRET_FIELDS = frozenset(
+    {
+        "makemkv_key",
+        "tmdb_api_key",
+        "tvdb_api_key",
+        "ai_api_key",
+        "opensubtitles_api_key",
+        "opensubtitles_password",
+        "discdb_api_key",
+        "discord_webhook_url",
+    }
+)
+
+
 async def update_config(**kwargs) -> AppConfig:
     """Update configuration with provided values.
 
@@ -207,15 +223,7 @@ async def update_config(**kwargs) -> AppConfig:
         # so no client — or future code path — can blank a stored credential by
         # sending "". Keep this set in sync with the redacted fields in
         # GET /api/config.
-        sensitive_fields = {
-            "makemkv_key",
-            "tmdb_api_key",
-            "ai_api_key",
-            "opensubtitles_api_key",
-            "opensubtitles_password",
-            "discdb_api_key",
-            "discord_webhook_url",
-        }
+        sensitive_fields = SECRET_FIELDS
 
         _nullable_fields = {
             "import_watch_path",
@@ -248,6 +256,14 @@ async def update_config(**kwargs) -> AppConfig:
             from app.matcher.tmdb_client import clear_caches
 
             clear_caches()
+
+        # A new TheTVDB key must not keep using a token minted with the old one.
+        if (kwargs.get("tvdb_api_key") or "").strip():
+            from app.matcher import tvdb_client
+
+            with tvdb_client._token_lock:
+                tvdb_client._token_state.token = None
+                tvdb_client._token_state.key = None
 
         # Bridge a changed MakeMKV key into MakeMKV's own settings.conf so
         # makemkvcon picks it up — Engram's config DB and MakeMKV's settings

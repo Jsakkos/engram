@@ -5,7 +5,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
-import { apiFetch, apiFetchVoid } from '../../api/client';
+import { apiFetch, apiFetchVoid, skipRipTitle, unskipRipTitle } from '../../api/client';
+import { recoveryErrorMessage, retryFromStaging } from '../../api/recoveryClient';
 import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage, BackupProgressMessage } from '../../types';
 import type { ArmedIdentity } from '../components/ArmedDriveCard';
 
@@ -51,6 +52,11 @@ function toUpdateStatus(raw: Omit<UpdateStatusMessage, 'type'>): UpdateStatus {
         last_update_success_version: raw.last_update_success_version ?? null,
         is_frozen: raw.is_frozen ?? false,
     };
+}
+
+/** The server's reason from a rejected request, for a toast. */
+function errorText(error: unknown): string {
+    return error instanceof Error && error.message ? error.message : 'Please try again.';
 }
 
 /**
@@ -287,6 +293,30 @@ export function useJobManagement(devMode: boolean = false) {
         }
     }
 
+    // A refused skip/un-skip means the card disagrees with the server (#754:
+    // a Play All row the server had already set aside still showed SKIP). Say
+    // why, then refetch so the card shows the server's state, not the stale one.
+    async function skipTrack(jobId: string, titleId: number) {
+        try {
+            await skipRipTitle(Number(jobId), titleId);
+            // Track state arrives via WebSocket.
+        } catch (error) {
+            console.error('Failed to skip track:', error);
+            toast.error(`Could not skip that track. ${errorText(error)}`);
+            void fetchJobsAndTitles();
+        }
+    }
+
+    async function unskipTrack(jobId: string, titleId: number) {
+        try {
+            await unskipRipTitle(Number(jobId), titleId);
+        } catch (error) {
+            console.error('Failed to un-skip track:', error);
+            toast.error(`Could not un-skip that track. ${errorText(error)}`);
+            void fetchJobsAndTitles();
+        }
+    }
+
     async function advanceJob(jobId: string) {
         try {
             await apiFetchVoid(`/api/jobs/${jobId}/advance`, { method: 'POST' });
@@ -295,6 +325,17 @@ export function useJobManagement(devMode: boolean = false) {
         } catch (error) {
             console.error('Failed to advance job:', error);
             toast.error('Failed to advance the job. Please try again.');
+        }
+    }
+
+    async function retryJobFromStaging(jobId: string) {
+        try {
+            const { job_id } = await retryFromStaging(jobId);
+            toast.success(`Retrying from staging as job #${job_id}.`);
+            // The new job arrives via WebSocket (job_created).
+        } catch (error) {
+            console.error('Failed to retry job from staging:', error);
+            toast.error(recoveryErrorMessage(error, 'Could not retry this job from staging.'));
         }
     }
 
@@ -375,9 +416,17 @@ export function useJobManagement(devMode: boolean = false) {
                     setJobs(prev => {
                         const exists = prev.some(j => j.id === message.job_id);
                         if (exists) {
-                            return prev.map(job =>
-                                job.id === message.job_id ? { ...job, ...message } : job
-                            );
+                            return prev.map(job => {
+                                if (job.id !== message.job_id) return job;
+                                const merged = { ...job, ...message };
+                                // A phase change is progress by definition; drop a stale stall
+                                // flag until the backend's next tick says otherwise (#718).
+                                if (message.state && message.state !== job.state && message.looks_stuck === undefined) {
+                                    merged.looks_stuck = false;
+                                    merged.stalled_for_seconds = null;
+                                }
+                                return merged;
+                            });
                         }
                         // Unknown job — trigger a (debounced) fetch so a burst
                         // of unknown updates collapses into a single refetch.
@@ -518,6 +567,9 @@ export function useJobManagement(devMode: boolean = false) {
         cancelJob,
         ejectJob,
         advanceJob,
+        skipTrack,
+        unskipTrack,
+        retryJobFromStaging,
         clearFinished,
         setJobName,
         reIdentifyJob,
