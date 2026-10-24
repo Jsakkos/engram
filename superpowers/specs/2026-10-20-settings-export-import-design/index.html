@@ -1,0 +1,1931 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-10-20-settings-export-import-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Settings export and import (#731) - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#settings-export-and-import-731" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Settings export and import (#731)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anti-goals-would-make-this-a-failure-even-if-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-goals (would make this a failure even if it works)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File format
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="File format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#compatibility-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compatibility rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#which-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paths-on-a-different-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paths on a different machine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backend
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Backend">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shared-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#endpoints-all-dependsrequire_localhost_or_lan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Endpoints (all Depends(require_localhost_or_lan))
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docs-and-changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs and changelog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calls-i-made-please-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Calls I made (please check)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#amendments-during-implementation-2026-10-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendments during implementation (2026-10-20)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="settings-export-and-import-731">Settings export and import (#731)</h1>
+<p>Status: design, awaiting approval. Part of the 1.0 epic (#734), Tier 3, paired with #730
+(back up <code>engram.db</code> before migrations, PR #802).</p>
+<h2 id="why">Why</h2>
+<p>Every setting lives in the <code>app_config</code> row of <code>engram.db</code>. Moving to a new machine,
+switching between the packaged build and Docker, or recovering from a lost database means
+re-entering every path, preference, template and key by hand. The API only has
+<code>GET</code>/<code>PUT /api/config</code>, and <code>GET</code> redacts every secret, so even a scripted copy cannot
+carry keys across.</p>
+<p>Success: export on machine A, import on a fresh install on machine B, and every non-secret
+setting is back; keys come too only when the user explicitly asked for them.</p>
+<h2 id="goals">Goals</h2>
+<ul>
+<li><strong>Export</strong> a versioned JSON file of the configuration, secrets excluded unless the user
+  ticks "include keys and passwords".</li>
+<li><strong>Import</strong> a file through the same validation and normalization as <code>PUT /api/config</code>,
+  with a per-field preview of what will change before anything is written.</li>
+<li>Gate both endpoints like other host-level actions.</li>
+</ul>
+<h2 id="non-goals">Non-goals</h2>
+<ul>
+<li>Backing up jobs, history, show-ordering preferences, caches or the database itself (#730
+  covers the DB file).</li>
+<li>Encrypting the export. A file with secrets is protected by where the user keeps it; the
+  UI says so.</li>
+<li>Syncing settings between running instances.</li>
+<li>Settings that are not user-editable today (anything outside <code>ConfigUpdate</code>).</li>
+</ul>
+<h2 id="anti-goals-would-make-this-a-failure-even-if-it-works">Anti-goals (would make this a failure even if it works)</h2>
+<ul>
+<li>A secret appearing in a URL, a log line, a preview response, or an export the user did not
+  opt into.</li>
+<li>An import that bypasses a validator <code>PUT /api/config</code> enforces (SSRF guards on webhook and
+  fingerprint URLs, AI model/base-URL checks, template and naming-format checks, library
+  writability, path normalization).</li>
+<li>An import that silently blanks a stored secret, or resets settings the file does not
+  mention.</li>
+<li>An import that flips machine-local security posture (LAN binding) or per-install consent
+  (fingerprint disclosure) without the user doing it on this machine.</li>
+</ul>
+<h2 id="file-format">File format</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"engram-settings"</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"schema_version"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"engram_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0.41.0"</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">"exported_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-20T14:03:00Z"</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">"includes_secrets"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">"settings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">"staging_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"D:\\Engram\\staging"</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">"library_tv_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"\\\\nas\\media\\TV"</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">"naming_episode_format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"{show} - S{season:02d}E{episode:02d}"</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nt">"discord_notify_ripped"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>Filename: <code>engram-settings-YYYY-MM-DD.json</code> (<code>-with-keys</code> suffix when secrets are
+  included, so the file announces what it holds).</li>
+<li><code>settings</code> holds only exportable keys (below), with their stored values. Secrets are
+  <strong>absent</strong> (not <code>""</code>) when not included.</li>
+<li><code>schema_version</code> starts at 1. It is bumped only if a key changes meaning or shape; adding a
+  setting does not bump it (absent keys are already handled).</li>
+</ul>
+<h3 id="compatibility-rules">Compatibility rules</h3>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Key missing from the file (older export)</td>
+<td>Setting left unchanged. Never reset to default.</td>
+</tr>
+<tr>
+<td>Key this version does not know (newer export, typo)</td>
+<td>Listed in the preview as "not recognized, will be skipped". Never applied. Not an error, so a newer file still imports.</td>
+</tr>
+<tr>
+<td>Known key, invalid value</td>
+<td>Listed with the validator's message, unticked and not selectable. Apply refuses it if sent anyway.</td>
+</tr>
+<tr>
+<td><code>schema_version</code> greater than supported</td>
+<td>Preview shows a warning; known keys still validate field by field.</td>
+</tr>
+<tr>
+<td><code>format</code> not <code>engram-settings</code>, <code>settings</code> not an object, not JSON</td>
+<td>400 with a plain message. Nothing previewed.</td>
+</tr>
+<tr>
+<td>Secret key present with an empty string</td>
+<td>Treated as absent (matches <code>update_config</code>'s never-blank-a-secret rule).</td>
+</tr>
+<tr>
+<td><code>null</code> value</td>
+<td>Applied only for the two fields PUT already lets you clear (<code>import_watch_path</code>, <code>fingerprint_server_url</code>); elsewhere treated as absent.</td>
+</tr>
+</tbody>
+</table>
+<p><code>same</code> vs <code>change</code> compares the normalized incoming value with the stored one. Row labels in
+the UI come from a small key-to-label map in the frontend, falling back to the humanized key,
+so a setting added later still renders.</p>
+<p>This reads the issue's "import rejects unknown or invalid fields with clear messages" as:
+neither is ever applied, and each gets a message; the rest of the file can still import.
+(My call; the alternative is all-or-nothing, see "Calls I made".)</p>
+<h2 id="which-fields">Which fields</h2>
+<p>Exportable = the <code>ConfigUpdate</code> fields minus a small excluded set. Defined once as a
+constant next to <code>ConfigUpdate</code> so a new setting is exported by default and a unit test
+fails if a <code>ConfigUpdate</code> field is neither exported nor explicitly excluded.</p>
+<p><strong>Secrets</strong> (exported only with the opt-in; same set as <code>config_service.update_config</code>'s
+<code>sensitive_fields</code>, which is made a shared constant):
+<code>makemkv_key</code>, <code>tmdb_api_key</code>, <code>tvdb_api_key</code>, <code>ai_api_key</code>, <code>opensubtitles_api_key</code>,
+<code>opensubtitles_password</code>, <code>discdb_api_key</code>, <code>discord_webhook_url</code>.</p>
+<p><strong>Excluded always</strong> (per-install state, not preferences):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setup_complete</code></td>
+<td>The importing machine should still finish its own wizard.</td>
+</tr>
+<tr>
+<td><code>allow_lan_access</code></td>
+<td>Network exposure of this machine; must be switched on deliberately, here. Also read before uvicorn binds, so importing it would be a surprise on next restart.</td>
+</tr>
+<tr>
+<td><code>fingerprint_disclosure_accepted</code></td>
+<td>Consent is given per install, with its timestamp stamped server-side.</td>
+</tr>
+</tbody>
+</table>
+<p>Everything else in <code>ConfigUpdate</code> is exported: paths (library, staging, backup, export,
+import watch), tool paths (<code>makemkv_path</code>, <code>ffmpeg_path</code>, <code>fpcalc_path</code>), preferences,
+thresholds, timeouts, naming formats, Discord templates and toggles, AI provider and model,
+DiscDB, OpenSubtitles username, fingerprint server URL.</p>
+<p>Fields outside <code>ConfigUpdate</code> (<code>subtitles_cache_path</code>, <code>matcher_min_confidence</code>,
+<code>precomputed_cache_*</code>, <code>ripping_stall_timeout</code>, <code>enable_fingerprint_identification</code>,
+<code>contribution_pseudonym</code>, update-check state, disclosure timestamp) are not exported:
+they are not user-editable today, and import goes through <code>ConfigUpdate</code>.</p>
+<h2 id="paths-on-a-different-machine">Paths on a different machine</h2>
+<p>Path fields (library, staging, backup, DiscDB export, import watch, and the three tool
+paths) are checked in the preview, after normalization: if the path does not exist on this
+machine the row is flagged "not found on this machine" and <strong>unticked by default</strong>. The user
+can tick it anyway (a NAS share not mounted yet is legitimate, matching <code>PUT</code>'s
+<code>create=False</code> stance). An existing-but-unwritable library path is invalid, exactly as <code>PUT</code>
+rejects it.</p>
+<h2 id="backend">Backend</h2>
+<h3 id="shared-validation">Shared validation</h3>
+<p>Extract the body of <code>update_config</code> (the PUT handler) into
+<code>validate_config_update(update_data: dict) -&gt; dict</code> in a new <code>app/services/config_transfer.py</code>
+(or kept in <code>routes.py</code> if import cycles bite). It runs every existing check and the path
+normalization and returns the normalized dict, raising <code>HTTPException</code> as today. <code>PUT
+/api/config</code> calls it, so its behavior is unchanged and covered by the existing tests.</p>
+<p>The preview needs every error at once rather than the first, so it validates per field:
+build <code>ConfigUpdate(**{key: value})</code> (type errors become messages) then call
+<code>validate_config_update({key: value})</code>, catching <code>HTTPException</code> and recording its detail.
+Cross-field rules do not exist in the PUT path today, so per-field validation loses nothing.</p>
+<h3 id="endpoints-all-dependsrequire_localhost_or_lan">Endpoints (all <code>Depends(require_localhost_or_lan)</code>)</h3>
+<ul>
+<li><code>GET /api/config/export?include_secrets=false</code> returns the file as
+  <code>application/json</code> with <code>Content-Disposition: attachment</code> and <code>Cache-Control: no-store</code>.
+  The flag is a boolean, never a secret. Logs <code>Exported settings (keys included: yes/no)</code>,
+  never values.</li>
+<li><code>POST /api/config/import/preview</code> with the file JSON as the body. Returns:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">"schema_version"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"engram_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0.40.2"</span><span class="p">,</span><span class="w"> </span><span class="nt">"includes_secrets"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">"warnings"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"This file was written by a newer Engram ..."</span><span class="p">],</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">"fields"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="p">{</span><span class="nt">"key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"library_tv_path"</span><span class="p">,</span><span class="w"> </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"change"</span><span class="p">,</span><span class="w"> </span><span class="nt">"current"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span><span class="w"> </span><span class="nt">"incoming"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">     </span><span class="nt">"secret"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"path_missing"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nt">"selected"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="p">{</span><span class="nt">"key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tmdb_api_key"</span><span class="p">,</span><span class="w"> </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"change"</span><span class="p">,</span><span class="w"> </span><span class="nt">"current"</span><span class="p">:</span><span class="w"> </span><span class="s2">"***"</span><span class="p">,</span><span class="w"> </span><span class="nt">"incoming"</span><span class="p">:</span><span class="w"> </span><span class="s2">"***"</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">     </span><span class="nt">"secret"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"path_missing"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nt">"selected"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">}</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="p">],</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="nt">"unknown"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"some_future_setting"</span><span class="p">]</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>status</code> is <code>change</code>, <code>same</code>, or <code>invalid</code>. Secret rows never carry a value in either
+  direction: <code>current</code>/<code>incoming</code> are <code>"***"</code> or <code>""</code>, and <code>same</code>/<code>change</code> is computed
+  server-side. Nothing is written.
+- <code>POST /api/config/import/apply</code> with <code>{"file": {...}, "keys": ["..."]}</code>. Stateless: the
+  client re-sends the file rather than the server holding a pending import. Re-runs the full
+  parse and per-field validation on the selected keys; if any selected key is unknown,
+  excluded or invalid it returns 422 listing them and writes nothing. Otherwise calls
+  <code>config_service.update_config(**normalized)</code> once, so the existing side effects (TMDB
+  cache clear, TVDB token reset, MakeMKV <code>settings.conf</code> bridge, <code>ensure_paths_exist</code>) run.
+  Returns <code>{"applied": [...]}</code>. Logs the applied key names only.</p>
+<p>Request size: the body is a few KB; reject over 256 KB with 413 so the endpoint is not a
+memory sink.</p>
+<h2 id="frontend">Frontend</h2>
+<ul>
+<li><strong>Settings mode</strong>: a sixth section, "Import &amp; Export", in <code>SETTINGS_SECTIONS</code>
+  (settings-mode only; the onboarding stepper keeps its five steps). It holds:</li>
+<li><strong>Export settings</strong>: an "Include keys and passwords" checkbox (off), with a warning when
+    ticked ("Anyone with this file can use your MakeMKV, TMDB, AI and Discord credentials.
+    Store it like a password."), and a download button. The download is a <code>fetch</code> turned
+    into a blob, so nothing sensitive is in a URL the browser history keeps.</li>
+<li><strong>Import settings</strong>: a file picker. Choosing a file calls preview and opens an
+    <code>ImportSettingsDialog</code> listing rows grouped Changes / Not found on this machine /
+    Invalid / Unchanged (collapsed) / Not recognized (collapsed), with a checkbox per
+    change row, defaults from <code>selected</code>. Secret rows say "will be replaced" instead of
+    showing values. "Apply N settings" calls apply, then reloads the form from
+    <code>GET /api/config</code>.</li>
+<li><strong>Onboarding step 1</strong>: a small "Restoring from another install? Import a settings file"
+  link that opens the same picker and dialog, so a fresh install can import before walking
+  the wizard. After applying, the wizard reloads its values and stays at step 1 so the user
+  confirms paths; <code>setup_complete</code> is never imported.</li>
+<li><strong>Unsaved edits</strong>: if the form has unsaved changes (the dirty tracking PR #794 adds), the
+  import dialog's Apply button warns that those edits will be replaced by the reload. This
+  part is built after #794 merges and the branch is rebased.</li>
+</ul>
+<h2 id="docs-and-changelog">Docs and changelog</h2>
+<ul>
+<li><code>docs/getting-started/configuration.md</code>: a "Moving settings to another install" section
+  covering export, the keys opt-in and its warning, what is never exported, and how the
+  preview treats missing paths.</li>
+<li><code>CHANGELOG.md</code> <code>[Unreleased]</code> <code>### Added</code> entry referencing #731.</li>
+</ul>
+<h2 id="tests">Tests</h2>
+<p>Backend unit (<code>tests/unit/test_config_transfer.py</code>):
+- every <code>ConfigUpdate</code> field is either exportable or in the excluded set (drift guard);
+- export without secrets omits all eight secret keys and the excluded keys; with secrets
+  includes them; the response never includes secrets when the flag is false; log capture
+  shows no secret value in either mode;
+- round trip: export from a configured DB, reset to defaults, apply all, compare every
+  non-secret exportable field (the acceptance criterion);
+- preview: unknown keys listed and not applied; invalid values (bad naming format, internal
+  webhook URL, bad <code>extras_policy</code>, wrong type) reported with the PUT validator's message;
+  secret rows carry no values; missing paths flagged and unselected; bad <code>format</code> / non-JSON
+  400; oversize 413;
+- apply: refuses unknown/excluded/invalid selected keys with 422 and writes nothing; leaves
+  unmentioned settings and absent secrets untouched; empty-string secret does not blank;
+- both endpoints 403 for a LAN peer when <code>allow_lan_access</code> is off (ASGITransport
+  <code>client=("172.18.0.14", ...)</code>, per the known loopback default).</p>
+<p><code>PUT /api/config</code> existing tests stay green unchanged (refactor guard).</p>
+<p>Frontend vitest: the dialog renders groups and defaults, secret rows show no values, apply
+sends only ticked keys, export checkbox warning appears.</p>
+<h2 id="calls-i-made-please-check">Calls I made (please check)</h2>
+<ol>
+<li>Partial import is allowed: invalid and unknown fields are reported and skipped, valid
+   ones can still be applied. Alternative: any invalid field blocks the whole file.</li>
+<li>Excluded always: <code>setup_complete</code>, <code>allow_lan_access</code>, <code>fingerprint_disclosure_accepted</code>.</li>
+<li>Tool paths are exported (same-OS moves benefit) but, like other paths, unticked by
+   default when missing on this machine.</li>
+<li>Both endpoints use <code>require_localhost_or_lan</code>, so a Docker user with LAN access on can
+   export keys from another device. Alternative: secrets-included export is <code>require_localhost</code>
+   only, which would make keys unexportable from a headless Docker install.</li>
+<li>Onboarding gets an import entry point on step 1, not just Settings.</li>
+<li>No encryption of the export.</li>
+</ol>
+<h2 id="amendments-during-implementation-2026-10-20">Amendments during implementation (2026-10-20)</h2>
+<p>Made after an automated security review of the first backend commits, and during the UI work:</p>
+<ul>
+<li><strong>Import bodies must be <code>application/json</code> (415 otherwise).</strong> The routes read the raw body
+  for the size cap, which skipped FastAPI's own rule of parsing JSON only when declared. A
+  cross-site <code>text/plain</code> POST needs no CORS preflight, so without this any web page could
+  apply a settings file.</li>
+<li><strong>The preview never touches a UNC path from the file.</strong> Neither the existence check nor
+  <code>validate_config_update</code>'s library writability probe (new <code>probe_paths=False</code>) runs for a
+  <code>\server\share</code> value, so previewing a crafted file cannot make Windows authenticate to the
+  host it names. Such rows carry <code>path_unchecked: true</code>, are grouped as "Network paths (not
+  checked)" and are unticked. Apply still runs every check on what the user ticked.</li>
+<li><strong>A keys-included export checks the Host header</strong>: loopback names and IP literals only.
+  DNS rebinding reaches the loopback API under the attacker's host name and can then read the
+  response; this is the only response that carries plaintext secrets. <code>dashboard_base_url</code> is
+  deliberately not trusted as an allowlist entry, since the same page could set it through
+  <code>PUT /api/config</code>. Export without keys is unaffected.</li>
+<li>An unset (<code>None</code>) value is left out of the export rather than written as <code>null</code>, except for
+  the two clearable fields, because import reads <code>null</code> as "leave alone" elsewhere.</li>
+<li>Settings keys that are excluded (per-install) appear under "Not recognized" when present in a
+  file, the same as keys this version does not know.</li>
+<li>The section is named <strong>Import &amp; Export</strong> (not "Backup &amp; Transfer", which read like the
+  disc-backup feature), and the review renders inline in the Settings pane instead of as a
+  second modal.</li>
+<li><strong>Network-path guard widened after the final review</strong>: besides UNC, any value rooted in a
+  backslash (the NT namespace and device paths, which reach the network with a single
+  leading separator) and, on Windows, any value rooted in <code>/</code> is left unchecked.</li>
+<li><strong>Endpoint and program rows are never pre-ticked</strong> (<code>REVIEW_FIELDS</code>: <code>discdb_api_url</code>,
+  <code>ai_local_base_url</code>, <code>fingerprint_server_url</code>, <code>makemkv_path</code>, <code>ffmpeg_path</code>, <code>fpcalc_path</code>).
+  A shared file that repoints one would pair this install's stored key with a host the file
+  chose, or swap in another executable. They appear under "Check before applying" with the new
+  value shown, and the user opts in per row.</li>
+<li>The "Not found on this machine" hint no longer suggests ticking a not-yet-mounted share:
+  saving runs <code>ensure_paths_exist</code>, which would create that folder on the local disk.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

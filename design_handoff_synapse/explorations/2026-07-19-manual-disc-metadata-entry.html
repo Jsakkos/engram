@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual metadata entry — UI mockup</title>
+<style>
+  :root{
+    --bg0:#05070c; --bg1:#0a0e18; --bg2:#121827; --bg3:#1a2234;
+    --ink:#e6ecf5; --inkDim:#8893a8; --inkFaint:#4a5369; --inkGhost:#2a3147;
+    --cyan:#5eead4; --cyanHi:#9ff8e8; --cyanDim:#2dd4bf;
+    --magenta:#ff3d7f; --magentaHi:#ff7aa5;
+    --yellow:#fde047; --amber:#fcd34d; --green:#86efac; --red:#ff5555; --purple:#a78bfa;
+    --line:rgba(94,234,212,.14); --lineMid:rgba(94,234,212,.24); --lineHi:rgba(94,234,212,.42);
+    --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:28px;background:var(--bg0);color:var(--ink);
+       font-family:var(--mono);font-size:13px;line-height:1.5;}
+  h1{font-size:16px;letter-spacing:.18em;text-transform:uppercase;color:var(--cyanHi);
+     text-shadow:0 0 12px rgba(94,234,212,.4);margin:0 0 4px;}
+  .lede{color:var(--inkDim);font-size:12px;margin:0 0 26px;}
+  h2{font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--inkFaint);
+     margin:34px 0 10px;font-weight:400;}
+  h2 .c{color:var(--cyan);}
+  .note{color:var(--inkDim);font-size:11.5px;margin:10px 0 0;line-height:1.65;}
+  .new{color:var(--magenta);}
+
+  /* panel with corner ticks */
+  .panel{position:relative;background:linear-gradient(180deg,rgba(18,24,39,.8),rgba(10,14,24,.93));
+         border:1px solid var(--lineMid);padding:18px;}
+  .panel::before,.panel::after{content:"";position:absolute;width:9px;height:9px;
+         border-color:var(--cyan);opacity:.75;}
+  .panel::before{top:-1px;left:-1px;border-top:2px solid;border-left:2px solid;}
+  .panel::after{bottom:-1px;right:-1px;border-bottom:2px solid;border-right:2px solid;}
+  .panel.rip{border-color:rgba(255,61,127,.4);}
+  .panel.rip::before,.panel.rip::after{border-color:var(--magenta);}
+  .panel.armed{border:1px dashed rgba(94,234,212,.45);background:rgba(10,14,24,.6);}
+
+  /* top bar */
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:18px;
+          background:rgba(10,14,24,.9);border:1px solid var(--line);padding:10px 16px;}
+  .brand{display:flex;flex-direction:column;gap:2px;}
+  .brand .wm{font-size:15px;font-weight:700;letter-spacing:.18em;color:var(--cyanHi);
+             text-shadow:0 0 12px rgba(94,234,212,.35);}
+  .brand .tag{font-size:8px;letter-spacing:.24em;color:var(--inkFaint);text-transform:uppercase;}
+  .nav{display:flex;gap:14px;font-size:10px;letter-spacing:.18em;color:var(--inkDim);text-transform:uppercase;}
+  .nav .on{color:var(--cyan);border-bottom:1px solid var(--cyan);padding-bottom:3px;}
+  .tbright{display:flex;align-items:center;gap:10px;}
+  .btn{display:inline-flex;align-items:center;gap:7px;background:transparent;
+       border:1px solid var(--cyan);color:var(--cyan);font-family:var(--mono);
+       font-size:10.5px;font-weight:700;letter-spacing:.16em;padding:7px 12px;cursor:pointer;}
+  .btn.mag{border-color:var(--magenta);color:var(--magenta);
+           box-shadow:0 0 12px rgba(255,61,127,.3);}
+  .pill{font-size:9px;letter-spacing:.2em;color:var(--green);border:1px solid rgba(134,239,172,.4);
+        padding:4px 8px;}
+  .gear{border:1px solid var(--line);color:var(--inkDim);padding:6px 9px;}
+
+  /* job card */
+  .card{display:flex;gap:18px;}
+  .cover{position:relative;flex-shrink:0;width:118px;height:118px;border:1px solid var(--lineMid);
+         background:linear-gradient(135deg,var(--bg3),var(--bg0));display:flex;
+         align-items:center;justify-content:center;font-size:30px;color:rgba(94,234,212,.35);}
+  .badge{position:absolute;top:5px;left:5px;font-size:8px;letter-spacing:.16em;
+         background:rgba(5,7,12,.85);border:1px solid var(--lineMid);color:var(--cyan);padding:2px 5px;}
+  .cbody{flex:1;min-width:0;}
+  .chead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px;}
+  .ctitle{font-size:15px;font-weight:700;letter-spacing:.02em;color:var(--ink);}
+  .csub{font-size:10.5px;color:var(--inkDim);margin-top:3px;letter-spacing:.06em;}
+  .clabel{font-size:9px;color:var(--inkFaint);margin-top:5px;letter-spacing:.14em;}
+  .actions{display:flex;align-items:center;gap:7px;flex-shrink:0;}
+  .state{font-size:9px;letter-spacing:.2em;padding:5px 9px;border:1px solid rgba(255,61,127,.45);
+         color:var(--magenta);text-transform:uppercase;}
+  .state.rev{border-color:rgba(253,224,71,.5);color:var(--yellow);}
+  .abtn{height:28px;display:inline-flex;align-items:center;gap:5px;background:var(--bg0);
+        border:1px solid rgba(94,234,212,.35);color:var(--cyan);font-family:var(--mono);
+        font-size:9px;font-weight:700;letter-spacing:.2em;padding:0 9px;text-transform:uppercase;
+        box-shadow:0 0 8px rgba(94,234,212,.2);cursor:pointer;}
+  .abtn.sq{width:28px;padding:0;justify-content:center;border-color:rgba(255,85,85,.35);color:var(--red);}
+  .abtn.hl{background:rgba(94,234,212,.1);border-color:var(--cyan);color:var(--cyanHi);
+           box-shadow:0 0 14px rgba(94,234,212,.4);}
+  .prov{font-size:8.5px;letter-spacing:.2em;color:var(--cyan);border:1px solid rgba(94,234,212,.4);
+        padding:3px 6px;background:rgba(94,234,212,.08);}
+
+  /* progress */
+  .bar{height:7px;background:var(--bg0);border:1px solid var(--line);position:relative;overflow:hidden;}
+  .bar i{position:absolute;inset:0 42% 0 0;background:linear-gradient(90deg,var(--cyanDim),var(--cyan));
+         box-shadow:0 0 10px rgba(94,234,212,.6);}
+  .barlbl{display:flex;justify-content:space-between;font-size:8.5px;letter-spacing:.2em;
+          color:var(--inkFaint);margin-bottom:5px;text-transform:uppercase;}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:12px;}
+  .stat .k{font-size:8.5px;letter-spacing:.2em;color:var(--inkFaint);text-transform:uppercase;}
+  .stat .v{font-size:15px;font-weight:700;color:var(--cyanHi);text-shadow:0 0 8px rgba(94,234,212,.4);margin-top:2px;}
+  .stat .v.y{color:var(--yellow);text-shadow:0 0 8px rgba(253,224,71,.4);}
+
+  /* modal */
+  .scrim{background:rgba(5,7,12,.82);padding:26px;border:1px solid var(--inkGhost);}
+  .modal{max-width:520px;margin:0 auto;}
+  .mtitle{font-size:12px;font-weight:700;letter-spacing:.2em;color:var(--cyanHi);text-transform:uppercase;}
+  .mdesc{font-size:11px;color:var(--inkDim);margin-top:7px;line-height:1.6;}
+  .frow{margin-top:16px;}
+  .flabel{font-size:8.5px;letter-spacing:.2em;color:var(--inkFaint);text-transform:uppercase;margin-bottom:6px;}
+  .seg{display:flex;gap:0;}
+  .seg span{flex:1;text-align:center;font-size:10px;letter-spacing:.18em;padding:8px;
+            border:1px solid var(--lineMid);color:var(--inkDim);cursor:pointer;text-transform:uppercase;}
+  .seg span.on{background:rgba(94,234,212,.12);border-color:var(--cyan);color:var(--cyanHi);}
+  .inp{width:100%;background:var(--bg0);border:1px solid var(--lineMid);color:var(--ink);
+       font-family:var(--mono);font-size:12px;padding:9px 11px;}
+  .inp::placeholder{color:var(--inkGhost);}
+  .ac{border:1px solid var(--lineMid);border-top:none;background:var(--bg1);}
+  .ac div{padding:8px 11px;font-size:11px;color:var(--inkDim);border-bottom:1px solid var(--line);}
+  .ac div.on{background:rgba(94,234,212,.09);color:var(--cyanHi);}
+  .ac div small{color:var(--inkFaint);}
+  .mfoot{display:flex;justify-content:flex-end;gap:9px;margin-top:20px;}
+  .ghost{background:var(--bg0);border:1px solid var(--lineMid);color:var(--inkDim);
+         font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.2em;
+         padding:9px 15px;text-transform:uppercase;cursor:pointer;}
+  .prim{background:rgba(94,234,212,.12);border:1px solid var(--cyan);color:var(--cyanHi);
+        font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.2em;
+        padding:9px 15px;text-transform:uppercase;cursor:pointer;box-shadow:0 0 12px rgba(94,234,212,.35);}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media(max-width:820px){.two{grid-template-columns:1fr;}}
+  .callout{border-left:2px solid var(--magenta);background:rgba(255,61,127,.07);
+           padding:9px 12px;font-size:11px;color:var(--magentaHi);margin-top:12px;}
+</style>
+</head>
+<body>
+
+<h1>Manual metadata entry — UI mockup</h1>
+<p class="lede">Rendered with the real Synapse v2 tokens. <span class="new">Magenta annotations mark what's new.</span></p>
+
+<!-- ============ 1. TOP BAR ============ -->
+<h2><span class="c">01</span> · Top bar — new MANUAL button beside IMPORT</h2>
+<div class="topbar">
+  <div class="brand"><div class="wm">ENGRAM</div><div class="tag">› memory · archival · v0.25.0</div></div>
+  <div class="nav"><span class="on">Dashboard</span><span>History</span><span>Contribute</span></div>
+  <div class="tbright">
+    <button class="btn mag">✎ MANUAL</button>
+    <button class="btn">▤ IMPORT</button>
+    <span class="pill">● LIVE</span>
+    <span class="gear">⚙</span>
+  </div>
+</div>
+<p class="note"><span class="new">MANUAL</span> sits next to IMPORT — both are "start a job by hand" actions.
+Magenta separates it from the cyan automatic path, and matches the ripping accent already used for active work.</p>
+
+<!-- ============ 2. MODAL ============ -->
+<h2><span class="c">02</span> · The modal — arm mode (before insert)</h2>
+<div class="scrim">
+  <div class="modal panel">
+    <div class="mtitle">Manual disc identity</div>
+    <div class="mdesc">Engram will skip automatic identification for the next disc inserted in <b style="color:var(--cyan)">Drive E:</b>
+      and use exactly what you enter here.</div>
+
+    <div class="frow">
+      <div class="flabel">Content type</div>
+      <div class="seg"><span class="on">TV Series</span><span>Movie</span></div>
+    </div>
+
+    <div class="frow">
+      <div class="flabel">Title</div>
+      <input class="inp" value="Arrested Development" spellcheck="false">
+      <div class="ac">
+        <div class="on">Arrested Development <small>· 2003 · TMDB 4589</small></div>
+        <div>Arrested Development <small>· 2013 revival · TMDB 61692</small></div>
+      </div>
+    </div>
+
+    <div class="frow two">
+      <div><div class="flabel">Season</div><input class="inp" value="1"></div>
+      <div><div class="flabel">Disc number <small style="color:var(--inkGhost)">(optional)</small></div><input class="inp" placeholder="auto from label"></div>
+    </div>
+
+    <div class="callout">Episode matching still runs automatically. Anything it can't resolve lands in the Review Queue as usual.</div>
+
+    <div class="mfoot"><button class="ghost">Cancel</button><button class="prim">Arm drive →</button></div>
+  </div>
+</div>
+<p class="note">Same component in <b>edit mode</b> from a live card — only the header, the top sentence and the
+primary button change (“Save &amp; re-match”). Fields and TMDB autocomplete are identical.
+The twin-show autocomplete is worth keeping: it's exactly the Frasier/One&nbsp;Piece collision case,
+and picking a row pins <code>tmdb_id</code> so the right subtitles download.</p>
+
+<!-- ============ 3. ARMED ============ -->
+<h2><span class="c">03</span> · Dashboard while armed — awaiting disc</h2>
+<div class="panel armed">
+  <div class="card">
+    <div class="cover" style="border-style:dashed;">◎</div>
+    <div class="cbody">
+      <div class="chead">
+        <div>
+          <div class="ctitle" style="color:var(--inkDim)">Arrested Development</div>
+          <div class="csub">TV SERIES · SEASON 1 · TMDB 4589</div>
+          <div class="clabel">DRIVE E: · IDENTITY LOCKED BY USER</div>
+        </div>
+        <div class="actions">
+          <span class="state" style="border-color:rgba(94,234,212,.45);color:var(--cyan)">◷ AWAITING DISC</span>
+          <button class="abtn sq">✕</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--inkDim);letter-spacing:.04em">
+        Insert a disc in Drive E: — it will scan, adopt this identity, and rip without stopping to ask.
+      </div>
+    </div>
+  </div>
+</div>
+<p class="note">A dashed panel with no glow reads as “not a real job yet.” It occupies a card slot so it's
+impossible to forget the drive is armed, and ✕ disarms. <span class="new">Open question: should this expire?</span></p>
+
+<!-- ============ 4. RIPPING ============ -->
+<h2><span class="c">04</span> · The job once the disc goes in — manual identity, ripping unattended</h2>
+<div class="panel rip">
+  <div class="card">
+    <div class="cover">◉<span class="badge">TV</span></div>
+    <div class="cbody">
+      <div class="chead">
+        <div>
+          <div class="ctitle">Arrested Development</div>
+          <div class="csub">SEASON 1 · DISC 1 · 8 TITLES</div>
+          <div class="clabel">DISC LABEL · AD_S1D1_NTSC</div>
+        </div>
+        <div class="actions">
+          <span class="prov">✎ MANUAL ID</span>
+          <span class="state">◉ RIPPING</span>
+          <button class="abtn hl">✎ EDIT ID</button>
+          <button class="abtn sq">✕</button>
+        </div>
+      </div>
+      <div class="barlbl"><span>Overall progress</span><span>58%</span></div>
+      <div class="bar"><i></i></div>
+      <div class="stats">
+        <div class="stat"><div class="k">Speed</div><div class="v">4.2x</div></div>
+        <div class="stat"><div class="k">ETA</div><div class="v">6m 11s</div></div>
+        <div class="stat"><div class="k">Tracks</div><div class="v y">3/8</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="note">Two new things. <span class="new">✎ MANUAL ID</span> chip — provenance, so months later you know the
+identity was asserted, not detected (backed by <code>classification_source="manual"</code>).
+<span class="new">✎ EDIT ID</span> — the always-on button; today this only appears as “Wrong title?” when the job
+<i>needs review</i>. No identity prompt or collision gate can fire on this job.</p>
+
+<!-- ============ 5. NORMAL JOB ============ -->
+<h2><span class="c">05</span> · A normal auto-identified job — same button, different label</h2>
+<div class="panel rip">
+  <div class="card">
+    <div class="cover">◉<span class="badge">TV</span></div>
+    <div class="cbody">
+      <div class="chead">
+        <div>
+          <div class="ctitle">The Office</div>
+          <div class="csub">SEASON 2 · DISC 3 · 6 TITLES</div>
+          <div class="clabel">DISC LABEL · THE_OFFICE_S2D3</div>
+        </div>
+        <div class="actions">
+          <span class="state">◉ RIPPING</span>
+          <button class="abtn">↻ WRONG TITLE?</button>
+          <button class="abtn sq">✕</button>
+        </div>
+      </div>
+      <div class="barlbl"><span>Overall progress</span><span>58%</span></div>
+      <div class="bar"><i></i></div>
+    </div>
+  </div>
+</div>
+<p class="note"><b>Labelling question for you.</b> Above, the same control reads “Wrong title?” on an auto-identified
+job and “Edit ID” on a manual one. Alternative: one label everywhere. “Wrong title?” is odd when
+you're proactively editing a correct guess; “Edit ID” loses the doubt-signal that helps during review.</p>
+
+</body>
+</html>

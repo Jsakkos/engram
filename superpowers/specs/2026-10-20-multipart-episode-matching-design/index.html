@@ -1,0 +1,2012 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-10-20-multipart-episode-matching-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Multi-part (segment) episode matching: half-hour to segment crosswalk - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#multi-part-segment-episode-matching-half-hour-to-segment-crosswalk" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Multi-part (segment) episode matching: half-hour to segment crosswalk
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#revision-2026-10-22-segmented-not-divergent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Revision 2026-10-22: segmented, not divergent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-actually-went-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. What actually went wrong
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="multi-part-segment-episode-matching-half-hour-to-segment-crosswalk">Multi-part (segment) episode matching: half-hour to segment crosswalk</h1>
+<ul>
+<li><strong>Issue:</strong> <a href="https://github.com/Jsakkos/engram/issues/760">Jsakkos/engram#760</a> (Hey Arnold! S2 Disc 2, job 100)</li>
+<li><strong>Date:</strong> 2026-10-20</li>
+<li><strong>Status:</strong> approved 2026-10-20 (auto-file crosswalked combined matches; hold uncrosswalked divergent matches; maintainer redeploys the nightly builder); implemented on branch <code>claude/760-multipart-episodes-f0571a</code></li>
+<li><strong>Builds on:</strong> <code>2026-09-20-subtitle-cache-numbering-scheme-design.md</code>, which recorded the
+  <code>divergent</code> marker and explicitly deferred "mapping half-hour <em>k</em> to its canonical segments".
+  This spec is that deferred piece.</li>
+</ul>
+<h2 id="revision-2026-10-22-segmented-not-divergent">Revision 2026-10-22: segmented, not divergent</h2>
+<p>The final review of the first implementation found that <code>divergent</code> does not mean "half-hour
+numbered". The builder sets it whenever the harvested reference count differs from the TMDB
+roster size, and it packs any season with 60% or more coverage, so every ordinary season the
+pack is merely missing episodes of is <code>divergent</code> too. Applying sections 6.2 and 7 to those
+seasons would switch off the gap healing written for exactly them (Mad Men S02E05), hold every
+disc of them for review, and, with a same-day two-part premiere plus one missing episode,
+derive a structure-only crosswalk that shifts every track by one and files it with confidence.</p>
+<p>Amended design:</p>
+<ul>
+<li><strong><code>segmented</code> is the signal.</strong> <code>is_segmented_season(roster)</code> is true when most TMDB broadcast
+  groups (5.1) hold two or more episodes and the median episode runtime is between 1 and 15
+  minutes. A sitcom aired two a night (22-minute episodes) and a drama with a double premiere
+  are not segmented; Hey Arnold!, Dexter's Laboratory and SpongeBob are.</li>
+<li><strong>The builder</strong> publishes <code>"segmented": true</code> on a divergent season that passes, and derives
+  a crosswalk only for such a season. A failed OpenSubtitles lookup now falls back to
+  structure instead of dropping the crosswalk.</li>
+<li><strong>The runtime</strong> keys every half-hour specific behaviour on the marker's <code>segmented</code> flag
+  (<code>is_segmented_marker</code>): no gap healing (6.2), no scraped-SRT grafting, scraped SRTs not
+  counted as coverage, the <code>numbering_divergent</code> hold (7), and no fingerprint contribution for
+  a held match. A pack published before the flag existed gets none of it.</li>
+<li><strong>The stamp follows the translation.</strong> <code>precomputed_numbering</code> drops a crosswalk that maps
+  none of the shipped index's codes, so <code>stamp_numbering</code> never claims <code>tmdb_aired</code> over
+  untranslated codes (6.4's invariant).</li>
+<li><strong>Anchor inversions</strong> are checked across all pairs, not only neighbours (5.2).</li>
+<li><strong>The conjoined hint is a lower bound</strong> (<code>conjoined_episode_count</code> returns the smallest
+  fitting n), so a crosswalked code with at least that many parts explains it (6.5). Dexter's
+  Laboratory tracks (hint 2, three segments) file instead of parking.</li>
+<li>
+<p>A confirmed multi-episode verdict in an untranslated segmented season keeps the numbering
+  notice in its message, and the validator requires <code>segmented</code> beside any crosswalk and
+  orders keys by episode number.</p>
+</li>
+<li>
+<p><strong>The release lookup never logs in.</strong> Search needs only the API key and spends no download
+  quota, so it uses its own search-only client instead of the login- and quota-gated one. A
+  night with a spent download quota no longer publishes structure-only crosswalks, so
+  title-anchored seasons do not flap between nights.</p>
+</li>
+</ul>
+<h2 id="1-what-actually-went-wrong">1. What actually went wrong</h2>
+<p>The reporter expected disc track 1 to be <code>S02E11-E12</code>, track 2 <code>S02E13</code>, track 3 <code>S02E14-E15</code>,
+and so on. Engram filed them as <code>S02E06</code> through <code>S02E10</code>, every one at 0.92 to 0.97 confidence.</p>
+<p>The matcher was <strong>right about the content and wrong about the namespace</strong>. Evidence from the
+job 100 bundle and live lookups:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Hey Arnold! season 2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TMDB roster</td>
+<td>37 entries, one per ~11-minute segment (E13 "Arnold's Halloween" is a single 23-minute entry)</td>
+</tr>
+<tr>
+<td>Published subtitle pack, <code>precomputed/537/S02.index.json</code></td>
+<td>20 codes, <code>S02E01</code>..<code>S02E20</code></td>
+</tr>
+<tr>
+<td>Pack manifest marker</td>
+<td><code>{"scheme": "divergent", "roster_size": 37}</code> (all five seasons are divergent)</td>
+</tr>
+<tr>
+<td>IMDb season 2</td>
+<td>20 half-hours, e.g. E6 = "Ransom/Ms. Perfect", E7 = "Arnold's Halloween"</td>
+</tr>
+<tr>
+<td>OpenSubtitles search, <code>parent_tmdb_id=537&amp;season_number=2</code></td>
+<td>20 features. <code>feature_details.title</code> is the <strong>TMDB</strong> title for that number (E6 = "Harold's Kitty"), but the <code>release</code> string names the <strong>IMDb</strong> half-hour actually in the file (<code>S02E06.Ransom.Ms.Perfect</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>So the corpus is IMDb half-hour numbering stored under TMDB-looking codes. Track 1 really is
+half-hour 6 ("Ransom/Ms. Perfect"), which TMDB calls E11 + E12. Every track was off by the
+number of segment pairs before it, which is why the error grows by one per track (6 vs 11,
+7 vs 13, 8 vs 14).</p>
+<p><code>match_details</code> shows the matcher already knew: <code>"numbering_scheme": "divergent"</code>,
+<code>"pack_roster_size": 37</code>, <code>"reference_count": 20</code>. Today that knowledge only switches off the</p>
+<h1 id="200-ordering-projection-and-the-conjoined-runtime-hint-nothing-stops-the-half-hour-number-from">200 ordering projection and the conjoined runtime hint. Nothing stops the half-hour number from</h1>
+<p>being filed as if it were a TMDB coordinate, so the job completed with five wrong files.</p>
+<p>Why the pack builder did not catch it: <code>download_subtitles</code> validates an OpenSubtitles result
+with <code>_release_matches_episode</code>, which only reads a title after a hyphen, en dash or colon.
+<code>S02E06.Ransom.Ms.Perfect</code> uses dots, so it reads as "uninformative" and is accepted under
+<code>S02E06</code>.</p>
+<p>The prior spec said the providers' half-hour numbering "matches no catalogue Engram can name".
+For Hey Arnold! it matches IMDb exactly, which fits OpenSubtitles keying episodes on IMDb. That
+does not change this design (Engram has no IMDb access at runtime), but it explains the corpus.</p>
+<p>The other half of the report ("faster-whisper not installed" on title 814) was a misleading
+message for a transient import failure. It was fixed in #779 (merged 2026-10-17) and is out of
+scope here.</p>
+<h2 id="2-intent">2. Intent</h2>
+<p>When a reference season is numbered by broadcast half-hours and TMDB numbers it by segment,
+translate each half-hour reference into the TMDB segment code(s) it contains, so a track is
+filed as <code>S02E11-E12</code> (the Plex/Jellyfin range form <code>episode_codes</code> already supports) instead
+of under a half-hour number that names an unrelated segment.</p>
+<h2 id="3-goals-non-goals-anti-goals">3. Goals, non-goals, anti-goals</h2>
+<p><strong>Goals</strong></p>
+<ol>
+<li>Hey Arnold! S2 Disc 2 files as <code>S02E11-E12</code>, <code>S02E13</code>, <code>S02E14-E15</code>, <code>S02E16-E17</code>,
+   <code>S02E18-E19</code>.</li>
+<li>The same mechanism covers other segment-format shows in the pack (Dexter's Laboratory,
+   SpongeBob, and the rest of Hey Arnold!) whenever the evidence supports a mapping.</li>
+<li>The mapping is computed once, at pack build time, from evidence the builder can observe,
+   and shipped in the manifest. The runtime only applies it.</li>
+<li>Older clients keep working against a pack that carries the mapping (no format bump).</li>
+</ol>
+<p><strong>Non-goals</strong></p>
+<ul>
+<li>Splitting a combined track into one file per segment. The range form is the agreed output.</li>
+<li>Matching the two halves of a track separately (chapter marks, per-half ASR). A half-hour
+  corpus has no per-segment reference to match a half against, and for a corpus that IS
+  segment-numbered, the existing chunk-vote run detector already finds the boundary.</li>
+<li>Fixing the scraped-SRT path (seasons the pack does not cover, downloaded at runtime with the
+  user's own OpenSubtitles credentials or the scrapers). See section 9.</li>
+<li>Mapping a half-hour to segments in a <strong>different</strong> TMDB season. IMDb's S2E19 "Part Time
+  Friends/Biosquare" is TMDB S3E32-E33; v1 leaves it unmapped (section 5.3).</li>
+<li>Changing <code>_release_matches_episode</code>. Rejecting dotted titles there would strip Hey Arnold!
+  out of the pack entirely, because the builder harvests through the same function.</li>
+</ul>
+<p><strong>Anti-goals</strong> (a failure even if it technically works)</p>
+<ul>
+<li>A confident, wrong, auto-filed result. Today's behaviour is the thing being removed; any
+  mapping the evidence does not support must leave the reference unmapped rather than guess.</li>
+<li>A mapping that leaks into identity: the fingerprint network and <code>matched_episode</code> must only
+  ever see real TMDB coordinates.</li>
+<li>A <code>CACHE_FORMAT_VERSION</code> bump. Both manifest readers hard-refuse an unknown version, so a bump
+  sends every shipped backend back to scraping the moment the nightly publishes.</li>
+</ul>
+<h2 id="4-manifest-shape">4. Manifest shape</h2>
+<p>The crosswalk rides on the existing per-season marker. The scheme value stays <code>divergent</code>, so a
+client that predates this change reads exactly what it reads today.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">"season_numbering"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"2"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">"scheme"</span><span class="p">:</span><span class="w"> </span><span class="s2">"divergent"</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">"roster_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">37</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">"crosswalk"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">      </span><span class="nt">"S02E01"</span><span class="p">:</span><span class="w"> </span><span class="s2">"S02E01-E02"</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">      </span><span class="nt">"S02E05"</span><span class="p">:</span><span class="w"> </span><span class="s2">"S02E09-E10"</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">      </span><span class="nt">"S02E06"</span><span class="p">:</span><span class="w"> </span><span class="s2">"S02E11-E12"</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">      </span><span class="nt">"S02E07"</span><span class="p">:</span><span class="w"> </span><span class="s2">"S02E13"</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="nt">"S02E20"</span><span class="p">:</span><span class="w"> </span><span class="s2">"S02E36-E37"</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">"crosswalk_sources"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"release_title"</span><span class="p">:</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="nt">"air_date_gap"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"unmapped"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li><code>crosswalk</code> maps a corpus code (as stored in <code>SNN.index.json</code>) to a canonical TMDB code
+  produced by <code>format_episode_code</code>. A corpus code absent from the map is <strong>unmapped</strong>.</li>
+<li><code>crosswalk_sources</code> is provenance for logs, the validator and diagnostics. Not read for
+  behaviour.</li>
+<li>Only <code>divergent</code> seasons ever carry a crosswalk. A <code>tmdb_aired</code> season needs none.</li>
+<li>An empty mapping is omitted rather than written as <code>{}</code>.</li>
+</ul>
+<p>Validator (<code>validate_subtitle_cache.py</code>) additions, all failures because they mean the builder
+emitted something no consumer can trust: crosswalk on a non-divergent season; a key not in the
+season's index; a value that <code>parse_episode_code</code> rejects or whose season differs from the
+key's; two keys whose values overlap; values not strictly increasing in key order. Mapped and
+unmapped counts are reported beside the existing divergent-season summary.</p>
+<h2 id="5-builder-deriving-the-crosswalk-anchored-alignment">5. Builder: deriving the crosswalk ("anchored alignment")</h2>
+<p>One pure module, <code>app/matcher/numbering_crosswalk.py</code>, with no I/O. The builder feeds it three
+inputs and writes its output into the marker. <code>_season_numbering_entry</code> stays the single
+implementation both builder scripts share; it gains the corpus code list (it already receives
+its length) and, in <code>build_subtitle_cache</code> only, an OpenSubtitles search result for the season.</p>
+<p>Inputs:</p>
+<ol>
+<li><strong>Corpus codes</strong> for the season, in index order.</li>
+<li><strong>TMDB roster</strong> from <code>fetch_season_episodes</code>: <code>episode_number</code>, <code>name</code>, <code>air_date</code>, <code>runtime</code>.</li>
+<li><strong>Release strings per corpus episode number</strong>, from one OpenSubtitles <code>search</code> call
+   (<code>parent_tmdb_id</code>, <code>season_number</code>, <code>type=episode</code>, <code>languages=en</code>). Search costs no download
+   quota. Optional: absent when credentials are missing, the call fails, or the pack is built
+   <code>--offline</code> (which already short-circuits the marker to <code>unknown</code>).</li>
+</ol>
+<h3 id="51-broadcast-groups-structure-from-tmdb">5.1 Broadcast groups (structure from TMDB)</h3>
+<p>Walk the roster in episode order and group maximal runs of consecutive episodes that share a
+non-empty <code>air_date</code>. A segment pair that aired as one half-hour shares a date.</p>
+<p>A group can hold two broadcasts that aired the same day (Hey Arnold! S3 E30-E33, 44 minutes).
+Split a group whose summed runtime is close to a whole multiple <em>k</em> ≥ 2 of the season's median
+group runtime into <em>k</em> consecutive subgroups by cumulative runtime. A group that is not near a
+whole multiple is left alone; it simply will not align (5.3), which degrades to "unmapped".
+Episodes with no air date form single-episode groups.</p>
+<p>Measured on live TMDB data:</p>
+<table>
+<thead>
+<tr>
+<th>Season</th>
+<th>Roster</th>
+<th>Groups</th>
+<th>Corpus</th>
+<th>Groups equal corpus?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dexter's Laboratory S1</td>
+<td>38</td>
+<td>13</td>
+<td>13</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Hey Arnold! S2</td>
+<td>37</td>
+<td>19</td>
+<td>20</td>
+<td>no: IMDb's E19 lives in TMDB S3</td>
+</tr>
+<tr>
+<td>Hey Arnold! S1</td>
+<td>38</td>
+<td>20</td>
+<td>19</td>
+<td>no</td>
+</tr>
+<tr>
+<td>SpongeBob S1</td>
+<td>41</td>
+<td>20</td>
+<td>(pack)</td>
+<td>n/a</td>
+</tr>
+</tbody>
+</table>
+<p>So structure alone fixes Dexter's Laboratory but not the reporter's season. Titles fix the
+reporter's season but not Dexter's Laboratory (its releases are <code>Dexters.Laboratory.S01E01.WEBRip...</code>
+with no title). The algorithm uses both.</p>
+<h3 id="52-anchors-evidence-from-release-titles">5.2 Anchors (evidence from release titles)</h3>
+<p>For each corpus code, take every release string OpenSubtitles returned for that episode number
+and read only the text <strong>after</strong> its <code>SxxEyy</code> marker (the show name before it must not match a
+title). Normalize release text and each TMDB title in the season to lowercase alphanumerics with
+separators removed, and find the TMDB titles whose normalized form is a substring of the
+normalized release text. Ignore titles whose normalized form is shorter than 4 characters.
+When one found title's match lies inside another's, keep the longer.</p>
+<p>Matching on the concatenated form is what lets <code>Mudbowl</code> match "Mud Bowl" and <code>Ms.Perfect</code>
+match "Ms. Perfect". Misspellings (<code>Monkey buisness.Big caeser</code>) simply find nothing; the gap
+fill below recovers them.</p>
+<p>A code's <strong>anchor</strong> is the set of TMDB episodes its releases name, when:</p>
+<ul>
+<li><strong>every</strong> release OpenSubtitles returned for that episode number names a non-empty title set,
+  and all of them name the same set. A release that names nothing counts as dissent, not as
+  abstention, and</li>
+<li>the set, expanded to the broadcast group(s) containing it, is one run of consecutive episodes.</li>
+</ul>
+<p>Unanimity is required because the builder downloads only one release per episode number (the
+first in the search response) and does not record which. A feature's uploads can disagree:
+Dexter's Laboratory feature 13 holds a half-hour <code>Dexters.Laboratory.S01E13.WEBRip</code> and a
+mis-uploaded single segment <code>1x13 - Jurassic Pooch</code> (TMDB E13). Anchoring on the titled one
+would describe a file that was not downloaded. With unanimity, Dexter's Laboratory gets no
+anchors and falls through to structure, which maps all 13 correctly.</p>
+<p>Expansion matters: <code>Hall moniter.Harold's bar mitzvah</code> finds only E29, but E29 aired with E28,
+so the anchor is E28-E29. The evidence says "this file contains E29"; the structure says E29
+was broadcast with E28.</p>
+<p>Finally, anchors must be strictly increasing and non-overlapping in corpus order. If they are
+not, drop every anchor that participates in an inversion or overlap rather than guessing which
+one is wrong.</p>
+<h3 id="53-gap-fill-structure-between-anchors">5.3 Gap fill (structure between anchors)</h3>
+<p>Anchors split the season into gaps: before the first anchor, between each pair, after the last.
+A gap is measured in corpus <strong>slots</strong> (episode numbers), not in codes present, so a half-hour the
+pack has no subtitle for still occupies its slot and cannot shift its neighbours. Between anchors
+at corpus numbers <em>a</em> and <em>b</em> the gap holds slots <em>a</em>+1..<em>b</em>-1; before the first anchor, 1..<em>a</em>-1;
+after the last anchor, <em>b</em>+1..the highest corpus number present.</p>
+<p>For each gap, compare its slot count with the broadcast groups that lie wholly inside the TMDB
+episode range between the neighbouring anchors' runs.</p>
+<ul>
+<li>Equal counts: slot <em>k</em> of the gap maps to group <em>k</em>. Codes present in those slots get mapped.</li>
+<li>Unequal counts, or a group straddling an anchor's run: every code in the gap stays unmapped.</li>
+</ul>
+<p>With no anchors at all the whole season is one gap, so this is exactly the "groups equal corpus"
+alignment, and it is accepted on the same footing as the existing count proxy: equal counts are
+evidence, not proof. (A trailing half-hour missing from the pack makes the last gap's slot count
+too small and leaves that gap unmapped. That is the safe direction.)</p>
+<p>Worked through on Hey Arnold! S2 (live data):</p>
+<table>
+<thead>
+<tr>
+<th>Corpus</th>
+<th>Release</th>
+<th>Anchor</th>
+<th>Result</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E01</td>
+<td><code>Save the tree.New Teacher</code></td>
+<td>E1-E2</td>
+<td><code>S02E01-E02</code></td>
+<td>release_title</td>
+</tr>
+<tr>
+<td>E05</td>
+<td><code>Monkey buisness.Big caeser</code></td>
+<td>none (typos)</td>
+<td><code>S02E09-E10</code></td>
+<td>air_date_gap: one code, one group (E9-E10) between E7-E8 and E11-E12</td>
+</tr>
+<tr>
+<td>E06</td>
+<td><code>Ransom.Ms.Perfect</code></td>
+<td>E11-E12</td>
+<td><code>S02E11-E12</code></td>
+<td>release_title</td>
+</tr>
+<tr>
+<td>E07</td>
+<td><code>Arnold's Halloween</code></td>
+<td>E13</td>
+<td><code>S02E13</code></td>
+<td>release_title</td>
+</tr>
+<tr>
+<td>E08</td>
+<td><code>Arnold saves Sid.Hookey</code></td>
+<td>E14-E15</td>
+<td><code>S02E14-E15</code></td>
+<td>release_title</td>
+</tr>
+<tr>
+<td>E15</td>
+<td><code>Hall moniter.Harold's bar mitzvah</code></td>
+<td>E29, expanded to E28-E29</td>
+<td><code>S02E28-E29</code></td>
+<td>release_title</td>
+</tr>
+<tr>
+<td>E19</td>
+<td><code>part time friends.Biosquare</code></td>
+<td>none (titles are in TMDB S3)</td>
+<td>unmapped</td>
+<td>one code, zero groups between E34-E35 and E36-E37</td>
+</tr>
+<tr>
+<td>E20</td>
+<td><code>Runaway float.Partners</code></td>
+<td>E36-E37</td>
+<td><code>S02E36-E37</code></td>
+<td>release_title</td>
+</tr>
+</tbody>
+</table>
+<p>Discs tracks 1 to 5 (corpus E06 to E10) come out as <code>S02E11-E12</code>, <code>S02E13</code>, <code>S02E14-E15</code>,
+<code>S02E16-E17</code>, <code>S02E18-E19</code>: the reporter's expected list exactly.</p>
+<p>The release strings and the TMDB roster for this season are captured verbatim as test fixtures
+(per the project rule that parsers are validated against live data, not synthetic input).</p>
+<p>A throwaway prototype of this algorithm, run on 2026-10-20 against live TMDB rosters and
+OpenSubtitles search results:</p>
+<table>
+<thead>
+<tr>
+<th>Season</th>
+<th>Corpus</th>
+<th>Mapped by title</th>
+<th>Mapped by structure</th>
+<th>Unmapped</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hey Arnold! S2</td>
+<td>20</td>
+<td>18</td>
+<td>1 (E05)</td>
+<td>1 (E19, lives in TMDB S3)</td>
+</tr>
+<tr>
+<td>Hey Arnold! S1</td>
+<td>19</td>
+<td>17</td>
+<td>1 (E19)</td>
+<td>1 (E11)</td>
+</tr>
+<tr>
+<td>Hey Arnold! S3</td>
+<td>19</td>
+<td>17</td>
+<td>0</td>
+<td>2 (E17, E18)</td>
+</tr>
+<tr>
+<td>Dexter's Laboratory S1</td>
+<td>13</td>
+<td>0 (no unanimous titles)</td>
+<td>13</td>
+<td>0</td>
+</tr>
+<tr>
+<td>SpongeBob S1</td>
+<td>20</td>
+<td>19</td>
+<td>1 (E01, the 3-segment pilot block)</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>Hey Arnold! S3's TMDB E30-E33 aired on one day (44 minutes); the runtime split turns that into
+E30-E31 and E32-E33, which is what lets E16 anchor at E30-E31.</p>
+<p><strong>Possible hardening, not in v1:</strong> record the downloaded release string beside each SRT at
+harvest time, so anchors can come from the file actually shipped instead of requiring unanimity.
+That changes <code>download_subtitles</code> (shared with the runtime) and needs a <code>--refresh</code> re-harvest to
+populate, so it is left as a follow-up.</p>
+<h2 id="6-runtime-applying-the-crosswalk">6. Runtime: applying the crosswalk</h2>
+<h3 id="61-one-chokepoint">6.1 One chokepoint</h3>
+<p>A single function resolves "the codes this precomputed season's rows stand for": it reads the
+index, and when the season's marker is <code>divergent</code> and carries a crosswalk, it returns the
+translated code for each row, or a drop marker for an unmapped row. Every reader of precomputed
+codes goes through it:</p>
+<ul>
+<li><code>EpisodeMatcher._load_precomputed_season</code>, which also drops the unmapped rows from the
+  reference matrix so they are never a vote candidate;</li>
+<li><code>precomputed_episode_codes</code>, and through it <code>_precomputed_skip_result</code>,
+  <code>_heal_precomputed_gaps</code> and <code>reference_coverage</code>.</li>
+</ul>
+<p>The chokepoint reads the marker through the same manifest resolution <code>precomputed_numbering</code>
+uses (tmdb_id first, name fallback, id-mismatch refusal), so the codes and the marker always come
+from the same show entry.</p>
+<p>An unmapped reference is <strong>dropped</strong>, not kept under its corpus code: its corpus code names an
+unrelated TMDB segment (IMDb E19 would read as TMDB E19 "Gerald Moves Out"), which is precisely
+the mis-file being removed. A track whose true reference was dropped scores weakly against the
+rest and goes to review through the existing low-confidence routing. (My call; see section 8.)</p>
+<h3 id="62-no-gap-healing-for-a-segmented-season-amended-2026-10-22">6.2 No gap healing for a segmented season (amended 2026-10-22)</h3>
+<p>Job 100's log shows the heal at work: "Precomputed cache for Hey Arnold! S02 missing 17 of 37
+episode(s): S02E21 ... fetching" from Addic7ed. Diffing a half-hour corpus against a segment
+roster produces a meaningless gap list, and the scrapers that would fill it index the show by
+half-hour too, so anything they return lands in <code>data/</code> under the wrong TMDB code and
+<code>_augment_with_downloaded_srts</code> grafts it into the vote.</p>
+<p>For a <code>divergent</code> season (crosswalk or not), <code>_heal_precomputed_gaps</code> returns the precomputed
+result unchanged and <code>_augment_with_downloaded_srts</code> grafts nothing, each with a log line naming
+the reason. Seasons that are <code>tmdb_aired</code>, <code>unknown</code> or unmarked keep today's healing.</p>
+<h3 id="63-combined-codes-count-against-every-episode-they-cover">6.3 Combined codes count against every episode they cover</h3>
+<p><code>reference_coverage</code> (the review page's per-episode reference flags) compares precomputed codes
+with roster codes by exact <code>S02E11</code> string. It expands a combined code with <code>episode_parts</code>, so
+<code>S02E11-E12</code> marks both E11 and E12 as <code>precomputed</code>.</p>
+<p><code>_combined_code</code> (matching_coordinator) refuses a code that is itself combined. With crosswalked
+references a single long track can vote two of them in sequence (<code>S02E11-E12</code> then <code>S02E13</code>).
+It flattens combined parts first and keeps its existing rules: one season, contiguous result
+(<code>S02E11-E13</code>), otherwise None.</p>
+<h3 id="64-what-the-match-result-says">6.4 What the match result says</h3>
+<p>When the crosswalk was applied, <code>stamp_numbering</code> records <code>numbering_scheme: "tmdb_aired"</code> (the
+codes coming out of the matcher now ARE canonical coordinates) plus <code>numbering_crosswalk: true</code>
+and <code>pack_numbering_scheme: "divergent"</code> for diagnostics. "Applied" is decided by the same
+predicate the chokepoint uses (divergent marker with a non-empty crosswalk), so the stamp and the
+codes cannot disagree. Consequences, all through existing code:</p>
+<ul>
+<li><code>numbering_schemes_agree</code> returns True, so the #200 ordering projection applies again. The
+  organizer already projects every part of a combined code and falls back when the parts land in
+  different seasons.</li>
+<li><code>_may_contribute_fingerprint</code> already refuses a combined code, so a crosswalked two-segment
+  track never enters the fingerprint network. Single-segment results (<code>S02E13</code>) contribute as
+  usual.</li>
+<li>The organizer names the file with the range form; roster coverage counts the track against
+  both episodes; the DiscDB export publishes <code>"11-12"</code>.</li>
+</ul>
+<h3 id="65-the-conjoined-runtime-hint">6.5 The conjoined runtime hint</h3>
+<p>A 23.6-minute track against a roster of 11-minute segments gets <code>conjoined_hint = 2</code> from the
+duration pre-filter. Today <code>_apply_multi_episode_review</code> parks any hinted track whose numbering
+agrees. With the crosswalk applied, the result is already <code>S02E11-E12</code>: the hint is explained,
+not contradicted.</p>
+<p>New rule in <code>_apply_multi_episode_review</code>: when the match came through the crosswalk and
+<code>matched_episode</code> is a combined code with exactly <code>conjoined_hint</code> parts, the hint is satisfied
+and the track is not parked. Any other count (hint 3, code covers 2) still parks, as today.</p>
+<h2 id="7-segmented-seasons-with-no-crosswalk-amended-2026-10-22-keyed-on-segmented">7. Segmented seasons with no crosswalk (amended 2026-10-22: keyed on <code>segmented</code>)</h2>
+<p>Until the nightly pack carries crosswalks, and for any season the builder cannot map, a
+<code>divergent</code> season has no crosswalk and the runtime behaves as today: it files the corpus
+number. That is the confidently-wrong outcome this issue reports.</p>
+<p><strong>Proposed (needs maintainer decision, section 8):</strong> when the corpus is <code>divergent</code> and no
+crosswalk applies, route the title to REVIEW with the matcher's code kept as a pre-fill and a
+message that says the reference numbering differs from TMDB, instead of auto-filing. This also
+covers the gap between shipping the client and the server's next nightly publish.</p>
+<p>The new review error code must join <code>_NON_REMATCHABLE_REVIEW_ERRORS</code>: re-matching against the
+same corpus cannot change the answer, and the auto review-escalation would otherwise re-dispatch
+the title and overwrite its <code>match_details</code>.</p>
+<h2 id="8-decisions">8. Decisions</h2>
+<p><strong>For the maintainer</strong> (each changes what gets built):</p>
+<ol>
+<li><strong>Auto-file crosswalked combined matches?</strong> Recommended: yes. The mapping is pack-level
+   evidence and the vote is confident; parking every segment-show track for confirmation would
+   turn the reporter's fix into five review clicks per disc. Alternative: always park combined
+   results from a crosswalk with the range pre-filled.</li>
+<li><strong>Divergent season, no crosswalk: park for review instead of filing the corpus number?</strong>
+   Recommended: yes (section 7). Cost: every disc of a divergent, unmappable season goes to
+   review, including the time between this client release and the nightly republish.</li>
+<li><strong>Rollout.</strong> The builder change only takes effect once the nightly host
+   (<code>192.168.1.122</code>) runs the new <code>build_subtitle_cache.py</code>. That deploy is yours; this PR ships
+   the code and a client that reads the field. Confirm that is acceptable, or say if the PR should
+   also carry a one-off backfill command for the current pack.</li>
+</ol>
+<p><strong>My calls</strong> (stated so they can be overruled):</p>
+<ul>
+<li>Builder-only derivation. The runtime does not compute its own air-date crosswalk; one place
+  decides, and runtime-only would miss the release-title anchors that the reporter's season
+  needs.</li>
+<li>Unmapped references are dropped from the vote, not kept under their corpus code.</li>
+<li>Gap healing and scraped-SRT grafting are off for every <code>divergent</code> season (6.2).</li>
+<li>Cross-season targets (IMDb S2E19 to TMDB S3E32-E33) are unmapped in v1.</li>
+<li>Minimum normalized title length 4; group-split tolerance chosen from the measured seasons
+  (written into the plan with its test cases).</li>
+<li>Fingerprint contribution stays refused for combined codes (existing rule, unchanged).</li>
+</ul>
+<h2 id="9-out-of-scope-worth-a-follow-up">9. Out of scope, worth a follow-up</h2>
+<ul>
+<li><strong>Runtime scraped-SRT path.</strong> A user whose season is not in the pack, downloading with their
+  own OpenSubtitles credentials, still gets IMDb-numbered SRTs saved under TMDB codes. The same
+  <code>numbering_crosswalk</code> module could be applied in <code>download_subtitles</code> to save each SRT under its
+  translated code. Separate change because it alters on-disk SRT naming.</li>
+<li><strong>Cross-season crosswalk targets</strong>, using the whole-show TMDB roster for titles not found in
+  the season.</li>
+<li><strong>Retrying a title after a transient ASR import failure</strong> (from #779's write-up).</li>
+</ul>
+<h2 id="10-testing">10. Testing</h2>
+<ul>
+<li><code>numbering_crosswalk</code> unit tests on captured fixtures: Hey Arnold! S2 (expected map above,
+  including E05 by gap fill, E15 by expansion, E19 unmapped), Dexter's Laboratory S1 (all 13 by
+  gap fill), plus synthetic edge cases: disagreeing releases, inverted anchors, a straddling
+  group, a same-day double broadcast split, no releases, no air dates.</li>
+<li>Builder: <code>_season_numbering_entry</code> emits the crosswalk for a divergent season, omits it for
+  <code>tmdb_aired</code>, <code>unknown</code> and <code>--offline</code>, and survives an OpenSubtitles search failure (falls back
+  to structure only).</li>
+<li>Validator: each new failure, and counts in the summary.</li>
+<li>Runtime: chokepoint translation and row dropping; heal and augment skipped for divergent
+  seasons and unchanged otherwise; coverage expansion; <code>_combined_code</code> flattening; stamping; the
+  hint rule (explained vs unexplained counts); the no-crosswalk divergent routing (if approved).</li>
+<li>An end-to-end matcher-level test that feeds the HA S2 index, marker and a vote for corpus
+  <code>S02E06</code> and asserts <code>matched_episode == "S02E11-E12"</code>, MATCHED, and an organized filename of
+  <code>Hey Arnold! - S02E11-E12.mkv</code>.</li>
+<li>Old-client compatibility: a manifest with a crosswalk still loads through
+  <code>load_precomputed_manifest</code> and <code>precomputed_numbering</code> unchanged.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

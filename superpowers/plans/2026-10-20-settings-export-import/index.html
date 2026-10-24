@@ -1,0 +1,1666 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-10-20-settings-export-import/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Settings Export and Import Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#settings-export-and-import-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Settings Export and Import Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-focus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review Focus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Review Focus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-extract-validate_config_update-from-the-put-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Extract validate_config_update from the PUT handler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-config_transfer-service-field-sets-export-preview-apply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: config_transfer service (field sets, export, preview, apply)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-frontend-dialog-and-settings-section" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Frontend dialog and settings section
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-rebase-on-794-unsaved-edits-wiring-docs-changelog-live-check-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Rebase on #794, unsaved-edits wiring, docs, changelog, live check, PR
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="settings-export-and-import-implementation-plan">Settings Export and Import Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Export the app configuration to a versioned JSON file (secrets opt-in) and import one back through the <code>PUT /api/config</code> validators, with a per-field preview (#731).</p>
+<p><strong>Architecture:</strong> The PUT handler's validation body moves into a reusable <code>validate_config_update</code>. A new <code>app/services/config_transfer.py</code> owns the field sets, file building and per-field preview. Three thin routes in <code>routes.py</code> (gated by <code>require_localhost_or_lan</code>) call it. The frontend adds an "Import &amp; Export" settings section plus an <code>ImportSettingsDialog</code>, with an onboarding entry point.</p>
+<p><strong>Tech Stack:</strong> FastAPI + Pydantic + SQLModel (backend, <code>uv run pytest</code>), React 19 + TS + vitest/RTL (frontend, <code>npm run test:unit</code>).</p>
+<p><strong>Spec:</strong> <code>docs/superpowers/specs/2026-10-20-settings-export-import-design.md</code></p>
+<h2 id="global-constraints">Global Constraints</h2>
+<ul>
+<li>Secrets (exactly): <code>makemkv_key</code>, <code>tmdb_api_key</code>, <code>tvdb_api_key</code>, <code>ai_api_key</code>, <code>opensubtitles_api_key</code>, <code>opensubtitles_password</code>, <code>discdb_api_key</code>, <code>discord_webhook_url</code>.</li>
+<li>Always excluded: <code>setup_complete</code>, <code>allow_lan_access</code>, <code>fingerprint_disclosure_accepted</code>.</li>
+<li>File: <code>format: "engram-settings"</code>, <code>schema_version: 1</code>, <code>engram_version</code> from <code>app.__version__</code>, <code>exported_at</code> ISO UTC, <code>includes_secrets</code> bool, <code>settings</code> object.</li>
+<li>No secret value in any URL, log line, or preview response. Secret rows show <code>"***"</code> or <code>""</code> only.</li>
+<li>Body limit 256 KB (413). Malformed file 400. Apply with any bad selected key 422, nothing written.</li>
+<li>Never touch the real <code>backend/engram.db</code>; tests use the existing test DB fixtures. Running servers use port 8250 / VITE 5423 with a throwaway <code>DATABASE_URL</code>.</li>
+<li>No em dashes in prose (docs, CHANGELOG, UI copy).</li>
+</ul>
+<h2 id="review-focus">Review Focus</h2>
+<ol>
+<li>Export file from an older build lacking newer keys: must leave those settings untouched (Task 2 test <code>test_apply_leaves_unmentioned_settings</code>).</li>
+<li>File carrying <code>"tmdb_api_key": ""</code>: must not blank the stored key (Task 2 <code>test_apply_empty_secret_does_not_blank</code>).</li>
+<li>Hand-edited file with a wrong type (<code>"max_concurrent_matches": "three"</code>): row invalid with a message, not a 500 (Task 2 <code>test_preview_type_error_is_field_error</code>).</li>
+<li>Windows path exported, imported on Linux/Docker: flagged missing and unselected, not an error (Task 2 <code>test_preview_missing_path_unselected</code>).</li>
+<li>A LAN peer with LAN access off hitting export with <code>include_secrets=true</code>: 403 (Task 3 <code>test_transfer_routes_refuse_lan_peer</code>).</li>
+</ol>
+<hr />
+<h3 id="task-1-extract-validate_config_update-from-the-put-handler">Task 1: Extract <code>validate_config_update</code> from the PUT handler</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/api/routes.py</code> (<code>update_config</code>, ~2037-2210)
+- Test: existing <code>backend/tests/unit/test_api_routes.py</code> and any <code>test_*config*</code> unit files (refactor guard)</p>
+<p><strong>Interfaces:</strong>
+- Produces: <code>async def validate_config_update(update_data: dict) -&gt; dict</code> in <code>routes.py</code> (module-level, below <code>ConfigUpdate</code>). Runs every check currently in <code>update_config</code> from the SSRF block through <code>episode_ordering_preference</code>, including path normalization and the library-writability check; raises the same <code>HTTPException</code>s with the same status codes and details; returns the normalized dict. Does NOT include the disclosure-timestamp stamping, the DB write, or the <code>resume_parked_discs</code> call (those stay in the PUT handler).</p>
+<ul>
+<li>[ ] <strong>Step 1:</strong> Run <code>uv run pytest tests/unit -k "config" -p no:cacheprovider -q</code> and record the pass count as the baseline.</li>
+<li>[ ] <strong>Step 2:</strong> Move the validation block into <code>validate_config_update</code>; <code>update_config</code> becomes: build <code>update_data</code>, <code>update_data = await validate_config_update(update_data)</code>, disclosure stamping, write, resume.</li>
+<li>[ ] <strong>Step 3:</strong> Re-run the Step 1 command. Expected: identical pass count, no failures.</li>
+<li>[ ] <strong>Step 4:</strong> <code>uv run ruff check . &amp;&amp; uv run ruff format --check .</code> clean. Commit <code>refactor(config): extract validate_config_update from PUT /api/config (#731)</code>.</li>
+</ul>
+<h3 id="task-2-config_transfer-service-field-sets-export-preview-apply">Task 2: <code>config_transfer</code> service (field sets, export, preview, apply)</h3>
+<p><strong>Files:</strong>
+- Create: <code>backend/app/services/config_transfer.py</code>
+- Modify: <code>backend/app/services/config_service.py</code> (replace the local <code>sensitive_fields</code> set with an import of <code>SECRET_FIELDS</code>)
+- Test: <code>backend/tests/unit/test_config_transfer.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>validate_config_update</code> (Task 1), <code>ConfigUpdate</code> (routes.py; import inside functions to avoid the cycle), <code>config_service.get_config</code> / <code>update_config</code>.
+- Produces:
+  - <code>SECRET_FIELDS: frozenset[str]</code>, <code>EXCLUDED_FIELDS: frozenset[str]</code>, <code>PATH_FIELDS: frozenset[str]</code> = <code>staging_path, library_movies_path, library_tv_path, backup_path, discdb_export_path, import_watch_path, makemkv_path, ffmpeg_path, fpcalc_path</code>, <code>NULLABLE_FIELDS = {"import_watch_path", "fingerprint_server_url"}</code>, <code>SCHEMA_VERSION = 1</code>, <code>MAX_IMPORT_BYTES = 256 * 1024</code>.
+  - <code>def exportable_fields() -&gt; list[str]</code>: <code>ConfigUpdate.model_fields</code> minus <code>EXCLUDED_FIELDS</code>, in declaration order.
+  - <code>async def build_export(include_secrets: bool) -&gt; dict</code>
+  - <code>class SettingsFileError(ValueError)</code> (message is user-facing)
+  - <code>def parse_settings_file(data: object) -&gt; tuple[dict, list[str]]</code> returns <code>(settings, warnings)</code>; raises <code>SettingsFileError</code> for non-dict, wrong <code>format</code>, non-dict <code>settings</code>. Warning when <code>schema_version &gt; SCHEMA_VERSION</code>.
+  - <code>async def preview_import(data: object) -&gt; dict</code> with keys <code>schema_version, engram_version, includes_secrets, warnings, fields, unknown</code>; each field <code>{key, status: "change"|"same"|"invalid", current, incoming, secret, path_missing, error, selected}</code>.
+  - <code>class ImportRejected(Exception)</code> with <code>.errors: dict[str, str]</code>
+  - <code>async def apply_import(data: object, keys: list[str]) -&gt; list[str]</code> returns applied keys.</p>
+<p>Per-field validation algorithm (<code>_validate_field(key, value) -&gt; tuple[normalized | None, error | None]</code>): <code>ConfigUpdate(**{key: value})</code> catching <code>pydantic.ValidationError</code> (error = first error's <code>msg</code>), then <code>await validate_config_update({key: value})</code> catching <code>HTTPException</code> (error = <code>detail</code>). Skip rule before validating: empty-string secret, or <code>None</code> for a key not in <code>NULLABLE_FIELDS</code>, is treated as absent (not a row). Path existence: <code>os.path.exists</code> on the normalized value, run via <code>asyncio.to_thread</code>; <code>selected = status == "change" and not path_missing</code>.</p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong> in <code>test_config_transfer.py</code> (use the repo's existing unit DB fixture pattern; stub <code>config_service.update_config</code> side effects only if they touch the filesystem outside tmp):</li>
+<li><code>test_every_config_update_field_is_classified</code>: <code>set(ConfigUpdate.model_fields) == set(exportable_fields()) | EXCLUDED_FIELDS</code>, and <code>SECRET_FIELDS &lt;= set(exportable_fields())</code>.</li>
+<li><code>test_export_without_secrets_omits_secrets_and_excluded</code>: seed <code>tmdb_api_key="eyJsecret"</code>, <code>staging_path=tmp</code>; <code>build_export(False)</code> has <code>format == "engram-settings"</code>, <code>schema_version == 1</code>, <code>includes_secrets is False</code>, no key from <code>SECRET_FIELDS | EXCLUDED_FIELDS</code> in <code>settings</code>, <code>settings["staging_path"] == str(tmp)</code>.</li>
+<li><code>test_export_with_secrets_includes_them</code>: <code>build_export(True)["settings"]["tmdb_api_key"] == "eyJsecret"</code>.</li>
+<li><code>test_round_trip_restores_non_secret_settings</code>: seed non-defaults for ~10 varied fields (paths in tmp, <code>extras_policy="skip"</code>, <code>naming_tv_show_format</code>, <code>discord_notify_ripped=True</code>, <code>max_concurrent_matches=4</code>, a Discord template), export, reset the row to <code>AppConfig()</code> defaults, <code>apply_import(export, exportable non-secret keys)</code>, assert every seeded value restored.</li>
+<li><code>test_preview_unknown_keys_listed_not_applied</code>: <code>settings={"future_thing": 1}</code> → <code>unknown == ["future_thing"]</code>, <code>apply_import(..., ["future_thing"])</code> raises <code>ImportRejected</code>.</li>
+<li><code>test_preview_invalid_values_use_put_messages</code>: <code>naming_episode_format="{nope}"</code>, <code>extras_policy="maybe"</code>, <code>discord_webhook_url="http://127.0.0.1/x"</code> → each row <code>status == "invalid"</code>, <code>selected is False</code>, <code>error</code> contains the field name or the PUT detail text.</li>
+<li><code>test_preview_type_error_is_field_error</code>: <code>max_concurrent_matches="three"</code> → invalid row, no exception.</li>
+<li><code>test_preview_secret_rows_carry_no_values</code>: stored and incoming TMDB keys differ → row <code>secret is True</code>, <code>status == "change"</code>, <code>current == incoming == "***"</code>, and the raw incoming string appears nowhere in <code>json.dumps(preview)</code>.</li>
+<li><code>test_preview_missing_path_unselected</code>: <code>library_tv_path="Z:\\nope\\TV"</code> (non-existent) → <code>path_missing is True</code>, <code>selected is False</code>, <code>status == "change"</code>.</li>
+<li><code>test_parse_rejects_bad_files</code>: non-dict, <code>format="other"</code>, <code>settings=[]</code> each raise <code>SettingsFileError</code>; <code>schema_version=99</code> yields a warning.</li>
+<li><code>test_apply_rejects_excluded_and_invalid_atomically</code>: keys <code>["extras_policy", "allow_lan_access"]</code> with valid <code>extras_policy="skip"</code> → <code>ImportRejected</code> with <code>allow_lan_access</code> in <code>.errors</code>; stored <code>extras_policy</code> unchanged.</li>
+<li><code>test_apply_leaves_unmentioned_settings</code>: seed <code>always_review=True</code>, import file without it, <code>always_review</code> still True.</li>
+<li><code>test_apply_empty_secret_does_not_blank</code>: stored TMDB key, file <code>"tmdb_api_key": ""</code>, preview has no TMDB row, key still stored.</li>
+<li><code>test_secrets_never_logged</code>: with loguru capture (see existing caplog/loguru patterns in <code>tests/unit</code>, run without <code>-p no:logging</code>), <code>build_export(True)</code> and <code>apply_import</code> with a secret leave no secret value in captured text.</li>
+<li>[ ] <strong>Step 2:</strong> <code>uv run pytest tests/unit/test_config_transfer.py -q</code>. Expected: fails on import of <code>app.services.config_transfer</code>.</li>
+<li>[ ] <strong>Step 3:</strong> Implement the module per Interfaces; point <code>config_service.update_config</code> at <code>SECRET_FIELDS</code>. Logging: key names and counts only.</li>
+<li>[ ] <strong>Step 4:</strong> Re-run Step 2 command plus Task 1's baseline command. Expected: all pass.</li>
+<li>[ ] <strong>Step 5:</strong> Ruff clean. Commit <code>feat(config): settings export/import service (#731)</code>.</li>
+</ul>
+<h3 id="task-3-routes">Task 3: Routes</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/api/routes.py</code> (new routes next to <code>PUT /config</code>)
+- Test: <code>backend/tests/unit/test_config_transfer_routes.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: Task 2 functions and exceptions.
+- Produces (all <code>dependencies=[Depends(require_localhost_or_lan)]</code>):
+  - <code>GET /api/config/export?include_secrets=false</code> → <code>JSONResponse(build_export(...))</code> with <code>Content-Disposition: attachment; filename="engram-settings-YYYY-MM-DD.json"</code> (<code>-with-keys</code> before <code>.json</code> when secrets included) and <code>Cache-Control: no-store</code>.
+  - <code>POST /api/config/import/preview</code> raw JSON body → <code>preview_import</code> result.
+  - <code>POST /api/config/import/apply</code> body <code>{"file": object, "keys": list[str]}</code> (Pydantic model <code>SettingsImportApply</code>) → <code>{"applied": [...]}</code>.
+  - Body over <code>MAX_IMPORT_BYTES</code> (check <code>await request.body()</code> length) → 413; invalid JSON or <code>SettingsFileError</code> → 400 with the message; <code>ImportRejected</code> → 422 <code>{"detail": {"errors": {...}}}</code>.</p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong> (ASGITransport client fixture as in <code>test_api_routes.py</code>):</li>
+<li><code>test_export_headers</code>: 200, <code>content-disposition</code> contains <code>engram-settings-</code> and <code>.json</code>, <code>cache-control == "no-store"</code>; with <code>include_secrets=true</code> filename contains <code>-with-keys</code>.</li>
+<li><code>test_preview_endpoint_round_trip</code>: POST the export body → 200 with <code>fields</code> list.</li>
+<li><code>test_preview_bad_json_400</code> and <code>test_preview_wrong_format_400</code>.</li>
+<li><code>test_preview_oversize_413</code>: body of 300 KB.</li>
+<li><code>test_apply_endpoint_applies_and_422s</code>: valid keys → <code>applied</code> echoes them; an unknown key → 422 with it in <code>detail.errors</code>.</li>
+<li><code>test_transfer_routes_refuse_lan_peer</code>: client with <code>client=("172.18.0.14", 1234)</code> and <code>allow_lan_access=False</code> → 403 on all three routes (including <code>include_secrets=true</code>).</li>
+<li>[ ] <strong>Step 2:</strong> Run the file. Expected: 404s / failures.</li>
+<li>[ ] <strong>Step 3:</strong> Implement the routes.</li>
+<li>[ ] <strong>Step 4:</strong> Run the file plus Task 2's tests. Expected: pass. Ruff clean.</li>
+<li>[ ] <strong>Step 5:</strong> Commit <code>feat(api): settings export/import endpoints (#731)</code>.</li>
+</ul>
+<h3 id="task-4-frontend-dialog-and-settings-section">Task 4: Frontend dialog and settings section</h3>
+<p><strong>Files:</strong>
+- Create: <code>frontend/src/components/settings/settingsTransfer.ts</code> (API helpers + key-to-label map), <code>frontend/src/components/ImportSettingsDialog.tsx</code>, <code>frontend/src/components/ImportSettingsDialog.test.tsx</code>, <code>frontend/src/components/SettingsTransferSection.tsx</code>, <code>frontend/src/components/SettingsTransferSection.test.tsx</code>
+- Modify: <code>frontend/src/components/ConfigWizard.tsx</code> (add <code>{ key: 'transfer', label: 'Import &amp; Export', step: 6 }</code> to <code>SETTINGS_SECTIONS</code> for settings mode only, render <code>SettingsTransferSection</code> at step 6; onboarding step 1 link; after apply re-run the existing load-config logic, extracted into a <code>reloadConfig()</code> callback)</p>
+<p><strong>Interfaces:</strong>
+- Consumes: Task 3 endpoints.
+- Produces:
+  - <code>downloadSettings(includeSecrets: boolean): Promise&lt;void&gt;</code> (fetch → blob → object URL → temporary <code>&lt;a download&gt;</code>; filename from <code>Content-Disposition</code>).
+  - <code>previewSettingsImport(file: unknown): Promise&lt;ImportPreview&gt;</code>; <code>applySettingsImport(file: unknown, keys: string[]): Promise&lt;string[]&gt;</code> (throws <code>Error</code> carrying the server's per-key errors on 422).
+  - <code>settingLabel(key: string): string</code> (map, fallback humanizes <code>snake_case</code>).
+  - <code>&lt;ImportSettingsDialog file={object} preview={ImportPreview} onClose onApplied={(keys) =&gt; void} hasUnsavedEdits={boolean} /&gt;</code>
+  - <code>&lt;SettingsTransferSection onImported={() =&gt; void} /&gt;</code></p>
+<p>Copy (exact): checkbox "Include keys and passwords"; warning "Anyone with this file can use your MakeMKV, TMDB, AI and Discord credentials. Store it like a password."; onboarding link "Restoring from another install? Import a settings file"; secret row text "will be replaced"; missing path badge "Not found on this machine"; apply button "Apply N settings"; unsaved warning "Your unsaved changes in Settings will be replaced."</p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing vitest tests:</strong></li>
+<li>Dialog: groups render (Changes, Not found on this machine, Invalid, Unchanged collapsed, Not recognized collapsed); checkboxes default from <code>selected</code>; invalid rows' checkboxes disabled and show <code>error</code>; secret row shows "will be replaced" and no <code>***</code>/value text; clicking Apply calls <code>applySettingsImport</code> with only ticked keys; button text updates with the count; <code>hasUnsavedEdits</code> shows the unsaved warning.</li>
+<li>Section: ticking "Include keys and passwords" shows the warning; Download calls <code>fetch</code> with <code>/api/config/export?include_secrets=true</code>; choosing a file with invalid JSON shows an inline error without calling preview.</li>
+<li>[ ] <strong>Step 2:</strong> <code>npm run test:unit -- ImportSettingsDialog SettingsTransferSection</code>. Expected: fail (modules missing).</li>
+<li>[ ] <strong>Step 3:</strong> Implement; reuse existing modal/panel classes from neighbouring settings components.</li>
+<li>[ ] <strong>Step 4:</strong> Re-run Step 2, then full <code>npm run test:unit</code>, <code>npm run lint</code>, <code>npm run build</code>. Expected: all pass. (Worktree needs <code>npm install</code> first; do not commit lockfile changes.)</li>
+<li>[ ] <strong>Step 5:</strong> Commit <code>feat(settings): export/import UI (#731)</code>.</li>
+</ul>
+<h3 id="task-5-rebase-on-794-unsaved-edits-wiring-docs-changelog-live-check-pr">Task 5: Rebase on #794, unsaved-edits wiring, docs, changelog, live check, PR</h3>
+<p><strong>Files:</strong>
+- Modify: <code>frontend/src/components/ConfigWizard.tsx</code> (pass #794's dirty flag as <code>hasUnsavedEdits</code>), <code>docs/getting-started/configuration.md</code>, <code>CHANGELOG.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1:</strong> If PR #794 has merged, <code>git fetch origin &amp;&amp; git rebase origin/main</code>, resolve <code>ConfigWizard.tsx</code>, wire its dirty state into <code>hasUnsavedEdits</code>. If it has not merged, pass <code>false</code>, note it in the PR, and leave this step for a follow-up commit.</li>
+<li>[ ] <strong>Step 2:</strong> Docs: add "Moving settings to another install" to <code>configuration.md</code> (export, keys opt-in and its warning, never-exported fields and why, preview statuses, missing paths unticked). CHANGELOG <code>[Unreleased]</code> → <code>### Added</code>: "Export and import settings from Settings &gt; Import &amp; Export, with keys excluded unless you opt in and a preview of every change before it applies (#731)."</li>
+<li>[ ] <strong>Step 3:</strong> Live check: backend on 8250 with <code>DATABASE_URL=sqlite+aiosqlite:///./engram-731.db</code>, frontend <code>VITE_PORT=5423 VITE_BACKEND_PORT=8250</code>; export without and with keys, import into a fresh second DB, confirm preview groups and that applied settings show in Settings. Screenshot to <code>artifacts/</code>.</li>
+<li>[ ] <strong>Step 4:</strong> Full backend unit tier in the background (<code>uv run pytest tests/unit -q</code>), ruff, frontend unit/lint/build. Kill ports 8250 and 5423 only.</li>
+<li>[ ] <strong>Step 5:</strong> Commit, push, <code>gh pr create</code> with "Fixes #731", then comment <code>@claude please review this PR</code>.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

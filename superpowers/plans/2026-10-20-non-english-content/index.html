@@ -1,0 +1,2049 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-10-20-non-english-content/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Non-English Content Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#non-english-content-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Non-English Content Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-focus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review Focus
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-1-detect-and-route" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: detect and route
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 1: detect and route">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-language-code-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Language-code module
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-parse-sinfo-stream-languages-at-scan-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Parse SINFO stream languages at scan time
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-persist-the-scan-languages-on-disctitle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Persist the scan languages on DiscTitle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-audio-stream-probe-and-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Audio-stream probe and plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-the-matcher-transcribes-the-planned-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: The matcher transcribes the planned stream
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-6-the-curator-refuses-asr-on-a-foreign-verdict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: The curator refuses ASR on a foreign verdict
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-coordinator-and-finalizer-treat-the-refusal-like-unreadable-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Coordinator and finalizer treat the refusal like unreadable references
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-8-review-page-notice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Review page notice
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-9-docs-changelog-full-verification-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 9: Docs, changelog, full verification, PR
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-2-match-in-the-shows-own-language-outline-detailed-after-phase-1-merges-and-the-open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: match in the show's own language (outline; detailed after phase 1 merges and the open
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 2: match in the show&#39;s own language (outline; detailed after phase 1 merges and the open">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-10-content-language-on-the-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 10: Content language on the job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-11-match-language-decision-and-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 11: Match-language decision and context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-12-references-in-the-match-language" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 12: References in the match language
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-13-whisper-language-and-transcript-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 13: Whisper language and transcript keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-14-tf-idf-analyzer-per-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 14: TF-IDF analyzer per script
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-15-fallback-ladder-provenance-notice-rewording" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 15: Fallback ladder, provenance, notice rewording
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="non-english-content-implementation-plan">Non-English Content Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Stop silently mis-matching TV tracks whose dialogue is not English: transcribe the right
+audio stream, park unmatchable tracks in review with a reason that names the language (phase 1),
+then match non-English shows in their own language (phase 2).</p>
+<p><strong>Architecture:</strong> One language-code module; scan-time SINFO capture stored on <code>DiscTitle</code> as
+evidence; a per-file ffprobe "audio plan" owned by <code>EpisodeMatcher</code> that picks the stream
+(<code>-map 0:a:&lt;n&gt;</code>) and returns a verdict; the curator refuses ASR on a <code>foreign</code> verdict after the
+chromaprint prepass, and the coordinator/finalizer treat that refusal like the existing
+<code>references_unreadable</code> one.</p>
+<p><strong>Tech Stack:</strong> Python 3.11, FastAPI, SQLModel + Alembic, ffmpeg/ffprobe, faster-whisper,
+scikit-learn; React 19 + vitest.</p>
+<p><strong>Spec:</strong> <code>docs/superpowers/specs/2026-10-20-non-english-content-design.md</code></p>
+<h2 id="global-constraints">Global Constraints</h2>
+<ul>
+<li>Phase 1 PR says "Refs #241"; phase 2 says "Fixes #241".</li>
+<li>Any probe that cannot decide (ffprobe missing, error, untagged streams, unknown codes) yields
+  today's behaviour. The only new no-ASR outcome is verdict <code>foreign</code> (and <code>no_audio</code>).</li>
+<li>Review error code string: <code>audio_language_unsupported</code>.</li>
+<li>Normalized language form: ISO 639-1 where the table maps it, else the lower-case three-letter code;
+  <code>""</code>, <code>und</code>, <code>mis</code>, <code>mul</code>, <code>zxx</code>, <code>qaa</code>..<code>qtz</code> normalize to <code>None</code>.</li>
+<li>No new Python dependency (frozen-build hidden-import risk).</li>
+<li>New <code>DiscTitle</code> columns are nullable; Alembic revision plus nothing else (<code>_add_missing_columns()</code>
+  covers frozen builds). Check <code>uv run alembic heads</code> for the current head before writing
+  <code>down_revision</code>.</li>
+<li>Do not change <code>_build_markdown_summary</code>'s <code>report.md</code> format (the Discord bot parses it).</li>
+<li>Never touch MakeMKV <code>settings.conf</code> beyond what exists.</li>
+<li>Real <code>~/.engram/cache</code> stays read-only; tests use tmp dirs.</li>
+<li>CHANGELOG <code>[Unreleased]</code> entry credits the contributor: <code>(thanks @wintheriscomming!)</code>.</li>
+<li>No em dashes in prose (code comments, CHANGELOG, PR text).</li>
+<li>Backend from <code>backend/</code>: <code>uv run pytest</code>, <code>uv run ruff check .</code>, <code>uv run ruff format .</code>.
+  Frontend from <code>frontend/</code>: <code>npm run test:unit</code>, <code>npm run lint</code>, <code>npm run build</code>.</li>
+</ul>
+<h2 id="review-focus">Review Focus</h2>
+<ol>
+<li><strong>A disc whose every episode-length title is <code>foreign</code>.</strong> Expect review with the language reason,
+   not <code>_detect_wrong_show</code> naming a same-name twin and not a cross-season re-run. Test in Task 7.</li>
+<li><strong>An English disc with a foreign dub flagged default</strong> (ffmpeg would have picked the dub). Expect
+   the English stream to be mapped. Test in Task 5.</li>
+<li><strong>Previously cached transcripts of English discs.</strong> Expect stream 0 to keep today's L2 transcript
+   key so existing caches still hit. Test in Task 5.</li>
+<li><strong>ffprobe missing or failing.</strong> Expect verdict <code>unprobed</code>, no <code>-map</code>, ASR proceeds exactly as
+   today. Tests in Tasks 4 and 6.</li>
+<li><strong>Auto-escalation (deep re-match) over a language-parked title.</strong> Expect <code>match_details</code> kept and
+   no re-dispatch. Test in Task 7.</li>
+</ol>
+<hr />
+<h2 id="phase-1-detect-and-route">Phase 1: detect and route</h2>
+<h3 id="task-1-language-code-module">Task 1: Language-code module</h3>
+<p><strong>Files:</strong>
+- Create: <code>backend/app/core/languages.py</code>
+- Test: <code>backend/tests/unit/test_languages.py</code></p>
+<p><strong>Interfaces:</strong>
+- Produces: <code>normalize_language(code: str | None) -&gt; str | None</code>,
+  <code>language_name(code: str | None) -&gt; str</code>, <code>is_english(code: str | None) -&gt; bool</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span><span class="s2">"raw,expected"</span><span class="p">,</span> <span class="p">[</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="p">(</span><span class="s2">"eng"</span><span class="p">,</span> <span class="s2">"en"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"EN"</span><span class="p">,</span> <span class="s2">"en"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"jpn"</span><span class="p">,</span> <span class="s2">"ja"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"fre"</span><span class="p">,</span> <span class="s2">"fr"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"fra"</span><span class="p">,</span> <span class="s2">"fr"</span><span class="p">),</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="p">(</span><span class="s2">"ger"</span><span class="p">,</span> <span class="s2">"de"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"deu"</span><span class="p">,</span> <span class="s2">"de"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"chi"</span><span class="p">,</span> <span class="s2">"zh"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"zho"</span><span class="p">,</span> <span class="s2">"zh"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"spa"</span><span class="p">,</span> <span class="s2">"es"</span><span class="p">),</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="p">(</span><span class="s2">"osa"</span><span class="p">,</span> <span class="s2">"osa"</span><span class="p">),</span> <span class="p">(</span><span class="s2">""</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="s2">"und"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="s2">"zxx"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="p">(</span><span class="s2">"mul"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="s2">"mis"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="s2">"qaa"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="p">(</span><span class="s2">"qtz"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">])</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_normalize_language</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">expected</span><span class="p">):</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">assert</span> <span class="n">normalize_language</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span> <span class="o">==</span> <span class="n">expected</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_language_name</span><span class="p">():</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="k">assert</span> <span class="n">language_name</span><span class="p">(</span><span class="s2">"ja"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"Japanese"</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="k">assert</span> <span class="n">language_name</span><span class="p">(</span><span class="s2">"jpn"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"Japanese"</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">assert</span> <span class="n">language_name</span><span class="p">(</span><span class="s2">"osa"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"OSA"</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="k">assert</span> <span class="n">language_name</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"an unknown language"</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_is_english</span><span class="p">():</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">assert</span> <span class="n">is_english</span><span class="p">(</span><span class="s2">"eng"</span><span class="p">)</span> <span class="ow">and</span> <span class="n">is_english</span><span class="p">(</span><span class="s2">"en"</span><span class="p">)</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="k">assert</span> <span class="ow">not</span> <span class="n">is_english</span><span class="p">(</span><span class="s2">"jpn"</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_english</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run, expect ImportError.</strong> <code>uv run pytest tests/unit/test_languages.py -v</code></li>
+<li>[ ] <strong>Step 3: Implement.</strong> One dict keyed by 639-1 holding <code>(name, {639-2 B/T aliases})</code> for about
+  40 languages (en, ja, zh, ko, th, vi, de, fr, es, pt, it, nl, sv, no, nb, da, fi, is, pl, cs, sk,
+  hu, ro, bg, ru, uk, el, tr, ar, he, hi, ta, te, bn, id, ms, tl, fa, hr, sr); derive the reverse
+  alias map from it.</li>
+<li>[ ] <strong>Step 4: Run, expect PASS.</strong></li>
+<li>[ ] <strong>Step 5: Commit</strong> <code>feat(languages): normalize disc language codes (#241)</code></li>
+</ul>
+<h3 id="task-2-parse-sinfo-stream-languages-at-scan-time">Task 2: Parse SINFO stream languages at scan time</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/core/analyst.py</code> (<code>TitleInfo</code>, ~line 254)
+- Modify: <code>backend/app/core/extractor.py</code> (<code>_parse_disc_info</code>, ~line 1951; replace the attr-28
+  <code>pass</code> with a comment that attr 28 is MakeMKV's metadata language, not the audio language)
+- Test: <code>backend/tests/unit/test_extractor.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>normalize_language</code> (Task 1)
+- Produces: <code>TitleInfo.audio_languages: list[str | None]</code>,
+  <code>TitleInfo.subtitle_languages: list[str | None]</code> (default empty lists, stream order)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong> using trimmed real lines (five-field SINFO):</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">SCAN</span> <span class="o">=</span> <span class="s1">'</span><span class="se">\n</span><span class="s1">'</span><span class="o">.</span><span class="n">join</span><span class="p">([</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="s1">'TINFO:2,9,0,"0:33:10"'</span><span class="p">,</span> <span class="s1">'TINFO:2,28,0,"eng"'</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="s1">'SINFO:2,0,1,6201,"Video"'</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="s1">'SINFO:2,1,1,6202,"Audio"'</span><span class="p">,</span> <span class="s1">'SINFO:2,1,3,0,"osa"'</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="s1">'SINFO:2,2,1,6203,"Subtitles"'</span><span class="p">,</span> <span class="s1">'SINFO:2,2,3,0,"eng"'</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="s1">'TINFO:5,9,0,"0:06:36"'</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="s1">'SINFO:5,1,1,6202,"Audio"'</span><span class="p">,</span>                     <span class="c1"># DVD: no attr 3 at all</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="s1">'SINFO:5,2,1,6202,"Audio"'</span><span class="p">,</span> <span class="s1">'SINFO:5,2,3,0,"fre"'</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="s1">'SINFO:5,3,1,6203,"Subtitles"'</span><span class="p">,</span> <span class="s1">'SINFO:5,3,3,0,"ger"'</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">])</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_parse_disc_info_collects_stream_languages</span><span class="p">(</span><span class="n">extractor</span><span class="p">):</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">titles</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">extractor</span><span class="o">.</span><span class="n">_parse_disc_info</span><span class="p">(</span><span class="n">SCAN</span><span class="p">)</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">by_idx</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="o">.</span><span class="n">index</span><span class="p">:</span> <span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">titles</span><span class="p">}</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="k">assert</span> <span class="n">by_idx</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">audio_languages</span> <span class="o">==</span> <span class="p">[</span><span class="s2">"osa"</span><span class="p">]</span>          <span class="c1"># TINFO 28 "eng" ignored</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="k">assert</span> <span class="n">by_idx</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">subtitle_languages</span> <span class="o">==</span> <span class="p">[</span><span class="s2">"en"</span><span class="p">]</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="k">assert</span> <span class="n">by_idx</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span><span class="o">.</span><span class="n">audio_languages</span> <span class="o">==</span> <span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="s2">"fr"</span><span class="p">]</span>     <span class="c1"># untagged slot kept</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    <span class="k">assert</span> <span class="n">by_idx</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span><span class="o">.</span><span class="n">subtitle_languages</span> <span class="o">==</span> <span class="p">[</span><span class="s2">"de"</span><span class="p">]</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_sinfo_attr3_before_type_line_is_still_classified</span><span class="p">(</span><span class="n">extractor</span><span class="p">):</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="c1"># attr order is not guaranteed; classify at end of parse, not per line</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="n">titles</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">extractor</span><span class="o">.</span><span class="n">_parse_disc_info</span><span class="p">(</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>        <span class="s1">'TINFO:0,9,0,"0:22:00"</span><span class="se">\n</span><span class="s1">SINFO:0,1,3,0,"jpn"</span><span class="se">\n</span><span class="s1">SINFO:0,1,1,6202,"Audio"'</span><span class="p">)</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    <span class="k">assert</span> <span class="n">titles</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">audio_languages</span> <span class="o">==</span> <span class="p">[</span><span class="s2">"ja"</span><span class="p">]</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run, expect FAIL</strong> (<code>AttributeError: audio_languages</code>).
+  <code>uv run pytest tests/unit/test_extractor.py -k stream_languages -v</code></li>
+<li>[ ] <strong>Step 3: Implement.</strong> Regex <code>SINFO:(\d+),(\d+),(\d+),(\d+),"(.*)"</code>. Collect
+  <code>{(title, stream): {"type": code, "lang": value}}</code> keyed on attr 1's numeric code (6202 audio,
+  6203 subtitles), then fill the two lists in stream order after the loop. A SINFO line for a title
+  with no TINFO creates the <code>TitleInfo</code> like TINFO does.</li>
+<li>[ ] <strong>Step 4: Run, expect PASS;</strong> run the whole <code>test_extractor.py</code>.</li>
+<li>[ ] <strong>Step 5: Commit</strong> <code>feat(extractor): capture per-stream audio/subtitle languages (#241)</code></li>
+</ul>
+<h3 id="task-3-persist-the-scan-languages-on-disctitle">Task 3: Persist the scan languages on <code>DiscTitle</code></h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/models/disc_job.py</code> (<code>DiscTitle</code>)
+- Create: <code>backend/migrations/versions/&lt;rev&gt;_add_disc_titles_stream_languages.py</code>
+- Modify: <code>backend/app/services/identification_coordinator.py</code> (<code>DiscTitle(...)</code> creation ~line 648)
+- Modify: <code>frontend/src/types/index.ts</code> (title type, near <code>discdb_flag_reason</code>)
+- Test: <code>backend/tests/unit/test_identification_coordinator.py</code> (or the existing test that covers
+  the scan-to-rows save), <code>backend/tests/unit/test_database_migration.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>TitleInfo.audio_languages/subtitle_languages</code> (Task 2)
+- Produces: <code>DiscTitle.audio_languages: str | None</code>, <code>DiscTitle.subtitle_languages: str | None</code>
+  (JSON text of <code>list[str | None]</code>; <code>None</code> = unknown), plus helper
+  <code>DiscTitle.audio_language_list() -&gt; list[str | None] | None</code> (tolerates bad JSON → <code>None</code>)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests:</strong> saving a scanned title with
+  <code>audio_languages=["ja", None]</code> stores <code>'["ja", null]'</code>; an empty list stores <code>None</code>; the
+  reconciler test asserts both columns exist after <code>init_db()</code> on a pre-existing <code>disc_titles</code>
+  table missing them (follow the file's existing column-add test).</li>
+<li>[ ] <strong>Step 2: Run, expect FAIL.</strong></li>
+<li>[ ] <strong>Step 3: Implement</strong> the two <code>Field(default=None)</code> columns, the helper, the copy in the
+  identification coordinator, the Alembic revision (two <code>batch_alter_table</code> add_column / drop_column),
+  and <code>audio_languages?: string | null; subtitle_languages?: string | null;</code> in the TS type.</li>
+<li>[ ] <strong>Step 4: Run, expect PASS;</strong> <code>uv run pytest tests/unit/test_database_migration.py tests/unit/test_migration_idempotency.py</code>.</li>
+<li>[ ] <strong>Step 5: Commit</strong> <code>feat(models): store disc stream languages on titles (#241)</code></li>
+</ul>
+<h3 id="task-4-audio-stream-probe-and-plan">Task 4: Audio-stream probe and plan</h3>
+<p><strong>Files:</strong>
+- Create: <code>backend/app/matcher/audio_streams.py</code>
+- Test: <code>backend/tests/unit/test_audio_streams.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>normalize_language</code> (Task 1)
+- Produces:
+  - <code>@dataclass(frozen=True) AudioStream(audio_index: int, language: str | None, title: str, channels: int, default: bool, commentary: bool)</code>
+    (<code>commentary</code> = disposition comment or visual_impaired, or title matches the pattern below)
+  - <code>probe_audio_streams(path: Path) -&gt; list[AudioStream] | None</code> (memoized on resolved path,
+    size, mtime_ns; <code>None</code> on missing ffprobe, non-zero exit, timeout, bad JSON)
+  - <code>@dataclass(frozen=True) AudioPlan(verdict: str, stream: AudioStream | None, languages: list[str | None])</code>
+    with verdict in <code>"match" | "untagged" | "foreign" | "no_audio" | "unprobed"</code>
+  - <code>plan_audio(streams: list[AudioStream] | None, language: str) -&gt; AudioPlan</code>
+  - <code>COMMENTARY_PATTERN = re.compile(r"comment|audio description|described|kommentar|commentaire|comentario|commento", re.I)</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">s</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">lang</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">commentary</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ch</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="k">return</span> <span class="n">AudioStream</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">lang</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="n">ch</span><span class="p">,</span> <span class="n">default</span><span class="p">,</span> <span class="n">commentary</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_match_prefers_default_among_language_streams</span><span class="p">():</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">p</span> <span class="o">=</span> <span class="n">plan_audio</span><span class="p">([</span><span class="n">s</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"ja"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">s</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">"en"</span><span class="p">),</span> <span class="n">s</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s2">"en"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">True</span><span class="p">)],</span> <span class="s2">"en"</span><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="k">assert</span> <span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">verdict</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">stream</span><span class="o">.</span><span class="n">audio_index</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"match"</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_match_first_language_stream_when_none_default</span><span class="p">():</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="k">assert</span> <span class="n">plan_audio</span><span class="p">([</span><span class="n">s</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"ja"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">s</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">"en"</span><span class="p">)],</span> <span class="s2">"en"</span><span class="p">)</span><span class="o">.</span><span class="n">stream</span><span class="o">.</span><span class="n">audio_index</span> <span class="o">==</span> <span class="mi">1</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_untagged_used_when_no_language_stream</span><span class="p">():</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">p</span> <span class="o">=</span> <span class="n">plan_audio</span><span class="p">([</span><span class="n">s</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="n">s</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">"fr"</span><span class="p">)],</span> <span class="s2">"en"</span><span class="p">)</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="k">assert</span> <span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">verdict</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">stream</span><span class="o">.</span><span class="n">audio_index</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="s2">"untagged"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_foreign_when_every_usable_stream_is_other_language</span><span class="p">():</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">p</span> <span class="o">=</span> <span class="n">plan_audio</span><span class="p">([</span><span class="n">s</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"ja"</span><span class="p">),</span> <span class="n">s</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">"en"</span><span class="p">,</span> <span class="n">commentary</span><span class="o">=</span><span class="kc">True</span><span class="p">)],</span> <span class="s2">"en"</span><span class="p">)</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="k">assert</span> <span class="n">p</span><span class="o">.</span><span class="n">verdict</span> <span class="o">==</span> <span class="s2">"foreign"</span> <span class="ow">and</span> <span class="n">p</span><span class="o">.</span><span class="n">stream</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">p</span><span class="o">.</span><span class="n">languages</span> <span class="o">==</span> <span class="p">[</span><span class="s2">"ja"</span><span class="p">,</span> <span class="s2">"en"</span><span class="p">]</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_no_audio_and_unprobed</span><span class="p">():</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="k">assert</span> <span class="n">plan_audio</span><span class="p">([],</span> <span class="s2">"en"</span><span class="p">)</span><span class="o">.</span><span class="n">verdict</span> <span class="o">==</span> <span class="s2">"no_audio"</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>    <span class="k">assert</span> <span class="n">plan_audio</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="s2">"en"</span><span class="p">)</span><span class="o">.</span><span class="n">verdict</span> <span class="o">==</span> <span class="s2">"unprobed"</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_probe_parses_ffprobe_json</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">):</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="c1"># fake subprocess.run returning ffprobe -of json with tags.language "jpn",</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>    <span class="c1"># tags.title "Commentary", disposition.comment 0, channels 6 -&gt; commentary True by title</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    <span class="o">...</span>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_probe_returns_none_when_ffprobe_missing</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">):</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>    <span class="c1"># subprocess.run raises FileNotFoundError -&gt; None, and nothing raises</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>    <span class="o">...</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run, expect ImportError.</strong></li>
+<li>[ ] <strong>Step 3: Implement.</strong> Command:
+  <code>ffprobe -v error -select_streams a -show_entries stream=index,channels:stream_tags=language,title:stream_disposition=default,comment,visual_impaired -of json &lt;path&gt;</code>,
+  <code>timeout=30</code>, bare <code>ffprobe</code> as <code>get_video_duration</code> uses. <code>audio_index</code> is the position within
+  the returned audio list (what <code>-map 0:a:&lt;n&gt;</code> expects), not the global stream index.</li>
+<li>[ ] <strong>Step 4: Run, expect PASS.</strong></li>
+<li>[ ] <strong>Step 5: Commit</strong> <code>feat(matcher): probe and plan a file's audio streams (#241)</code></li>
+</ul>
+<h3 id="task-5-the-matcher-transcribes-the-planned-stream">Task 5: The matcher transcribes the planned stream</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/episode_identification.py</code> (<code>extract_audio_chunk</code> ~1252,
+  <code>_chunk_path</code> ~1150, <code>_transcription_key</code> ~1155, <code>transcribe_chunk_cached</code> ~1197,
+  <code>transcribe_full</code> ~1574)
+- Test: <code>backend/tests/unit/test_episode_identification.py</code>, <code>backend/tests/unit/test_transcription_prewarm.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>probe_audio_streams</code>, <code>plan_audio</code>, <code>AudioPlan</code> (Task 4)
+- Produces: <code>EpisodeMatcher.audio_plan(video_file, language: str = "en") -&gt; AudioPlan</code> (memoized
+  per resolved path and language). Phase 2 swaps the <code>"en"</code> default for the job's match language.</p>
+<p>Design call: the plan lives on the matcher so <code>extract_audio_chunk</code>, the transcript caches and the
+prewarm (which drives the same matcher class) can never disagree about the stream. Stream index 0
+keeps today's cache keys (Review Focus 3); other indices append <code>#a&lt;n&gt;</code> to the chunk name, the L1
+key and the L2 <code>file_key</code>.</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+<li><code>test_extract_audio_chunk_maps_planned_stream</code>: with <code>audio_plan</code> stubbed to stream 2, the
+    captured ffmpeg argv contains <code>["-map", "0:a:2"]</code> before the output path.</li>
+<li><code>test_extract_audio_chunk_no_map_when_unprobed</code>: verdict <code>unprobed</code> → no <code>-map</code> in argv.</li>
+<li><code>test_cache_keys_differ_by_stream_but_stream0_keeps_legacy_key</code>: <code>_transcription_key</code> and
+    <code>_chunk_path</code> for stream 0 equal today's values; for stream 1 they differ.</li>
+<li><code>test_transcribe_chunk_cached_l2_key_includes_stream</code>: <code>transcript_store.get</code> receives
+    <code>file_key + "#a1"</code> for stream 1 and the bare <code>file_key</code> for stream 0.</li>
+<li><code>test_prewarm_uses_matcher_audio_plan</code> (prewarm test file): the prewarm's extraction for a file
+    planned to stream 1 maps <code>0:a:1</code>.</li>
+<li>[ ] <strong>Step 2: Run, expect FAIL.</strong></li>
+<li>[ ] <strong>Step 3: Implement</strong> <code>audio_plan</code>, and thread the planned index through the five methods
+  above. <code>match</code>/<code>untagged</code> give an index; <code>unprobed</code> gives none.</li>
+<li>[ ] <strong>Step 4: Run both test files, expect PASS.</strong></li>
+<li>[ ] <strong>Step 5: Commit</strong> <code>fix(matcher): transcribe the English audio stream, not ffmpeg's pick (#241)</code></li>
+</ul>
+<p>Coordination: open PR #798 edits <code>extract_audio_chunk</code> and adds a post-failure ffprobe check. If it
+has merged, rebase and make its check call <code>probe_audio_streams</code> (verdict <code>no_audio</code> ⇔ its
+<code>NoAudioStreamError</code>). If not, note the overlap in this PR's description.</p>
+<h3 id="task-6-the-curator-refuses-asr-on-a-foreign-verdict">Task 6: The curator refuses ASR on a foreign verdict</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/subtitle_utils.py</code> (beside <code>REFERENCES_UNREADABLE_ERROR_CODE</code>)
+- Modify: <code>backend/app/core/curator.py</code> (<code>match_single_file</code> ~333 after the chromaprint block, and
+  <code>_match_across_seasons</code> before its season loop)
+- Test: <code>backend/tests/unit/test_curator.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>EpisodeMatcher.audio_plan</code> (Task 5), <code>language_name</code> (Task 1)
+- Produces: <code>AUDIO_LANGUAGE_ERROR_CODE = "audio_language_unsupported"</code>;
+  <code>language_refusal_details(plan: AudioPlan) -&gt; dict</code> returning
+  <code>{"error": AUDIO_LANGUAGE_ERROR_CODE, "audio_languages": plan.languages, "message": ...}</code>
+  (in <code>subtitle_utils.py</code>, so the curator and coordinator share it)</p>
+<p>Message copy (exact), joining distinct known names with " and ":
+<code>"This track's only audio is {names}, and Engram matches episodes by English dialogue, so it could not be matched automatically. Assign the episode by hand."</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+<li><code>test_foreign_audio_returns_language_refusal_without_asr</code>: matcher <code>audio_plan</code> returns
+    <code>foreign</code> with languages <code>["ja"]</code>; <code>identify_episode</code> is a mock; result has
+    <code>episode_code is None</code>, <code>needs_review is True</code>, <code>match_details["error"] == "audio_language_unsupported"</code>,
+    message contains <code>"only audio is Japanese"</code>; <code>identify_episode.assert_not_called()</code>.</li>
+<li><code>test_chromaprint_hit_wins_over_foreign_audio</code>: canonical prepass hit at gate → accepted result,
+    <code>audio_plan</code> not consulted.</li>
+<li><code>test_unprobed_audio_runs_asr_as_today</code>.</li>
+<li><code>test_across_seasons_refuses_once</code>: season <code>None</code>, foreign → one refusal, no per-season ASR.</li>
+<li>[ ] <strong>Step 2: Run, expect FAIL.</strong></li>
+<li>[ ] <strong>Step 3: Implement.</strong> Plan via <code>self._matcher.audio_plan(file_path)</code> inside
+  <code>asyncio.to_thread</code> (ffprobe is blocking). <code>no_audio</code> is left to #798's handling if present;
+  otherwise it returns the same shape with message
+  <code>"This track has no audio, so it could not be matched by its dialogue. Assign the episode by hand."</code></li>
+<li>[ ] <strong>Step 4: Run, expect PASS;</strong> run <code>test_curator*.py</code>.</li>
+<li>[ ] <strong>Step 5: Commit</strong> <code>feat(curator): park non-English tracks instead of guessing (#241)</code></li>
+</ul>
+<h3 id="task-7-coordinator-and-finalizer-treat-the-refusal-like-unreadable-references">Task 7: Coordinator and finalizer treat the refusal like unreadable references</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/matching_coordinator.py</code> (<code>_NON_REMATCHABLE_REVIEW_ERRORS</code> ~229,
+  <code>_route_unconfirmable_title</code> ~380, the subtitle-failed LLM fallback ~1206)
+- Modify: <code>backend/app/services/finalization_coordinator.py</code> (<code>_refused_for_references</code> ~35, the
+  <code>has_review</code> park ~1178)
+- Test: <code>backend/tests/unit/test_matching_coordinator.py</code>, <code>backend/tests/unit/test_finalization_coordinator.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>AUDIO_LANGUAGE_ERROR_CODE</code> (Task 6), <code>DiscTitle.audio_language_list()</code> (Task 3),
+  <code>probe_audio_streams</code> (Task 4)
+- Produces: <code>_language_review_summary(titles) -&gt; str | None</code> in <code>finalization_coordinator.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+<li><code>test_language_refusal_is_not_rematchable</code>: a REVIEW title with that code →
+    <code>_is_rematchable_review</code> is False; auto-escalation leaves <code>match_details</code> intact.</li>
+<li><code>test_disc_had_english_hint_appended</code>: title <code>audio_languages='["ja","en"]'</code>, refusal languages
+    <code>["ja"]</code> → stored message ends with
+    <code>" The disc also has English audio, but MakeMKV's language settings left it out of the rip."</code></li>
+<li><code>test_no_hint_when_disc_languages_unknown</code>: <code>audio_languages=None</code> → message unchanged.</li>
+<li><code>test_llm_fallback_skipped_for_foreign_audio</code>: subtitle status <code>failed</code> and the file plans
+    <code>foreign</code> → <code>_llm_fallback_without_subtitles</code> not awaited, title gets the language refusal.</li>
+<li><code>test_all_foreign_disc_is_not_wrong_show</code> and <code>..._not_cross_season_rerun</code>: every episode
+    candidate refused for language → <code>_detect_wrong_show</code> returns None and the cross-season
+    predicate returns False (Review Focus 1).</li>
+<li><code>test_review_reason_names_language</code>: 3 REVIEW titles, 2 with the code (<code>["ja"]</code>) →
+    reason <code>"3 title(s) need manual episode assignment. 2 have no English audio (Japanese)."</code></li>
+<li>[ ] <strong>Step 2: Run, expect FAIL.</strong></li>
+<li>[ ] <strong>Step 3: Implement.</strong> Rename <code>_refused_for_references</code> to <code>_refused_by_matcher</code> covering both
+  codes (update its three callers). Add the code to the non-rematchable set. Append the hint where
+  the coordinator stores <code>result.match_details</code> (before <code>json.dumps</code>). In the subtitle-failed branch,
+  plan the file first; on <code>foreign</code> store the refusal and skip the LLM fallback.</li>
+<li>[ ] <strong>Step 4: Run both files, expect PASS.</strong></li>
+<li>[ ] <strong>Step 5: Commit</strong> <code>feat(matching): explain language-parked tracks in review (#241)</code></li>
+</ul>
+<h3 id="task-8-review-page-notice">Task 8: Review page notice</h3>
+<p><strong>Files:</strong>
+- Modify: <code>frontend/src/components/ReviewQueue/Inspector.tsx:21</code>
+- Test: <code>frontend/src/components/ReviewQueue/Inspector.test.tsx</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong> mirroring the <code>references_unreadable</code> case at line ~191:
+  a title with <code>match_details: JSON.stringify({ error: 'audio_language_unsupported', message })</code>
+  renders <code>message</code>.</li>
+<li>[ ] <strong>Step 2: Run, expect FAIL.</strong> <code>npm run test:unit -- Inspector</code></li>
+<li>[ ] <strong>Step 3: Add the code to <code>REVIEW_NOTICE_CODES</code>.</strong></li>
+<li>[ ] <strong>Step 4: Run, expect PASS;</strong> <code>npm run lint</code>, <code>npm run build</code>.</li>
+<li>[ ] <strong>Step 5: Commit</strong> <code>feat(review): show the language notice on parked tracks (#241)</code></li>
+</ul>
+<h3 id="task-9-docs-changelog-full-verification-pr">Task 9: Docs, changelog, full verification, PR</h3>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code> (<code>[Unreleased]</code> → <code>### Fixed</code> / <code>### Added</code>)
+- Modify: <code>CLAUDE.md</code> (Key Patterns: one bullet: "the ripped file's audio plan, not the scan, decides
+  ASR; TINFO 28 is metadata language")
+- Modify: the user-facing review/matching docs page that lists review reasons, if one exists
+  (<code>grep -rl "references_unreadable\|need manual episode" docs/</code>)</p>
+<ul>
+<li>[ ] <strong>Step 1:</strong> CHANGELOG bullet: tracks whose only audio is another language now go to review
+  with a reason naming the language instead of being guessed; English audio is picked explicitly
+  on discs with several audio tracks. <code>(#PR, thanks @wintheriscomming!)</code></li>
+<li>[ ] <strong>Step 2:</strong> <code>uv run ruff check . &amp;&amp; uv run ruff format --check .</code> → clean.</li>
+<li>[ ] <strong>Step 3:</strong> <code>uv run pytest tests/unit -q -p no:cacheprovider</code> in the background (over 5 min);
+  expect all pass (re-run any caplog files without <code>-p no:logging</code> if used).</li>
+<li>[ ] <strong>Step 4:</strong> <code>uv run pytest tests/pipeline -q</code> → pass (run <code>init_db()</code> first if the worktree DB
+  is a 0-byte stub).</li>
+<li>[ ] <strong>Step 5:</strong> Push, <code>gh pr create</code> ("Refs #241"), then comment <code>@claude please review this PR</code>.</li>
+</ul>
+<hr />
+<h2 id="phase-2-match-in-the-shows-own-language-outline-detailed-after-phase-1-merges-and-the-open">Phase 2: match in the show's own language (outline; detailed after phase 1 merges and the open</h2>
+<p>questions are answered)</p>
+<h3 id="task-10-content-language-on-the-job">Task 10: Content language on the job</h3>
+<p><code>DiscJob.content_language</code> (nullable, normalized) from TMDB <code>original_language</code> during
+identification (TV only); Alembic revision; diagnostics <code>job-detail.json</code> carries it.</p>
+<h3 id="task-11-match-language-decision-and-context">Task 11: Match-language decision and context</h3>
+<p><code>DiscJob.match_language</code>; decided in <code>MatchingCoordinator.download_subtitles</code> beside
+<code>decide_job_namespace</code>; bound in a ContextVar module <code>app/core/match_language.py</code> at the same four
+binding sites as the episode namespace (<code>download_subtitles</code>, <code>download_subtitles_all_seasons</code>,
+<code>_run_match_single_file</code> after the subtitle wait, and the roster/manual-subtitle/LLM routes).
+<code>EpisodeMatcher.audio_plan</code> reads it as its default language.</p>
+<h3 id="task-12-references-in-the-match-language">Task 12: References in the match language</h3>
+<p>Provider language plumbing (OpenSubtitles <code>languages=</code>, Addic7ed by name, tvsubtitles only where
+<code>_LANGUAGE_NAMES</code> has it). <code>corpus_dir_suffix()</code> composes namespace and language (<code>@tvdb@de</code>).
+One <code>is_local_only_corpus_dir(name)</code> predicate (<code>"@" in name</code>) replaces the three
+<code>endswith("@tvdb")</code> checks in <code>scripts/</code>. Precomputed pack never consulted for non-English.</p>
+<h3 id="task-13-whisper-language-and-transcript-keys">Task 13: Whisper language and transcript keys</h3>
+<p><code>transcribe(audio, language=...)</code> in <code>asr_models.py</code> (and the <code>asr_provider</code> wrapper); language
+joins the L1/L2 transcript keys (English keeps today's keys).</p>
+<h3 id="task-14-tf-idf-analyzer-per-script">Task 14: TF-IDF analyzer per script</h3>
+<p><code>char_wb</code>, <code>ngram_range=(2, 4)</code> for <code>ja</code>, <code>zh</code>, <code>th</code>; word analyzer otherwise. Matcher test on
+small German and Japanese fixture corpora.</p>
+<h3 id="task-15-fallback-ladder-provenance-notice-rewording">Task 15: Fallback ladder, provenance, notice rewording</h3>
+<p>Per-title: match language stream → English stream with English references → refusal naming both
+languages. <code>match_details</code> records <code>match_language</code> and <code>audio_stream</code>; Inspector shows the
+language beside the source chip. CJK auto-file policy per open question 2. CHANGELOG, PR
+"Fixes #241".</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

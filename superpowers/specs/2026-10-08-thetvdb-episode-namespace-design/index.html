@@ -1,0 +1,2067 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-10-08-thetvdb-episode-namespace-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>TheTVDB as a secondary episode-numbering source - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#thetvdb-as-a-secondary-episode-numbering-source" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              TheTVDB as a secondary episode-numbering source
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Problem">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-this-does-not-contradict-the-dexters-laboratory-finding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why this does not contradict the Dexter's Laboratory finding
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rejected-alternatives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rejected alternatives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invariant-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invariant change
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#licensing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Licensing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#appmatchertvdb_clientpy-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app/matcher/tvdb_client.py (new)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#appcoreepisode_namespacepy-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app/core/episode_namespace.py (new)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#show-to-tvdb-link" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Show-to-TVDB link
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deciding-the-namespace-identification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deciding the namespace (identification)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accepting-the-suggestion-review-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accepting the suggestion (review page)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-behavior-for-a-tvdb-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage behavior for a "tvdb" job
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tmdb-identity-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TMDB-identity boundaries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-v1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope (v1)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="thetvdb-as-a-secondary-episode-numbering-source">TheTVDB as a secondary episode-numbering source</h1>
+<p><strong>Date:</strong> 2026-10-08
+<strong>Status:</strong> design approved, not yet implemented
+<strong>Origin:</strong> user report, Justice League (2001) Season 1 Blu-ray
+<strong>Related:</strong> #200 (TMDB episode-group ordering), #658 (combined multi-episode codes),
+<code>docs/superpowers/specs/2026-09-20-subtitle-cache-numbering-scheme-design.md</code></p>
+<h2 id="problem">Problem</h2>
+<p>TMDB catalogues the Justice League pilot "Secret Origins" as one 72-minute episode, giving
+Season 1 24 episodes. The Blu-ray and TheTVDB carry it as three parts, giving 26. Verified
+2026-10-08:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Season 1 opening</th>
+<th>Season 1 count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TMDB (show 1618), aired order</td>
+<td>E01 Secret Origins (72 min), E02 In Blackest Night (1)</td>
+<td>24</td>
+</tr>
+<tr>
+<td>TheTVDB official order</td>
+<td>E01-E03 Secret Origins (1)/(2)/(3), E04 In Blackest Night (1)</td>
+<td>26</td>
+</tr>
+</tbody>
+</table>
+<p>None of TMDB's episode groups for the show splits the pilot: Aired Order and Production Order
+both keep one Secret Origins, the "Season" group has one episode, and the "Bluray Order"
+group is empty. The existing #200 ordering feature therefore cannot fix this.</p>
+<p>The failure cascades into matching. <code>download_subtitles</code> asks TMDB for the season's episode
+count (<code>testing_service.py</code>, <code>fetch_season_details</code>) and fetches E01-E24 from providers whose
+own numbering follows the TVDB/IMDb split. References are off by two after the pilot, E25 and
+E26 are never fetched, and a manually uploaded subtitle is labelled in TMDB numbering so it
+cannot line up either.</p>
+<h3 id="why-this-does-not-contradict-the-dexters-laboratory-finding">Why this does not contradict the Dexter's Laboratory finding</h3>
+<p>The 2026-09-20 numbering-scheme spec found TheTVDB is <em>not</em> the subtitle corpus's namespace for
+Dexter's Laboratory: there TVDB numbers by segment exactly as TMDB does, and the corpus follows
+neither. That finding stands. Justice League is the opposite class of show: TMDB merges what
+TVDB and the disc split. TVDB is useful as an <em>opt-in, per-show</em> numbering, not as a universal
+reconciliation anchor, and nothing in this design assumes the subtitle corpus follows TVDB.</p>
+<h2 id="decisions">Decisions</h2>
+<ol>
+<li><strong>TheTVDB is a secondary numbering source, not a replacement.</strong> TMDB remains authoritative
+   for show identity, classification, posters and the default numbering.</li>
+<li><strong>Output naming follows TVDB numbering</strong> for a show that uses it: the three pilot tracks
+   file as <code>S01E01</code>, <code>S01E02</code>, <code>S01E03</code>, and later episodes follow TVDB.</li>
+<li><strong>Engram suggests, the user decides.</strong> A roster divergence is detected and surfaced on the
+   review page; nothing switches automatically.</li>
+<li><strong>Per-job episode namespace (approach 2).</strong> A job carries <code>episode_namespace</code>
+   (<code>"tmdb"</code> | <code>"tvdb"</code>). In TVDB mode the roster, references, review selector,
+   <code>matched_episode</code> and filenames are all TVDB-numbered. Every track keeps a unique code, so
+   finalization's dedupe and conflict logic is unchanged.</li>
+<li><strong>In-app attribution.</strong> TheTVDB's free licensed tier requires a visible link wherever
+   TVDB metadata is shown to end users. The repo/docs exception covers only CLI tools and
+   libraries.</li>
+</ol>
+<h3 id="rejected-alternatives">Rejected alternatives</h3>
+<ul>
+<li><strong>TMDB canonical plus a part number</strong> (<code>matched_part</code> column, crosswalk TVDB S01E02 to TMDB
+  S01E01 part 2). Preserves the "TMDB aired is the sole identity" rule, but three tracks then
+  share <code>matched_episode = S01E01</code>, and finalization (47 references) dedupes and conflict-checks
+  by that code. Every such site would need to learn about parts; missing one mis-files
+  silently.</li>
+<li><strong>TVDB for references only, folded back to TMDB.</strong> The same storage problem as above with an
+  extra translation step.</li>
+<li><strong>A TVDB projection in the #200 seam.</strong> <code>build_projection</code> maps one canonical
+  <code>(season, episode)</code> to one output pair. A 1-to-3 split has no canonical key for the parts.</li>
+</ul>
+<h3 id="invariant-change">Invariant change</h3>
+<p>The rule recorded for #200, "canonical TMDB aired order is the sole internal identity", becomes
+"TMDB aired order is the internal identity unless the job's <code>episode_namespace</code> says
+otherwise". The sites that genuinely need TMDB identity are enumerated in
+<a href="#tmdb-identity-boundaries">TMDB-identity boundaries</a> and guarded by a test.</p>
+<h2 id="licensing">Licensing</h2>
+<p>TheTVDB issued Engram a free licensed project key (tier: under $50k annual revenue). There is
+no per-user subscriber PIN. Conditions: "attribution with a direct link to TheTVDB.com must be
+displayed to end users viewing metadata from our API". Source:
+https://thetvdb.com/api-information.</p>
+<h2 id="architecture">Architecture</h2>
+<h3 id="appmatchertvdb_clientpy-new"><code>app/matcher/tvdb_client.py</code> (new)</h3>
+<p>TheTVDB v4 client. Responsibilities:</p>
+<ul>
+<li><code>POST https://api4.thetvdb.com/v4/login</code> with <code>{"apikey": key}</code>; cache the bearer token in
+  memory until a 401, then re-login once.</li>
+<li><code>fetch_season_roster(tvdb_id, season) -&gt; list[dict]</code> via
+  <code>GET /series/{id}/episodes/official?season=N</code>, paging until exhausted. Each dict carries
+  <code>season</code>, <code>episode</code>, <code>name</code>, <code>runtime</code>, <code>aired</code>.</li>
+<li>Results persisted in <code>tmdb_cache.sqlite</code> in a separate <code>tvdb_season_roster</code> table with a TTL
+  matching the TMDB season cache.</li>
+<li>Never raises into the pipeline: any failure returns <code>None</code> ("no TVDB data"). Uses the existing
+  <code>retry_network_operation</code> decorator. All calls from async code go through
+  <code>asyncio.to_thread</code>.</li>
+<li>Key resolution: <code>AppConfig.tvdb_api_key</code> if non-empty, else the <code>TVDB_API_KEY</code> environment
+  variable (injected into frozen builds, set by hand in dev). Neither present: feature disabled.</li>
+</ul>
+<h3 id="appcoreepisode_namespacepy-new"><code>app/core/episode_namespace.py</code> (new)</h3>
+<p>Single source of truth for a job's numbering.</p>
+<ul>
+<li><code>roster_for(job, season) -&gt; list[RosterEpisode]</code>: TMDB roster for <code>"tmdb"</code>, TVDB roster for
+  <code>"tvdb"</code>. <code>RosterEpisode</code> is <code>(season, episode, name, runtime)</code>.</li>
+<li><code>detect_divergence(tmdb_roster, tvdb_roster) -&gt; Divergence | None</code>: divergent when the
+  episode counts differ or the normalized title sequences differ (normalization strips part
+  suffixes such as <code>(1)</code>, <code>Part I</code>, punctuation and case).</li>
+<li><code>build_crosswalk(tmdb_roster, tvdb_roster)</code>: pairs episodes by normalized title, then air
+  date, in order. A TVDB episode maps to a TMDB episode only when the pairing is 1:1.</li>
+<li><code>to_tmdb(job, season, episode) -&gt; (season, episode) | None</code> and
+  <code>from_tmdb(job, season, episode) -&gt; (season, episode) | None</code>: identity for <code>"tmdb"</code> jobs;
+  crosswalk lookups for <code>"tvdb"</code> jobs; <code>None</code> when the mapping is not 1:1 (all three Secret
+  Origins parts). Callers treat <code>None</code> as "skip".</li>
+</ul>
+<h3 id="show-to-tvdb-link">Show-to-TVDB link</h3>
+<p>TMDB <code>GET /tv/{id}/external_ids</code> returns <code>tvdb_id</code> (verified for show 1618). Resolved once per
+show and cached on <code>ShowOrderingPreference.tvdb_id</code>. No name search.</p>
+<h3 id="data-model">Data model</h3>
+<table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DiscJob.episode_namespace: str</code></td>
+<td>default <code>"tmdb"</code>, <code>server_default 'tmdb'</code> so existing rows read correctly</td>
+</tr>
+<tr>
+<td><code>DiscJob.tvdb_divergence_json: str \| None</code></td>
+<td>e.g. <code>{"season": 1, "tmdb": 24, "tvdb": 26}</code></td>
+</tr>
+<tr>
+<td><code>DiscJob.episode_namespace_note: str \| None</code></td>
+<td>fallback reason, e.g. "TheTVDB unavailable; matched with TMDB numbering"</td>
+</tr>
+<tr>
+<td><code>ShowOrderingPreference.ordering</code></td>
+<td>gains the value <code>"tvdb"</code></td>
+</tr>
+<tr>
+<td><code>ShowOrderingPreference.tvdb_id: int \| None</code></td>
+<td>cached link</td>
+</tr>
+<tr>
+<td><code>ShowOrderingPreference.tvdb_suggestion_dismissed: bool</code></td>
+<td>default false, <code>server_default 0</code></td>
+</tr>
+<tr>
+<td><code>AppConfig.tvdb_api_key: str</code></td>
+<td>default <code>""</code>; also in <code>ConfigUpdate</code>, <code>ConfigResponse</code> and ConfigWizard; redacted as <code>***</code></td>
+</tr>
+</tbody>
+</table>
+<p>Columns go through <code>_add_missing_columns()</code> as well as an Alembic revision, because frozen builds
+skip Alembic.</p>
+<h2 id="data-flow">Data flow</h2>
+<h3 id="deciding-the-namespace-identification">Deciding the namespace (identification)</h3>
+<p>Once <code>tmdb_id</code> and the season are known:</p>
+<ol>
+<li>If the show's preference is <code>"tvdb"</code> and a TVDB roster can be fetched, set
+   <code>episode_namespace = "tvdb"</code>. Subsequent discs of the show take this path.</li>
+<li>If the preference is <code>"tvdb"</code> but TVDB is unavailable, keep <code>"tmdb"</code> and set
+   <code>episode_namespace_note</code>.</li>
+<li>Otherwise, if a TVDB key is configured and the show has a <code>tvdb_id</code>, fetch both rosters and
+   store <code>detect_divergence</code> in <code>tvdb_divergence_json</code>. The job proceeds in TMDB numbering.</li>
+</ol>
+<p>The divergence check is best-effort decoration: it never delays or fails identification.</p>
+<h3 id="accepting-the-suggestion-review-page">Accepting the suggestion (review page)</h3>
+<p><code>POST /api/jobs/{job_id}/episode-namespace</code> with <code>{"namespace": "tvdb"}</code>:</p>
+<ol>
+<li>Upsert the show preference to <code>"tvdb"</code>.</li>
+<li>Set the job's <code>episode_namespace = "tvdb"</code>.</li>
+<li>Re-download references in TVDB numbering for the job's season(s).</li>
+<li>Run the existing post-rip <code>rerun_matching</code>.</li>
+</ol>
+<p>No re-rip. <code>{"namespace": "tmdb"}</code> reverses the job and preference. Dismissing is a separate
+<code>POST /api/shows/{tmdb_id}/tvdb-suggestion/dismiss</code>, which sets <code>tvdb_suggestion_dismissed</code>
+(it is a show-level fact, not a job action).</p>
+<p>Switching a show away from TVDB affects future jobs only; organized files are never renamed.</p>
+<h3 id="stage-behavior-for-a-tvdb-job">Stage behavior for a <code>"tvdb"</code> job</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Subtitle download</td>
+<td>Episode count from <code>roster_for(job)</code>. References stored in <code>data/&lt;tmdb_id&gt;@tvdb/</code>; the precomputed (published) pack fast path is skipped.</td>
+</tr>
+<tr>
+<td>Runtime checks (<code>matching_coordinator</code>, <code>identification_coordinator</code>)</td>
+<td><code>fetch_season_episode_runtimes</code> call sites read <code>roster_for</code>.</td>
+</tr>
+<tr>
+<td>LLM matcher (<code>llm_episode_matcher</code>)</td>
+<td><code>fetch_season_episodes</code> reads <code>roster_for</code>.</td>
+</tr>
+<tr>
+<td>Review roster (<code>GET</code> season roster in <code>routes.py</code>)</td>
+<td>Returns TVDB episodes and <code>source: "tvdb"</code>. Manual subtitle uploads are labelled in TVDB numbering.</td>
+</tr>
+<tr>
+<td>Organize</td>
+<td>Filename built from <code>matched_episode</code> directly; the #200 TMDB projection is skipped. Episode titles from the TVDB roster.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="tmdb-identity-boundaries">TMDB-identity boundaries</h2>
+<p>Rule: translate through the crosswalk when 1:1, otherwise omit.</p>
+<p><strong>Outbound</strong></p>
+<table>
+<thead>
+<tr>
+<th>Site</th>
+<th>Behavior for <code>"tvdb"</code> jobs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fingerprint contribution (<code>disc_contribution_queue._derive_assignment</code>)</td>
+<td>Title translated via <code>to_tmdb</code>; untranslatable titles omitted from the contribution.</td>
+</tr>
+<tr>
+<td>TheDiscDB export (<code>discdb_exporter</code>, <code>discdb_episode_fields</code>)</td>
+<td>Same.</td>
+</tr>
+<tr>
+<td>Published subtitle cache, <code>coverage_tracker</code></td>
+<td>Never written for TVDB-numbered harvests.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inbound</strong></p>
+<table>
+<thead>
+<tr>
+<th>Site</th>
+<th>Behavior for <code>"tvdb"</code> jobs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DiscDB lookup mappings (<code>discdb_mappings_json</code>)</td>
+<td>Translated via <code>from_tmdb</code>; untranslatable hints dropped, the matcher decides.</td>
+</tr>
+<tr>
+<td>Disc-hash fingerprint pack assignments</td>
+<td>Same.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Display only (no translation)</strong></p>
+<p>Discord notifications, history and the dashboard show the stored code, which matches the file
+on disk. The history detail panel shows "Episode numbering: TheTVDB". The diagnostic bundle
+includes <code>episode_namespace</code>, <code>tvdb_divergence_json</code> and <code>episode_namespace_note</code>.</p>
+<p><strong>Guard rail.</strong> A unit test enumerates every module in <code>app/</code> that reads <code>matched_episode</code>
+through <code>parse_episode_code</code> / <code>episode_parts</code> and requires each to appear in an explicit
+classification (namespace-aware or display-safe). An unclassified new consumer fails the test.</p>
+<h2 id="error-handling">Error handling</h2>
+<p>Every TVDB problem degrades to today's TMDB behavior; enabling TVDB must never make a disc less
+likely to finish.</p>
+<table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No key, login rejected, TVDB down at identification</td>
+<td>No divergence check; TMDB as today; one warning logged.</td>
+</tr>
+<tr>
+<td>TMDB has no <code>tvdb_id</code></td>
+<td>No suggestion offered.</td>
+</tr>
+<tr>
+<td>TVDB down when preference is <code>"tvdb"</code></td>
+<td>Job runs in TMDB numbering; <code>episode_namespace_note</code> set and shown on the review page.</td>
+</tr>
+<tr>
+<td>401 mid-session</td>
+<td>One re-login, then the fallback above.</td>
+</tr>
+<tr>
+<td>TVDB down when the user clicks Switch</td>
+<td>Endpoint returns an error; nothing changes; review page shows the message.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration">Configuration</h2>
+<ul>
+<li><code>tvdb_api_key</code> in <code>AppConfig</code>/<code>ConfigUpdate</code>/<code>ConfigResponse</code>/ConfigWizard, redacted in
+  <code>GET /api/config</code>. Empty means "use the built-in key".</li>
+<li>The built-in key is a <code>TVDB_API_KEY</code> GitHub Actions secret that <code>release.yml</code> exposes to the
+  PyInstaller build; <code>engram.spec</code> writes it into a generated, gitignored module read at
+  runtime. It is never committed. (Any key shipped in a binary is extractable; this is
+  accepted for project keys.)</li>
+<li><code>"tvdb"</code> is a <strong>per-show</strong> ordering only. It is excluded from the global default ordering
+  dropdown, because TVDB numbering is wrong for most shows. This intentionally breaks the
+  lock-step note on <code>ALLOWED_ORDERINGS</code> in <code>app/core/episode_ordering.py</code>; update that comment.</li>
+</ul>
+<h2 id="ui">UI</h2>
+<ul>
+<li><strong>Suggestion notice</strong> on the review page when <code>tvdb_divergence_json</code> is set, the job is
+  <code>"tmdb"</code>, and the show has not dismissed it: "TheTVDB numbers Season 1 differently (26
+  episodes vs TMDB's 24). [Switch to TheTVDB numbering][Dismiss]". Switching shows the usual
+  matching progress.</li>
+<li><strong>Ordering selector</strong> (per show) offers aired, DVD and TheTVDB; TheTVDB only when the show
+  has a <code>tvdb_id</code>.</li>
+<li><strong>Attribution:</strong> "Episode data: TheTVDB" linking to <code>https://thetvdb.com</code>, shown under the
+  episode selector whenever the roster <code>source</code> is <code>"tvdb"</code>, and beside the TheTVDB option in
+  the ordering selector.</li>
+<li><strong>Fallback note:</strong> <code>episode_namespace_note</code>, when set, shown on the review page and history
+  detail.</li>
+</ul>
+<h2 id="testing">Testing</h2>
+<p><strong>Unit (<code>tests/unit/</code>)</strong></p>
+<ul>
+<li><code>tvdb_client</code>: token caching and single re-login on 401; parsing of a <em>recorded live</em>
+  Justice League S1 response (no synthetic fixture); paging; persistent cache hit; never
+  raises.</li>
+<li><code>episode_namespace</code>: <code>roster_for</code> source selection; crosswalk from recorded Justice League
+  rosters (TVDB S01E04 to TMDB S01E02 translates; TVDB S01E01-E03 all return <code>None</code>); recorded
+  Dexter's Laboratory rosters report no divergence.</li>
+<li><code>detect_divergence</code>: count mismatch, title-sequence mismatch, agreement.</li>
+<li>Boundaries: contribution and DiscDB export omit untranslatable titles; inbound hints
+  translate or drop; coverage never written for <code>"tvdb"</code> jobs.</li>
+<li>The <code>matched_episode</code> consumer guard-rail test.</li>
+<li>Config: <code>tvdb_api_key</code> three-way sync; redaction.</li>
+</ul>
+<p><strong>Pipeline (<code>tests/pipeline/test_tvdb_namespace_flow.py</code>)</strong></p>
+<p>Justice League S1, 26 tracks, stubbed TMDB and TVDB clients: TMDB job records divergence and
+parks in review; accepting flips namespace and re-matches; files organize as <code>S01E01</code>-<code>S01E26</code>
+with TVDB titles; a second disc of the show starts in <code>"tvdb"</code>. Failure paths: TVDB down after
+the preference is set falls back with a note; no key means no behavior change.</p>
+<p><strong>Frontend</strong></p>
+<ul>
+<li>Vitest: notice renders and dismisses; attribution only when <code>source === "tvdb"</code>; TheTVDB
+  selector option only with a <code>tvdb_id</code>.</li>
+<li>Playwright: one simulated suggestion flow. Simulation bypasses identification, so the test
+  seeds <code>tvdb_divergence_json</code> directly.</li>
+</ul>
+<p><strong>Manual</strong></p>
+<p>Real Justice League Blu-ray, or the reporting user on a beta build with a diagnostic bundle.</p>
+<h2 id="out-of-scope-v1">Out of scope (v1)</h2>
+<ul>
+<li>TVDB DVD / absolute season types (official order only).</li>
+<li>Renaming existing library files when a show's numbering changes.</li>
+<li>TVDB artwork, overviews or show identification.</li>
+<li>Publishing a TVDB-numbered subtitle cache.</li>
+<li>Using TVDB as the namespace for the subtitle corpus generally (see the Dexter's Laboratory
+  finding).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
