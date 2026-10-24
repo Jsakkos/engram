@@ -46,19 +46,29 @@ EXPECTED: dict[str, int] = {
 _DEFINITION_RE = re.compile(r"\b(ap_ia\w+|APP_TTREE_\w+)\s*=\s*(\d+)")
 
 
-def parse_header(text: str) -> dict[str, int]:
-    """Name to value for every attribute id and stream-type code in *text*."""
-    return {name: int(value) for name, value in _DEFINITION_RE.findall(text)}
+def parse_header(text: str) -> dict[str, list[int]]:
+    """Name to every value *text* defines for it, in order of appearance.
+
+    A list rather than a single value so a name defined twice cannot have one
+    definition silently overwrite the other.
+    """
+    defined: dict[str, list[int]] = {}
+    for name, value in _DEFINITION_RE.findall(text):
+        defined.setdefault(name, []).append(int(value))
+    return defined
 
 
 def find_drift(text: str) -> list[str]:
-    """One message per expected id that is missing from *text* or has moved."""
+    """One message per expected id that is missing from *text*, has moved, or is ambiguous."""
     defined = parse_header(text)
     drift = []
     for name, expected in EXPECTED.items():
-        actual = defined.get(name)
-        if actual != expected:
-            shown = "none" if actual is None else str(actual)
+        values = sorted(set(defined.get(name, [])))
+        if len(values) > 1:
+            shown = ", ".join(str(v) for v in values)
+            drift.append(f"{name}: header defines it more than once ({shown})")
+        elif values != [expected]:
+            shown = str(values[0]) if values else "none"
             drift.append(f"{name}: Engram expects {expected}, header defines {shown}")
     return drift
 

@@ -48,6 +48,16 @@ def test_removed_definition_is_reported(mkp):
     assert mkp.find_drift(removed) == ["ap_iaSegmentsMap: Engram expects 26, header defines none"]
 
 
+def test_conflicting_duplicate_definition_is_reported(mkp):
+    # A later redefinition must not silently win (or lose) against the first.
+    duplicated = HEADER_2_0_0 + "\n  ap_iaDuration=90,\n"
+    assert mkp.find_drift(duplicated) == ["ap_iaDuration: header defines it more than once (9, 90)"]
+
+
+def test_identical_duplicate_definition_is_harmless(mkp):
+    assert mkp.find_drift(HEADER_2_0_0 + "\n  ap_iaDuration=9,\n") == []
+
+
 def test_stream_type_codes_match_the_extractor(mkp):
     # The extractor keys SINFO stream types on these codes; the checker must
     # guard the same values, not its own copy of them.

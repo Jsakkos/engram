@@ -110,7 +110,9 @@ jobs:
   # The job above compiles on whatever ubuntu-latest is. Docker users compile
   # on the image's runtime base instead (Dockerfile, stage 3), which carries an
   # older glibc and FFmpeg, so this leg builds there too. Keep the package list
-  # in step with the Dockerfile's MakeMKV toolchain.
+  # in step with the Dockerfile's MakeMKV toolchain. It skips the apdefs.h id
+  # check on purpose: that reads the release's source, not the build, so the
+  # "latest" leg above already covers the same version.
   docker-base-install-check:
     name: Full MakeMKV install (latest, Docker runtime base)
     runs-on: ubuntu-latest
