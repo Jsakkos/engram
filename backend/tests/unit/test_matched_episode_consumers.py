@@ -20,7 +20,6 @@ CLASSIFIED = {
     # Uses the stored code as the output number; correct in either namespace.
     "core/organizer.py": "display-safe",
     "core/discord_notifier.py": "display-safe",
-    "services/job_manager.py": "display-safe",
     # The parser itself.
     "core/episode_codes.py": "parser",
 }

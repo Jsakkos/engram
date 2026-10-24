@@ -5,7 +5,7 @@ import { SvActionButton, SvBadge, SvLabel, SvNotice, SvPanel, sv } from '../../a
 import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
 import type { DiscTitle } from '../../types';
 import { PlayerControls } from './PlayerControls';
-import { displayEpisodeCode, episodeParts, isRealCode } from './coverage';
+import { displayEpisodeCode, episodeParts, formatEpisodeCode, isRealCode, parseEpisodeCode } from './coverage';
 import type { Candidate, CoverageEntry } from './coverage';
 import type { LLMSuggestion, RosterEpisode } from './types';
 import type { LLMFeedback } from './llmFeedback';
@@ -120,6 +120,45 @@ export function Inspector({
     const contestedPart = selectionParts.find((code) => takenByOther(code).length > 0) ?? null;
     const conflictWith = [...new Set(selectionParts.flatMap((code) => takenByOther(code)))];
     const inConflict = conflictWith.length > 0;
+
+    // Manual multi-episode assignment (#830). The Manual picker holds the first
+    // episode and "Also covers" the last, so a hand-built range is contiguous
+    // within one season by construction and never runs backwards. A gapped pick
+    // can only come from the matcher; it is shown as matched, not rewritten.
+    const picked = selectionIsCode ? parseEpisodeCode(selection as string) : null;
+    const pickedFirst = picked ? picked.episodes[0] : null;
+    const pickedIsRun = !!picked && picked.episodes.every((n, i) => n === picked.episodes[0] + i);
+    // Later episodes the range can extend to: the roster when it describes the
+    // picked season, else generated numbers (TMDB unavailable, or a pick in
+    // another season than the roster's).
+    const laterEpisodes: { number: number; label: string }[] = !picked
+        ? []
+        : picked.season === season && episodes.length > 0
+          ? episodes
+                .filter((ep) => ep.episode_number > (pickedFirst as number))
+                .map((ep) => ({
+                    number: ep.episode_number,
+                    label: `through E${String(ep.episode_number).padStart(2, '0')}${ep.name ? ` · ${ep.name}` : ''}`,
+                }))
+          : generateEpisodeOptions(picked.season, EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON)
+                .map((code) => ({ number: parseEpisodeCode(code)?.episodes[0] ?? 0, label: `through ${code}` }))
+                .filter((opt) => opt.number > (pickedFirst as number));
+    // A run whose last episode is not offered (e.g. the matcher's range ends past
+    // the roster) is shown as matched too: a controlled select with no matching
+    // option would fall back to "only this episode" and misstate the pick.
+    const pickedLast = picked ? picked.episodes[picked.episodes.length - 1] : null;
+    const alsoCoversValue =
+        !picked || picked.episodes.length === 1
+            ? ''
+            : pickedIsRun && laterEpisodes.some((opt) => opt.number === pickedLast)
+              ? String(pickedLast)
+              : 'as-matched';
+    const assignThrough = (value: string) => {
+        if (!picked || pickedFirst === null || value === 'as-matched') return;
+        const last = value ? Number(value) : pickedFirst;
+        const run = Array.from({ length: last - pickedFirst + 1 }, (_, i) => pickedFirst + i);
+        onAssign(formatEpisodeCode(picked.season, run));
+    };
 
     const stateBadge = fileExists ? (
         <SvBadge state="warn" dot>File exists</SvBadge>
@@ -352,7 +391,7 @@ export function Inspector({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Manual</span>
                         <select
-                            value={selection && /^S\d+E\d+$/i.test(selection) ? selection : ''}
+                            value={picked ? formatEpisodeCode(picked.season, [picked.episodes[0]]) : ''}
                             onChange={(e) => e.target.value && onAssign(e.target.value)}
                             aria-label={`Manual episode for title ${title.title_index}`}
                             aria-keyshortcuts="/"
@@ -387,6 +426,44 @@ export function Inspector({
                                   ))}
                         </select>
                     </div>
+                    {/* row 1b: one track holding several consecutive episodes (#830) */}
+                    {picked && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>+ Also covers</span>
+                            <select
+                                value={alsoCoversValue}
+                                onChange={(e) => assignThrough(e.target.value)}
+                                aria-label={`Also covers, title ${title.title_index}`}
+                                title="For a track that holds several consecutive episodes, like a cartoon's two segments"
+                                style={{
+                                    flex: 1,
+                                    background: sv.bg0,
+                                    border: `1px solid ${alsoCoversValue ? sv.cyan : sv.lineMid}`,
+                                    color: alsoCoversValue ? sv.ink : sv.inkDim,
+                                    fontFamily: sv.mono,
+                                    fontSize: 12,
+                                    padding: '7px 9px',
+                                    outline: 'none',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <option value="">only this episode</option>
+                                {alsoCoversValue === 'as-matched' && (
+                                    <option value="as-matched">{`${displayEpisodeCode(selection as string)} (as matched)`}</option>
+                                )}
+                                {laterEpisodes.map(({ number, label }) => {
+                                    const others = takenByOther(formatEpisodeCode(picked.season, [number]));
+                                    return (
+                                        <option key={number} value={String(number)}>
+                                            {others.length > 0
+                                                ? `${label} · held by #${titleIndexById[others[0]] ?? others[0]}`
+                                                : label}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+                    )}
                     {/* row 2: action buttons */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
                         <SvActionButton
