@@ -2717,6 +2717,7 @@ class JobManager:
                     tmdb_id=tmdb_id,
                     ordering=title.episode_ordering or "aired",
                     episode_group_id=title.episode_group_id,
+                    episode_namespace=job.episode_namespace,
                 )
                 if not result.get("success"):
                     raise ValueError(result.get("error") or "Organize failed")

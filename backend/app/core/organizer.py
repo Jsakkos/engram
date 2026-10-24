@@ -33,7 +33,8 @@ ALLOWED_TV_PLACEHOLDERS = {
 # (Plex "{tmdb-NNNN}" / Jellyfin "[tmdbid-NNNN]").
 ALLOWED_TV_SHOW_PLACEHOLDERS = {"show", "year", "tmdb_id"}
 # Episode *filename* format — widened so the year can opt into the filename too.
-ALLOWED_EPISODE_PLACEHOLDERS = {"show", "season", "episode", "year", "tmdb_id"}
+# {episode_title} is the TMDB/TheTVDB episode name (#826); empty when unknown.
+ALLOWED_EPISODE_PLACEHOLDERS = {"show", "season", "episode", "year", "tmdb_id", "episode_title"}
 # Movie *folder* format. Mirrors ALLOWED_TV_SHOW_PLACEHOLDERS so movies can carry
 # the same Plex "{tmdb-NNNN}" / Jellyfin "[tmdbid-NNNN]" disambiguation tags (#576).
 ALLOWED_MOVIE_PLACEHOLDERS = {"title", "year", "tmdb_id"}
@@ -88,6 +89,56 @@ def _append_extra_episodes(stem: str, episode: int, extra_episodes) -> str:
     return stem[:end] + tail + stem[end:]
 
 
+# Stands in for {episode_title} while the rest of the stem is built, so the title
+# text itself never meets the empty-group strip or the E-token splice (a title like
+# "E1 Rising" would otherwise be mistaken for the episode token).
+_TITLE_MARK = "\x00"
+_TITLE_SEPARATORS = " -_.,"
+MAX_EPISODE_TITLE_LENGTH = 100
+
+
+def clean_episode_title(title: str | None) -> str:
+    """A TMDB/TheTVDB episode title made safe for a filename (``""`` when nothing is left).
+
+    Same character policy as show and movie names (``sanitize_filename``), plus:
+    control characters go (a newline in a title would be a path hazard, and NUL
+    is the template sentinel), whitespace left by removed characters is collapsed,
+    and the result is capped at ``MAX_EPISODE_TITLE_LENGTH`` so a very long title
+    cannot push the path past the OS limit.
+    """
+    text = re.sub(r"[\x00-\x1f\x7f]", "", title or "")
+    text = sanitize_filename(text)
+    text = re.sub(r"\s+", " ", text)
+    return text[:MAX_EPISODE_TITLE_LENGTH].strip(". ")
+
+
+def _drop_title_mark(stem: str) -> str:
+    """Remove the title sentinel, and the separator it leaves dangling, from ``stem``.
+
+    A group holding nothing else (``({title})``, ``[{title}]``, a Plex or Jellyfin
+    ``{ep-{title}}`` tag) goes whole. Otherwise the separator run before the
+    placeholder goes with it (``"Show - S01E01 - "`` -> ``"Show - S01E01"``), or,
+    when nothing precedes it, the run after it.
+    """
+    mark = re.escape(_TITLE_MARK)
+    stem = re.sub(
+        rf"\s*\(\s*{mark}\s*\)"
+        rf"|\s*\[\s*{mark}\s*\]"
+        rf"|\s*\{{[^{{}}]*-\s*{mark}\s*\}}"
+        rf"|\s*\[[^\[\]]*-\s*{mark}\s*\]",
+        "",
+        stem,
+    )
+    while _TITLE_MARK in stem:
+        before, _, after = stem.partition(_TITLE_MARK)
+        if before.strip(_TITLE_SEPARATORS):
+            before = before.rstrip(_TITLE_SEPARATORS)
+        else:
+            after = after.lstrip(_TITLE_SEPARATORS)
+        stem = before + after
+    return stem
+
+
 def format_episode_filename(
     fmt: str,
     show: str,
@@ -97,6 +148,7 @@ def format_episode_filename(
     year: int | None = None,
     tmdb_id: str | int | None = None,
     extra_episodes: list[int] | tuple[int, ...] = (),
+    episode_title: str | None = None,
 ) -> str:
     """Format an episode filename from a config format string.
 
@@ -109,6 +161,12 @@ def format_episode_filename(
     file holding several episodes); they extend the episode token into the
     ``S01E01-E03`` range form. The format string itself stays single-episode, so a
     user's custom format needs no change to support combined tracks.
+
+    ``episode_title`` fills ``{episode_title}`` (for a combined track, the titles
+    already joined). It is sanitized and capped here; when it is missing or empty
+    the placeholder is removed together with its surrounding separator. The title
+    is inserted last, after the empty-group strip and the range splice, so its
+    text can never be taken for part of the episode code.
     """
     # format_map keeps an unknown placeholder raising KeyError → safe fallback,
     # while avoiding CodeQL's missing-named-argument false positive on the
@@ -121,12 +179,18 @@ def format_episode_filename(
                 "episode": episode,
                 "year": year if year is not None else "",
                 "tmdb_id": tmdb_id if tmdb_id is not None else "",
+                "episode_title": _TITLE_MARK,
             }
         )
     except (KeyError, ValueError, IndexError):
         result = f"{show} - S{season:02d}E{episode:02d}"
+    title = clean_episode_title(episode_title)
+    if not title:
+        result = _drop_title_mark(result)
     result = _strip_empty_name_groups(result)
     result = _append_extra_episodes(result, episode, extra_episodes)
+    if title:
+        result = result.replace(_TITLE_MARK, title)
     return sanitize_filename(result)
 
 
@@ -242,6 +306,16 @@ def format_tv_show_folder(fmt: str, show: str, year: int | None, tmdb_id: str | 
     except (KeyError, ValueError, IndexError):
         result = show
     return sanitize_filename(_strip_empty_name_groups(result))
+
+
+def _format_uses(fmt: str, field: str) -> bool:
+    """Whether the format string references ``{field}`` (False for a malformed format)."""
+    import string
+
+    try:
+        return any(name == field for _, name, _, _ in string.Formatter().parse(fmt) if name)
+    except (ValueError, IndexError):
+        return False
 
 
 def validate_naming_format(fmt: str, allowed: set[str]) -> str | None:
@@ -828,6 +902,7 @@ def organize_tv_episode(
     tmdb_id: str | None = None,
     ordering: str = "aired",
     episode_group_id: str | None = None,
+    episode_namespace: str | None = None,
 ) -> dict:
     """Organize a ripped TV episode into the library.
 
@@ -851,6 +926,9 @@ def organize_tv_episode(
         year: First-air year used for same-name show disambiguation in the folder
             name (e.g. Frasier 1993 vs 2023). Only affects the show folder when
             the configured ``naming_tv_show_format`` includes ``{year}``.
+        episode_namespace: The job's episode numbering (``tmdb`` | ``tvdb``). Only read
+            when the episode format uses ``{episode_title}``, so the title comes from the
+            same catalogue as ``episode_code``. ``None`` keeps the ambient namespace.
 
     Returns:
         dict with 'success', 'final_path', 'error' keys
@@ -924,6 +1002,16 @@ def organize_tv_episode(
     clean_show = sanitize_filename(show_name.strip())
     show_folder = format_tv_show_folder(cfg.naming_tv_show_format, clean_show, year, tmdb_id)
     season_folder = format_season_folder(cfg.naming_season_format, out_season)
+    # The title belongs to the CANONICAL episode(s), so it is looked up from the
+    # untouched ``episode_code`` even when the filename number was projected above.
+    # Only formats that ask for it pay for the (cached) roster fetch.
+    episode_title = None
+    if _format_uses(cfg.naming_episode_format, "episode_title"):
+        from app.core.episode_titles import episode_title_for_code
+
+        episode_title = episode_title_for_code(
+            episode_code, tmdb_id, episode_namespace, cfg.tmdb_api_key
+        )
     ep_stem = format_episode_filename(
         cfg.naming_episode_format,
         clean_show,
@@ -932,6 +1020,7 @@ def organize_tv_episode(
         year=year,
         tmdb_id=tmdb_id,
         extra_episodes=out_episodes[1:],
+        episode_title=episode_title,
     )
     filename = f"{ep_stem}{library_suffix(source_file)}"
 
@@ -1064,6 +1153,7 @@ class TVOrganizer:
         episode_group_id: str | None = None,
         year: int | None = None,
         conflict_resolution: str = "ask",
+        episode_namespace: str | None = None,
     ) -> dict:
         """Organize a TV episode from staging to library.
 
@@ -1080,6 +1170,7 @@ class TVOrganizer:
             ordering=ordering,
             episode_group_id=episode_group_id,
             year=year,
+            episode_namespace=episode_namespace,
         )
 
     def organize_batch(
