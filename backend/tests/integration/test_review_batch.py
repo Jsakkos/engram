@@ -237,3 +237,93 @@ async def test_batch_review_unknown_title_returns_422(client):
     )
 
     assert resp.status_code == 422
+
+
+async def _set_matched_episode(title_id: int, code: str) -> None:
+    async with async_session() as session:
+        title = await session.get(DiscTitle, title_id)
+        title.matched_episode = code
+        session.add(title)
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_batch_review_accepts_a_hand_built_range(client):
+    """One track assigned two consecutive episodes by hand (#830) is stored canonical."""
+    job, titles = await _make_tv_review_job(2)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/review/batch",
+        json={"decisions": [{"title_id": titles[0].id, "episode_code": "s1e1-e2"}]},
+    )
+
+    assert resp.status_code == 200
+    async with async_session() as session:
+        reloaded = await session.get(DiscTitle, titles[0].id)
+        assert reloaded.matched_episode == "S01E01-E02"
+        assert reloaded.is_extra is False
+
+
+@pytest.mark.asyncio
+async def test_batch_review_rejects_a_backwards_range_and_changes_nothing(client):
+    """A malformed decision fails the whole batch before any title is touched."""
+    job, titles = await _make_tv_review_job(2)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/review/batch",
+        json={
+            "decisions": [
+                {"title_id": titles[0].id, "episode_code": "extra"},
+                {"title_id": titles[1].id, "episode_code": "S01E05-E02"},
+            ]
+        },
+    )
+
+    assert resp.status_code == 422
+    async with async_session() as session:
+        for t in titles:
+            reloaded = await session.get(DiscTitle, t.id)
+            assert reloaded.matched_episode is None
+            assert reloaded.is_extra is False
+
+
+@pytest.mark.asyncio
+async def test_batch_review_resaves_an_unchanged_stored_value(client):
+    """Re-saving what a title already holds is never rejected, so one odd legacy
+    value cannot make the whole review unsaveable."""
+    job, titles = await _make_tv_review_job(2)
+    await _set_matched_episode(titles[0].id, "LEGACY")
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/review/batch",
+        json={"decisions": [{"title_id": titles[0].id, "episode_code": "LEGACY"}]},
+    )
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_single_review_rejects_a_cross_season_code(client):
+    job, titles = await _make_tv_review_job(2)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/review",
+        json={"title_id": titles[0].id, "episode_code": "S01E12-S02E01"},
+    )
+
+    assert resp.status_code == 422
+    async with async_session() as session:
+        reloaded = await session.get(DiscTitle, titles[0].id)
+        assert reloaded.matched_episode is None
+
+
+@pytest.mark.asyncio
+async def test_reassign_rejects_a_backwards_range(client):
+    job, titles = await _make_tv_review_job(2)
+
+    resp = await client.post(
+        f"/api/jobs/{job.id}/titles/{titles[0].id}/reassign",
+        json={"episode_code": "S01E05-E02"},
+    )
+
+    assert resp.status_code == 400

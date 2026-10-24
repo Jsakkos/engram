@@ -10,6 +10,7 @@ and two episodes would vanish from the library.
 import pytest
 
 from app.core.episode_codes import (
+    canonical_assignment_code,
     episode_parts,
     first_episode,
     format_episode_code,
@@ -107,3 +108,44 @@ class TestEpisodeParts:
     def test_first_episode_for_single_episode_consumers(self):
         assert first_episode("S01E01-E03") == (1, 1)
         assert first_episode("extra") is None
+
+
+@pytest.mark.unit
+class TestCanonicalAssignmentCode:
+    """A code a person typed or built by hand on the review page (#830).
+
+    The matcher's own codes are well formed by construction; a hand-built one is
+    not, so the assign paths validate it here before it reaches the DB.
+    """
+
+    def test_pseudo_codes_pass_through(self):
+        assert canonical_assignment_code("extra") == "extra"
+        assert canonical_assignment_code("skip") == "skip"
+
+    def test_hand_built_range_is_canonicalized(self):
+        assert canonical_assignment_code("s1e1-e2") == "S01E01-E02"
+        assert canonical_assignment_code("S01E01-E02-E03") == "S01E01-E03"
+        assert canonical_assignment_code("S01E01E02") == "S01E01-E02"
+
+    def test_degenerate_range_collapses_to_one_episode(self):
+        assert canonical_assignment_code("S01E02-E02") == "S01E02"
+
+    def test_gapped_set_is_canonicalized_not_rejected(self):
+        # The matcher and TheDiscDB emit gapped sets, and the review page re-saves
+        # pre-filled picks, so rejecting one would make a matcher result unsaveable.
+        assert canonical_assignment_code("S01E01E03") == "S01E01E03"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "S01E05-E02",  # backwards: parse_episode_code would read it as E05 + E02
+            "S01E03-E04-E02",
+            "S01E12-S02E01",  # crosses a season: a filename carries one season
+            "garbage",
+            "",
+            "S01",
+        ],
+    )
+    def test_malformed_codes_are_rejected(self, code):
+        with pytest.raises(ValueError):
+            canonical_assignment_code(code)
