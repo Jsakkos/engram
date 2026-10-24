@@ -571,13 +571,16 @@ jobs:
         run: npm ci
       - name: Get Playwright version
         id: playwright-version
-        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        # ImageOS is a runner process env var, not available in the `env` expression context.
+        run: |
+          echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS}" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ steps.playwright-version.outputs.version }}-${{ env.ImageOS }}-chromium-firefox-webkit
+          key: playwright-${{ steps.playwright-version.outputs.version }}-${{ steps.playwright-version.outputs.image }}-chromium-firefox-webkit
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium firefox webkit
