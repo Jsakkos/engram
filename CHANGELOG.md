@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- When OpenSubtitles offers several subtitles for an episode, Engram now downloads the most reputable one: files from trusted uploaders and with more downloads first, machine- and AI-translated files only as a last resort. It used to take whichever the search listed first, which for a German show was a machine translation from Hungarian whose wording no longer followed the dialogue, and the episode lost most of its matching votes. (#241)
+
 ## [0.44.0] - 2026-10-25
 
 _Highlights: episode titles in file names (`{episode_title}`), and manual assignment of one track to several consecutive episodes on the review page, for discs that hold two cartoon segments per track._
@@ -113,7 +117,7 @@ _Highlights: settings export and import, a database backup before every upgrade,
 
 - A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
-- TV tracks whose only audio is another language are no longer matched to a random episode. Engram used to transcribe them as if they were English and file or suggest whatever episode the noise landed on. It now checks each ripped file's audio tracks first: a track with no English audio goes to review with a note naming the language (for example "This track's only audio is Japanese"), and the job's review reason counts them. When the disc itself had an English track that MakeMKV's language settings left out of the rip, the note says so. On discs with several audio tracks, Engram now always transcribes the English one instead of whichever track the disc marks as default. Matching in a show's own language is planned next. (#241, thanks @wintheriscomming!)
+- TV tracks whose only audio is another language are no longer matched to a random episode. Engram used to transcribe them as if they were English and file or suggest whatever episode the noise landed on. It now checks each ripped file's audio tracks first: a track with no English audio goes to review with a note naming the language (for example "This track's only audio is Japanese"), and the job's review reason counts them. When the disc itself had an English track that MakeMKV's language settings left out of the rip, the note says so. On discs with several audio tracks, Engram now always transcribes the English one instead of whichever track the disc marks as default. Matching in a show's own language is planned next. (#241)
 
 ## [0.41.0] - 2026-10-20
 

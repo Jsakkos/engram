@@ -586,6 +586,30 @@ def _heal_precomputed_gaps(
     return healed
 
 
+def _rank_by_reputation(results: list) -> list:
+    """Order OpenSubtitles results best-first; the download loop takes the first
+    per episode that validates and downloads.
+
+    Machine- and AI-translated files go last: translated from another language's
+    subtitles, their wording drifts from the dialogue. They stay as a last
+    resort, since a drifting reference still beats none. Then trusted uploaders,
+    then download count.
+    """
+
+    def key(subtitle):
+        translated = bool(
+            getattr(subtitle, "machine_translated", False)
+            or getattr(subtitle, "ai_translated", False)
+        )
+        return (
+            translated,
+            not getattr(subtitle, "from_trusted", False),
+            -(getattr(subtitle, "download_count", 0) or 0),
+        )
+
+    return sorted(results, key=key)
+
+
 def _release_matches_episode(release: str | None, expected_title: str, *, season: int) -> bool:
     """Return False when an OpenSubtitles ``release`` clearly names a DIFFERENT
     episode than the one requested; True when it's consistent or uninformative.
@@ -922,7 +946,9 @@ def download_subtitles(
                 # than rejecting everything.
                 episode_titles = _season_episode_titles(show_id, season, config.tmdb_api_key)
                 seen_api_eps: set[int] = set()
-                for subtitle in response.data or []:
+                # The API's order isn't a quality order; take the most reputable
+                # release first (see _rank_by_reputation).
+                for subtitle in _rank_by_reputation(response.data or []):
                     ep_num = getattr(subtitle, "episode_number", None)
                     api_ep_season = getattr(subtitle, "season_number", None)
                     if not ep_num or api_ep_season != season or ep_num in seen_api_eps:
