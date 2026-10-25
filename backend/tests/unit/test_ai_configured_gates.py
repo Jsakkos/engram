@@ -171,7 +171,11 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
             tmdb_api_key="t",
         )
         job = SimpleNamespace(
-            id=1, detected_title="The Expanse", detected_season=1, episode_namespace="tmdb"
+            id=1,
+            detected_title="The Expanse",
+            detected_season=1,
+            episode_namespace="tmdb",
+            match_language=None,
         )
         title = SimpleNamespace(id=7)
         synopses = [{"episode_number": 2, "name": "Cargo", "overview": "A heist."}]

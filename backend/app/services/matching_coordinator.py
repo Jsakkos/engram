@@ -36,7 +36,9 @@ from app.core.episode_runtime import (
     matches_sibling_episode_duration,
 )
 from app.core.errors import MatchingError
+from app.core.languages import language_name
 from app.core.log_context import job_log_context
+from app.core.match_language import match_language_context
 from app.core.security import sanitize_log_value
 from app.database import async_session
 from app.matcher.audio_streams import (
@@ -322,6 +324,10 @@ def _is_rematchable_review(t) -> bool:
             # and re-matching would undo it and risk re-entering a stuck state.
             if details.get("forced_review"):
                 return False
+            # A confident match held only because its script is uncalibrated: a
+            # deeper scan would find the same episode and still be held.
+            if details.get("uncalibrated_language"):
+                return False
     return True
 
 
@@ -457,6 +463,10 @@ _RIP_LEFT_OUT_HINT = (
 )
 
 
+def _rip_left_out_hint(language: str) -> str:
+    return _RIP_LEFT_OUT_HINT.replace("English", language_name(language))
+
+
 def _plan_file_audio(file_path: Path) -> AudioPlan:
     """The English audio plan for a ripped file (same memoized probe the matcher uses)."""
     return plan_audio(probe_audio_streams(file_path), "en")
@@ -492,9 +502,16 @@ def _apply_language_review(title: "DiscTitle") -> bool:
     file_languages = details.get("usable_audio_languages")
     if file_languages is None:
         file_languages = details.get("audio_languages") or []
-    if "en" in disc_languages and "en" not in file_languages and _RIP_LEFT_OUT_HINT not in message:
-        details["message"] = message + _RIP_LEFT_OUT_HINT
-        title.match_details = json.dumps(details)
+    # A show matched in another language names that language first: its stream
+    # is the one matching would have used.
+    for language in dict.fromkeys((details.get("match_language") or "en", "en")):
+        hint = _rip_left_out_hint(language)
+        if hint in message:
+            break
+        if language in disc_languages and language not in file_languages:
+            details["message"] = message + hint
+            title.match_details = json.dumps(details)
+            break
     return True
 
 
@@ -846,6 +863,12 @@ class MatchingCoordinator:
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             return (job.episode_namespace if job else None) or "tmdb"
+
+    async def _job_match_language(self, job_id: int) -> str:
+        """The job's match language, read fresh like ``_job_namespace``."""
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            return (job.match_language if job else None) or "en"
 
     def forget_episode_runtimes(self, job_id: int) -> None:
         """Drop the cached runtimes after a namespace switch (24 vs 26 episodes)."""
@@ -1392,13 +1415,14 @@ class MatchingCoordinator:
                     f"[MATCH] Title {title_id} (Job {job_id}): error waiting for subtitles: {e}"
                 )
 
-        # Bind the namespace only now: the subtitle download decides it
-        # (decide_job_namespace) before setting the ready event, and a match
-        # dispatched earlier (imports, rerun_matching) must see that decision.
-        # On a timeout this binds whatever is stored. Nothing above reads
-        # references, runtimes or rosters.
+        # Bind the namespace and match language only now: the subtitle download
+        # decides them before setting the ready event, and a match dispatched
+        # earlier (imports, rerun_matching) must see that decision. On a timeout
+        # this binds whatever is stored. Nothing above reads references, runtimes
+        # or rosters.
         namespace = await self._job_namespace(job_id)
-        with namespace_context(namespace):
+        language = await self._job_match_language(job_id)
+        with namespace_context(namespace), match_language_context(language):
             await self._match_after_subtitle_wait(
                 job_id, title_id, file_path, num_points, min_vote_count, advisory=advisory
             )
@@ -2909,10 +2933,13 @@ class MatchingCoordinator:
 
         try:
             from app.services.episode_namespace_service import decide_job_namespace
+            from app.services.match_language_service import decide_job_match_language
 
-            # Never raises and manages its own short sessions; it is awaited
-            # outside any session block because it makes network calls.
+            # Never raise and manage their own short sessions; awaited outside
+            # any session block because they make network calls. The language
+            # reads the namespace's folder, so it is decided second.
             await decide_job_namespace(job_id)
+            await decide_job_match_language(job_id)
             # Bind the STORED namespace, not decide's return value: matching
             # reads the column (_job_namespace), so download and matching agree
             # on the reference folder even when the decision did not persist.

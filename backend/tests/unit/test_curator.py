@@ -911,3 +911,144 @@ def test_refusal_message_ignores_commentary_languages():
     assert "English," not in details["message"].split("by English")[0]
     assert details["audio_languages"] == ["ja", "en"]
     assert details["usable_audio_languages"] == ["ja"]
+
+
+@pytest.mark.unit
+class TestMatchLanguageLadder:
+    """A show matched in its own language: each track picks its language (#241, phase 2)."""
+
+    @staticmethod
+    def _curator(tmp_path, monkeypatch, streams):
+        from app.core.match_language import current_match_language
+        from app.matcher.audio_streams import AudioStream, plan_audio
+
+        audio = [AudioStream(i, lang, "", 2, i == 0, False) for i, lang in enumerate(streams)]
+        curator = EpisodeCurator()
+        curator._cache_dir = tmp_path
+        matcher = Mock()
+        matcher.audio_plan.side_effect = lambda f, language=None: plan_audio(
+            audio, language or current_match_language()
+        )
+        seen = []
+
+        def identify(video_file, *args):
+            # Runs in a worker thread: the language reaches it through the context.
+            plan = matcher.audio_plan(video_file)
+            seen.append((current_match_language(), plan.stream.audio_index))
+            return {"season": 1, "episode": 3, "confidence": 0.95, "match_details": {}}
+
+        matcher.identify_episode.side_effect = identify
+        curator._matcher = matcher
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
+
+        async def no_prepass(**k):
+            return None
+
+        monkeypatch.setattr(curator, "_chromaprint_prepass", no_prepass)
+        f = tmp_path / "ep.mkv"
+        f.write_text("")
+        return curator, matcher, f, seen
+
+    async def _match(self, curator, f, language):
+        from app.core.match_language import match_language_context
+
+        with match_language_context(language):
+            return await curator.match_single_file(f, "Babylon Berlin", 1)
+
+    async def test_original_language_stream_preferred_over_dub(self, tmp_path, monkeypatch):
+        curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["en", "de"])
+        result = await self._match(curator, f, "de")
+        assert result.episode_code == "S01E03"
+        assert seen == [("de", 1)]
+
+    async def test_english_dub_only_matches_in_english(self, tmp_path, monkeypatch):
+        curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["en"])
+        await self._match(curator, f, "de")
+        assert seen == [("en", 0)]
+
+    async def test_untagged_audio_tries_the_show_language(self, tmp_path, monkeypatch):
+        curator, _, f, seen = self._curator(tmp_path, monkeypatch, [None])
+        await self._match(curator, f, "de")
+        assert seen == [("de", 0)]
+
+    async def test_neither_language_names_both(self, tmp_path, monkeypatch):
+        curator, matcher, f, seen = self._curator(tmp_path, monkeypatch, ["ja"])
+        result = await self._match(curator, f, "de")
+        details = result.match_details
+        assert details["error"] == "audio_language_unsupported"
+        assert details["match_language"] == "de"
+        assert (
+            "only audio is Japanese, and Engram matches this show by German or English"
+            in (details["message"])
+        )
+        assert seen == []
+
+    async def test_english_job_unchanged(self, tmp_path, monkeypatch):
+        curator, matcher, f, seen = self._curator(tmp_path, monkeypatch, ["de", "en"])
+        await self._match(curator, f, "en")
+        assert seen == [("en", 1)]
+        assert matcher.audio_plan.call_args_list[0].args == (f,)
+
+
+@pytest.mark.unit
+class TestUnspacedScriptReview:
+    """A confident match in ja/zh/th still goes to a person (maintainer decision 2)."""
+
+    @staticmethod
+    def _curator(tmp_path, monkeypatch, confidence):
+        from app.matcher.audio_streams import AudioPlan
+
+        curator = EpisodeCurator()
+        curator._cache_dir = tmp_path
+        matcher = Mock()
+        matcher.audio_plan.return_value = AudioPlan("unprobed")
+        matcher.identify_episode.return_value = {
+            "season": 1,
+            "episode": 3,
+            "confidence": confidence,
+            "match_details": {"score": 0.2},
+        }
+        curator._matcher = matcher
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
+
+        async def no_prepass(**k):
+            return None
+
+        async def no_llm(**k):
+            return None
+
+        monkeypatch.setattr(curator, "_chromaprint_prepass", no_prepass)
+        monkeypatch.setattr(curator, "_maybe_add_llm_suggestion", no_llm)
+        f = tmp_path / "ep.mkv"
+        f.write_text("")
+        return curator, f
+
+    @pytest.mark.parametrize("language", ["ja", "zh", "th"])
+    async def test_confident_unspaced_match_is_held(self, tmp_path, monkeypatch, language):
+        from app.core.match_language import match_language_context
+
+        curator, f = self._curator(tmp_path, monkeypatch, 0.97)
+        with match_language_context(language):
+            result = await curator.match_single_file(f, "Show", 1)
+        assert result.episode_code == "S01E03"
+        assert result.needs_review is True
+        assert result.match_details["uncalibrated_language"] == language
+
+    @pytest.mark.parametrize("language", ["de", "en"])
+    async def test_spaced_scripts_file_as_before(self, tmp_path, monkeypatch, language):
+        from app.core.match_language import match_language_context
+
+        curator, f = self._curator(tmp_path, monkeypatch, 0.97)
+        with match_language_context(language):
+            result = await curator.match_single_file(f, "Show", 1)
+        assert result.needs_review is False
+        assert "uncalibrated_language" not in result.match_details
+
+    async def test_low_confidence_unspaced_match_stays_rematchable(self, tmp_path, monkeypatch):
+        from app.core.match_language import match_language_context
+
+        curator, f = self._curator(tmp_path, monkeypatch, 0.4)
+        with match_language_context("ja"):
+            result = await curator.match_single_file(f, "Show", 1)
+        assert result.needs_review is True
+        assert "uncalibrated_language" not in result.match_details

@@ -852,6 +852,7 @@ async def get_season_roster(
     season_num = effective_season
     # Imported here (not at module level) so tests can patch season_episodes.
     from app.core.episode_namespace import NAMESPACE_TVDB, namespace_context, season_episodes
+    from app.core.match_language import match_language_context
     from app.services.config_service import get_config
 
     config = await get_config()
@@ -903,8 +904,8 @@ async def get_season_roster(
     cache_dir = Path(config.subtitles_cache_path).expanduser()
     episode_numbers = [ep["episode_number"] for ep in episodes_raw]
     try:
-        # Bound so the scan reads the namespace's own reference folder.
-        with namespace_context(namespace):
+        # Bound so the scan reads the job's own reference folder.
+        with namespace_context(namespace), match_language_context(job.match_language):
             coverage = await asyncio.to_thread(
                 reference_coverage,
                 cache_dir,
@@ -1100,10 +1101,11 @@ async def preview_manual_subtitles(
     cache_dir = Path(config.subtitles_cache_path).expanduser()
 
     from app.core.episode_namespace import namespace_context
+    from app.core.match_language import match_language_context
 
     # Classified against the job's numbering, so a TVDB job's upload is checked
     # against (and later filed into) its TVDB-numbered reference folder.
-    with namespace_context(job.episode_namespace):
+    with namespace_context(job.episode_namespace), match_language_context(job.match_language):
         results = await asyncio.to_thread(
             classify_files,
             cache_dir,
@@ -1143,9 +1145,10 @@ async def commit_manual_subtitles(
     cache_dir = Path(config.subtitles_cache_path).expanduser()
 
     from app.core.episode_namespace import namespace_context
+    from app.core.match_language import match_language_context
 
     # Filed in the job's numbering (see preview_manual_subtitles).
-    with namespace_context(job.episode_namespace):
+    with namespace_context(job.episode_namespace), match_language_context(job.match_language):
         outcomes = await asyncio.to_thread(
             commit_files,
             cache_dir,
@@ -1210,6 +1213,8 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "episode_namespace": job.episode_namespace or "tmdb",
         "episode_namespace_note": job.episode_namespace_note,
         "tvdb_divergence_json": job.tvdb_divergence_json,
+        "content_language": job.content_language,
+        "match_language": job.match_language,
         "classification_source": job.classification_source,
         "classification_confidence": job.classification_confidence,
         "tmdb_id": job.tmdb_id,
@@ -5045,10 +5050,11 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
         return LLMMatchOutcome.failed("transcription_failed")
 
     from app.core.episode_namespace import namespace_context
+    from app.core.match_language import match_language_context
 
     # The candidate episode list comes from season_episodes, so binding the job's
     # namespace offers (and answers in) TVDB numbering for a TVDB job.
-    with namespace_context(job.episode_namespace):
+    with namespace_context(job.episode_namespace), match_language_context(job.match_language):
         transcript = await asyncio.to_thread(episode_curator._matcher.transcribe_full, file_path)
         if not transcript:
             return LLMMatchOutcome.failed("transcription_failed")
