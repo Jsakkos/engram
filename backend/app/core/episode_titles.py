@@ -20,6 +20,8 @@ from __future__ import annotations
 import threading
 import time
 
+from loguru import logger
+
 from app.core.episode_codes import parse_episode_code
 from app.core.episode_namespace import current_namespace, namespace_context, season_episodes
 
@@ -49,6 +51,11 @@ def _roster(tmdb_id: str, season: int, api_key: str) -> list[dict]:
     if hit is not None and hit[0] > _now():
         return hit[1]
     roster = season_episodes(tmdb_id, season, api_key) or []
+    if not roster:
+        logger.warning(
+            f"No {key[0]} episode roster for show {tmdb_id} season {season}: "
+            "{episode_title} will be left out of file names for the next minute"
+        )
     ttl = _ROSTER_TTL_SECONDS if roster else _MISS_TTL_SECONDS
     with _cache_lock:
         _cache[key] = (_now() + ttl, roster)
