@@ -7,6 +7,8 @@ on:
   push:
     paths:
       - "docker/install-makemkv.sh"
+      - ".github/workflows/makemkv-install.yml"
+      - "backend/scripts/check_makemkv_protocol.py"
 
 # See ci.yml for context on the Node 24 opt-in.
 env:
@@ -38,9 +40,18 @@ jobs:
         env:
           MAKEMKV_VERSION: ${{ matrix.version }}
           MAKEMKV_INSTALL_DIR: /tmp/makemkv-test
-        run: sudo -E bash docker/install-makemkv.sh
+        # Pass the variables through `env` inside sudo, never `sudo -E`.
+        # ubuntu-26.04 ships sudo-rs, which ignores -E without an error, so the
+        # script silently installed to its /config/makemkv default and the
+        # pinned leg resolved "latest" instead of its pin.
+        run: |
+          sudo env MAKEMKV_VERSION="${MAKEMKV_VERSION}" \
+            MAKEMKV_INSTALL_DIR="${MAKEMKV_INSTALL_DIR}" \
+            bash docker/install-makemkv.sh
 
       - name: Verify makemkvcon binary
+        env:
+          EXPECTED_VERSION: ${{ matrix.version }}
         run: |
           test -x /tmp/makemkv-test/bin/makemkvcon
           # The install script writes the installed version to a marker file.
@@ -50,4 +61,98 @@ jobs:
             echo "::error::install marker /tmp/makemkv-test/.installed-version is missing"
             exit 1
           fi
+          # A pinned leg must install its pin. Without this check a lost
+          # MAKEMKV_VERSION falls back to "latest" and passes while the two
+          # still agree, which is exactly how the sudo-rs break hid.
+          if [ "$EXPECTED_VERSION" != "latest" ] && [ "$INSTALLED" != "$EXPECTED_VERSION" ]; then
+            echo "::error::expected MakeMKV $EXPECTED_VERSION but the marker says $INSTALLED"
+            exit 1
+          fi
           echo "MakeMKV $INSTALLED installed at /tmp/makemkv-test ✓"
+
+      - name: Run makemkvcon in robot mode (no disc)
+        # Proves the compiled binary loads its libraries and still speaks the
+        # `-r` protocol Engram parses (backend/app/core/extractor.py). The
+        # runner has no optical drive, so this exercises the startup banner
+        # (MSG:1005), drive enumeration (DRV) and the open-failure message.
+        run: |
+          mkdir -p artifacts
+          LD_LIBRARY_PATH=/tmp/makemkv-test/lib \
+            timeout 120 /tmp/makemkv-test/bin/makemkvcon -r --cache=1 info disc:9999 \
+            > artifacts/makemkvcon-robot-info.txt 2>&1 || true
+          cat artifacts/makemkvcon-robot-info.txt
+          if ! grep -qE '^MSG:1005,.*MakeMKV v[0-9]' artifacts/makemkvcon-robot-info.txt; then
+            echo "::error::makemkvcon printed no MSG:1005 startup banner; robot-mode output changed or the binary did not start"
+            exit 1
+          fi
+
+      - name: Check robot-mode attribute ids against apdefs.h
+        # The no-disc run above cannot show TINFO/SINFO ids, so read them from
+        # the release's own header: a moved id would not error, the scan
+        # parser would silently read the wrong field.
+        run: |
+          VERSION=$(cat /tmp/makemkv-test/.installed-version)
+          mkdir -p /tmp/makemkv-src
+          curl -fsSL --max-time 300 --retry 3 --retry-delay 5 --retry-all-errors \
+            "https://www.makemkv.com/download/makemkv-oss-${VERSION}.tar.gz" \
+            | tar xz -C /tmp/makemkv-src --wildcards '*/makemkvgui/inc/lgpl/apdefs.h'
+          python3 backend/scripts/check_makemkv_protocol.py \
+            "/tmp/makemkv-src/makemkv-oss-${VERSION}/makemkvgui/inc/lgpl/apdefs.h"
+
+      - name: Upload robot-mode sample
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: makemkvcon-robot-info-${{ matrix.version }}
+          path: artifacts/makemkvcon-robot-info.txt
+          if-no-files-found: ignore
+
+  # The job above compiles on whatever ubuntu-latest is. Docker users compile
+  # on the image's runtime base instead (Dockerfile, stage 3), which carries an
+  # older glibc and FFmpeg, so this leg builds there too. Keep the package list
+  # in step with the Dockerfile's MakeMKV toolchain. It skips the apdefs.h id
+  # check on purpose: that reads the release's source, not the build, so the
+  # "latest" leg above already covers the same version.
+  docker-base-install-check:
+    name: Full MakeMKV install (latest, Docker runtime base)
+    runs-on: ubuntu-latest
+    container: python:3.11-slim-bookworm
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install MakeMKV build dependencies (as in the Dockerfile)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl build-essential pkg-config libc6-dev \
+            libssl-dev libexpat1-dev libavcodec-dev zlib1g-dev
+
+      - name: Run install-makemkv.sh
+        env:
+          MAKEMKV_VERSION: latest
+          MAKEMKV_INSTALL_DIR: /tmp/makemkv-test
+        run: bash docker/install-makemkv.sh
+
+      - name: Run makemkvcon in robot mode (no disc)
+        run: |
+          test -x /tmp/makemkv-test/bin/makemkvcon
+          echo "Installed: $(cat /tmp/makemkv-test/.installed-version)"
+          mkdir -p artifacts
+          LD_LIBRARY_PATH=/tmp/makemkv-test/lib \
+            timeout 120 /tmp/makemkv-test/bin/makemkvcon -r --cache=1 info disc:9999 \
+            > artifacts/makemkvcon-robot-info.txt 2>&1 || true
+          cat artifacts/makemkvcon-robot-info.txt
+          if ! grep -qE '^MSG:1005,.*MakeMKV v[0-9]' artifacts/makemkvcon-robot-info.txt; then
+            echo "::error::makemkvcon printed no MSG:1005 startup banner; robot-mode output changed or the binary did not start"
+            exit 1
+          fi
+
+      - name: Upload robot-mode sample
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: makemkvcon-robot-info-docker-base
+          path: artifacts/makemkvcon-robot-info.txt
+          if-no-files-found: ignore
