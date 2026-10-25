@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- German shows matched in German now file themselves when the match is clear, instead of most tracks going to review. A chunk of dialogue only votes for an episode when that episode clearly leads the next best one, and the lead that is clear for English (1.8 times) turned out too strict for German, where right answers led by 1.5 to 1.9 times and wrong ones by under 1.2. German now votes from a 1.3 lead; other languages keep the English rule until they are measured. (#241)
+
 ## [0.45.1] - 2026-11-15
 
 _Highlights: DVD contributions to TheDiscDB now carry the right format and episodes; a MakeMKV crash while scanning a disc backup is named instead of reported as "No titles found"; and two smaller fixes for History durations and unreadable import paths._
