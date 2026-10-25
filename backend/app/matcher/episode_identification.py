@@ -914,6 +914,11 @@ def calibrate_confidence(
     return confidence, components
 
 
+def _vote_mass(entry: dict) -> float:
+    """Summed vote cosine of a results_summary entry; mean x votes when absent."""
+    return entry.get("vote_mass", entry["score"] * entry.get("vote_count", 0))
+
+
 def _attach_calibrated_confidence(
     best_match: dict,
     results_summary: list[dict],
@@ -930,17 +935,24 @@ def _attach_calibrated_confidence(
     ``match_details`` and builds ``runner_ups`` where each entry keeps its raw
     ``score`` (for cascading reassignment) and gains a calibrated ``confidence``
     scaled to the winner so the winner's leaderboard entry equals the headline.
+
+    Separation comes from the vote-mass gap (see _vote_mass): the mean-cosine
+    gap reads 19 votes against 1 as a tie.
     """
     if not results_summary:
         return
 
-    # results_summary is sorted by score descending by the caller.
+    # results_summary is sorted by vote mass descending by the caller.
     top1 = results_summary[0]["score"]
     if len(results_summary) >= 2:
         score_gap = top1 - results_summary[1]["score"]
+        # Separation comes from the vote-mass gap, which calibrate_confidence
+        # turns into gap / score; score_gap stays the reported mean-cosine gap.
+        top_mass, runner_mass = _vote_mass(results_summary[0]), _vote_mass(results_summary[1])
+        mass_gap = top1 * (top_mass - runner_mass) / top_mass if top_mass > 0 else 0.0
         runner_up_votes = results_summary[1].get("vote_count", 0)
     else:
-        score_gap = top1
+        score_gap = mass_gap = top1
         runner_up_votes = 0
 
     md = best_match.setdefault("match_details", {})
@@ -954,7 +966,7 @@ def _attach_calibrated_confidence(
     # but sourcing both here removes the implicit cross-reference invariant.
     confidence, components = calibrate_confidence(
         score=top1,
-        score_gap=score_gap,
+        score_gap=mass_gap,
         vote_count=vote_count,
         target_votes=target_votes,
         processed_coverage=processed_coverage,
@@ -1171,6 +1183,11 @@ class MatchCoverage:
         if not self.matched_chunks:
             return 0.0
         return sum(c["duration"] / self.video_duration for c in self.matched_chunks)
+
+    @property
+    def vote_mass(self) -> float:
+        """Summed chunk confidences: grows with the vote count, unlike the mean."""
+        return sum(c["confidence"] for c in self.matched_chunks)
 
     @property
     def ranked_voting_score(self) -> float:
@@ -2278,10 +2295,11 @@ class EpisodeMatcher:
                                     "episode": f"S{ep_season:02d}E{ep_episode:02d}",
                                     "score": cov.ranked_voting_score,
                                     "vote_count": len(cov.matched_chunks),
+                                    "vote_mass": cov.vote_mass,
                                     "target_votes": len(scan_points),
                                 }
                             )
-                    interim_standings.sort(key=lambda x: x["score"], reverse=True)
+                    interim_standings.sort(key=_vote_mass, reverse=True)
                     progress_callback("matching", scan_percent, interim_standings[:5])
 
             logger.info(
@@ -2292,6 +2310,7 @@ class EpisodeMatcher:
             # Each reference episode accumulates weighted votes from matched chunks.
             # Winner: highest weighted consensus score (not just highest single match).
             best_score = 0
+            best_rank = 0
             best_match = None
 
             results_summary = []
@@ -2314,10 +2333,15 @@ class EpisodeMatcher:
                     "vote_count": len(cov.matched_chunks),
                     "target_votes": len(scan_points),
                     "total_weight": cov.total_vote_weight,
+                    "vote_mass": cov.vote_mass,
                 }
                 results_summary.append(match_info)
 
-                if score > best_score:
+                # Vote mass, not the mean: one stray vote with a slightly higher
+                # cosine must not outrank a run of votes.
+                rank = cov.vote_mass if self.use_ranked_voting else score
+                if rank > best_rank:
+                    best_rank = rank
                     best_score = score
                     best_match = {
                         "season": season,
@@ -2402,7 +2426,7 @@ class EpisodeMatcher:
                 # conflict resolution. All candidates (incl. the winner) appear in
                 # runner_ups so the UI can show the full leaderboard. See
                 # calibrate_confidence for rationale.
-                results_summary.sort(key=lambda x: x["score"], reverse=True)
+                results_summary.sort(key=_vote_mass, reverse=True)
                 _attach_calibrated_confidence(best_match, results_summary, video_duration)
 
                 score_gap = best_match["match_details"].get("score_gap", 0.0)
