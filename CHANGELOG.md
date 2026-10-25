@@ -7,6 +7,9 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - **Shows in other languages are matched in their own language.** A show whose original language is not English (German, French, Japanese, ...) used to go to review track by track whenever the disc had no English audio. Engram now downloads the show's subtitles in its original language too, transcribes the original-language audio track and matches the two, so the tracks of a German show on a German disc are matched to their episodes like an English show's; a track it is less sure of goes to review as usual. A disc with an English dub is matched in the original language; a track with only the dub is matched in English; a show with no subtitles in its language is matched in English exactly as before. Japanese, Chinese and Thai matches always go to review for now. The review page names the language a track was matched in. (#241)
+### Fixed
+
+- One stray chunk vote no longer drags a correctly matched track's confidence to near zero. Engram picked the episode whose chunk votes had the highest average score, so a single vote for the wrong episode with a slightly higher score tied or beat a run of votes for the right one (19 against 1 calibrated to 0.003) and the track went to review. The winner and its confidence now come from the summed score of its votes, so agreement across many chunks counts. (#241)
 
 ## [0.44.0] - 2026-10-25
 
