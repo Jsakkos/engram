@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
+from app.core.match_language import current_match_language, match_language_context
 from app.core.security import sanitize_log_value
+from app.matcher.audio_streams import plan_title_audio
 from app.matcher.llm_episode_matcher import match_episode_via_llm
 from app.matcher.subtitle_utils import (
     AUDIO_LANGUAGE_ERROR_CODE,
@@ -473,14 +475,35 @@ class EpisodeCurator:
         # vote would land on an arbitrary episode. Park the track with the reason
         # instead (issue #241). Runs after the chromaprint prepass, which does not
         # depend on language; an unprobed file proceeds exactly as before.
-        plan = await asyncio.to_thread(self._matcher.audio_plan, file_path)
+        job_language = current_match_language()
+        language, plan = await asyncio.to_thread(plan_title_audio, self._matcher, file_path)
         if getattr(plan, "verdict", None) in ("foreign", "no_audio"):
             logger.info(
                 f"[Curator] {sanitize_log_value(file_path.name)}: no matchable audio "
                 f"({plan.verdict}, languages {sanitize_log_value(plan.languages)}); "
                 "routing to review without ASR"
             )
-            return self._fallback_result(file_path, match_details=language_refusal_details(plan))
+            return self._fallback_result(
+                file_path, match_details=language_refusal_details(plan, job_language)
+            )
+        if language != job_language:
+            # The show's language has no stream in this file but English does:
+            # match this title in English. Under English the plan above returns
+            # English straight away, so this recurses once.
+            logger.info(
+                f"[Curator] {sanitize_log_value(file_path.name)}: no {job_language} audio; "
+                "matching this track in English"
+            )
+            with match_language_context(language):
+                return await self._run_asr_identify(
+                    file_path,
+                    series_name,
+                    season,
+                    progress_callback,
+                    num_points,
+                    min_vote_count,
+                    tmdb_id=tmdb_id,
+                )
 
         try:
             # Run the matcher in a thread to not block async loop
