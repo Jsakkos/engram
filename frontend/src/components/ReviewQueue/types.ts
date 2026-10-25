@@ -33,6 +33,10 @@ export interface MatchDetails {
     auto_sorted?: string;
     /** LLM-based episode suggestion, if one has been run for this title. */
     llm_suggestion?: LLMSuggestion;
+    /** Language the track was matched in (#241); "en" for English. */
+    match_language?: string;
+    /** Set when a confident match in an unspaced script (ja/zh/th) was held for review. */
+    uncalibrated_language?: string;
 }
 
 /** One episode slot from GET /api/jobs/{id}/season-roster. */

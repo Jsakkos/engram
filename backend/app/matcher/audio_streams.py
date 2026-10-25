@@ -28,6 +28,7 @@ from pathlib import Path
 from loguru import logger
 
 from app.core.languages import normalize_language
+from app.core.match_language import ENGLISH, current_match_language
 
 # Track titles that mark commentary or audio description. MakeMKV never set the
 # stream-flag bits for these on any disc we have logs for, so the name and the
@@ -182,3 +183,22 @@ def plan_audio(streams: list[AudioStream] | None, language: str) -> AudioPlan:
     if untagged:
         return AudioPlan("untagged", untagged[0], **details)
     return AudioPlan("foreign", None, **details)
+
+
+def plan_title_audio(matcher, video_file) -> tuple[str, AudioPlan]:
+    """The language to match ``video_file`` in, and ``matcher``'s plan for it.
+
+    The bound match language when the file has a stream in it (or an untagged or
+    unprobed one); else English when the file has an English stream; else the
+    match language's own plan, which the curator refuses. Audio only, so the
+    curator and the prewarm reach the same answer. Under English this is one
+    ``matcher.audio_plan(video_file)`` call, exactly as before.
+    """
+    language = current_match_language()
+    plan = matcher.audio_plan(video_file)
+    if language == ENGLISH or plan.verdict not in ("foreign", "no_audio"):
+        return language, plan
+    english = matcher.audio_plan(video_file, ENGLISH)
+    if english.verdict == "match":
+        return ENGLISH, english
+    return language, plan
