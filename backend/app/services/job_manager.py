@@ -2701,7 +2701,10 @@ class JobManager:
             if target.kind == "episode":
                 if not target.episode_code:
                     raise ValueError("episode_code required for episode reassignment")
-                result = organize_tv_episode(
+                # Off the event loop: an {episode_title} format makes a (cached) TMDB/TVDB
+                # roster request, which would otherwise freeze the server on an outage.
+                result = await asyncio.to_thread(
+                    organize_tv_episode,
                     current,
                     show,
                     target.episode_code,
@@ -2711,6 +2714,7 @@ class JobManager:
                     tmdb_id=tmdb_id,
                     ordering=title.episode_ordering or "aired",
                     episode_group_id=title.episode_group_id,
+                    episode_namespace=job.episode_namespace,
                 )
                 if not result.get("success"):
                     raise ValueError(result.get("error") or "Organize failed")

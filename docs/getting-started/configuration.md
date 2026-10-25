@@ -433,7 +433,31 @@ the automatic edition tag.
 |---------|---------|--------------|
 | Show Folder Format | `{show}` | `{show}`, `{year}`, `{tmdb_id}` |
 | Season Folder Format | `Season {season:02d}` | `{season}` |
-| Episode Filename Format | `{show} - S{season:02d}E{episode:02d}` | `{show}`, `{season}`, `{episode}`, `{year}`, `{tmdb_id}` |
+| Episode Filename Format | `{show} - S{season:02d}E{episode:02d}` | `{show}`, `{season}`, `{episode}`, `{year}`, `{tmdb_id}`, `{episode_title}` |
+
+#### Episode titles in file names
+
+Add `{episode_title}` to the Episode Filename Format to put the episode's name in the file name:
+
+```
+Format "{show} - S{season:02d}E{episode:02d} - {episode_title}"
+  -> TV/Breaking Bad/Season 01/Breaking Bad - S01E05 - Gray Matter.mkv
+```
+
+The default format has no title, so nothing changes until you add the placeholder. Details:
+
+- **Unknown titles drop cleanly.** If Engram cannot find a title (no TMDB or TheTVDB data, or the
+  episode has no name yet), the placeholder is removed together with the separator next to it,
+  so you get `Breaking Bad - S01E05`, never `Breaking Bad - S01E05 - `.
+- **Same numbering as the episode.** The title comes from the catalogue the job's episode
+  numbers use: TMDB normally, TheTVDB when you chose TheTVDB order for the show.
+- **Tracks holding several episodes** list every title joined with ` & `, for example
+  `Show - S01E01-E02 - Title 1 & Title 2.mkv`. Titles that are exactly the same (ignoring case)
+  appear once. `&` is a legal file name character on Windows, Linux and macOS.
+- **File name safe.** Characters that cannot appear in a file name (`: ? " < > | * / \`) are
+  removed (`Who: What?` becomes `Who What`), and a title is cut at 100 characters.
+- **Library folder tools.** Already-filed episodes keep their old names. If you turn the
+  placeholder on and then re-organize an episode, the new, titled file sits beside the old one.
 
 #### Letting same-name titles coexist
 

@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
+- **Episode titles in file names.** Add `{episode_title}` to the Episode Filename Format (Settings → Preferences → Naming & extras, with Naming Convention set to Custom) to get names like `Show - S01E05 - Gray Matter.mkv`. The default format is unchanged. The title comes from the same catalogue as the episode number (TMDB, or TheTVDB for a job on TheTVDB order); a track holding several episodes lists their titles joined with ` & `; and an unknown title is dropped together with its separator instead of leaving `Show - S01E05 - `. Characters a file name can't hold are removed and very long titles are cut at 100 characters. The settings preview now renders every placeholder. (#826, thanks BurgerMage27 on Discord!)
 - The review page can now assign one track to several consecutive episodes by hand, for a disc that holds two cartoon segments in one track and has no subtitles for the matcher to work from. Pick the first episode under **Manual**, then the last one under **+ Also covers**; the file is named with the range (`Show - S01E01-E02.mkv`) and the season roster counts every episode the track holds. Episodes another track already holds are labelled in the list. The server now rejects an episode range that runs backwards or crosses seasons instead of storing it as something nobody chose. (#830)
 
 ## [0.43.1] - 2026-10-22
