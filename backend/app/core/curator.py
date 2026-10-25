@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
-from app.core.match_language import current_match_language, match_language_context
+from app.core.match_language import (
+    UNSPACED_LANGUAGES,
+    current_match_language,
+    match_language_context,
+)
 from app.core.security import sanitize_log_value
 from app.matcher.audio_streams import plan_title_audio
 from app.matcher.llm_episode_matcher import match_episode_via_llm
@@ -533,6 +537,15 @@ class EpisodeCurator:
                 if match.get("runner_ups"):
                     details = dict(details)  # Copy to avoid mutating original
                     details["runner_ups"] = match["runner_ups"]
+
+                # Character n-grams have a cosine scale no real disc has calibrated
+                # yet, so a confident match in an unspaced script still goes to a
+                # person (maintainer decision, spec 2026-10-20).
+                language = current_match_language()
+                if language in UNSPACED_LANGUAGES and not needs_review:
+                    needs_review = True
+                    details = dict(details)
+                    details["uncalibrated_language"] = language
 
                 # LLM episode-matching fallback — only runs when the primary
                 # match needs review, config is enabled, and the season is known.

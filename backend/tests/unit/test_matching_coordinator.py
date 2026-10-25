@@ -2588,3 +2588,19 @@ class TestMatchLanguageRefusalHint:
         once = json.loads(t.match_details)["message"]
         _route_unconfirmable_title(t, conjoined_hint=None)
         assert json.loads(t.match_details)["message"] == once
+
+
+@pytest.mark.unit
+def test_uncalibrated_language_hold_is_not_rematched():
+    from app.services.matching_coordinator import _is_rematchable_review
+
+    t = DiscTitle(
+        job_id=1,
+        title_index=0,
+        duration_seconds=1380,
+        state=TitleState.REVIEW,
+        matched_episode="S01E03",
+        match_confidence=0.97,
+        match_details=json.dumps({"uncalibrated_language": "ja"}),
+    )
+    assert _is_rematchable_review(t) is False

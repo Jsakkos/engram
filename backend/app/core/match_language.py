@@ -24,6 +24,11 @@ ENGLISH = "en"
 
 _language_var: ContextVar[str] = ContextVar("match_language", default=ENGLISH)
 
+# Written without spaces between words: a word analyzer would read a whole
+# sentence as one token, so TF-IDF uses character n-grams for these. Matches in
+# them always go to review until real discs calibrate that scale.
+UNSPACED_LANGUAGES = frozenset({"ja", "zh", "th"})
+
 # TMDB's own codes that are not ISO 639: "cn" is Cantonese, "xx" is "no language".
 _TMDB_CODES: dict[str, str | None] = {"cn": "zh", "xx": None}
 

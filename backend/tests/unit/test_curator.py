@@ -988,3 +988,67 @@ class TestMatchLanguageLadder:
         await self._match(curator, f, "en")
         assert seen == [("en", 1)]
         assert matcher.audio_plan.call_args_list[0].args == (f,)
+
+
+@pytest.mark.unit
+class TestUnspacedScriptReview:
+    """A confident match in ja/zh/th still goes to a person (maintainer decision 2)."""
+
+    @staticmethod
+    def _curator(tmp_path, monkeypatch, confidence):
+        from app.matcher.audio_streams import AudioPlan
+
+        curator = EpisodeCurator()
+        curator._cache_dir = tmp_path
+        matcher = Mock()
+        matcher.audio_plan.return_value = AudioPlan("unprobed")
+        matcher.identify_episode.return_value = {
+            "season": 1,
+            "episode": 3,
+            "confidence": confidence,
+            "match_details": {"score": 0.2},
+        }
+        curator._matcher = matcher
+        monkeypatch.setattr(curator, "_ensure_initialized", lambda show, tmdb_id=None: True)
+
+        async def no_prepass(**k):
+            return None
+
+        async def no_llm(**k):
+            return None
+
+        monkeypatch.setattr(curator, "_chromaprint_prepass", no_prepass)
+        monkeypatch.setattr(curator, "_maybe_add_llm_suggestion", no_llm)
+        f = tmp_path / "ep.mkv"
+        f.write_text("")
+        return curator, f
+
+    @pytest.mark.parametrize("language", ["ja", "zh", "th"])
+    async def test_confident_unspaced_match_is_held(self, tmp_path, monkeypatch, language):
+        from app.core.match_language import match_language_context
+
+        curator, f = self._curator(tmp_path, monkeypatch, 0.97)
+        with match_language_context(language):
+            result = await curator.match_single_file(f, "Show", 1)
+        assert result.episode_code == "S01E03"
+        assert result.needs_review is True
+        assert result.match_details["uncalibrated_language"] == language
+
+    @pytest.mark.parametrize("language", ["de", "en"])
+    async def test_spaced_scripts_file_as_before(self, tmp_path, monkeypatch, language):
+        from app.core.match_language import match_language_context
+
+        curator, f = self._curator(tmp_path, monkeypatch, 0.97)
+        with match_language_context(language):
+            result = await curator.match_single_file(f, "Show", 1)
+        assert result.needs_review is False
+        assert "uncalibrated_language" not in result.match_details
+
+    async def test_low_confidence_unspaced_match_stays_rematchable(self, tmp_path, monkeypatch):
+        from app.core.match_language import match_language_context
+
+        curator, f = self._curator(tmp_path, monkeypatch, 0.4)
+        with match_language_context("ja"):
+            result = await curator.match_single_file(f, "Show", 1)
+        assert result.needs_review is True
+        assert "uncalibrated_language" not in result.match_details

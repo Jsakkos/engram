@@ -861,6 +861,11 @@ class LanguageMatcher(FakeMatcher):
 
         return plan_audio(self.streams, language or current_match_language())
 
+    def _model_key_for(self, model):
+        from app.core.match_language import current_match_language
+
+        return model_output_key(MODEL_CONFIG, current_match_language())
+
     def transcript_file_key(self, video_file):
         key = transcript_store.file_key_for(video_file)
         stream = self.audio_plan(video_file).stream
@@ -906,3 +911,29 @@ class TestPrewarmMatchLanguage:
         await _run_to_completion(p, job_id)
 
         assert p._matcher.transcribe_calls == []
+
+
+@pytest.mark.unit
+async def test_german_job_checks_coverage_under_the_german_key(
+    tmp_path, config_flags, prewarmer, model_loader, duration_stub
+):
+    """A German transcript already cached means nothing to warm, and English ones do not count."""
+    p, _ = prewarmer
+    p._matcher = LanguageMatcher(["de"])
+    job_id, f = await _seed_review_job(tmp_path)
+    async with _unit_session_factory() as session:
+        job = await session.get(DiscJob, job_id)
+        job.match_language = "de"
+        await session.commit()
+    file_key = transcript_store.file_key_for(f)
+    for off in OFFSETS:
+        transcript_store.put(file_key, off, CHUNK_LEN, CONFIG_KEY, "english")
+
+    await _run_to_completion(p, job_id)
+    assert len(p._matcher.transcribe_calls) == len(OFFSETS)
+
+    for off in OFFSETS:
+        transcript_store.put(file_key, off, CHUNK_LEN, CONFIG_KEY + "_de", "deutsch")
+    p._matcher.transcribe_calls.clear()
+    await _run_to_completion(p, job_id)
+    assert p._matcher.transcribe_calls == []
