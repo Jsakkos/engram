@@ -43,6 +43,18 @@ def _cache_dir(config) -> Path:
     return Path.home() / ".engram" / "cache"
 
 
+async def show_language(tmdb_id: int | None) -> str | None:
+    """A show's original language from TMDB (cached); None when unknown or unreachable."""
+    if not tmdb_id:
+        return None
+    try:
+        details = await asyncio.to_thread(tmdb_client.fetch_show_details, tmdb_id)
+    except Exception as e:  # noqa: BLE001 - an unknown language is English
+        logger.debug(f"TMDB show {tmdb_id}: original language unavailable: {e}")
+        return None
+    return content_language(details)
+
+
 async def decide_job_match_language(job_id: int) -> str:
     """Set and return the job's match language; English unless references exist in the show's."""
     from app.services.config_service import get_config

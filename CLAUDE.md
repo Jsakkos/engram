@@ -298,9 +298,13 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   when its season has at least `MIN_USABLE_REFERENCES` references in that language, else
   English. Like the namespace it rides in a ContextVar (`app/core/match_language.py`), bound
   beside `namespace_context` wherever references are read: `_run_match_single_file` after the
-  subtitle wait, the prewarm, and the coverage, manual-subtitle and LLM routes. **Not** at the
-  download sites while the downloader fetches English, or English subtitles would land in the
-  language's folder. `corpus_dir_suffix()` composes it after the namespace (`<id>@tvdb@de`), so
+  subtitle wait, the prewarm, and the coverage, manual-subtitle and LLM routes. The subtitle
+  download binds the show's language only around its own fetch
+  (`_download_in_show_language`, before the decision, which counts what landed) and fetches
+  English unbound afterwards, for tracks with only English audio; the status (and the gate on
+  matching) comes from the job's match language. Providers read the bound language
+  (OpenSubtitles `languages=`, Addic7ed by name, tvsubtitles only for the few it lists).
+  `corpus_dir_suffix()` composes it after the namespace (`<id>@tvdb@de`), so
   references move to the language's own folder and the English precomputed pack is hidden with
   no parameter threaded through the matcher; `is_local_only_corpus_dir` (`"@" in name`) keeps
   every such folder out of the cache scripts. `audio_plan` defaults to the bound language, and

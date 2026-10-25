@@ -14,6 +14,7 @@ import {
     formatDuration,
     formatSize,
     generateEpisodeOptions,
+    languageDisplayName,
     parseMatchDetails,
     titleDisplayName,
 } from './utils';
@@ -100,6 +101,11 @@ export function Inspector({
     const reviewNotice =
         details.message && REVIEW_NOTICE_CODES.has(details.error ?? '') ? details.message : null;
     const llmSuggestion: LLMSuggestion | null = details.llm_suggestion ?? null;
+    // A show matched in its own language says so; English is the unremarked default.
+    const matchLanguage =
+        details.match_language && details.match_language !== 'en'
+            ? languageDisplayName(details.match_language)
+            : null;
     // In-flight = the live WebSocket title state (durable, lasts the whole match)
     // OR the parent's optimistic isRematching (covers the gap before the first WS
     // message). The parent flag clears the instant the fire-and-forget POST returns,
@@ -185,6 +191,7 @@ export function Inspector({
                     <div style={{ ...monoFaint, marginTop: 3 }}>
                         {formatDuration(title.duration_seconds)} · {formatSize(title.file_size_bytes)}
                         {title.video_resolution ? ` · ${title.video_resolution}` : ''} · {title.chapter_count} chapters
+                        {matchLanguage ? ` · matched in ${matchLanguage}` : ''}
                     </div>
                     <PlayerControls title={title} />
                 </div>
@@ -202,6 +209,15 @@ export function Inspector({
                 {reviewNotice && (
                     <div style={{ marginBottom: 14 }}>
                         <SvNotice tone="warn">{reviewNotice}</SvNotice>
+                    </div>
+                )}
+                {details.uncalibrated_language && (
+                    <div style={{ marginBottom: 14 }}>
+                        <SvNotice tone="info">
+                            Matched in {languageDisplayName(details.uncalibrated_language)}. Matches
+                            in Japanese, Chinese and Thai always come here for a check until real
+                            discs show how far their confidence can be trusted.
+                        </SvNotice>
                     </div>
                 )}
 

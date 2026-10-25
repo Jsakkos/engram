@@ -2925,6 +2925,34 @@ class MatchingCoordinator:
             if job_id in self._subtitle_ready:
                 self._subtitle_ready[job_id].set()
 
+    async def _download_in_show_language(
+        self, show_name: str, season: int, tmdb_id: int | None, namespace: str
+    ) -> dict | None:
+        """Fetch the season in the show's own language when that is not English.
+
+        Lands in the language's own folder (``<id>@de``), where
+        ``decide_job_match_language`` counts it. None for an English or unknown
+        language, or on failure: the English download still runs either way.
+        """
+        from app.matcher.testing_service import download_subtitles
+        from app.services.match_language_service import show_language
+
+        language = await show_language(tmdb_id)
+        if not language or language == "en":
+            return None
+        logger.info(f"Downloading {language} subtitles for {show_name} S{season}")
+        try:
+            with namespace_context(namespace), match_language_context(language):
+                return await asyncio.to_thread(
+                    download_subtitles, show_name, season, tmdb_id=tmdb_id, use_precomputed=False
+                )
+        except Exception as e:  # noqa: BLE001 - the decision falls back to English
+            logger.warning(
+                f"{language} subtitle download failed for {show_name} S{season}: {e}",
+                exc_info=True,
+            )
+            return None
+
     async def download_subtitles(
         self, job_id: int, show_name: str, season: int, tmdb_id: int | None = None
     ) -> None:
@@ -2937,13 +2965,17 @@ class MatchingCoordinator:
 
             # Never raise and manage their own short sessions; awaited outside
             # any session block because they make network calls. The language
-            # reads the namespace's folder, so it is decided second.
+            # reads the namespace's folder, so it is decided second, after the
+            # season was fetched in the show's own language.
             await decide_job_namespace(job_id)
-            await decide_job_match_language(job_id)
             # Bind the STORED namespace, not decide's return value: matching
             # reads the column (_job_namespace), so download and matching agree
             # on the reference folder even when the decision did not persist.
             namespace = await self._job_namespace(job_id)
+            language_result = await self._download_in_show_language(
+                show_name, season, tmdb_id, namespace
+            )
+            language = await decide_job_match_language(job_id)
 
             async with async_session() as session:
                 await session.execute(
@@ -2968,6 +3000,10 @@ class MatchingCoordinator:
                     tmdb_id=tmdb_id,
                     use_precomputed=namespace != "tvdb",
                 )
+            # English references stay for tracks with only English audio, but a
+            # job matched in its own language reports, and is gated on, those.
+            if language != "en" and language_result is not None:
+                result = language_result
 
             episodes = result["episodes"]
             # The precomputed vector cache covered the whole season, so no SRTs

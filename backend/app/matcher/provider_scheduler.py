@@ -23,7 +23,8 @@ Public surface:
   ``SchedulerRun``, not a bare results dict.
 
 Worker contract (any provider):
-- ``client.get_best_subtitle(show, season, episode) -> entry | None``
+- ``client.get_best_subtitle(show, season, episode) -> entry | None``; a job in
+  another language passes ``language=client.language_param(code)``
 - ``client.download_subtitle(entry, save_path) -> Path | None``
 
 This matches ``Addic7edClient`` and ``TVSubtitlesClient``.
@@ -81,6 +82,7 @@ class EpisodeJob:
     srt_target: Path
     pending_providers: deque[str] = field(default_factory=deque)
     result: dict[str, Any] | None = None
+    language: str = "en"  # normalized code; each client says how it names it
 
 
 @dataclass(frozen=True)
@@ -330,7 +332,15 @@ class ProviderWorker(threading.Thread):
         """One provider attempt. Returns the result dict on a usable download,
         or ``None`` for a miss / unusable download (both "reachable"). Raises
         on transport errors so the caller can record a breaker failure."""
-        entry = self.client.get_best_subtitle(job.show_name, job.season, job.episode)
+        if job.language == "en":
+            entry = self.client.get_best_subtitle(job.show_name, job.season, job.episode)
+        else:
+            entry = self.client.get_best_subtitle(
+                job.show_name,
+                job.season,
+                job.episode,
+                language=self.client.language_param(job.language),
+            )
         if entry is None:
             logger.debug(f"{self.provider_name} miss for {job.episode_code}")
             return None
