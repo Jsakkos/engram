@@ -712,6 +712,11 @@ MIN_CONSENSUS_FOR_RATIO = 0.50
 # measurement in docs/superpowers/reviews/2026-05-29-asr-chunk-vote-scale-mismatch.md.
 CHUNK_VOTE_FLOOR = 0.06  # below this top-1 cosine, treat the chunk as noise
 CHUNK_VOTE_MARGIN_RATIO = 1.8  # top-1 must lead the runner-up by this ratio to vote
+# The 1.8 lead was measured on English. Matched in German, correct chunks led by
+# 1.5-1.9x and wrong ones by under ~1.2x, so 1.8 discarded most correct chunks.
+# Safe with vote-mass ranking, where one stray vote cannot outrank a run of them.
+# Only languages with a measurement get an entry; every other one keeps 1.8 (#241).
+MATCH_LANGUAGE_VOTE_MARGIN_RATIOS = {"de": 1.3}
 
 # A scraped reference corpus needs at least this many subtitles with readable text
 # before a match against it means anything. With one usable reference every chunk
@@ -1312,6 +1317,7 @@ class EpisodeMatcher:
         # Rank+margin chunk-vote gate parameters (see select_chunk_vote).
         self.chunk_vote_floor = CHUNK_VOTE_FLOOR
         self.chunk_vote_margin_ratio = CHUNK_VOTE_MARGIN_RATIO
+        self.match_language_vote_margin_ratios = dict(MATCH_LANGUAGE_VOTE_MARGIN_RATIOS)
         # Enable/disable ranked voting (default: True for improved confidence scores)
         self.use_ranked_voting = use_ranked_voting
 
@@ -2237,6 +2243,9 @@ class EpisodeMatcher:
 
             matches_found_count = 0  # Total matched chunks
             matches_rejected_count = 0  # Total rejected chunks
+            margin_ratio = self.match_language_vote_margin_ratios.get(
+                current_match_language(), self.chunk_vote_margin_ratio
+            )
 
             for i, start_time in enumerate(scan_points, 1):
                 # Calculate progress: 10% to 90% allocated for scanning
@@ -2281,7 +2290,7 @@ class EpisodeMatcher:
                     vote = select_chunk_vote(
                         tfidf_results,
                         floor=self.chunk_vote_floor,
-                        ratio=self.chunk_vote_margin_ratio,
+                        ratio=margin_ratio,
                     )
 
                     if vote is not None:

@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
+- German shows matched in German now file themselves when the match is clear, instead of most tracks going to review. A chunk of dialogue only votes for an episode when that episode clearly leads the next best one, and the lead that is clear for English (1.8 times) turned out too strict for German, where right answers led by 1.5 to 1.9 times and wrong ones by under 1.2. German now votes from a 1.3 lead; other languages keep the English rule until they are measured. (#241)
 - **Shows in other languages are matched in their own language.** A show whose original language is not English (German, French, Japanese, ...) used to go to review track by track whenever the disc had no English audio. Engram now downloads the show's subtitles in its original language too, transcribes the original-language audio track and matches the two, so the tracks of a German show on a German disc are matched to their episodes like an English show's; a track it is less sure of goes to review as usual. A disc with an English dub is matched in the original language; a track with only the dub is matched in English; a show with no subtitles in its language is matched in English exactly as before. Japanese, Chinese and Thai matches always go to review for now. The review page names the language a track was matched in. (#241)
 ### Fixed
 
