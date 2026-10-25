@@ -53,6 +53,7 @@ from build_subtitle_cache import (
 from loguru import logger
 from scipy import sparse
 
+from app.core.match_language import is_local_only_corpus_dir
 from app.matcher.episode_identification import (
     EpisodeMatcher,
     SubtitleCache,
@@ -117,9 +118,9 @@ def _discover_shows(data_dir: Path) -> dict[str, dict[int, list[tuple[int, str, 
     ``code`` is the normalized ``S%02dE%02d`` episode code.
     """
     shows: dict[str, dict[int, list[tuple[int, str, Path]]]] = {}
-    # "@tvdb" dirs hold TheTVDB-numbered references; never published.
+    # "@tvdb" and "@<lang>" dirs hold local-only references; never published.
     for show_dir in sorted(
-        p for p in data_dir.iterdir() if p.is_dir() and not p.name.endswith("@tvdb")
+        p for p in data_dir.iterdir() if p.is_dir() and not is_local_only_corpus_dir(p.name)
     ):
         by_season: dict[int, list[tuple[int, str, Path]]] = {}
         for srt in sorted(show_dir.glob("*.srt")):

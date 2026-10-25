@@ -292,6 +292,22 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   MakeMKV's *metadata* language, not the audio language. Codes go through
   `app/core/languages.py` (`fre`/`fra`, `ger`/`deu` both occur). Spec:
   `docs/superpowers/specs/2026-10-20-non-english-content-design.md`.
+- **A show can be matched in its own language (#241, phase 2).** `DiscJob.match_language` is
+  decided once per subtitle download (`decide_job_match_language`, right after
+  `decide_job_namespace`): the show's TMDB `original_language` (stored as `content_language`)
+  when its season has at least `MIN_USABLE_REFERENCES` references in that language, else
+  English. Like the namespace it rides in a ContextVar (`app/core/match_language.py`), bound
+  beside `namespace_context` wherever references are read: `_run_match_single_file` after the
+  subtitle wait, the prewarm, and the coverage, manual-subtitle and LLM routes. **Not** at the
+  download sites while the downloader fetches English, or English subtitles would land in the
+  language's folder. `corpus_dir_suffix()` composes it after the namespace (`<id>@tvdb@de`), so
+  references move to the language's own folder and the English precomputed pack is hidden with
+  no parameter threaded through the matcher; `is_local_only_corpus_dir` (`"@" in name`) keeps
+  every such folder out of the cache scripts. `audio_plan` defaults to the bound language, and
+  `plan_title_audio` is the one per-title ladder the curator and the prewarm share: the show's
+  language (`match` / `untagged` / `unprobed`), else an English stream, else the refusal naming
+  both languages. English jobs are byte-identical: no suffix, key or extra probe. Plan:
+  `docs/superpowers/plans/2026-10-25-match-in-show-language.md`.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
 - **A job's MakeMKV source is a value, not a drive.** `DiscSource`
   (`app/core/disc_source.py`) answers "is this a physical drive?" once, for eject, sentinel

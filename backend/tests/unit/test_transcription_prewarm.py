@@ -842,3 +842,67 @@ class TestPrewarmAudioStream:
         assert model_loader == []
         assert p._matcher.transcribe_calls == []
         assert sem.acquires == 0
+
+
+class LanguageMatcher(FakeMatcher):
+    """Plans streams with the real ``plan_audio``, under the bound match language."""
+
+    def __init__(self, languages):
+        super().__init__()
+        from app.matcher.audio_streams import AudioStream
+
+        self.streams = [
+            AudioStream(i, lang, "", 2, i == 0, False) for i, lang in enumerate(languages)
+        ]
+
+    def audio_plan(self, video_file, language=None):
+        from app.core.match_language import current_match_language
+        from app.matcher.audio_streams import plan_audio
+
+        return plan_audio(self.streams, language or current_match_language())
+
+    def transcript_file_key(self, video_file):
+        key = transcript_store.file_key_for(video_file)
+        stream = self.audio_plan(video_file).stream
+        # Stream 0 is ffmpeg's own pick here, so it keeps the plain key.
+        return f"{key}#a{stream.audio_index}" if stream and stream.audio_index else key
+
+
+@pytest.mark.unit
+class TestPrewarmMatchLanguage:
+    """The prewarm warms the stream and keys the curator will use (#241, phase 2)."""
+
+    @pytest.mark.parametrize(
+        "languages,suffix",
+        [(["en", "de"], "#a1"), (["en"], ""), ([None], "")],
+        ids=["original-language-stream", "english-dub-only", "untagged"],
+    )
+    async def test_german_job_warms_the_ladders_stream(
+        self, tmp_path, config_flags, prewarmer, model_loader, duration_stub, languages, suffix
+    ):
+        p, _ = prewarmer
+        p._matcher = LanguageMatcher(languages)
+        job_id, f = await _seed_review_job(tmp_path)
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            job.match_language = "de"
+            await session.commit()
+
+        await _run_to_completion(p, job_id)
+
+        assert set(p._matcher.l2_file_keys) == {transcript_store.file_key_for(f) + suffix}
+
+    async def test_german_job_skips_a_file_with_neither_language(
+        self, tmp_path, config_flags, prewarmer, model_loader, duration_stub
+    ):
+        p, _ = prewarmer
+        p._matcher = LanguageMatcher(["ja"])
+        job_id, _ = await _seed_review_job(tmp_path)
+        async with _unit_session_factory() as session:
+            job = await session.get(DiscJob, job_id)
+            job.match_language = "de"
+            await session.commit()
+
+        await _run_to_completion(p, job_id)
+
+        assert p._matcher.transcribe_calls == []

@@ -211,3 +211,67 @@ def test_auto_index_matches_real_ffmpeg_choice(tmp_path, dispositions):
 
     plan = plan_audio(probe_audio_streams(source), "en")
     assert plan.auto_index == int(chosen.group(1))
+
+
+class _Matcher:
+    """``EpisodeMatcher.audio_plan`` over fixed streams, for ``plan_title_audio``."""
+
+    def __init__(self, streams):
+        self.streams = streams
+
+    def audio_plan(self, video_file, language=None):
+        from app.core.match_language import current_match_language
+
+        return plan_audio(self.streams, language or current_match_language())
+
+
+@pytest.mark.unit
+class TestPlanTitleAudio:
+    """The per-title ladder for a show matched in its own language (#241, phase 2)."""
+
+    @pytest.mark.parametrize(
+        "streams,language,verdict,index",
+        [
+            ([s(0, "en", default=True), s(1, "de")], "de", "match", 1),
+            ([s(0, None)], "de", "untagged", 0),
+            ([s(0, "en"), s(1, "de", commentary=True)], "en", "match", 0),
+            ([s(0, "ja"), s(1, "en")], "en", "match", 1),
+        ],
+        ids=["show-language", "untagged", "commentary-only-falls-back", "english-dub"],
+    )
+    def test_german_job(self, streams, language, verdict, index):
+        from app.core.match_language import match_language_context
+
+        with match_language_context("de"):
+            lang, plan = audio_streams.plan_title_audio(_Matcher(streams), "f.mkv")
+        assert (lang, plan.verdict, plan.stream.audio_index) == (language, verdict, index)
+
+    @pytest.mark.parametrize(
+        "streams,verdict",
+        [([s(0, "ja")], "foreign"), ([], "no_audio")],
+    )
+    def test_german_job_refused_keeps_its_language(self, streams, verdict):
+        from app.core.match_language import match_language_context
+
+        with match_language_context("de"):
+            lang, plan = audio_streams.plan_title_audio(_Matcher(streams), "f.mkv")
+        assert (lang, plan.verdict) == ("de", verdict)
+
+    def test_unprobed_tries_the_show_language(self):
+        from app.core.match_language import match_language_context
+
+        with match_language_context("de"):
+            lang, plan = audio_streams.plan_title_audio(_Matcher(None), "f.mkv")
+        assert (lang, plan.verdict) == ("de", "unprobed")
+
+    def test_english_job_is_one_plain_call(self):
+        calls = []
+
+        class Recording(_Matcher):
+            def audio_plan(self, video_file, *args, **kwargs):
+                calls.append((video_file, args, kwargs))
+                return super().audio_plan(video_file, *args, **kwargs)
+
+        lang, plan = audio_streams.plan_title_audio(Recording([s(0, "ja")]), "f.mkv")
+        assert (lang, plan.verdict) == ("en", "foreign")
+        assert calls == [("f.mkv", (), {})]

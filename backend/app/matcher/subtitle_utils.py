@@ -22,8 +22,12 @@ REFERENCES_UNREADABLE_ERROR_CODE = "references_unreadable"
 AUDIO_LANGUAGE_ERROR_CODE = "audio_language_unsupported"
 
 
-def language_refusal_details(plan) -> dict:
-    """match_details for a track the curator refused for its audio (an ``AudioPlan``)."""
+def language_refusal_details(plan, match_language: str = "en") -> dict:
+    """match_details for a track the curator refused for its audio (an ``AudioPlan``).
+
+    ``match_language`` is the job's: a show matched in German falls back to an
+    English stream before refusing, so the note names both.
+    """
     if plan.verdict == "no_audio":
         message = (
             "This track has no audio, so it could not be matched by its dialogue. "
@@ -35,17 +39,26 @@ def language_refusal_details(plan) -> dict:
         # and English, and Engram matches by English dialogue".
         spoken = plan.usable_languages or plan.languages
         names = list(dict.fromkeys(language_name(c) for c in spoken if c))
+        if match_language == "en":
+            matched_by = "Engram matches episodes by English dialogue"
+        else:
+            matched_by = (
+                f"Engram matches this show by {language_name(match_language)} or English dialogue"
+            )
         message = (
             f"This track's only audio is {' and '.join(names) or 'in another language'}, "
-            "and Engram matches episodes by English dialogue, so it could not be matched "
-            "automatically. Assign the episode by hand."
+            f"and {matched_by}, so it could not be matched automatically. "
+            "Assign the episode by hand."
         )
-    return {
+    details = {
         "error": AUDIO_LANGUAGE_ERROR_CODE,
         "audio_languages": list(plan.languages),
         "usable_audio_languages": list(plan.usable_languages),
         "message": message,
     }
+    if match_language != "en":
+        details["match_language"] = match_language
+    return details
 
 
 def _looks_like_srt(header: str) -> bool:

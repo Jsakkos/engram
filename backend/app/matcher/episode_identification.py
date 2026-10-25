@@ -18,6 +18,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 from app.core.episode_codes import episode_parts
+from app.core.match_language import ENGLISH, current_match_language
 from app.matcher import transcript_store
 from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
 from app.matcher.audio_streams import (
@@ -253,11 +254,12 @@ def load_precomputed_manifest(cache_dir) -> dict | None:
     "no cache" so callers fall back to subtitle scraping. Shared by the matcher's
     load path and the download-skip check so both agree on what counts as valid.
     """
-    # The published pack is TMDB-numbered; a TheTVDB-numbered job must never
-    # read it (spec 2026-10-08). Every precomputed read goes through here.
+    # The published pack is TMDB-numbered English; a TheTVDB-numbered job
+    # (spec 2026-10-08) or one matched in another language (#241) must never
+    # read it. Every precomputed read goes through here.
     from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
 
-    if current_namespace() == NAMESPACE_TVDB:
+    if current_namespace() == NAMESPACE_TVDB or current_match_language() != ENGLISH:
         return None
 
     from app.matcher.vectorizer_config import (
@@ -1298,14 +1300,24 @@ class EpisodeMatcher:
         """Canonical source-path form shared by chunk hash + in-memory cache key."""
         return str(Path(mkv_file).resolve())
 
-    def audio_plan(self, video_file, language: str = "en") -> AudioPlan:
+    def audio_plan(self, video_file, language: str | None = None) -> AudioPlan:
         """Which audio stream of ``video_file`` to transcribe for ``language`` (issue #241).
 
         Lives on the matcher so extraction, every transcript cache and the prewarm
         (which drives this same class) can never disagree about the stream. The
-        ffprobe answer is memoized per file in ``audio_streams``.
+        ffprobe answer is memoized per file in ``audio_streams``. ``None`` means
+        the bound match language (``app/core/match_language.py``).
         """
-        return plan_audio(probe_audio_streams(Path(video_file)), language)
+        return plan_audio(
+            probe_audio_streams(Path(video_file)), language or current_match_language()
+        )
+
+    def _provenance(self, video_file) -> dict:
+        """The match language and audio stream a result was produced from."""
+        return {
+            "match_language": current_match_language(),
+            "audio_stream": self._audio_stream_index(video_file),
+        }
 
     def _audio_stream_index(self, video_file) -> int | None:
         """The planned audio-relative stream index, or None to let ffmpeg pick."""
@@ -1553,10 +1565,11 @@ class EpisodeMatcher:
         "no cache" -- the caller falls back to subtitle scraping.
         """
         # Guard before the instance cache: the singleton matcher caches the
-        # TMDB-numbered manifest across jobs, and a TVDB job must not see it.
+        # TMDB-numbered English manifest across jobs, and a TVDB job or one
+        # matched in another language must not see it.
         from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
 
-        if current_namespace() == NAMESPACE_TVDB:
+        if current_namespace() == NAMESPACE_TVDB or current_match_language() != ENGLISH:
             return None
 
         if self._precomputed_manifest is not None:
@@ -2386,6 +2399,7 @@ class EpisodeMatcher:
                 # against a 38-entry segment roster, and a code from the former
                 # must not be read as a coordinate in the latter.
                 "reference_count": total,
+                **self._provenance(video_file),
             }
             stamp_numbering(match_stats, numbering)
 
@@ -2511,6 +2525,7 @@ class EpisodeMatcher:
                 match["match_details"] = {
                     "method": "full_transcription",
                     "score": match["confidence"],
+                    **self._provenance(video_file),
                 }
                 return match
 

@@ -253,6 +253,11 @@ usable audio stream is tagged with a non-English language.
 7. Language suffix `@<lang>` (the contributor used `.<lang>`) so one predicate covers `@tvdb` and
    language dirs.
 
+8. (Phase 2, 2026-10-25) The content language is read at the language decision, beside
+   `decide_job_namespace`, not at identification: a job's show is set in many places, and every one
+   of them passes the subtitle download. Phase 2 ships as three PRs in the order that keeps `main`
+   safe at every merge (plan `docs/superpowers/plans/2026-10-25-match-in-show-language.md`).
+
 ## Maintainer decisions (2026-10-20)
 
 1. Phase 2, a foreign show whose disc has both the original audio and an English dub: match in the
