@@ -1,0 +1,1876 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-10-11-discord-support-bot-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Discord support bot: design - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#discord-support-bot-design" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Discord support bot: design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-turn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A turn
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safety
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-2a-diagnostics-bundles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2a: diagnostics bundles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-2b-github-discord-follow-through" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2b: GitHub → Discord follow-through
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-3-feedback-digest-escalation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: feedback, digest, escalation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#live-test-fixes-2026-10-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live-test fixes (2026-10-15)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="discord-support-bot-design">Discord support bot: design</h1>
+<p><strong>Status:</strong> Phase 1 implemented in <code>bot/</code>. <strong>Date:</strong> 2026-10-11.</p>
+<h2 id="goal">Goal</h2>
+<p>Take routine work off the maintainer on the Engram Discord:
+- answer how-to and setup questions from the docs;
+- troubleshoot before something gets called a bug;
+- turn real bugs, feature requests and doc gaps into well-formed GitHub issues, with a
+  link back to the conversation.</p>
+<p>The bot uses Claude Haiku 5.5 through the Anthropic API.</p>
+<h2 id="decisions">Decisions</h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Decision</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hosting</td>
+<td>Docker on the maintainer's server (<code>deploy/discord-bot/docker-compose.yml</code>). A long-lived gateway connection rules out serverless or Actions.</td>
+</tr>
+<tr>
+<td>Repo</td>
+<td>Monorepo <code>bot/</code>, a separate <code>uv</code> project, so the docs it answers from and the code they describe move together. It never imports <code>backend/</code>.</td>
+</tr>
+<tr>
+<td>Who files</td>
+<td>Anyone, but only by pressing <strong>File issue</strong> on a draft they've seen. Discord accounts younger than 7 days, and users past 3 filed issues a day, can chat but not file. Maintainers are exempt.</td>
+</tr>
+<tr>
+<td>Home</td>
+<td>A help <strong>forum</strong> channel: one post is one conversation and at most one issue. @mention in a text channel opens a thread.</td>
+</tr>
+<tr>
+<td>Labels</td>
+<td>Applied directly, but only from an allowlist intersected with the repo's real labels, plus <code>from-discord</code> and <code>needs-triage</code> always.</td>
+</tr>
+<tr>
+<td>Diagnostics/logs</td>
+<td>May go into public issues, in a collapsed <code>&lt;details&gt;</code> block. The prompt makes the bot warn that issues are public. Bundles are parsed by the bot (phase 2, below).</td>
+</tr>
+<tr>
+<td>Transcripts</td>
+<td>Not stored. Discord already holds them and the bot rebuilds history from the thread each turn. The DB keeps only thread ownership, drafts and usage.</td>
+</tr>
+<tr>
+<td>DMs</td>
+<td>Not answered. <code>/ask</code> gives a private answer without leaving the server.</td>
+</tr>
+<tr>
+<td>Persona</td>
+<td>Says it is an AI, names the maintainer as the human who reads issues, promises no timelines.</td>
+</tr>
+<tr>
+<td>Duplicates</td>
+<td>The model searches first. A match turns the draft into <strong>Add to issue</strong>, which posts a comment on the existing issue after the user confirms.</td>
+</tr>
+<tr>
+<td>Budget</td>
+<td><code>BOT_DAILY_BUDGET_USD</code> (default $2) over a rolling 24 hours, estimated from <code>usage</code>. Sonnet escalation deferred until real usage shows it's needed.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="architecture">Architecture</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Discord ──▶ discord_app.EngramBot ──▶ agent.Agent ──▶ Anthropic Messages API (Haiku 5.5)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>              │  thread routing,           │  tools: search_issues, get_issue (read-only)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>              │  debounce, limits          │         draft_issue (proposal only)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>              │                            ▼
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>              │                       github.GitHub ◀── GitHub App installation token
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>              ├─ store.Store (SQLite: threads, drafts, usage)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>              └─ knowledge.KnowledgeBase (docs from main, refreshed every 6h)
+</code></pre></div>
+<h3 id="a-turn">A turn</h3>
+<ol>
+<li>A message arrives in a thread the bot owns, from the reporter or from someone who
+   mentions the bot. A 2-second debounce folds multi-message thoughts into one reply.</li>
+<li>Budget, rate and filing-eligibility checks run.</li>
+<li>History is rebuilt from the Discord thread as text only:</li>
+<li>user messages are prefixed with the speaker's name;</li>
+<li>text attachments are inlined;</li>
+<li>past drafts appear as a one-line note.</li>
+</ol>
+<p>No thinking blocks are ever replayed, so the request is append-only within a turn and
+   immune to edits or deletions in the thread.
+4. Request shape:
+   - <code>system</code> = standing instructions, then the docs block with <code>cache_control</code> (1-hour
+     TTL);
+   - <code>messages</code> = history, plus a trailing mid-conversation <code>system</code> message for per-turn
+     facts (reporter name, <code>/bug</code> vs <code>/feature</code>, whether they may file). That keeps those
+     facts out of the cached prefix.
+   - <code>output_config.effort</code> comes from config (default <code>medium</code>); thinking is left
+     adaptive.
+   - Temperature and other sampling parameters are not sent; Haiku 5.5 rejects them.
+5. Tool loop, at most 6 calls:
+   - <code>search_issues</code> and <code>get_issue</code> are read-only;
+   - a valid <code>draft_issue</code> ends the turn without another round trip;
+   - an invalid one returns an error <code>tool_result</code> the model can fix;
+   - <code>refusal</code> and API errors degrade to a canned reply.
+6. Reply text is chunked at 2000 characters. A draft is posted as an embed with
+   persistent buttons. Their custom ids carry the draft id, so they work across
+   restarts. A new draft supersedes the thread's pending one.</p>
+<h3 id="filing">Filing</h3>
+<p>Filing happens in bot code, on the button press, never as a model action:</p>
+<ol>
+<li>Check that the presser is the reporter or a maintainer.</li>
+<li>Re-check that the reporter may file.</li>
+<li><code>claim_draft</code> atomically moves the draft from <code>pending</code> to <code>filing</code>, so a double click
+   files once.</li>
+<li>Render the body from the draft's fields (<code>intake.render_body</code>), sanitize it, create
+   the issue or comment, record the number, and close the buttons.</li>
+<li>If GitHub fails, the draft returns to <code>pending</code>.</li>
+</ol>
+<h3 id="safety">Safety</h3>
+<ul>
+<li><strong>Prompt injection:</strong> user text can at most shape a draft that the user then sees and
+  confirms. The model has no write tool.</li>
+<li><strong>Mentions and Discord:</strong> <code>allowed_mentions</code> is none client-wide. The only exception is
+  the <code>/bug</code> starter post, which pings its own author.</li>
+<li><strong>Mentions and GitHub:</strong> every <code>@</code> handle in published text gets a zero-width space,
+  including inside code fences. Repo workflows match on raw body text
+  (<code>contains(..., '@claude')</code>), and <code>claude.yml</code> additionally requires
+  <code>sender == Jsakkos</code>.</li>
+<li><strong>HTML and limits:</strong> HTML is escaped, every field is length-capped, and logs go into a
+  fence longer than any backtick run they contain.</li>
+<li><strong>Least privilege:</strong> the GitHub App has Issues read/write on one repository and nothing
+  else.</li>
+</ul>
+<h3 id="cost">Cost</h3>
+<p>The knowledge block is about 145K characters, roughly 40–50K tokens with the Haiku 5.5
+tokenizer. That is under the 100K-token threshold where Haiku's higher rate card starts.
+<code>knowledge.WARN_CHARS</code> logs a warning before the docs drift past it. The block only
+changes when <code>main</code> or the latest release changes, so most requests read it from cache.</p>
+<h2 id="phases">Phases</h2>
+<ol>
+<li><strong>Done (this change):</strong></li>
+<li>Q&amp;A in the forum, mentions and <code>/ask</code>;</li>
+<li><code>/bug</code> and <code>/feature</code> intake;</li>
+<li>search, draft, confirm, file or comment;</li>
+<li>labels;</li>
+<li>per-user and global limits;</li>
+<li>the maintainer step-back and <code>/quiet</code>;</li>
+<li>Docker deploy.</li>
+<li><strong>Phase 2 (done):</strong> diagnostics <code>.zip</code> parsing (2a) and GitHub → Discord
+   follow-through (2b).</li>
+<li><strong>Phase 3 (done):</strong> 👍/👎 feedback, a weekly digest, and optional escalation to a
+   stronger model (3, below).</li>
+</ol>
+<h2 id="phase-2a-diagnostics-bundles">Phase 2a: diagnostics bundles</h2>
+<p>The per-job bundle from <code>GET /api/diagnostics/report/{job_id}/bundle</code> contains:
+- <code>report.md</code>;
+- <code>job-detail.json</code>;
+- <code>job-logs.txt</code>;
+- <code>scan.log</code> / <code>rip.log</code>, when MakeMKV wrote them.</p>
+<p>When a user attaches one, <code>diagnostics.parse</code> reads only those five names, and produces two
+things.</p>
+<p><strong>For the model</strong> (<code>summary_for_model</code>), under about 6K characters and placed where the
+attachment was in the history:
+- Engram, OS and MakeMKV versions, parsed from <code>report.md</code>;
+- the Job Context fields;
+- a digest of <code>job-detail.json</code>: review reason, error, classification, TMDB match, and
+  per-state track counts;
+- the last 25 ERROR/WARNING/traceback lines from the job log;
+- MakeMKV log lines that mention errors or failures.</p>
+<p>So the model stops asking for what the bundle already answers, and fills the draft's
+environment fields itself.</p>
+<p><strong>For the issue</strong> (<code>issue_section</code>): a collapsed <code>&lt;details&gt;</code> block with <code>report.md</code> (capped
+at 8K), the error/warning log excerpt (10K) and the MakeMKV problems (4K).
+- The bot attaches it to the draft from the reporter's <em>latest</em> bundle in the thread.
+  Bundles other people post are read for the model but never published under the
+  reporter's issue.
+- The model only controls <code>include_diagnostics</code>, so the reporter can say "leave the logs
+  out"; it cannot rewrite the evidence.</p>
+<p><strong>Threat model.</strong> The archive comes from the internet.
+- The zip is capped at 8 MB and at 64 members.
+- Unknown names, including path-traversal names, are ignored.
+- Each member read stops at 2 MB decompressed, whatever the header claims, which stops zip
+  bombs.
+- Encrypted and unsupported members are reported as "not a bundle".
+- Parsing runs in a worker thread.</p>
+<p><strong>Redaction.</strong> Redaction moved into <code>sanitize.redact</code> and now applies to <em>everything</em>
+published to GitHub, not just bundles. It covers:
+- Discord webhooks;
+- MakeMKV <code>T-</code> keys;
+- JWTs;
+- <code>sk-ant-</code> and <code>gh*_</code> tokens;
+- <code>key=</code>, <code>token=</code> and <code>password=</code> values;
+- <code>C:\Users\&lt;name&gt;</code>, <code>/home/&lt;name&gt;</code> and <code>/Users/&lt;name&gt;</code> paths.</p>
+<p>The backend's own pass only knows JWTs, <code>key=</code> / <code>token=</code> values and the server's own home
+directory.</p>
+<p>Raw text attachments (an <code>engram.log</code>, say) are redacted before the model sees them, so the
+model can't copy a secret into the draft's logs field.</p>
+<p><strong>Body size.</strong> GitHub rejects issue bodies over 65,536 characters. <code>render_body</code> keeps the
+body under 60K by first replacing the model's pasted logs, then the diagnostics block, with
+a pointer to the Discord thread.</p>
+<p><strong>Format coupling.</strong> The parser keys on <code>report.md</code>'s <code>**Engram version**:</code> lines and the
+<code>- **ID**:</code> entries under <code>### Job Context</code>, both from <code>_build_markdown_summary</code>. If those
+change, the parser degrades: it still reads the logs and detail, but loses the version
+fields. Check <code>bot/tests/test_diagnostics.py</code>, which mirrors the format.</p>
+<h2 id="phase-2b-github-discord-follow-through">Phase 2b: GitHub → Discord follow-through</h2>
+<p><strong>Polling, not webhooks.</strong> The bot runs on a home server with no public URL. Each
+<code>BOT_GITHUB_POLL_MINUTES</code> (default 10) it makes three requests, whatever the number of
+followed issues:
+- issues updated since the cursor (<code>state=all&amp;since=</code>);
+- repo comments updated since the cursor (<code>/issues/comments?since=</code>);
+- <code>releases/latest</code>.</p>
+<p><strong>State.</strong>
+- <code>follows</code> maps each issue to each thread that reported it: one row per (issue, thread),
+  so duplicates added as comments are followed too. A row is written when the issue or
+  comment is filed, with the issue's state at that moment.
+- <code>meta.poll_since</code> is the cursor. Each window overlaps the last by 2 minutes, so a clock
+  difference can't skip an update. Repeats are harmless: notices fire only on a state
+  change, and <code>relays</code> is unique per (comment, thread).
+- On the very first poll the bot records the cursor and the current release and posts
+  nothing, so it never replays the repo's history.
+- A GitHub error leaves the cursor in place, so the next poll covers the window again.</p>
+<p><strong>What gets posted.</strong>
+- <strong>State changes:</strong> closed as completed, not planned or duplicate, and reopened.
+- <strong>Maintainer comments:</strong> only from <code>OWNER</code>, <code>MEMBER</code> or <code>COLLABORATOR</code> authors, never from
+  bots, never from the bot's own comments (<code>own_comments</code>, which matters with token auth,
+  where the bot posts as the maintainer), and only comments made after the follow began.
+  - The comment is quoted (up to 1,500 characters) with a persistent <strong>Reply on GitHub</strong>
+    button (<code>engram:reply:&lt;relay id&gt;</code>).
+  - Only the relay's reporter or a maintainer can open its form.
+  - The reply is sanitized, credited to the reporter's Discord name and the thread, and
+    posted as a comment, which is recorded as the bot's own.
+  - Posting a reply counts toward the per-user rate limit.
+  - The model is told it can't post on GitHub, and to help the user word an answer and
+    point them to the button.
+- <strong>Releases:</strong> when <code>releases/latest</code> changes, each follow closed as completed <em>before</em>
+  that release was published gets one "vX.Y.Z is out" notice. One closed afterwards waits
+  for the next release.</p>
+<p><strong>Delivery.</strong> A failed Discord post returns <code>None</code> and is retried next poll: the follow's
+state isn't advanced, or the relay row is deleted. A thread that is gone or forbidden
+returns <code>0</code> and is dropped, so a deleted thread doesn't retry forever.</p>
+<h2 id="phase-3-feedback-digest-escalation">Phase 3: feedback, digest, escalation</h2>
+<p><strong>Feedback.</strong>
+- Every bot reply is recorded in <code>bot_messages</code> with the model that wrote it.
+- Raw reaction events (no member cache needed) turn 👍 / 👎 on those messages into
+  <code>feedback</code> rows, one per user per message. Removing the reaction removes the row.
+- The bot ignores its own reactions.</p>
+<p><strong>Digest.</strong> Posted to the maintainer log channel once a week, at <code>BOT_DIGEST_WEEKDAY</code> /
+<code>BOT_DIGEST_HOUR_UTC</code>, with at most one post per 6 days; the time is kept in
+<code>meta.digest_at</code>. It lists:
+- threads, answers and spend;
+- drafts filed or cancelled, and the filed issues;
+- relayed comments;
+- feedback counts;
+- jump links to answers with a net-negative score.</p>
+<p>Downvoted answers are the docs-gap signal: an answer marked unhelpful usually means the
+docs didn't cover the question.</p>
+<p><strong>Escalation.</strong> <code>BOT_ESCALATION_MODEL</code> is empty by default, so it stays off. When set, a
+turn uses that model once the thread has <code>BOT_ESCALATION_AFTER_TURNS</code> user messages, or
+once any answer in the thread has a net 👎.
+- History is text only (see "A turn"), so switching models mid-thread needs no
+  thinking-block handling.
+- Escalated calls to Claude Sonnet 5.5 or Claude Opus 5.5 go through
+  <code>client.beta.messages</code> with <code>fallbacks: "default"</code> (beta
+  <code>server-side-fallback-2026-07-01</code>), so a safety-classifier refusal is retried on a
+  fallback model server-side. Claude Haiku 5.5 has no server-side fallback, and its calls
+  stay on the plain endpoint.
+- Spend is priced per model (<code>agent.KNOWN_PRICES</code>) and counts against the same daily
+  budget.</p>
+<h2 id="live-test-fixes-2026-10-15">Live-test fixes (2026-10-15)</h2>
+<p>From the first deployment against a test server and a private scratch repo:</p>
+<ul>
+<li><strong>Reopen notices repeated.</strong> GitHub reports a reopened issue as <code>("open", "reopened")</code>,
+  but a follow stores no reason while open. The poll compared the raw pair to the stored
+  one, so every later poll that saw the issue posted "was reopened" again. It now compares
+  the normalized pair it stores.</li>
+<li><strong>LAN details in published text.</strong> Real bundles carry matcher paths such as
+  <code>\\192.168.x.x\NAS Downloads\Show\Disc 5\t07.mkv</code>. <code>sanitize.redact</code> now rewrites
+  network shares to <code>\\&lt;host&gt;\&lt;share&gt;\...</code> (keeping the path below the share, which is the
+  useful part), handles <code>//host/share/</code> and <code>smb://</code> forms and repr-doubled separators, and
+  replaces private-range IPv4 addresses (RFC 1918 plus 100.64/10) with <code>&lt;lan-ip&gt;</code>. A UNC
+  prefix must start a token, so a repr'd Windows path is not mistaken for a share.</li>
+<li><strong>Docs repo split from the issue repo.</strong> <code>BOT_DOCS_REPO</code> (default <code>Jsakkos/engram</code>)
+  supplies docs, the changelog and releases; <code>GITHUB_REPO</code> is only where issues go.
+  Release notices use <code>BOT_DOCS_REPO</code>, because "vX is out" means the app shipped the fix.
+  The docs client shares the issue client's credentials, so a GitHub App installed only on
+  a scratch repo still reads Engram's public repo.</li>
+<li><strong>Bad credentials fail fast.</strong> Startup reads the repo and its issues once; a 401, 403 or
+  404 (or an unusable App key) logs one error naming the variable and the permissions
+  needed, then exits non-zero. Network errors only warn.</li>
+<li><strong>Release errors no longer hold the cursor.</strong> The release check runs after the cursor
+  advances, in its own <code>try</code>, so a token that can't read releases (a private repo without
+  Contents: read) doesn't stall issue and comment notices.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

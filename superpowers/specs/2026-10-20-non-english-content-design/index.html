@@ -1,0 +1,1877 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/specs/2026-10-20-non-english-content-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Non-English content: detect, route, then match in the show's own language - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#non-english-content-detect-route-then-match-in-the-shows-own-language" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Non-English content: detect, route, then match in the show's own language
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-evidence-says-recon-2026-10-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the evidence says (recon, 2026-10-20)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anti-goals-would-make-this-a-failure-even-if-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-goals (would make this a failure even if it "works")
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#language-codes-one-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Language codes: one module
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scan-time-capture-phase-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scan-time capture (phase 1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#match-time-audio-plan-phase-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Match-time audio plan (phase 1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#routing-phase-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routing (phase 1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#native-language-matching-phase-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native-language matching (phase 2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phasing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phasing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calls-made-by-the-designer-check-these" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Calls made by the designer (check these)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintainer-decisions-2026-10-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintainer decisions (2026-10-20)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="non-english-content-detect-route-then-match-in-the-shows-own-language">Non-English content: detect, route, then match in the show's own language</h1>
+<ul>
+<li>Issue: Jsakkos/engram#241</li>
+<li>Prior art: @wintheriscomming's patched 0.35.1 (issue comment), German <em>Babylon Berlin</em> S1 to S3
+  matched at 0.72 to 0.82 confidence in German</li>
+<li>Related: PR #798 (#793, a track ripped with no audio), PR #693 (published subtitle cache stays
+  English-only)</li>
+<li>Status: design, awaiting maintainer approval</li>
+</ul>
+<h2 id="why">Why</h2>
+<p>Engram matches TV episodes by transcribing 30-second audio chunks with Whisper (forced to English)
+and comparing the text with reference subtitles (English). When a track's dialogue is not English,
+Whisper produces nonsense, the TF-IDF vote lands on an arbitrary episode, and the job either files a
+wrong episode at low confidence or parks in review with a "best guess" that is noise. The user sees
+no reason. The time spent transcribing is wasted.</p>
+<p>The issue asks for detection plus routing to review. The contributor went further: match in the
+show's own language, which turns a manual chore into an automatic match for the shows where
+reference subtitles in that language exist. Both are worth building; the first is the floor the
+second falls back to, so it ships first.</p>
+<h2 id="what-the-evidence-says-recon-2026-10-20">What the evidence says (recon, 2026-10-20)</h2>
+<p>Measured against the 40+ real MakeMKV scan logs in <code>~/.engram/logs/makemkv/</code> (read-only):</p>
+<ol>
+<li><strong>TINFO attr 28 is not the audio language.</strong> It is MakeMKV's <em>metadata</em> language
+   (<code>ap_iaMetadataLanguageCode</code>). <em>Killers of the Flower Moon</em> disc 2, title 2 reports
+   <code>TINFO:2,28,0,"eng"</code> while its only audio stream is Osage (<code>SINFO:2,1,3,0,"osa"</code>). DVDs leave it
+   empty. The issue's <code>primary_language</code> from attr 28 would be wrong exactly when it matters, so this
+   design does not store it.</li>
+<li><strong>The audio language is SINFO attr 3</strong> (<code>ap_iaLangCode</code>) on streams whose attr 1 is
+   <code>6202,"Audio"</code> (<code>6203,"Subtitles"</code> for subtitles). Real lines have five fields:
+   <code>SINFO:&lt;title&gt;,&lt;stream&gt;,&lt;attr&gt;,&lt;code&gt;,"&lt;value&gt;"</code>, not the four the issue lists.</li>
+<li><strong>Codes are mixed ISO 639-2/B and /T</strong> on the same machine: <code>fre</code> and <code>fra</code>, <code>ger</code> and <code>deu</code>.
+   DVD audio streams often have <strong>no attr 3 at all</strong> (not <code>und</code>, simply absent).</li>
+<li><strong>Commentary flags are not set in practice.</strong> SINFO attr 22 (stream flags; bits 1 and 2 are
+   director's comments, bit 4 is visually impaired) was clear on every audio stream in every log.
+   Commentary detection cannot rely on it; it needs the track name and the MKV disposition as well.</li>
+<li><strong>The disc's streams are not the file's streams.</strong> MakeMKV's own language preferences decide
+   which audio tracks it writes. #793 is a 47-minute extra whose only audio was Japanese; MakeMKV
+   wrote the title without audio. The ripped file, not the scan, is the authority on what can be
+   transcribed. Imports (mkv/mp4/m4v/ts/m2ts) have no scan at all.</li>
+<li><strong>Engram cannot match from embedded subtitle tracks.</strong> Disc subtitles are PGS/VobSub bitmaps and
+   nothing in the pipeline reads them. The issue's row "non-English audio, English subtitle tracks
+   present: proceed" does not hold: an English subtitle <em>track</em> gives the ASR matcher nothing.</li>
+<li><strong>ffmpeg picks the audio stream today</strong> (<code>extract_audio_chunk</code> passes no <code>-map</code>). Its automatic
+   choice favours the stream flagged default, then the one with most channels. MakeMKV flags the
+   first track in the user's preferred language as default, which is why English discs work. A dub
+   disc where the default flag lands on the original-language track would be transcribed in the
+   wrong language even though English audio is present.</li>
+<li>Whisper is hard-coded <code>language="en"</code> in <code>asr_models.py</code>; OpenSubtitles, Addic7ed and
+   tvsubtitles are called with English; the TF-IDF vectorizer uses a word analyzer, which is fine
+   for German but treats an unspaced Japanese sentence as one token.</li>
+<li>Nothing reads TMDB <code>original_language</code> today.</li>
+</ol>
+<h2 id="goals">Goals</h2>
+<ul>
+<li>A track whose dialogue cannot be matched is never silently mis-matched: it parks in review with a
+  plain reason that names the language.</li>
+<li>A track that has a usable English audio stream is transcribed from that stream, whatever ffmpeg
+  would have picked.</li>
+<li>(Phase 2) A non-English show whose reference subtitles exist in its own language matches
+  automatically in that language.</li>
+<li>Every decision is visible after the fact: the review page, <code>match_details</code>, the job-tagged log
+  and the diagnostics bundle say which audio stream was used, in which language, and why.</li>
+</ul>
+<h2 id="non-goals">Non-goals</h2>
+<ul>
+<li>Movies. Movie identification does not transcribe dialogue; nothing changes there.</li>
+<li>OCR of PGS/VobSub subtitle tracks.</li>
+<li>Changing MakeMKV's track selection (<code>settings.conf</code>). Engram writes <code>app_Key</code> there and nothing
+  else; rewriting the user's language preferences is out of bounds. Engram explains instead (see
+  "Disc had it, file does not").</li>
+<li>Publishing non-English references to the shared subtitle cache. PR #693 keeps the published pack
+  English-only; local non-English references never leave the machine.</li>
+<li>The contributor's two separable matcher changes (summed-cosine chunk-vote ranking; OpenSubtitles
+  candidate ordering by trusted uploader and download count). Both are real improvements with their
+  own blast radius on English matching and get their own issues.</li>
+</ul>
+<h2 id="anti-goals-would-make-this-a-failure-even-if-it-works">Anti-goals (would make this a failure even if it "works")</h2>
+<ul>
+<li>Any English disc that matches today matching worse, or less often. Every new check that cannot
+  decide (ffprobe missing or failing, untagged streams, unknown codes) falls back to today's
+  behaviour.</li>
+<li>A foreign-language bonus feature stalling an English disc. The duration pre-filter already files
+  non-episode-length titles as extras before matching; the language gate sits after it, so it only
+  ever sees episode-length titles.</li>
+<li>A second, drifting language table. One module owns codes and names.</li>
+</ul>
+<h2 id="design">Design</h2>
+<h3 id="language-codes-one-module">Language codes: one module</h3>
+<p><code>app/core/languages.py</code> (new):</p>
+<ul>
+<li><code>normalize_language(code) -&gt; str | None</code>. Lower-cases, maps ISO 639-2/B and /T and 639-1 to
+  639-1 for the languages a table covers (about 40: the major European, CJK, Indic, Arabic, Hebrew,
+  Turkish, Thai, Nordic and Slavic languages). An unmapped three-letter code is kept as-is (<code>osa</code>
+  stays <code>osa</code>). Empty, <code>und</code>, <code>mis</code>, <code>mul</code>, <code>zxx</code> and the private-use range <code>qaa</code>..<code>qtz</code> return
+  <code>None</code> ("unknown").</li>
+<li><code>language_name(code) -&gt; str</code> for messages ("Japanese"), falling back to the upper-cased code.</li>
+<li><code>is_english(code)</code>.</li>
+</ul>
+<p>No new dependency (<code>langcodes</code>/<code>pycountry</code> would add a frozen-build hidden-import risk for a small
+table).</p>
+<h3 id="scan-time-capture-phase-1">Scan-time capture (phase 1)</h3>
+<p><code>Extractor._parse_disc_info</code> parses SINFO lines alongside TINFO. Per title it collects, in stream
+order, the normalized language of each audio stream and each subtitle stream (<code>None</code> for an
+untagged stream, kept as a slot so counts stay honest). <code>analyst.TitleInfo</code> gains
+<code>audio_languages: list[str | None]</code> and <code>subtitle_languages: list[str | None]</code>.</p>
+<p><code>DiscTitle</code> gains two nullable JSON-text columns, <code>audio_languages</code> and <code>subtitle_languages</code>.
+<code>None</code> means "not known" (legacy rows, imports, a scan that had no SINFO). The identification
+coordinator copies them when it creates rows. They need an Alembic revision <strong>and</strong> nothing more in
+<code>database.py</code>, because <code>_add_missing_columns()</code> adds nullable model columns for frozen builds.
+They reach the frontend through the existing title serialization; <code>frontend/src/types/index.ts</code>
+gains the optional fields.</p>
+<p>These columns describe the <em>disc</em>. They are evidence for the review message and the diagnostics,
+not the routing authority (finding 5).</p>
+<h3 id="match-time-audio-plan-phase-1">Match-time audio plan (phase 1)</h3>
+<p><code>app/matcher/audio_streams.py</code> (new):</p>
+<ul>
+<li><code>probe_audio_streams(path) -&gt; list[AudioStream] | None</code>: one <code>ffprobe -select_streams a</code> call
+  returning per audio stream its audio-relative index, normalized language, track title, channel
+  count, and the <code>default</code>, <code>comment</code>, <code>visual_impaired</code>, <code>hearing_impaired</code> dispositions. Memoized
+  per resolved path, size and mtime. <code>None</code> when ffprobe is missing or fails.</li>
+<li><code>plan_audio(streams, language) -&gt; AudioPlan</code> with a <code>verdict</code> and an optional stream:</li>
+<li><code>match</code>: the first non-commentary stream tagged <code>language</code> (default flag breaks ties).</li>
+<li><code>untagged</code>: no stream tagged <code>language</code>, but at least one untagged non-commentary stream; use
+    the first one (the DVD case, finding 3; matches today's behaviour).</li>
+<li><code>foreign</code>: every non-commentary stream carries a known language other than <code>language</code>.</li>
+<li><code>no_audio</code>: zero audio streams (the #793 file).</li>
+<li><code>unprobed</code>: <code>streams is None</code>; use no <code>-map</code> (exactly today's behaviour).</li>
+<li>Commentary and audio description: disposition <code>comment</code> or <code>visual_impaired</code>, or a title matching
+  a small multilingual pattern (commentary, audio description, described, Kommentar, commentaire,
+  comentario, commento). A file whose only <code>language</code> streams are commentary counts as <code>foreign</code>.</li>
+</ul>
+<p><code>extract_audio_chunk</code> takes an optional audio-relative stream index and adds <code>-map 0:a:&lt;n&gt;</code> when
+given. The index joins the chunk-file name and the in-memory chunk cache key, and the transcript
+cache key (otherwise a chunk of the wrong stream cached earlier would be reused). The transcription
+prewarm uses the same plan so it never caches the wrong stream.</p>
+<p>PR #798 also edits <code>extract_audio_chunk</code> and adds an ffprobe audio check after an ffmpeg failure.
+Whichever lands second rebases; the <code>no_audio</code> verdict and #798's <code>NoAudioStreamError</code> should share
+one probe (#798's check becomes a call to <code>probe_audio_streams</code>).</p>
+<h3 id="routing-phase-1">Routing (phase 1)</h3>
+<p>In <code>EpisodeCurator.match_single_file</code> (and <code>_match_across_seasons</code>, which returns before it), after
+the chromaprint prepass has had its chance (a fingerprint hit is language-independent) and before
+ASR, the curator plans the file's audio for English:</p>
+<ul>
+<li><code>match</code> / <code>untagged</code> / <code>unprobed</code>: ASR proceeds on the chosen stream.</li>
+<li><code>foreign</code>: no ASR. Return a review result whose <code>match_details</code> is
+  <code>{"error": "audio_language_unsupported", "audio_languages": [...], "message": ...}</code>. The message
+  names the language: "This track's only audio is Japanese, and Engram matches episodes by English
+  dialogue, so it could not be matched automatically. Assign the episode by hand."</li>
+<li><code>no_audio</code>: no ASR; handled as #798 does (or, if #798 has not landed, the same review result with
+  its own message).</li>
+</ul>
+<p>The code joins <code>_NON_REMATCHABLE_REVIEW_ERRORS</code> (a deeper re-scan of the same audio cannot change
+the language; memory note: a new review code that is missing there gets its <code>match_details</code> wiped by
+auto-escalation) and the frontend <code>REVIEW_NOTICE_CODES</code> in <code>ReviewQueue/Inspector.tsx</code>. The
+no-subtitles LLM fallback (which also transcribes in English) is skipped for these titles.</p>
+<p>The job's <code>review_reason</code> gains one summary line when any title was routed for language, e.g.
+"3 tracks have no English audio (Japanese)", built the way the unreadable-references summary is.</p>
+<p><strong>Disc had it, file does not.</strong> When the title's scan-time <code>audio_languages</code> list a language that
+the probed file does not contain, the message adds: "The disc also has English audio, but MakeMKV's
+language settings left it out of the rip." That one sentence turns a #793-style mystery into an
+actionable fix (MakeMKV Preferences &gt; Language). The curator has no database access, so the
+matching coordinator appends this hint when it stores the result, reading the title's
+<code>audio_languages</code> (designer's call).</p>
+<p>ffprobe is invoked the way <code>get_video_duration</code> already invokes it (bare <code>ffprobe</code> on <code>PATH</code>,
+beside the ffmpeg Engram already requires).</p>
+<h3 id="native-language-matching-phase-2">Native-language matching (phase 2)</h3>
+<p>Built on phase 1's plan and codes; follows the contributor's design.</p>
+<ol>
+<li><strong>Content language.</strong> Identification records TMDB <code>original_language</code> on the job
+   (<code>DiscJob.content_language</code>, nullable, normalized). Unknown means English.</li>
+<li><strong>Match language per job.</strong> If <code>content_language</code> is English or unknown, nothing changes. Else
+   the job's match language is <code>content_language</code> when references in that language can be obtained
+   (step 3); otherwise English. Decided once in <code>MatchingCoordinator.download_subtitles</code>, next to
+   the episode-namespace decision, and stored on the job (<code>DiscJob.match_language</code>) so re-matches,
+   imports and the review routes read the same value.</li>
+<li><strong>References in that language.</strong> Providers take the language: OpenSubtitles <code>languages=</code>,
+   Addic7ed and tvsubtitles by name (tvsubtitles only supports a few; it is skipped otherwise). They
+   download into <code>&lt;tmdb_id&gt;[@tvdb]@&lt;lang&gt;/</code>. The published precomputed pack is English and is not
+   consulted for a non-English match language. The cache scripts' three <code>endswith("@tvdb")</code> skips
+   become one shared "local-only dir" predicate (<code>"@" in name</code>), so these dirs are never migrated,
+   normalized or published.</li>
+<li><strong>Per-title audio.</strong> The plan is made for the job's match language. A title with no stream in it
+   but an English stream falls back to an English match of that title only if English references
+   are also present; otherwise it parks with phase 1's notice, reworded ("...no German or English
+   audio...").</li>
+<li><strong>Whisper</strong> takes the language (<code>transcribe(..., language=lang)</code>). The transcript cache key
+   includes it.</li>
+<li><strong>TF-IDF.</strong> Word analyzer for spaced scripts. For Japanese, Chinese and Thai, a <code>char_wb</code>
+   analyzer (2 to 4 grams) is fit on the fly, since no precomputed corpus exists for them anyway.</li>
+<li><strong>Confidence.</strong> <code>calibrate_confidence</code> was tuned on English word n-grams. German with the word
+   analyzer behaved (contributor's 0.72 to 0.82). Character n-grams have a different cosine scale
+   with no evidence yet (see open question 2).</li>
+<li><strong>Provenance.</strong> <code>match_details</code> records <code>match_language</code> and the audio stream used; the review
+   Inspector shows the language beside the match source chip.</li>
+</ol>
+<h2 id="phasing">Phasing</h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Ships</th>
+<th>Closes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>languages module; SINFO capture and two <code>DiscTitle</code> columns; ffprobe audio plan with explicit <code>-map</code>; <code>audio_language_unsupported</code> review routing with job summary and the "MakeMKV left it out" hint; UI notice</td>
+<td>Refs #241</td>
+</tr>
+<tr>
+<td>2</td>
+<td>content/match language on the job; references in that language under <code>@&lt;lang&gt;</code> dirs; Whisper language; char n-grams for ja/zh/th; provenance</td>
+<td>Fixes #241</td>
+</tr>
+</tbody>
+</table>
+<p>Phase 1 is independently useful and safe: the only new non-ASR outcome is for a file whose every
+usable audio stream is tagged with a non-English language.</p>
+<h2 id="testing">Testing</h2>
+<ul>
+<li>Parser tests from trimmed real scan-log excerpts (Breaking Bad: English plus French subtitles;
+  <em>Killers of the Flower Moon</em> title 2: Osage audio with <code>TINFO 28 = eng</code>; a DVD title with an
+  untagged audio stream; <code>fre</code>/<code>fra</code>, <code>ger</code>/<code>deu</code>).</li>
+<li><code>plan_audio</code> table tests for every verdict, commentary by disposition and by name, default
+  tie-break.</li>
+<li><code>extract_audio_chunk</code> builds <code>-map 0:a:&lt;n&gt;</code>; cache keys differ by stream.</li>
+<li>Curator: a <code>foreign</code> file returns the review result without calling ASR; the prepass still runs
+  first; <code>unprobed</code> keeps today's call exactly.</li>
+<li>Coordinator: the code is non-rematchable and survives auto-escalation; the job summary line.</li>
+<li>Frontend unit test (vitest) for the Inspector notice.</li>
+<li>Phase 2 adds provider language plumbing, dir naming, and a matcher test on a small German and a
+  small Japanese corpus.</li>
+<li>Not E2E: simulation bypasses identification and ffprobe, so it cannot represent this.</li>
+</ul>
+<h2 id="calls-made-by-the-designer-check-these">Calls made by the designer (check these)</h2>
+<ol>
+<li>TINFO attr 28 is dropped as a signal (finding 1), departing from the issue text.</li>
+<li>The issue's "English subtitle tracks present: proceed" row is dropped (finding 6).</li>
+<li>The ripped file (ffprobe) is the routing authority; the scan columns are evidence only.</li>
+<li>Untagged audio counts as "try it" (the issue's rule), and any probe failure means "today's
+   behaviour".</li>
+<li>No changes to MakeMKV <code>settings.conf</code>; explain instead.</li>
+<li>Phase 2 prefers the original language over an English dub when references exist in both
+   (translations match a dub's script poorly; original dialogue against original-language subtitles
+   is the faithful pair). Open question 1 lets the maintainer overrule this.</li>
+<li>Language suffix <code>@&lt;lang&gt;</code> (the contributor used <code>.&lt;lang&gt;</code>) so one predicate covers <code>@tvdb</code> and
+   language dirs.</li>
+</ol>
+<h2 id="maintainer-decisions-2026-10-20">Maintainer decisions (2026-10-20)</h2>
+<ol>
+<li>Phase 2, a foreign show whose disc has both the original audio and an English dub: match in the
+   <strong>original language</strong>.</li>
+<li>Phase 2, Japanese/Chinese/Thai (character n-grams, uncalibrated): <strong>always park matches for
+   review</strong> until real-disc evidence calibrates them.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

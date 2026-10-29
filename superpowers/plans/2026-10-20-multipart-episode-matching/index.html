@@ -1,0 +1,1865 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-10-20-multipart-episode-matching/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Multi-part Episode Matching (Half-hour to Segment Crosswalk) Implementation Plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#multi-part-episode-matching-half-hour-to-segment-crosswalk-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Multi-part Episode Matching (Half-hour to Segment Crosswalk) Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-focus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review Focus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Review Focus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-numbering_crosswalk-derivation-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: numbering_crosswalk derivation module
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-builders-emit-the-crosswalk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Builders emit the crosswalk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-validator-and-runtime-chokepoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Validator and runtime chokepoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-no-healing-or-grafting-for-divergent-seasons-coverage-expansion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: No healing or grafting for divergent seasons; coverage expansion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-coordinator-explained-hint-and-combined-code-flattening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Coordinator: explained hint and combined-code flattening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-6-end-to-end-pin-for-the-reporters-disc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: End-to-end pin for the reporter's disc
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-divergent-season-without-a-crosswalk-goes-to-review-only-if-maintainer-approves-spec-decision-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Divergent season without a crosswalk goes to review (only if maintainer approves spec decision 2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-8-docs-changelog-full-verification-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Docs, changelog, full verification, PR
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="multi-part-episode-matching-half-hour-to-segment-crosswalk-implementation-plan">Multi-part Episode Matching (Half-hour to Segment Crosswalk) Implementation Plan</h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> File Hey Arnold! S2 Disc 2 (and other segment-format shows) under the TMDB segment codes each half-hour track holds (<code>S02E11-E12</code>, <code>S02E13</code>, ...) instead of under the subtitle pack's half-hour number.</p>
+<p><strong>Architecture:</strong> The pack builder derives a per-season crosswalk (corpus code to TMDB code) from OpenSubtitles release titles plus TMDB air-date structure, and ships it inside the existing <code>divergent</code> numbering marker. The runtime translates precomputed reference codes through one chokepoint, drops unmapped references, stops gap-healing divergent seasons, and treats a crosswalked combined code as an explained conjoined track.</p>
+<p><strong>Tech Stack:</strong> Python 3.11+, uv, pytest, SQLModel; React/TypeScript only for one review-notice code (Task 7).</p>
+<p><strong>Spec:</strong> <code>docs/superpowers/specs/2026-10-20-multipart-episode-matching-design.md</code></p>
+<h2 id="global-constraints">Global Constraints</h2>
+<ul>
+<li><code>CACHE_FORMAT_VERSION</code> stays <code>"3"</code>. No manifest key is renamed or removed; the marker's <code>scheme</code> stays <code>divergent</code> when a crosswalk is present.</li>
+<li>Crosswalk values are produced by <code>format_episode_code</code> and parsed only through <code>app/core/episode_codes.py</code> (<code>parse_episode_code</code>, <code>episode_parts</code>, <code>is_multi_episode</code>). No new local <code>S(\d+)E(\d+)</code> parser on <code>matched_episode</code> (<code>tests/unit/test_matched_episode_consumers.py</code> enforces this).</li>
+<li>A crosswalk maps within one season only. A target in another season is unmapped.</li>
+<li>Unmapped references are dropped from the vote, never kept under their corpus code.</li>
+<li><code>MIN_TITLE_CHARS = 4</code>; <code>GROUP_SPLIT_TOLERANCE = 0.25</code> (fraction of the season's median broadcast-group runtime).</li>
+<li>Never read or write the real <code>~/.engram/cache</code> in tests; use <code>tmp_path</code>.</li>
+<li>Prose (comments, docs, CHANGELOG, PR text): no em dashes.</li>
+<li>Backend commands from <code>backend/</code>: <code>uv run pytest ...</code>, <code>uv run ruff check .</code>, <code>uv run ruff format .</code>.</li>
+</ul>
+<h2 id="review-focus">Review Focus</h2>
+<ol>
+<li><strong>A pack with a crosswalk read by an older client.</strong> Expect: identical behaviour to today (scheme still <code>divergent</code>, extra keys ignored). Test in Task 3 (<code>test_manifest_with_crosswalk_still_loads_on_legacy_path</code>).</li>
+<li><strong>A crosswalk whose key is not in the shipped index</strong> (pack built from a different harvest than the index). Expect: that entry ignored, rest applied. Test in Task 3 (<code>test_crosswalk_key_missing_from_index_is_ignored</code>).</li>
+<li><strong>A user's <code>data/</code> dir already holding scraped <code>S02E21.srt</code> from an earlier heal.</strong> Expect: not grafted into a divergent season. Test in Task 4.</li>
+<li><strong>Crosswalk that maps every code to nothing</strong> (all unmapped). Expect: the season behaves as "divergent, no crosswalk" (Task 7 routing), not as an empty corpus that refuses matching. Test in Task 3 (<code>test_all_unmapped_crosswalk_is_treated_as_absent</code>).</li>
+<li><strong>OpenSubtitles search raising or returning junk during a nightly build.</strong> Expect: marker still written, crosswalk from structure only. Test in Task 2.</li>
+</ol>
+<hr />
+<h3 id="task-1-numbering_crosswalk-derivation-module">Task 1: <code>numbering_crosswalk</code> derivation module</h3>
+<p><strong>Files:</strong>
+- Create: <code>backend/app/matcher/numbering_crosswalk.py</code>
+- Create: <code>backend/tests/fixtures/numbering_crosswalk/hey_arnold_s2.json</code>, <code>dexters_lab_s1.json</code>, <code>hey_arnold_s3.json</code>
+- Test: <code>backend/tests/unit/test_numbering_crosswalk.py</code></p>
+<p>Fixtures are trimmed from the live captures made on 2026-10-20 (scratchpad <code>tmdb/tv_537_season_2.json</code>, <code>tv_4229_season_1.json</code>, <code>tv_537_season_3.json</code>, <code>os_ha_s2.json</code>, <code>os_dl_s1.json</code>, <code>os_ha_s3.json</code>). Each fixture file: <code>{"season": N, "corpus_codes": [...], "roster": [{"episode_number", "name", "air_date", "runtime"}], "releases": {"&lt;ep&gt;": ["&lt;release&gt;", ...]}}</code>. Keep release strings verbatim; drop all other OpenSubtitles fields (uploader names etc.). Corpus codes: HA S2 <code>S02E01..S02E20</code>, Dexter's S1 <code>S01E01..S01E13</code>, HA S3 <code>S03E01..S03E19</code>.</p>
+<p><strong>Interfaces:</strong>
+- Produces:
+  - <code>MIN_TITLE_CHARS = 4</code>, <code>GROUP_SPLIT_TOLERANCE = 0.25</code>
+  - <code>@dataclass(frozen=True) class RosterEpisode: episode_number: int; name: str; air_date: str; runtime: int</code>
+  - <code>@dataclass(frozen=True) class Crosswalk: mapping: dict[str, str]; sources: dict[str, int]</code> (sources keys: <code>"release_title"</code>, <code>"air_date_gap"</code>, <code>"unmapped"</code>)
+  - <code>broadcast_groups(roster: list[RosterEpisode]) -&gt; list[list[int]]</code>
+  - <code>derive_crosswalk(season: int, corpus_codes: list[str], roster: list[RosterEpisode], releases_by_episode: dict[int, list[str]] | None) -&gt; Crosswalk</code>
+  - <code>crosswalk_applies(marker: dict | None) -&gt; bool</code>: True iff <code>marker["scheme"] == "divergent"</code> and <code>marker["crosswalk"]</code> is a non-empty dict
+  - <code>translate_codes(codes: list[str], marker: dict | None) -&gt; list[str | None] | None</code>: None when <code>crosswalk_applies</code> is False; otherwise one entry per input code (translated code, or None = drop). A crosswalk whose translation would drop every code returns None (treated as absent).</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing tests</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_hey_arnold_s2_matches_reporter_expectation</span><span class="p">(</span><span class="n">ha_s2</span><span class="p">):</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">cw</span> <span class="o">=</span> <span class="n">derive_crosswalk</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">ha_s2</span><span class="o">.</span><span class="n">codes</span><span class="p">,</span> <span class="n">ha_s2</span><span class="o">.</span><span class="n">roster</span><span class="p">,</span> <span class="n">ha_s2</span><span class="o">.</span><span class="n">releases</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="k">assert</span> <span class="p">[</span><span class="n">cw</span><span class="o">.</span><span class="n">mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s2">"S02E</span><span class="si">{</span><span class="n">n</span><span class="si">:</span><span class="s2">02d</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">)]</span> <span class="o">==</span> <span class="p">[</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        <span class="s2">"S02E11-E12"</span><span class="p">,</span> <span class="s2">"S02E13"</span><span class="p">,</span> <span class="s2">"S02E14-E15"</span><span class="p">,</span> <span class="s2">"S02E16-E17"</span><span class="p">,</span> <span class="s2">"S02E18-E19"</span><span class="p">]</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="k">assert</span> <span class="n">cw</span><span class="o">.</span><span class="n">mapping</span><span class="p">[</span><span class="s2">"S02E05"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"S02E09-E10"</span>      <span class="c1"># typo'd release, filled by gap</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="k">assert</span> <span class="n">cw</span><span class="o">.</span><span class="n">mapping</span><span class="p">[</span><span class="s2">"S02E15"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"S02E28-E29"</span>      <span class="c1"># E29 title only, expanded to its group</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="k">assert</span> <span class="s2">"S02E19"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cw</span><span class="o">.</span><span class="n">mapping</span>                <span class="c1"># Part Time Friends lives in TMDB S3</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">assert</span> <span class="n">cw</span><span class="o">.</span><span class="n">sources</span> <span class="o">==</span> <span class="p">{</span><span class="s2">"release_title"</span><span class="p">:</span> <span class="mi">18</span><span class="p">,</span> <span class="s2">"air_date_gap"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"unmapped"</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_dexters_lab_s1_conflicting_uploads_fall_back_to_structure</span><span class="p">(</span><span class="n">dl_s1</span><span class="p">):</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">cw</span> <span class="o">=</span> <span class="n">derive_crosswalk</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">dl_s1</span><span class="o">.</span><span class="n">codes</span><span class="p">,</span> <span class="n">dl_s1</span><span class="o">.</span><span class="n">roster</span><span class="p">,</span> <span class="n">dl_s1</span><span class="o">.</span><span class="n">releases</span><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="k">assert</span> <span class="n">cw</span><span class="o">.</span><span class="n">mapping</span><span class="p">[</span><span class="s2">"S01E01"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"S01E01-E03"</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">assert</span> <span class="n">cw</span><span class="o">.</span><span class="n">mapping</span><span class="p">[</span><span class="s2">"S01E12"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"S01E34-E35"</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="k">assert</span> <span class="n">cw</span><span class="o">.</span><span class="n">mapping</span><span class="p">[</span><span class="s2">"S01E13"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"S01E36-E38"</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="k">assert</span> <span class="n">cw</span><span class="o">.</span><span class="n">sources</span> <span class="o">==</span> <span class="p">{</span><span class="s2">"release_title"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">"air_date_gap"</span><span class="p">:</span> <span class="mi">13</span><span class="p">,</span> <span class="s2">"unmapped"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_same_day_double_broadcast_is_split_by_runtime</span><span class="p">(</span><span class="n">ha_s3</span><span class="p">):</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="k">assert</span> <span class="p">[</span><span class="mi">30</span><span class="p">,</span> <span class="mi">31</span><span class="p">]</span> <span class="ow">in</span> <span class="n">broadcast_groups</span><span class="p">(</span><span class="n">ha_s3</span><span class="o">.</span><span class="n">roster</span><span class="p">)</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="k">assert</span> <span class="p">[</span><span class="mi">32</span><span class="p">,</span> <span class="mi">33</span><span class="p">]</span> <span class="ow">in</span> <span class="n">broadcast_groups</span><span class="p">(</span><span class="n">ha_s3</span><span class="o">.</span><span class="n">roster</span><span class="p">)</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="n">cw</span> <span class="o">=</span> <span class="n">derive_crosswalk</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">ha_s3</span><span class="o">.</span><span class="n">codes</span><span class="p">,</span> <span class="n">ha_s3</span><span class="o">.</span><span class="n">roster</span><span class="p">,</span> <span class="n">ha_s3</span><span class="o">.</span><span class="n">releases</span><span class="p">)</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="k">assert</span> <span class="n">cw</span><span class="o">.</span><span class="n">mapping</span><span class="p">[</span><span class="s2">"S03E16"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"S03E30-E31"</span>
+</code></pre></div>
+<p>Synthetic edge cases in the same file (small hand-built rosters):
+<code>test_release_naming_nothing_is_dissent_not_abstention</code>, <code>test_disagreeing_releases_give_no_anchor</code>, <code>test_title_inside_show_name_prefix_is_ignored</code> (text before the <code>SxxEyy</code> marker is not searched), <code>test_title_shorter_than_min_chars_is_ignored</code>, <code>test_longer_title_wins_over_contained_title</code> ("Mermaid Man and Barnacle Boy" vs "... II"), <code>test_inverted_anchors_are_both_dropped</code>, <code>test_group_straddling_an_anchor_leaves_gap_unmapped</code>, <code>test_missing_slot_inside_gap_keeps_neighbours_aligned</code> (corpus E01,E02,E04 with 4 groups maps E04 to group 4), <code>test_no_releases_and_no_air_dates_maps_nothing</code>, <code>test_values_are_strictly_increasing_and_non_overlapping</code> (property over all three fixtures).
+<code>translate_codes</code>: <code>test_translate_returns_none_without_crosswalk</code>, <code>test_translate_drops_unmapped</code>, <code>test_all_unmapped_crosswalk_is_treated_as_absent</code>.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run to verify failure</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_numbering_crosswalk.py -v</code>
+Expected: FAIL, <code>ModuleNotFoundError: app.matcher.numbering_crosswalk</code></p>
+<ul>
+<li>[ ] <strong>Step 3: Implement <code>numbering_crosswalk.py</code></strong></li>
+</ul>
+<p>Algorithm per spec 5.1 to 5.3 (the 2026-10-20 prototype in the session scratchpad, <code>proto_crosswalk.py</code>, passes the three fixture expectations and may be used as reference):
+- Normalize = lowercase alphanumerics concatenated (<code>"".join(re.findall(r"[a-z0-9]+", s.lower()))</code>).
+- Groups: maximal runs of consecutive roster entries sharing a non-empty <code>air_date</code>; a group whose summed runtime is within <code>GROUP_SPLIT_TOLERANCE * median</code> of <code>k * median</code> (k &gt;= 2, at least k episodes) splits into k parts by cumulative runtime; otherwise unchanged.
+- Release text searched = text after the first <code>s\d{1,2}e\d{1,3}</code> match (whole string if none). Anchor requires every release for the episode to yield the same non-empty title set; expand to containing groups; groups must be contiguous; anchors must be strictly increasing and non-overlapping (drop both sides of any violation).
+- Gap fill by corpus slot numbers, equal-count rule only.
+- Module docstring: why (spec section 1, one paragraph) and that it is pure and shared by the builders and the runtime.</p>
+<ul>
+<li>[ ] <strong>Step 4: Run tests to verify pass</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_numbering_crosswalk.py -v</code>
+Expected: all PASS</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/app/matcher/numbering_crosswalk.py<span class="w"> </span>backend/tests/unit/test_numbering_crosswalk.py<span class="w"> </span>backend/tests/fixtures/numbering_crosswalk/
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"feat(matcher): derive half-hour to segment crosswalk for divergent seasons (#760)"</span>
+</code></pre></div>
+<h3 id="task-2-builders-emit-the-crosswalk">Task 2: Builders emit the crosswalk</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/scripts/build_subtitle_cache.py</code> (<code>_season_numbering_entry</code> ~655, call site ~988)
+- Modify: <code>backend/scripts/pack_subtitle_cache.py</code> (wrapper ~94, call site ~345)
+- Modify: <code>backend/app/matcher/testing_service.py</code> (add release lookup)
+- Test: <code>backend/tests/unit/test_cache_numbering_marker.py</code>, <code>backend/tests/unit/test_build_subtitle_cache.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>derive_crosswalk</code>, <code>RosterEpisode</code> (Task 1); <code>fetch_season_episodes(show_id, season, api_key)</code> (existing, returns <code>name</code>, <code>runtime</code>, <code>air_date</code>).
+- Produces:
+  - <code>testing_service.season_release_titles(show_id: str, season: int) -&gt; dict[int, list[str]] | None</code>: one OpenSubtitles <code>search(parent_tmdb_id=..., season_number=..., languages="en", type="episode")</code> through <code>_os_client_and_reason</code> + <code>os_api_call</code>; groups <code>release</code> strings by <code>episode_number</code> for results whose <code>season_number == season</code>. None when no credentials, no client, or any exception (logged with <code>exc_info=True</code>). Never downloads.
+  - <code>build_subtitle_cache._season_numbering_entry(tmdb_id: int | None, season: int, codes: list[str], release_lookup=season_release_titles) -&gt; dict</code>: unchanged output for non-divergent seasons; for <code>divergent</code>, adds <code>crosswalk</code> (omitted when empty) and <code>crosswalk_sources</code>.
+  - <code>pack_subtitle_cache._season_numbering_entry(tmdb_id, season, codes, offline)</code>: offline keeps the <code>unknown</code> short-circuit and never calls the lookup.</p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p><code>test_divergent_season_carries_crosswalk</code> (monkeypatch <code>fetch_season_details</code> to 37, <code>fetch_season_episodes</code> and the lookup to the HA S2 fixture; assert <code>entry["crosswalk"]["S02E06"] == "S02E11-E12"</code> and <code>entry["scheme"] == "divergent"</code>), <code>test_tmdb_aired_season_has_no_crosswalk</code>, <code>test_unknown_season_has_no_crosswalk_and_no_lookup</code> (lookup mock asserts not called), <code>test_offline_pack_never_calls_release_lookup</code>, <code>test_release_lookup_failure_falls_back_to_structure</code> (lookup returns None; Dexter's fixture still gets 13 entries), <code>test_release_lookup_exception_does_not_abort</code> (lookup raises; marker still has <code>scheme</code>), <code>test_empty_crosswalk_is_omitted</code>. For <code>season_release_titles</code>: <code>test_release_titles_grouped_by_episode_and_season_filtered</code>, <code>test_release_titles_none_without_credentials</code>.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run to verify failure</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_cache_numbering_marker.py tests/unit/test_build_subtitle_cache.py -v</code>
+Expected: new tests FAIL (signature takes an int today)</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 3: Implement</strong> the signature change at both call sites (pass the <code>codes</code> list both scripts already build), the lookup, and the crosswalk fields. Wrap the roster fetch + lookup + derivation in one broad <code>except Exception</code> that logs and returns the marker without a crosswalk (same rationale as the existing roster-lookup catch).</p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Run to verify pass</strong></p>
+</li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_cache_numbering_marker.py tests/unit/test_build_subtitle_cache.py tests/unit/test_numbering_scheme.py -v</code>
+Expected: PASS</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-am<span class="w"> </span><span class="s2">"feat(cache): publish crosswalk in divergent season markers (#760)"</span>
+</code></pre></div>
+<h3 id="task-3-validator-and-runtime-chokepoint">Task 3: Validator and runtime chokepoint</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/scripts/validate_subtitle_cache.py</code> (<code>_check_season_numbering</code> ~75)
+- Modify: <code>backend/app/matcher/episode_identification.py</code> (<code>precomputed_episode_codes</code> ~273, <code>EpisodeMatcher.precomputed_numbering</code> ~1363, <code>_load_precomputed_season</code> ~1391, <code>stamp_numbering</code> ~119)
+- Test: <code>backend/tests/unit/test_validate_subtitle_cache.py</code>, <code>backend/tests/unit/test_precomputed_cache.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>crosswalk_applies</code>, <code>translate_codes</code> (Task 1).
+- Produces:
+  - <code>episode_identification.season_marker(manifest: dict | None, show_name: str, season: int, expected_tmdb_id) -&gt; dict | None</code>: raw marker dict for the resolved show entry (same <code>_resolve_corpus_entry</code> + <code>_tmdb_id_mismatch</code> refusal), including <code>unknown</code>. <code>precomputed_numbering</code> becomes a thin filter over it.
+  - <code>precomputed_episode_codes(...)</code> returns translated codes with dropped entries removed.
+  - <code>_load_precomputed_season</code> returns the matrix restricted to kept rows (<code>ref_matrix[keep]</code>) with translated codes.
+  - <code>stamp_numbering(match_stats, numbering)</code>: when <code>crosswalk_applies(numbering)</code>, stamps <code>numbering_scheme="tmdb_aired"</code>, <code>numbering_crosswalk=True</code>, <code>pack_numbering_scheme="divergent"</code> (plus <code>pack_roster_size</code> as today).</p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p>Validator: <code>test_crosswalk_on_non_divergent_season_fails</code>, <code>test_crosswalk_key_not_in_index_fails</code>, <code>test_crosswalk_value_unparseable_fails</code>, <code>test_crosswalk_value_other_season_fails</code>, <code>test_crosswalk_values_overlapping_fails</code>, <code>test_crosswalk_values_not_increasing_fails</code>, <code>test_valid_crosswalk_passes_and_reports_mapped_counts</code>.
+Runtime (manifest + npz/index written to <code>tmp_path</code>, HA S2 shaped, 20 rows): <code>test_precomputed_codes_are_translated</code> (<code>precomputed_episode_codes</code> returns 19 codes, contains <code>"S02E11-E12"</code>, lacks <code>"S02E19"</code>), <code>test_load_precomputed_drops_unmapped_rows</code> (matrix has 19 rows, aligned with codes: row for corpus E06 carries code <code>"S02E11-E12"</code>), <code>test_crosswalk_key_missing_from_index_is_ignored</code>, <code>test_manifest_with_crosswalk_still_loads_on_legacy_path</code> (<code>load_precomputed_manifest</code> and <code>precomputed_numbering</code> return as before), <code>test_stamp_numbering_crosswalked_reads_tmdb_aired</code>, <code>test_stamp_numbering_divergent_without_crosswalk_unchanged</code>, <code>test_all_unmapped_crosswalk_is_treated_as_absent</code> (codes untranslated, stamp stays <code>divergent</code>).</p>
+<ul>
+<li>[ ] <strong>Step 2: Run to verify failure</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_validate_subtitle_cache.py tests/unit/test_precomputed_cache.py tests/unit/test_cache_numbering_marker.py -v</code>
+Expected: new tests FAIL</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 3: Implement.</strong> The marker is a per-call local (singleton matcher is shared across threads); never cache it on <code>self</code>. The TF-IDF cache signature for precomputed mode must change when the crosswalk changes the code list (include the translated codes or the marker in the signature).</p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Run to verify pass</strong> (same command). Expected: PASS</p>
+</li>
+<li>
+<p>[ ] <strong>Step 5: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-am<span class="w"> </span><span class="s2">"feat(matcher): translate precomputed references through the season crosswalk (#760)"</span>
+</code></pre></div>
+<h3 id="task-4-no-healing-or-grafting-for-divergent-seasons-coverage-expansion">Task 4: No healing or grafting for divergent seasons; coverage expansion</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/matcher/testing_service.py</code> (<code>_precomputed_skip_result</code> ~356, <code>_heal_precomputed_gaps</code> ~476)
+- Modify: <code>backend/app/matcher/episode_identification.py</code> (<code>_augment_with_downloaded_srts</code> ~1467, <code>reference_coverage</code> ~324)
+- Test: <code>backend/tests/unit/test_precomputed_augmentation.py</code>, <code>backend/tests/unit/test_reference_coverage.py</code>, the existing heal tests (grep <code>_heal_precomputed_gaps</code> under <code>tests/unit</code>)</p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>season_marker</code> (Task 3), <code>episode_parts</code>.
+- Produces: skip dict gains <code>"numbering_scheme": &lt;marker scheme or None&gt;</code>; heal returns the skip dict unchanged when it is <code>"divergent"</code>; <code>_augment_with_downloaded_srts(ref_matrix, episode_codes, season_number, *, divergent: bool = False)</code> returns inputs unchanged when <code>divergent</code>.</p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p><code>test_heal_skipped_for_divergent_season</code> (fetch mocks assert <code>_fetch_episodes</code> not called; log names the reason), <code>test_heal_unchanged_for_tmdb_aired_season</code>, <code>test_augment_does_not_graft_into_divergent_season</code> (a <code>Hey Arnold! - S02E21.srt</code> in <code>data/537/</code>), <code>test_augment_unchanged_for_aired_season</code>, <code>test_reference_coverage_expands_combined_codes</code> (<code>"S02E11-E12"</code> marks E11 and E12 <code>precomputed</code>; E19 not covered by anything stays <code>missing</code> only if no code covers it).</p>
+<ul>
+<li>[ ] <strong>Step 2: Run to verify failure</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_precomputed_augmentation.py tests/unit/test_reference_coverage.py -v</code> plus the heal test file.
+Expected: new tests FAIL</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement.</strong></li>
+<li>[ ] <strong>Step 4: Run to verify pass.</strong> Expected: PASS</li>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-am<span class="w"> </span><span class="s2">"fix(matcher): stop gap-healing seasons numbered by half-hour (#760)"</span>
+</code></pre></div>
+<h3 id="task-5-coordinator-explained-hint-and-combined-code-flattening">Task 5: Coordinator: explained hint and combined-code flattening</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/matching_coordinator.py</code> (<code>_combined_code</code> ~394, <code>_apply_multi_episode_review</code> ~487)
+- Test: <code>backend/tests/unit/test_matching_coordinator.py</code>, <code>backend/tests/unit/test_multi_episode.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: <code>match_details["numbering_crosswalk"]</code> (Task 3), <code>episode_parts</code>, <code>is_multi_episode</code>.
+- Produces: no new names.</p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_crosswalked_combined_code_explains_matching_hint</span><span class="p">():</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">title</span> <span class="o">=</span> <span class="n">_title</span><span class="p">(</span><span class="n">matched_episode</span><span class="o">=</span><span class="s2">"S01E01-E03"</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>                   <span class="n">details</span><span class="o">=</span><span class="p">{</span><span class="s2">"numbering_crosswalk"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">"numbering_scheme"</span><span class="p">:</span> <span class="s2">"tmdb_aired"</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>                            <span class="s2">"multi_episode"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"is_multi_episode"</span><span class="p">:</span> <span class="kc">False</span><span class="p">}})</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="k">assert</span> <span class="n">_apply_multi_episode_review</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="n">conjoined_hint</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="k">assert</span> <span class="n">title</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">TitleState</span><span class="o">.</span><span class="n">MATCHED</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_crosswalked_code_with_wrong_part_count_still_parks</span><span class="p">():</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">title</span> <span class="o">=</span> <span class="n">_title</span><span class="p">(</span><span class="n">matched_episode</span><span class="o">=</span><span class="s2">"S01E01-E02"</span><span class="p">,</span> <span class="n">details</span><span class="o">=</span><span class="p">{</span><span class="s2">"numbering_crosswalk"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="o">...</span><span class="p">})</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="k">assert</span> <span class="n">_apply_multi_episode_review</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="n">conjoined_hint</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">True</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_hint_without_crosswalk_still_parks</span><span class="p">():</span>  <span class="c1"># existing behaviour pinned</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_combined_code_flattens_combined_parts</span><span class="p">():</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>    <span class="k">assert</span> <span class="n">_combined_code</span><span class="p">([</span><span class="s2">"S02E11-E12"</span><span class="p">,</span> <span class="s2">"S02E13"</span><span class="p">])</span> <span class="o">==</span> <span class="s2">"S02E11-E13"</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>    <span class="k">assert</span> <span class="n">_combined_code</span><span class="p">([</span><span class="s2">"S02E11-E12"</span><span class="p">,</span> <span class="s2">"S03E01"</span><span class="p">])</span> <span class="ow">is</span> <span class="kc">None</span>
+</code></pre></div>
+<p>Plus <code>test_crosswalked_two_segment_track_is_not_contributed</code> (<code>_may_contribute_fingerprint("S02E11-E12", None, {...}) is False</code>, pins existing rule).</p>
+<ul>
+<li>[ ] <strong>Step 2: Run to verify failure</strong></li>
+</ul>
+<p>Run: <code>uv run pytest tests/unit/test_matching_coordinator.py tests/unit/test_multi_episode.py -v -k "crosswalk or combined_code or hint"</code>
+Expected: new tests FAIL</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement.</strong> In <code>_combined_code</code>, flatten with <code>episode_parts</code> before the existing season/count checks. In <code>_apply_multi_episode_review</code>, before parking a hint-only track: if <code>details.get("numbering_crosswalk")</code> and <code>len(episode_parts(title.matched_episode)) == conjoined_hint</code>, log and return False.</li>
+<li>[ ] <strong>Step 4: Run to verify pass.</strong> Expected: PASS</li>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-am<span class="w"> </span><span class="s2">"fix(matching): accept a crosswalked combined code as the conjoined answer (#760)"</span>
+</code></pre></div>
+<h3 id="task-6-end-to-end-pin-for-the-reporters-disc">Task 6: End-to-end pin for the reporter's disc</h3>
+<p><strong>Files:</strong>
+- Test: <code>backend/tests/unit/test_numbering_crosswalk_e2e.py</code></p>
+<p><strong>Interfaces:</strong>
+- Consumes: Tasks 1 to 5; <code>organize_tv_episode</code> (existing).</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the test</strong></li>
+</ul>
+<p><code>test_hey_arnold_s2_disc2_files_segment_ranges</code>: build a <code>tmp_path</code> pack from the HA S2 fixture (crosswalk derived via Task 1, written into the manifest marker; 20-row npz whose row <em>k</em> is a one-hot-ish vector); load through <code>EpisodeMatcher._load_precomputed_season(2)</code> with <code>cache_dir=tmp_path</code>; feed <code>TfidfMatcher.match</code> the text vector of corpus row E06..E10; assert the top codes are <code>["S02E11-E12", "S02E13", "S02E14-E15", "S02E16-E17", "S02E18-E19"]</code>. Then <code>organize_tv_episode</code> with <code>"S02E11-E12"</code> into a <code>tmp_path</code> library asserts the file name <code>Hey Arnold! - S02E11-E12.mkv</code>. If driving <code>TfidfMatcher</code> with synthetic vectors proves awkward, assert on the loaded <code>(matrix, codes)</code> row alignment instead and keep the organizer assertion.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run.</strong> <code>uv run pytest tests/unit/test_numbering_crosswalk_e2e.py -v</code>. Expected: PASS (Tasks 1 to 5 already implement it; a failure here is a real integration bug to fix in the owning task).</li>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>add<span class="w"> </span>backend/tests/unit/test_numbering_crosswalk_e2e.py
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"test: pin Hey Arnold! S2 Disc 2 segment filing end to end (#760)"</span>
+</code></pre></div>
+<h3 id="task-7-divergent-season-without-a-crosswalk-goes-to-review-only-if-maintainer-approves-spec-decision-2">Task 7: Divergent season without a crosswalk goes to review (only if maintainer approves spec decision 2)</h3>
+<p><strong>Files:</strong>
+- Modify: <code>backend/app/services/matching_coordinator.py</code> (error code beside <code>MULTI_EPISODE_ERROR_CODE</code> ~223, <code>_NON_REMATCHABLE_REVIEW_ERRORS</code> ~229, <code>_route_unconfirmable_title</code> ~380)
+- Modify: <code>frontend/src/components/ReviewQueue/Inspector.tsx:21</code> (<code>REVIEW_NOTICE_CODES</code>) and <code>Inspector.test.tsx</code>
+- Test: <code>backend/tests/unit/test_matching_coordinator.py</code></p>
+<p><strong>Interfaces:</strong>
+- Produces: <code>NUMBERING_DIVERGENT_ERROR_CODE = "numbering_divergent"</code>; <code>_apply_divergent_numbering_review(title) -&gt; bool</code>, called last in <code>_route_unconfirmable_title</code>, which returns the code when it parks.</p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests</strong></li>
+</ul>
+<p><code>test_divergent_uncrosswalked_match_is_parked</code> (details <code>numbering_scheme == "divergent"</code>, state MATCHED, code <code>S02E06</code> → state REVIEW, <code>matched_episode</code> kept as pre-fill, <code>details["error"] == "numbering_divergent"</code>), <code>test_crosswalked_match_is_not_parked</code>, <code>test_tmdb_aired_match_is_not_parked</code>, <code>test_numbering_divergent_is_not_rematchable</code> (<code>"numbering_divergent" in _NON_REMATCHABLE_REVIEW_ERRORS</code>), <code>test_prior_error_message_carried_forward</code> (mirror the multi-episode carry-forward). Frontend: <code>Inspector.test.tsx</code> case showing the notice for <code>numbering_divergent</code>.</p>
+<p>Message copy (exact): "The reference subtitles for this season are numbered differently from TMDB (usually by broadcast half-hour instead of by segment), so {code} may name the wrong episode. Check it and assign the TMDB episode(s) this track holds."</p>
+<ul>
+<li>[ ] <strong>Step 2: Run to verify failure.</strong> <code>uv run pytest tests/unit/test_matching_coordinator.py -v -k divergent</code> and <code>npm run test:unit -- Inspector</code> (from <code>frontend/</code>). Expected: FAIL</li>
+<li>[ ] <strong>Step 3: Implement.</strong></li>
+<li>[ ] <strong>Step 4: Run to verify pass.</strong> Same commands. Expected: PASS</li>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-am<span class="w"> </span><span class="s2">"fix(matching): hold divergent-numbered matches for review when no crosswalk applies (#760)"</span>
+</code></pre></div>
+<h3 id="task-8-docs-changelog-full-verification-pr">Task 8: Docs, changelog, full verification, PR</h3>
+<p><strong>Files:</strong>
+- Modify: <code>CLAUDE.md</code> (Key Patterns: one bullet after "Episode codes are multi-episode capable" describing the crosswalk, its chokepoint, the no-heal rule, and that the scheme stays <code>divergent</code>)
+- Modify: <code>CHANGELOG.md</code> (<code>[Unreleased]</code> / <code>### Fixed</code>)
+- Modify: spec status line to "approved; implemented in PR #NNN"</p>
+<ul>
+<li>[ ] <strong>Step 1: CHANGELOG entry</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">-</span><span class="w"> </span>Segment-format TV discs (Hey Arnold!, Dexter's Laboratory, SpongeBob) are filed under the TMDB segments each track holds, such as <span class="sb">`S02E11-E12`</span>, instead of under the subtitle pack's half-hour number, which named the wrong episode. Takes full effect once the nightly subtitle pack is rebuilt. (#760)
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Lint and full backend suite</strong> (background; the unit tier runs several minutes)</li>
+</ul>
+<p>Run: <code>uv run ruff check . &amp;&amp; uv run ruff format --check . &amp;&amp; uv run pytest tests/unit tests/pipeline -q</code>
+Expected: all pass. If caplog tests misbehave, re-run those files alone (no <code>-p no:logging</code>).</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 3: Frontend</strong> (only if Task 7 shipped): <code>npm run lint &amp;&amp; npm run test:unit &amp;&amp; npm run build</code> from <code>frontend/</code>. Expected: pass.</p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Dash check</strong> on changed prose: <code>git diff origin/main -- '*.md' '*.py' | grep -P "\xe2\x80\x94|\xe2\x80\x93"</code> returns nothing new.</p>
+</li>
+<li>
+<p>[ ] <strong>Step 5: Commit, push, PR</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-am<span class="w"> </span><span class="s2">"docs: crosswalk notes for #760"</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>claude/760-multipart-episodes-f0571a
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>gh<span class="w"> </span>pr<span class="w"> </span>create<span class="w"> </span>--title<span class="w"> </span><span class="s2">"fix: file segment-show tracks under their TMDB segments (#760)"</span><span class="w"> </span>--body<span class="w"> </span><span class="s2">"&lt;summary, root cause table, rollout note about the nightly pack, test plan&gt;\n\nFixes #760\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>gh<span class="w"> </span>pr<span class="w"> </span>comment<span class="w"> </span>&lt;N&gt;<span class="w"> </span>--body<span class="w"> </span><span class="s2">"@claude please review this PR"</span>
+</code></pre></div>
+<p>PR body must say the server-side nightly (<code>build_subtitle_cache.py</code> on the cache host) needs redeploying before users see the fix, and that until then Task 7 (if shipped) holds affected discs for review.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
