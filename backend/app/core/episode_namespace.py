@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from loguru import logger
 
 from app.core.episode_codes import format_episode_code, parse_episode_code
+from app.core.match_language import language_dir_suffix
 
 NAMESPACE_TMDB = "tmdb"
 NAMESPACE_TVDB = "tvdb"
@@ -53,8 +54,10 @@ def namespace_context(namespace: str | None):
 
 def corpus_dir_suffix() -> str:
     """Suffix for the reference-cache folder, so TVDB-numbered references never
-    share a folder with the TMDB-numbered ones (or the published pack)."""
-    return "@tvdb" if current_namespace() == NAMESPACE_TVDB else ""
+    share a folder with the TMDB-numbered ones (or the published pack), and
+    references in another match language never share one with English."""
+    namespace = "@tvdb" if current_namespace() == NAMESPACE_TVDB else ""
+    return namespace + language_dir_suffix()
 
 
 _PART_WORDS = {

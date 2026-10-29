@@ -147,6 +147,14 @@ class TVSubtitlesClient:
         self._show_id_cache[show_name] = show_id
         return show_id
 
+    @staticmethod
+    def supports_language(code: str) -> bool:
+        return code in _LANGUAGE_NAMES
+
+    @staticmethod
+    def language_param(code: str) -> str:
+        return code
+
     def get_best_subtitle(
         self, show_name: str, season: int, episode: int, language: str = "en"
     ) -> TVSubtitlesSubtitle | None:

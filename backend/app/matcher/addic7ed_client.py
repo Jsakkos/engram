@@ -14,6 +14,8 @@ import requests
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from app.core.languages import language_name
+
 
 @dataclass
 class SubtitleEntry:
@@ -336,6 +338,11 @@ class Addic7edClient:
         except Exception as e:
             logger.error(f"Failed to download subtitle: {e}")
             return None
+
+    @staticmethod
+    def language_param(code: str) -> str:
+        """Addic7ed filters by the language's English name ("German")."""
+        return language_name(code)
 
     def get_best_subtitle(
         self, show_name: str, season: int, episode: int, language: str = "English"
