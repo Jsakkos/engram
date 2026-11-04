@@ -85,18 +85,36 @@ for that job.
 
 ## A track says its only audio is another language
 
-Engram identifies TV episodes by listening to the dialogue and comparing it with English
-subtitles. When every audio track in a ripped file is another language (an anime disc
-without an English dub, or a foreign-language bonus episode), Engram does not guess: the
-track goes to review with a note naming the language, and you assign the episode by hand.
+Engram identifies TV episodes by listening to the dialogue and comparing it with
+subtitles. When every audio track in a ripped file is a language it cannot match (an anime
+disc without an English dub, or a foreign-language bonus episode), Engram does not guess:
+the track goes to review with a note naming the language, and you assign the episode by
+hand.
 
-**The note says the disc also has English audio.** MakeMKV only rips the audio tracks its
-language settings select, so an English dub on the disc can be missing from the file. In
-MakeMKV, open **Preferences > Language** (or adjust the default track selection), add
-English, and re-rip the track.
+**The note says the disc also has English (or German, ...) audio.** MakeMKV only rips the
+audio tracks its language settings select, so a track on the disc can be missing from the
+file. In MakeMKV, open **Preferences > Language** (or adjust the default track selection),
+add the language, and re-rip the track.
 
-On a disc with several audio tracks, Engram always listens to the English one, whichever
-track the disc marks as the default.
+On a disc with several audio tracks, Engram picks the one in the language it matches in,
+whichever track the disc marks as the default.
+
+## Shows in other languages
+
+A show whose original language is not English (on TMDB) is matched in that language when
+subtitles in it can be found: Engram downloads them alongside the English ones, listens
+to the original-language audio track, and compares the two, so a German show on a German
+disc is matched to its episodes like an English show. The review page says "matched in
+German" for such a track.
+
+- **A disc with the original audio and an English dub** is matched in the original
+  language. A track that only has the English dub is matched in English.
+- **No subtitles in the show's language** (the season has fewer than two): the show is
+  matched in English, exactly as before.
+- **Japanese, Chinese and Thai** matches always go to review, however confident, until
+  real discs show how far their confidence can be trusted. Check the suggestion and save.
+- Subtitles in other languages stay on your machine, in their own folder in the subtitle
+  cache (for example `.../cache/data/70523@de`), and are never part of the shared cache.
 
 ## Restoring the database after an upgrade
 

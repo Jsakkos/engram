@@ -243,6 +243,33 @@ describe('Inspector: review reason notice', () => {
         ).toBeInTheDocument();
     });
 
+    it('names the language a track was matched in', () => {
+        renderInspector({
+            title: makeTitle({ match_details: JSON.stringify({ match_language: 'de' }) }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('matched in German')),
+        ).toBeInTheDocument();
+    });
+
+    it('says nothing about English, the default', () => {
+        renderInspector({
+            title: makeTitle({ match_details: JSON.stringify({ match_language: 'en' }) }),
+        });
+        expect(screen.queryByText((content) => content.includes('matched in'))).toBeNull();
+    });
+
+    it('explains why a confident Japanese match is held', () => {
+        renderInspector({
+            title: makeTitle({
+                match_details: JSON.stringify({ match_language: 'ja', uncalibrated_language: 'ja' }),
+            }),
+        });
+        expect(
+            screen.getByText((content) => content.includes('Matched in Japanese. Matches')),
+        ).toBeInTheDocument();
+    });
+
     it('adds no notice when there is no message to show', () => {
         const plain = renderInspector({ title: makeTitle() });
         const baseline = plain.container.querySelectorAll('[data-testid="sv-notice"]').length;

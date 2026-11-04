@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- German shows matched in German now file themselves when the match is clear, instead of most tracks going to review. A chunk of dialogue only votes for an episode when that episode clearly leads the next best one, and the lead that is clear for English (1.8 times) turned out too strict for German, where right answers led by 1.5 to 1.9 times and wrong ones by under 1.2. German now votes from a 1.3 lead; other languages keep the English rule until they are measured. (#241)
+- **Shows in other languages are matched in their own language.** A show whose original language is not English (German, French, Japanese, ...) used to go to review track by track whenever the disc had no English audio. Engram now downloads the show's subtitles in its original language too, transcribes the original-language audio track and matches the two, so the tracks of a German show on a German disc are matched to their episodes like an English show's; a track it is less sure of goes to review as usual. A disc with an English dub is matched in the original language; a track with only the dub is matched in English; a show with no subtitles in its language is matched in English exactly as before. Japanese, Chinese and Thai matches always go to review for now. The review page names the language a track was matched in. (#241)
+### Fixed
+
+- One stray chunk vote no longer drags a correctly matched track's confidence to near zero. Engram picked the episode whose chunk votes had the highest average score, so a single vote for the wrong episode with a slightly higher score tied or beat a run of votes for the right one (19 against 1 calibrated to 0.003) and the track went to review. The winner and its confidence now come from the summed score of its votes, so agreement across many chunks counts. (#241)
+
 ## [0.44.0] - 2026-10-25
 
 _Highlights: episode titles in file names (`{episode_title}`), and manual assignment of one track to several consecutive episodes on the review page, for discs that hold two cartoon segments per track._
@@ -113,7 +121,7 @@ _Highlights: settings export and import, a database backup before every upgrade,
 
 - A ripped track with no audio no longer fills the log with "FFmpeg failed with return code 4294967274" errors. MakeMKV can write a title without its only audio track (for example a lone Japanese track on an English-language disc), and every attempt to transcribe it failed with an error that showed only FFmpeg's version banner. Engram now notices the missing audio after the first attempt, logs one warning naming the track, and skips audio matching for it instead of trying ten more times. Other FFmpeg failures now log FFmpeg's actual error message instead of its banner. (#793)
 
-- TV tracks whose only audio is another language are no longer matched to a random episode. Engram used to transcribe them as if they were English and file or suggest whatever episode the noise landed on. It now checks each ripped file's audio tracks first: a track with no English audio goes to review with a note naming the language (for example "This track's only audio is Japanese"), and the job's review reason counts them. When the disc itself had an English track that MakeMKV's language settings left out of the rip, the note says so. On discs with several audio tracks, Engram now always transcribes the English one instead of whichever track the disc marks as default. Matching in a show's own language is planned next. (#241, thanks @wintheriscomming!)
+- TV tracks whose only audio is another language are no longer matched to a random episode. Engram used to transcribe them as if they were English and file or suggest whatever episode the noise landed on. It now checks each ripped file's audio tracks first: a track with no English audio goes to review with a note naming the language (for example "This track's only audio is Japanese"), and the job's review reason counts them. When the disc itself had an English track that MakeMKV's language settings left out of the rip, the note says so. On discs with several audio tracks, Engram now always transcribes the English one instead of whichever track the disc marks as default. Matching in a show's own language is planned next. (#241)
 
 ## [0.41.0] - 2026-10-20
 

@@ -23,6 +23,7 @@ from app.core.episode_namespace import (
     season_episode_count,
     season_episodes,
 )
+from app.core.match_language import current_match_language
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.numbering_crosswalk import is_segmented_marker
@@ -687,6 +688,15 @@ def _season_episode_titles(show_id: str, season: int, tmdb_api_key: str) -> dict
     return {e["episode_number"]: e["name"] for e in episodes if e.get("episode_number") is not None}
 
 
+# OpenSubtitles splits these by region; one search asks for every variant.
+_OPENSUBTITLES_REGIONS = {"pt": "pt-pt,pt-br", "zh": "zh-cn,zh-tw"}
+
+
+def opensubtitles_languages(language: str) -> str:
+    """The OpenSubtitles ``languages`` parameter for a normalized code."""
+    return _OPENSUBTITLES_REGIONS.get(language, language)
+
+
 def _os_search_client(config):
     """An OpenSubtitles client that can search but has not logged in, or None.
 
@@ -846,6 +856,12 @@ def download_subtitles(
     # human inspection still work inside the id-keyed dir.
     safe_show_name = sanitize_filename(canonical_show_name)
     series_cache_dir = cache_path / "data" / corpus_dir_name(tmdb_id, canonical_show_name)
+    # The bound match language (app/core/match_language.py): the folder above is
+    # already the language's own, and every provider is asked for that language.
+    language = current_match_language()
+    providers = ["addic7ed", "tvsubtitles"]
+    if not TVSubtitlesClient.supports_language(language):
+        providers.remove("tvsubtitles")
     series_cache_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Downloading subtitles for '{canonical_show_name}' to: {series_cache_dir}")
@@ -911,7 +927,7 @@ def download_subtitles(
                     _os_client.search,
                     parent_tmdb_id=show_id,
                     season_number=season,
-                    languages="en",
+                    languages=opensubtitles_languages(language),
                     type="episode",
                     max_attempts=4,
                     base_delay=1.0,
@@ -1073,7 +1089,8 @@ def download_subtitles(
                 episode=episode,
                 episode_code=episode_code,
                 srt_target=srt_path,
-                pending_providers=deque(["addic7ed", "tvsubtitles"]),
+                pending_providers=deque(providers),
+                language=language,
             )
         )
 
