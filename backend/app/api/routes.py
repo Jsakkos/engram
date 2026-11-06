@@ -991,6 +991,23 @@ async def get_season_roster(
                 if option.get("ordering") != "tvdb":
                     option["projection"] = {}
                     option["diverges"] = False
+    elif job.state == JobState.REVIEW_NEEDED and tvdb_client.resolve_api_key(config):
+        # With a key configured, a disc in review can always be moved to
+        # TheTVDB numbering. The divergence check above is one-shot and silent:
+        # it runs only when a subtitle download starts, and finds nothing when
+        # TheTVDB or the show link was unavailable at that moment, which left
+        # the user no way to reach the switch (#862). Offered without claiming
+        # divergence; the switch itself reports a TheTVDB failure.
+        ordering_data["options"].append(
+            {
+                "ordering": "tvdb",
+                "label": "TheTVDB",
+                "tmdb_type": 0,
+                "diverges": False,
+                "projection": {},
+            }
+        )
+        ordering_data["available"] = True
 
     from app.models.show_ordering import ShowOrderingPreference
 

@@ -390,7 +390,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14]
+        # macos-14 images were retired on 2026-11-02 (runner-images#13518); the job
+        # is cancelled at 1s there. release.yml already builds on macos-15.
+        os: [ubuntu-latest, macos-15]
         python: ["3.11", "3.12", "3.13"]
     runs-on: ${{ matrix.os }}
     defaults:
