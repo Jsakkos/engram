@@ -30,6 +30,15 @@ function parseMbPerSec(speedStr: string | undefined): number {
   return m ? parseFloat(m[1]) : 0;
 }
 
+const DISC_LABEL_MAX = 14;
+
+/** Short disc tag for activity rows: volume label, else detected title, else `JOB <id>`. */
+function discTag(job: Job | undefined, jobId: number): string {
+  const raw = (job?.volume_label || job?.detected_title || "").trim();
+  if (!raw) return `JOB ${jobId}`;
+  return raw.length > DISC_LABEL_MAX ? `${raw.slice(0, DISC_LABEL_MAX - 1)}…` : raw;
+}
+
 const LEVEL_COLOR: Record<ActivityEvent["level"], string> = {
   info: sv.cyan,
   warn: sv.yellow,
@@ -111,6 +120,7 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
   useEffect(() => {
     const newEvents: ActivityEvent[] = [];
     const now = Date.now();
+    const jobsById = new Map(jobs.map((j) => [j.id, j]));
 
     // Job state transitions
     const currentJobs = new Map<number, JobState>();
@@ -151,7 +161,7 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
           id: `t${title.id}-${title.state}-${now}`,
           ts: now,
           level,
-          subject: `T${String(title.title_index).padStart(2, "0")}`,
+          subject: `${discTag(jobsById.get(title.job_id), title.job_id)} · T${String(title.title_index).padStart(2, "0")}`,
           message:
             title.state === "matched" && title.matched_episode
               ? `MATCHED · ${title.matched_episode}`

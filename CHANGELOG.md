@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- The dashboard activity log now names the disc on every track event (for example `OFFICE_S2D3 · T07`), so two discs ripping at once no longer interleave anonymous `T03` / `T07` lines. Long labels are shortened, and a disc with no label falls back to `JOB <id>` (#719).
 - One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
 
 ## [0.44.0] - 2026-10-25
