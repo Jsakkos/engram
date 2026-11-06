@@ -455,12 +455,12 @@ def _apply_unreadable_references_review(title: "DiscTitle") -> bool:
 
 
 _RIP_LEFT_OUT_HINT = (
-    " The disc also has English audio, but MakeMKV's language settings left it out of the rip."
+    " The disc also has {language} audio, but MakeMKV's language settings left it out of the rip."
 )
 
 
 def _rip_left_out_hint(language: str) -> str:
-    return _RIP_LEFT_OUT_HINT.replace("English", language_name(language))
+    return _RIP_LEFT_OUT_HINT.format(language=language_name(language))
 
 
 def _plan_file_audio(file_path: Path) -> AudioPlan:

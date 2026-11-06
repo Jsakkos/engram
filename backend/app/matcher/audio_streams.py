@@ -28,7 +28,7 @@ from pathlib import Path
 from loguru import logger
 
 from app.core.languages import normalize_language
-from app.core.match_language import ENGLISH, current_match_language
+from app.core.match_language import ENGLISH, ORIGINAL_FIRST_LANGUAGES, current_match_language
 
 # Track titles that mark commentary or audio description. MakeMKV never set the
 # stream-flag bits for these on any disc we have logs for, so the name and the
@@ -188,15 +188,25 @@ def plan_audio(streams: list[AudioStream] | None, language: str) -> AudioPlan:
 def plan_title_audio(matcher, video_file) -> tuple[str, AudioPlan]:
     """The language to match ``video_file`` in, and ``matcher``'s plan for it.
 
-    The bound match language when the file has a stream in it (or an untagged or
-    unprobed one); else English when the file has an English stream; else the
-    match language's own plan, which the curator refuses. Audio only, so the
-    curator and the prewarm reach the same answer. Under English this is one
-    ``matcher.audio_plan(video_file)`` call, exactly as before.
+    English first: a file with an English stream is matched in English, so a
+    dubbed disc stays on today's path. Otherwise the bound match language when
+    the file has a stream in it (or an untagged or unprobed one), else that
+    language's own plan, which the curator refuses. A language in
+    ``ORIGINAL_FIRST_LANGUAGES`` (one with a measured vote margin) swaps the
+    first two steps. Audio only, so the curator and the prewarm reach the same
+    answer. Under English this is one ``matcher.audio_plan(video_file)`` call,
+    exactly as before.
     """
     language = current_match_language()
+    if language == ENGLISH:
+        return language, matcher.audio_plan(video_file)
+    if language not in ORIGINAL_FIRST_LANGUAGES:
+        english = matcher.audio_plan(video_file, ENGLISH)
+        if english.verdict == "match":
+            return ENGLISH, english
+        return language, matcher.audio_plan(video_file)
     plan = matcher.audio_plan(video_file)
-    if language == ENGLISH or plan.verdict not in ("foreign", "no_audio"):
+    if plan.verdict not in ("foreign", "no_audio"):
         return language, plan
     english = matcher.audio_plan(video_file, ENGLISH)
     if english.verdict == "match":

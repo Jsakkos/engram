@@ -873,13 +873,38 @@ class TestPrewarmMatchLanguage:
     """The prewarm warms the stream and keys the curator will use (#241, phase 2)."""
 
     @pytest.mark.parametrize(
-        "languages,suffix",
-        [(["en", "de"], "#a1"), (["en"], ""), ([None], "")],
-        ids=["original-language-stream", "english-dub-only", "untagged"],
+        "languages,suffix,original_first",
+        [
+            (["en", "de"], "", False),
+            (["de", "en"], "#a1", False),
+            (["en", "de"], "#a1", True),
+            (["en"], "", False),
+            ([None], "", False),
+        ],
+        ids=[
+            "english-first",
+            "english-dub-second-stream",
+            "original-first-language-stream",
+            "english-dub-only",
+            "untagged",
+        ],
     )
     async def test_german_job_warms_the_ladders_stream(
-        self, tmp_path, config_flags, prewarmer, model_loader, duration_stub, languages, suffix
+        self,
+        tmp_path,
+        monkeypatch,
+        config_flags,
+        prewarmer,
+        model_loader,
+        duration_stub,
+        languages,
+        suffix,
+        original_first,
     ):
+        import app.matcher.audio_streams as audio_streams
+
+        if original_first:
+            monkeypatch.setattr(audio_streams, "ORIGINAL_FIRST_LANGUAGES", frozenset({"de"}))
         p, _ = prewarmer
         p._matcher = LanguageMatcher(languages)
         job_id, f = await _seed_review_job(tmp_path)

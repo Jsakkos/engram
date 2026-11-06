@@ -1215,6 +1215,7 @@ async def build_job_detail(job: DiscJob, session: AsyncSession) -> dict:
         "tvdb_divergence_json": job.tvdb_divergence_json,
         "content_language": job.content_language,
         "match_language": job.match_language,
+        "match_language_note": job.match_language_note,
         "classification_source": job.classification_source,
         "classification_confidence": job.classification_confidence,
         "tmdb_id": job.tmdb_id,

@@ -24,6 +24,13 @@ ENGLISH = "en"
 
 _language_var: ContextVar[str] = ContextVar("match_language", default=ENGLISH)
 
+# Languages matched in their own audio first. Every other language is matched
+# English first: a dubbed disc with an English track stays on the English path,
+# and the show's language is used only when the file has no English stream.
+# A language joins once it has a measured vote margin (see
+# docs/superpowers/specs/2026-10-20-non-english-content-design.md, decision 1).
+ORIGINAL_FIRST_LANGUAGES: frozenset[str] = frozenset()
+
 # TMDB's own codes that are not ISO 639: "cn" is Cantonese, "xx" is "no language".
 _TMDB_CODES: dict[str, str | None] = {"cn": "zh", "xx": None}
 

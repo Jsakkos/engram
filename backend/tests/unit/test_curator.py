@@ -955,11 +955,26 @@ class TestMatchLanguageLadder:
         with match_language_context(language):
             return await curator.match_single_file(f, "Babylon Berlin", 1)
 
-    async def test_original_language_stream_preferred_over_dub(self, tmp_path, monkeypatch):
+    async def test_english_dub_preferred_over_original_language(self, tmp_path, monkeypatch):
+        # English first: a dubbed disc stays on the English path.
+        curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["de", "en"])
+        result = await self._match(curator, f, "de")
+        assert result.episode_code == "S01E03"
+        assert seen == [("en", 1)]
+
+    async def test_original_first_language_prefers_its_own_stream(self, tmp_path, monkeypatch):
+        import app.matcher.audio_streams as audio_streams
+
+        monkeypatch.setattr(audio_streams, "ORIGINAL_FIRST_LANGUAGES", frozenset({"de"}))
         curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["en", "de"])
         result = await self._match(curator, f, "de")
         assert result.episode_code == "S01E03"
         assert seen == [("de", 1)]
+
+    async def test_show_language_only_matches_in_it(self, tmp_path, monkeypatch):
+        curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["de"])
+        await self._match(curator, f, "de")
+        assert seen == [("de", 0)]
 
     async def test_english_dub_only_matches_in_english(self, tmp_path, monkeypatch):
         curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["en"])
