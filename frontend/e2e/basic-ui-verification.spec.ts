@@ -72,8 +72,8 @@ test.describe('Basic UI Verification - No Disc Simulation', () => {
     // Click ACTIVE filter
     await page.locator(SELECTORS.filterActive).click();
 
-    // Should show empty state heading (ACTIVE filter shows "NO ACTIVE OPERATIONS")
-    await expect(page.getByRole('heading', { name: /NO ACTIVE OPERATIONS/i })).toBeVisible();
+    // Empty state renders (a DB with no job history shows the first-run welcome heading)
+    await expect(page.getByTestId('sv-empty-heading')).toBeVisible();
 
     // Screenshot empty state
     await page.screenshot({
