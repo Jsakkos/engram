@@ -1,6 +1,56 @@
 import { describe, it, expect } from 'vitest';
 import type { DiscTitle } from '../../types';
-import { buildInitialSelections, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles } from './utils';
+import { buildInitialSelections, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, orderingSelectorHeading } from './utils';
+import type { OrderingOption } from './types';
+
+const option = (ordering: string, diverges = false): OrderingOption => ({
+    ordering,
+    label: ordering,
+    tmdb_type: 0,
+    diverges,
+    projection: {},
+});
+
+describe('orderingSelectorHeading (#862)', () => {
+    it('shows the selector when an ordering renumbers this disc', () => {
+        expect(
+            orderingSelectorHeading({
+                ordering_available: true,
+                ordering_diverges: true,
+                ordering_options: [option('aired'), option('dvd', true)],
+            }),
+        ).toMatch(/numbered differently across releases/);
+    });
+
+    it('shows the selector when TheTVDB is offered without a known divergence', () => {
+        // A key is configured but the automatic check found nothing: the user
+        // still needs a way to move the disc to TheTVDB numbering.
+        expect(
+            orderingSelectorHeading({
+                ordering_available: true,
+                ordering_diverges: false,
+                ordering_options: [option('aired'), option('tvdb')],
+            }),
+        ).toMatch(/TheTVDB/);
+    });
+
+    it('hides the selector when only non-divergent TMDB orderings exist', () => {
+        expect(
+            orderingSelectorHeading({
+                ordering_available: true,
+                ordering_diverges: false,
+                ordering_options: [option('aired'), option('dvd')],
+            }),
+        ).toBeNull();
+    });
+
+    it('hides the selector when no alternative ordering is available', () => {
+        expect(
+            orderingSelectorHeading({ ordering_available: false, ordering_options: [option('aired')] }),
+        ).toBeNull();
+        expect(orderingSelectorHeading(null)).toBeNull();
+    });
+});
 
 describe('movie extras in review (#773)', () => {
     const title = (id: number, state: DiscTitle['state'], is_extra: boolean): DiscTitle =>
