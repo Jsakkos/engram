@@ -7,6 +7,8 @@ export interface PathCheck {
     writable: boolean;
     is_network: boolean;
     unreachable: boolean;
+    /** Missing, but its nearest existing parent is writable, so Engram can create it. */
+    will_create?: boolean;
     free_bytes: number | null;
     reason: string | null;
 }
@@ -76,6 +78,17 @@ export function PathStatusHint({ path, label }: { path: string; label: string })
             <span className="form-hint path-status path-status-ok">
                 ✓ Writable{check.is_network ? ' network share' : ''}
                 {free ? ` · ${free}` : ''}
+                {check.normalized !== path.trim() ? ` · saved as ${check.normalized}` : ''}
+            </span>
+        );
+    }
+
+    // A missing folder Engram can create is a plain note: nothing is wrong, and
+    // the backend has checked the nearest existing parent is writable.
+    if (check.will_create) {
+        return (
+            <span className="form-hint path-status path-status-note">
+                ○ Will be created on first use
                 {check.normalized !== path.trim() ? ` · saved as ${check.normalized}` : ''}
             </span>
         );
