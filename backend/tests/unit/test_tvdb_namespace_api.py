@@ -365,11 +365,39 @@ class TestRosterNamespace:
         body = (await client.get(f"/api/jobs/{job_id}/season-roster")).json()
         assert body["tvdb_suggestion"] is None
 
-    async def test_plain_tmdb_job_has_no_tvdb_option(self, client, roster_stubs):
+    async def test_plain_tmdb_job_has_no_tvdb_option(self, client, roster_stubs, monkeypatch):
+        """No TheTVDB key at all: nothing to offer."""
+        monkeypatch.delenv("TVDB_API_KEY", raising=False)
         job_id = await _job()
         body = (await client.get(f"/api/jobs/{job_id}/season-roster")).json()
         assert body["episode_source"] == "tmdb"
         assert body["tvdb_suggestion"] is None
+        assert [o["ordering"] for o in body["ordering_options"]] == ["aired"]
+
+    async def test_configured_tvdb_is_offered_in_review_without_a_divergence(
+        self, client, roster_stubs, monkeypatch
+    ):
+        """#862: with a key configured, a disc in review can always be switched,
+        not only when the one-shot divergence check fired."""
+        monkeypatch.setenv("TVDB_API_KEY", "tvdb-test-key")
+        job_id = await _job()
+        body = (await client.get(f"/api/jobs/{job_id}/season-roster")).json()
+        options = {o["ordering"]: o for o in body["ordering_options"]}
+        assert list(options) == ["aired", "tvdb"]
+        # Offered, but not claimed to renumber anything: no divergence is known.
+        assert options["tvdb"]["diverges"] is False
+        assert body["ordering_available"] is True
+        assert body["ordering_diverges"] is False
+        assert body["current_ordering"] == "aired"
+        assert body["tvdb_suggestion"] is None
+
+    async def test_configured_tvdb_is_not_offered_outside_review(
+        self, client, roster_stubs, monkeypatch
+    ):
+        """The switch endpoint only accepts REVIEW_NEEDED, so nothing to offer elsewhere."""
+        monkeypatch.setenv("TVDB_API_KEY", "tvdb-test-key")
+        job_id = await _job(state=JobState.MATCHING)
+        body = (await client.get(f"/api/jobs/{job_id}/season-roster")).json()
         assert [o["ordering"] for o in body["ordering_options"]] == ["aired"]
 
     async def test_tvdb_job_roster(self, client, roster_stubs):

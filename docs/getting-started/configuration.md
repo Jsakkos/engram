@@ -28,6 +28,16 @@ To obtain your token:
 
 The configuration field is named `tmdb_api_key` for backwards compatibility, but it expects the v4 Read Access Token.
 
+## TheTVDB Episode Numbering
+
+Some shows are numbered differently by TMDB and by TheTVDB. Justice League (2001) is one: TMDB lists the pilot as one episode (24 in Season 1), while TheTVDB and the Blu-ray split it into three (26). TMDB numbering is the default; TheTVDB numbering is chosen per show, from the review page.
+
+Release builds include a TheTVDB key. Docker and source installs can set the `TVDB_API_KEY` environment variable or enter a key in Settings. A key on its own changes nothing: it lets Engram offer TheTVDB numbering.
+
+- **Suggestion.** When a disc's subtitles are fetched, Engram compares the two catalogues for that season. If they differ, the review page suggests switching.
+- **Switching by hand.** Any TV disc in review shows an **Episode ordering** selector with a **TheTVDB** option while a key is configured, whether or not a difference was detected. Choosing it fetches TheTVDB-numbered subtitles and re-matches the disc, without re-ripping. Later discs of the show start in TheTVDB numbering.
+- **Identify the show first.** The switch needs the show's TMDB entry. If you correct a disc's identity, pick the series from the search results; typing only the name works too, and Engram then looks the name up as the type you chose (TV or movie).
+
 ## Environment Variables
 
 An optional `backend/.env` file can override server-level defaults. These settings are **not** managed through the Config Wizard -- they control the server itself.
