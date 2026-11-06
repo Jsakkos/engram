@@ -5,7 +5,7 @@ import { Save, Package, Keyboard } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, orderingSelectorHeading, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
 import { MovieExtrasOnlyAction } from './ReviewQueue/MovieExtrasOnlyAction';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
@@ -1265,11 +1265,12 @@ function ReviewQueue() {
                 )}
                 {roster?.namespace_note && <SvNotice tone="warn">› {roster.namespace_note}</SvNotice>}
 
-                {/* Episode ordering (#200) — only when a divergent ordering exists. */}
-                {roster?.ordering_available && roster?.ordering_diverges && roster.ordering_options && (
+                {/* Episode ordering (#200): shown when an ordering renumbers this disc,
+                    or when TheTVDB is offered for a disc in review (#862). */}
+                {roster && roster.ordering_options && orderingSelectorHeading(roster) && (
                     <div style={{ marginBottom: 24 }}>
                         <div style={{ marginBottom: 12 }}>
-                            <SvLabel>Episode ordering — this show is numbered differently across releases</SvLabel>
+                            <SvLabel>{orderingSelectorHeading(roster)}</SvLabel>
                         </div>
                         <OrderingSelector
                             options={roster.ordering_options}
