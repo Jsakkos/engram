@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
+
 ## [0.44.0] - 2026-10-25
 
 _Highlights: episode titles in file names (`{episode_title}`), and manual assignment of one track to several consecutive episodes on the review page, for discs that hold two cartoon segments per track._
