@@ -39,6 +39,11 @@ class PathStatus:
     # unmounted share, typically. Distinct from an outright error: saving it is
     # reasonable, using it today is not.
     unreachable: bool = False
+    # The folder is missing but Engram can make it: its nearest existing parent
+    # is a folder Engram can write to. Not an error, so the UI can show a neutral
+    # "will be created" instead of a failure. ``ok`` stays False (nothing exists
+    # yet to be written to).
+    will_create: bool = False
 
     @property
     def ok(self) -> bool:
@@ -112,6 +117,50 @@ def normalize_user_path(value: str | None) -> str:
     return expanded
 
 
+def _describe_missing_folder(path: Path, raw: str) -> PathStatus:
+    """Decide whether a missing local folder is one Engram can really create.
+
+    The organizer makes folders with ``mkdir(parents=True)``, so "will be created"
+    holds exactly when the nearest existing ancestor is a folder we can write to.
+    That is checked with the same touch/unlink probe as an existing folder (mode
+    bits lie on shares and container mounts), and never creates the folder itself.
+    """
+
+    def blocked(reason: str) -> PathStatus:
+        return PathStatus(path=raw, exists=False, writable=False, is_network=False, reason=reason)
+
+    ancestor = path.parent
+    try:
+        while not ancestor.exists():
+            if ancestor.parent == ancestor:
+                return blocked("Can't create this folder: no part of the path exists.")
+            ancestor = ancestor.parent
+        if not ancestor.is_dir():
+            return blocked(f"Can't create this folder: {ancestor} is a file, not a folder.")
+    except OSError as e:
+        return blocked(f"Can't create this folder: {e.strerror or e}")
+
+    probe = ancestor / f".engram-write-test-{uuid.uuid4().hex}"
+    try:
+        probe.touch()
+    except OSError as e:
+        return blocked(
+            f"This folder doesn't exist and Engram can't create it in {ancestor}: {e.strerror or e}"
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            probe.unlink()
+
+    return PathStatus(
+        path=raw,
+        exists=False,
+        writable=False,
+        is_network=False,
+        will_create=True,
+        reason="This folder doesn't exist yet. Engram will create it when it first needs it.",
+    )
+
+
 def describe_path(value: str | None, *, probe_write: bool = True) -> PathStatus:
     r"""Check a configured directory and explain, in one sentence, what's wrong.
 
@@ -181,13 +230,7 @@ def describe_path(value: str | None, *, probe_write: bool = True) -> PathStatus:
                     "Windows has credentials for it (open it once in Explorer to sign in)."
                 ),
             )
-        return PathStatus(
-            path=raw,
-            exists=False,
-            writable=False,
-            is_network=False,
-            reason="This folder doesn't exist. Engram will create it when it first needs it.",
-        )
+        return _describe_missing_folder(path, raw)
 
     if not path.is_dir():
         return PathStatus(
