@@ -103,7 +103,7 @@ export const SELECTORS = {
   discInsertBestMatch: '[data-testid="sv-disc-insert-best-match"]',
 
   // Empty states
-  emptyState: 'text=/NO DISCS DETECTED|NO ACTIVE OPERATIONS|NO COMPLETED ARCHIVES/i',
+  emptyState: 'text=/WELCOME TO ENGRAM|NO DISCS DETECTED|NO ACTIVE OPERATIONS|NO COMPLETED ARCHIVES/i',
 
   // Clear/Cancel buttons
   clearButton: '[data-testid="sv-clear-btn"]',
