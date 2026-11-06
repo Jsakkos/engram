@@ -7,8 +7,10 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - The dashboard card shows ripped and matched track counts separately during a rip, so matched tracks no longer make the old TRACKS counter look further along than the rip is (#717, #740, thanks @sinaiko0212!)
+- A brand-new install no longer greets you with "All operations complete". With no job history, the dashboard now welcomes you and offers both ways in: insert a disc, or **Import** rips and disc backups you already have, plus a Getting started link. The old empty-state text returns as soon as any job exists (#721).
 - In Settings, a library or staging folder that doesn't exist yet is no longer shown as a red error. It now reads "Will be created on first use" in a neutral tone, and the server only says so when it can keep the promise: the nearest existing parent folder must be writable. A missing folder under an unwritable parent, or beneath a file, is still an error (#724).
 - One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
+- TheTVDB episode numbering can now be reached for a TV disc in review. Correcting a disc's identity by typing a show name (without picking a search result) could bind the TV disc to a same-named movie (Justice League the 2001 series lost to the 2017 film on popularity), so Engram never linked the show to TheTVDB and never suggested its numbering. The lookup now searches the type you chose, a correction to a different show or season starts that show's numbering decision fresh, and while a TheTVDB key is configured the review page's **Episode ordering** selector offers **TheTVDB** for any disc in review, not only when the two catalogues were detected to differ. The Settings text now says what the key does: on its own it changes nothing. (#862)
 
 ## [0.44.0] - 2026-10-25
 

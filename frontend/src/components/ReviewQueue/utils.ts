@@ -3,7 +3,7 @@
  */
 
 import { DiscTitle } from '../../types';
-import { MatchDetails } from './types';
+import { MatchDetails, SeasonRoster } from './types';
 import { normalizeEpisodeCode } from './coverage';
 import { MATCHING_CONFIG } from '../../config/constants';
 import { formatSizeGB, formatDurationLong } from '../../utils/formatting';
@@ -172,6 +172,25 @@ export function buildInitialSelections(titles: DiscTitle[]): {
         }
     }
     return { episodes, actions };
+}
+
+/**
+ * The heading for the review page's ordering selector, or null to hide it.
+ */
+export function orderingSelectorHeading(
+    roster: Pick<SeasonRoster, 'ordering_available' | 'ordering_diverges' | 'ordering_options'> | null,
+): string | null {
+    if (!roster?.ordering_available || !roster.ordering_options) return null;
+    if (roster.ordering_diverges) {
+        return 'Episode ordering: this show is numbered differently across releases';
+    }
+    // TheTVDB is offered whenever a key is configured, even when the automatic
+    // divergence check found nothing; that check is one-shot and can miss, and
+    // without the selector the disc has no way onto TheTVDB numbering (#862).
+    if (roster.ordering_options.some((o) => o.ordering === 'tvdb')) {
+        return 'Episode numbering: switch to TheTVDB if this disc follows its numbering';
+    }
+    return null;
 }
 
 /**
