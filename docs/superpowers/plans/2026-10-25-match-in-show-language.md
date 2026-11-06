@@ -15,6 +15,11 @@ the matcher. `EpisodeMatcher.audio_plan` already takes a language; it defaults t
 decisions of 2026-10-20). This plan details the phase 2 outline (Tasks 10 to 15) of
 `docs/superpowers/plans/2026-10-20-non-english-content.md`.
 
+> **Amended by the #843 review (2026-10-25).** Two rules below changed: `plan_title_audio` is
+> English first unless the language is in `ORIGINAL_FIRST_LANGUAGES`, and a job switches language
+> only when the language covers at least 80% of the season (not at `MIN_USABLE_REFERENCES`), with
+> both counts in `DiscJob.match_language_note`. The spec's decision 1 records the amendment.
+
 ## Pull requests and merge order
 
 The maintainer asked for three PRs (issue comment, 2026-10-24). They merge in this order, so `main`

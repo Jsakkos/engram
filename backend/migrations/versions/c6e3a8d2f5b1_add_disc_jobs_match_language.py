@@ -1,7 +1,8 @@
-"""add disc_jobs.content_language / match_language
+"""add disc_jobs.content_language / match_language / match_language_note
 
 The show's TMDB original language and the language its episodes are matched in
-(issue #241, phase 2), as normalized codes. Mirrors the database.py reconciler
+(issue #241, phase 2), as normalized codes, and the note recording
+why (both reference counts). Mirrors the database.py reconciler
 path used by frozen builds (which skip Alembic); the two must stay in agreement.
 
 Revision ID: c6e3a8d2f5b1
@@ -27,9 +28,11 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     add_column_if_missing("disc_jobs", sa.Column("content_language", sa.String(), nullable=True))
     add_column_if_missing("disc_jobs", sa.Column("match_language", sa.String(), nullable=True))
+    add_column_if_missing("disc_jobs", sa.Column("match_language_note", sa.String(), nullable=True))
 
 
 def downgrade() -> None:
     with op.batch_alter_table("disc_jobs", schema=None) as batch_op:
+        batch_op.drop_column("match_language_note")
         batch_op.drop_column("match_language")
         batch_op.drop_column("content_language")

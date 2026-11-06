@@ -232,6 +232,10 @@ class DiscJob(SQLModel, table=True):
     # subtitle download; None means not decided, which reads as English.
     content_language: str | None = None
     match_language: str | None = None
+    # Why the job matches in that language: the show language's reference count
+    # against the season's episode count, e.g. "German references for 8 of 10
+    # episodes of season 1; matching in German". None for an English show.
+    match_language_note: str | None = None
 
     # Title information (JSON stored as string for simplicity)
     titles_json: str | None = None  # List of titles with durations

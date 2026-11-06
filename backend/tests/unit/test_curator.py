@@ -955,11 +955,26 @@ class TestMatchLanguageLadder:
         with match_language_context(language):
             return await curator.match_single_file(f, "Babylon Berlin", 1)
 
-    async def test_original_language_stream_preferred_over_dub(self, tmp_path, monkeypatch):
+    async def test_english_dub_preferred_over_original_language(self, tmp_path, monkeypatch):
+        # English first: a dubbed disc stays on the English path.
+        curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["de", "en"])
+        result = await self._match(curator, f, "de")
+        assert result.episode_code == "S01E03"
+        assert seen == [("en", 1)]
+
+    async def test_original_first_language_prefers_its_own_stream(self, tmp_path, monkeypatch):
+        import app.matcher.audio_streams as audio_streams
+
+        monkeypatch.setattr(audio_streams, "ORIGINAL_FIRST_LANGUAGES", frozenset({"de"}))
         curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["en", "de"])
         result = await self._match(curator, f, "de")
         assert result.episode_code == "S01E03"
         assert seen == [("de", 1)]
+
+    async def test_show_language_only_matches_in_it(self, tmp_path, monkeypatch):
+        curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["de"])
+        await self._match(curator, f, "de")
+        assert seen == [("de", 0)]
 
     async def test_english_dub_only_matches_in_english(self, tmp_path, monkeypatch):
         curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["en"])
@@ -1014,7 +1029,10 @@ class TestUnspacedScriptReview:
         async def no_prepass(**k):
             return None
 
+        curator.llm_calls = []
+
         async def no_llm(**k):
+            curator.llm_calls.append(k)
             return None
 
         monkeypatch.setattr(curator, "_chromaprint_prepass", no_prepass)
@@ -1033,6 +1051,25 @@ class TestUnspacedScriptReview:
         assert result.episode_code == "S01E03"
         assert result.needs_review is True
         assert result.match_details["uncalibrated_language"] == language
+
+    async def test_a_match_held_only_for_its_script_skips_the_llm(self, tmp_path, monkeypatch):
+        # The hold pre-fills the match; a full-file Whisper pass plus an AI call
+        # would only second-guess it.
+        from app.core.match_language import match_language_context
+
+        curator, f = self._curator(tmp_path, monkeypatch, 0.97)
+        with match_language_context("ja"):
+            result = await curator.match_single_file(f, "Show", 1)
+        assert result.needs_review is True
+        assert curator.llm_calls == []
+
+    async def test_a_low_confidence_unspaced_match_still_asks_the_llm(self, tmp_path, monkeypatch):
+        from app.core.match_language import match_language_context
+
+        curator, f = self._curator(tmp_path, monkeypatch, 0.4)
+        with match_language_context("ja"):
+            await curator.match_single_file(f, "Show", 1)
+        assert len(curator.llm_calls) == 1
 
     @pytest.mark.parametrize("language", ["de", "en"])
     async def test_spaced_scripts_file_as_before(self, tmp_path, monkeypatch, language):

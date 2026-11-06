@@ -15,7 +15,8 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.core.episode_namespace import namespace_context
+from app.core.episode_namespace import namespace_context, season_episodes
+from app.core.languages import language_name
 from app.core.match_language import (
     ENGLISH,
     content_language,
@@ -27,6 +28,12 @@ from app.matcher.episode_identification import MIN_USABLE_REFERENCES, downloaded
 from app.matcher.subtitle_utils import corpus_dir_name
 from app.models.disc_job import ContentType, DiscJob
 
+# Share of the season's episodes that need a reference in the show's language
+# before the whole job switches to it. MIN_USABLE_REFERENCES is the floor below
+# which one match means nothing; as the bar for a job it would let 2 of 10
+# references decide 8 tracks against a corpus without their episode.
+SWITCH_MIN_SEASON_COVERAGE = 0.8
+
 
 def _reference_count(
     cache_dir: Path, tmdb_id: int, show_name: str, season: int, namespace: str, language: str
@@ -35,6 +42,30 @@ def _reference_count(
     with namespace_context(namespace), match_language_context(language):
         data_dir = cache_dir / "data" / corpus_dir_name(tmdb_id, show_name)
     return len(downloaded_episode_codes(data_dir, season))
+
+
+def _season_episode_count(tmdb_id: int, season: int, namespace: str, api_key: str) -> int:
+    """The season's episode count in the job's namespace; 0 when unknown."""
+    with namespace_context(namespace):
+        return len(season_episodes(str(tmdb_id), season, api_key) or [])
+
+
+def _switch_decision(content: str, count: int, total: int, season: int) -> tuple[str, str]:
+    """The job's match language and the note recording why, from both counts."""
+    name = language_name(content)
+    if total <= 0:
+        note = (
+            f"{name} references for {count} episodes of season {season}, but the season's "
+            "episode count is unknown; matching in English"
+        )
+        return ENGLISH, note
+    switch = count >= MIN_USABLE_REFERENCES and count >= SWITCH_MIN_SEASON_COVERAGE * total
+    language = content if switch else ENGLISH
+    note = (
+        f"{name} references for {count} of {total} episodes of season {season}; "
+        f"matching in {language_name(language)}"
+    )
+    return language, note
 
 
 def _cache_dir(config) -> Path:
@@ -76,19 +107,17 @@ async def decide_job_match_language(job_id: int) -> str:
         if details is None:
             return current
         content = content_language(details)
-        language = ENGLISH
+        language, note = ENGLISH, None
         if content and content != ENGLISH:
             config = await get_config()
             count = await asyncio.to_thread(
                 _reference_count, _cache_dir(config), tmdb_id, show_name, season, namespace, content
             )
-            if count >= MIN_USABLE_REFERENCES:
-                language = content
-            else:
-                logger.info(
-                    f"Job {job_id}: show language {content} has {count} reference(s) for "
-                    f"season {season}; matching in English"
-                )
+            total = await asyncio.to_thread(
+                _season_episode_count, tmdb_id, season, namespace, config.tmdb_api_key
+            )
+            language, note = _switch_decision(content, count, total, season)
+            logger.info(f"Job {job_id}: {note}")
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -97,6 +126,7 @@ async def decide_job_match_language(job_id: int) -> str:
                 return (job.match_language if job else None) or ENGLISH
             job.content_language = content
             job.match_language = language
+            job.match_language_note = note
             await session.commit()
         return language
     except Exception as e:  # noqa: BLE001 - a failed decision leaves the job on English
