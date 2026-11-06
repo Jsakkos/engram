@@ -76,7 +76,7 @@ All dollar figures are indicative and must be re-checked at purchase time. The A
 | --- | --- | --- | --- |
 | **D1** | Which route to start. | A (Azure), with B as a parallel hedge only if D2 says the maintainer is ineligible. | **2026-11-09** |
 | **D2** | Eligibility facts: is the maintainer's legal address and government ID in the US or Canada? Sign as an individual (name on the certificate is the legal name, with city and state) or via a registered entity? | Individual if eligible. The legal name will be public on every release. Confirm they are comfortable with that. | **2026-11-09** (blocks everything) |
-| **D3** | Signing scope. | `engram.exe` + bundled `fpcalc.exe` only. Do not sign `_internal` DLL/`.pyd` files. | 2026-11-13 (before implementation PR) |
+| **D3** | Signing scope. | `engram.exe` + bundled `fpcalc.exe` only. Do not sign `_internal` DLL/`.pyd` files. | 2026-11-13 (before implementation PR; does not gate the 11-09 validation start) |
 | **D4** | Budget approval for about $10/month (about $120/year), billed from the day the account is created. | Approve. | **2026-11-09** |
 | **D5** | Failure policy: what happens if signing fails on a tag. | Fail the release hard, no silent unsigned fallback. Keep `workflow_dispatch` `draft=true` for dry runs. Hotfix path: re-run the workflow, do not add a skip flag. | 2026-11-13 |
 | **D6** | Should the updater verify the Authenticode publisher of the staged `engram.exe` before swapping (section 6, optional phase)? | Yes, but as a later separate PR, warn-only for the first signed release, enforcing after. | Before the stable tag |
@@ -88,7 +88,7 @@ All dollar figures are indicative and must be re-checked at purchase time. The A
 | --- | --- |
 | 2026-11-09 | D1, D2, D4 decided. Create Azure subscription (billing account type Individual, name and address matching ID), register `Microsoft.CodeSigning`, create account, submit identity validation, complete the ID check on the phone. |
 | 2026-11-13 | D3, D5 decided. Implementation PR can be written while validation is pending (the pipeline can be built and reviewed without a live profile; it only needs the profile for the dry run). |
-| **2026-11-25** | **Tripwire.** If validation is not Completed, open the SignPath application (needs the "Code signing policy" text on the README and download page first, see section 5) and decide whether a plan C quote is worth the effort. 11-09 plus 12 business days is 11-25 (US Thanksgiving is 11-26). |
+| **2026-11-25** | **Tripwire.** If validation is not Completed, open the SignPath application (needs the "Code signing policy" text on the README and download page first, see section 5) and decide whether a plan C quote is worth the effort. 11-09 plus 12 business days is 11-25. |
 | 2026-12-07 | Latest date Microsoft's own 20-business-day bound reaches from an 11-09 start. |
 | By freeze | First dry run on a draft release; first signed stable-line release candidate. If nothing is validated by then, ship the RC unsigned and add the "unsigned, here is why" note to the release body. |
 
@@ -124,12 +124,12 @@ Land these as separate small PRs. None is merged until D1 to D5 are answered and
 File: `.github/workflows/release.yml`, job `build-windows` only. Linux and macOS jobs are untouched.
 
 1. **Job permissions.** The workflow sets `permissions: contents: write`. A job-level `permissions` block replaces, not merges, so `build-windows` needs both `contents: read` (for checkout) and `id-token: write` (for OIDC). Declare them on the job, leaving `create-release` on the workflow default.
-2. **Environment.** Add `environment: release-signing` to the job so the federated credential subject matches. This also lets the maintainer add a required reviewer later.
+2. **Environment.** Add `environment: release-signing` to the job so the federated credential subject matches (it works for both tag and `workflow_dispatch` runs). A required reviewer can be added later, but then every tag release waits on a click, which gives up the "no per-release human click" advantage in section 3. Leave it off unless wanted. `build-windows` needs only `contents: read`, not `contents: write`; only `create-release` uploads assets.
 3. **Insert after "Build executable" and before "Smoke test built executable":**
 
    ```yaml
    - name: Azure login (OIDC)
-     uses: azure/login@v3   # pin to a full commit SHA in the PR, matching repo convention
+     uses: azure/login@<full-sha>   # v3; pin to a full commit SHA, not the floating tag
      with:
        client-id: ${{ vars.AZURE_CLIENT_ID }}
        tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -143,7 +143,7 @@ File: `.github/workflows/release.yml`, job `build-windows` only. Linux and macOS
        Copy-Item backend/dist/engram/_internal/bin/fpcalc.exe sign-staging/
 
    - name: Sign engram.exe and fpcalc.exe
-     uses: azure/artifact-signing-action@v2   # pin to a full commit SHA
+     uses: azure/artifact-signing-action@<full-sha>   # v2; pin to a full commit SHA, not the floating tag
      with:
        endpoint: ${{ vars.SIGNING_ENDPOINT }}
        signing-account-name: ${{ vars.SIGNING_ACCOUNT }}
@@ -168,12 +168,13 @@ File: `.github/workflows/release.yml`, job `build-windows` only. Linux and macOS
    ```
 
    Notes for the implementer:
+   - Before signing, assert `sign-staging` contains exactly the two expected files, so a changed action filter cannot sign or miss anything silently.
    - Staging into a temp folder makes the action's folder recursion semantics irrelevant and keeps the signature count at exactly two per release, far under the 5,000/month quota even with many dry runs.
    - Verify the action's exact input names against its README at implementation time (the names above are from its current documentation; the README had no tagged release list when checked).
    - Use `Get-AuthenticodeSignature` rather than locating `signtool.exe` in the SDK path. It is a built-in and gives status, signer and timestamp in one call. Treat `Valid` plus a timestamp as the gate. A stricter version also asserts `$sig.SignerCertificate.Subject` contains the expected publisher name (store that string as an environment variable `SIGNING_EXPECTED_SUBJECT` so a mis-pointed profile is caught).
 4. **Leave unchanged:** the smoke test, CA/fpcalc checks, `--selftest`, manifest and zip steps. They now run against signed files, which is the point.
-5. **Add one assertion** to the existing "Verify CA bundle" step or a new step after the zip is built: re-run `Get-AuthenticodeSignature` on `backend/dist/engram/engram.exe` after the manifest step to prove nothing modified the signed file in between.
-6. **Spec hardening** (same PR or an adjacent one): in `backend/engram.spec`, set `upx=False` for both `EXE` and `COLLECT` (or gate on `os.name != "nt"`). Check the runner's PATH for `upx` first so the change is understood rather than assumed.
+5. **Add a new step between "Generate file manifest" and "Package"** (not inside the earlier "Verify CA bundle" step, which runs before the manifest): re-run `Get-AuthenticodeSignature` on both `backend/dist/engram/engram.exe` and `backend/dist/engram/_internal/bin/fpcalc.exe` to prove nothing modified the signed files before they were zipped.
+6. **Spec hardening. Precondition for the dry run, because UPX would corrupt the appended PyInstaller archive plus signature and make the dry run untrustworthy** (same PR or an adjacent one): in `backend/engram.spec`, set `upx=False` for both `EXE` and `COLLECT` (or gate on `os.name != "nt"`). Check the runner's PATH for `upx` first so the change is understood rather than assumed.
 7. **Dry run.** Trigger `workflow_dispatch` with `draft: true` on the PR branch. Check: all three Windows verify steps pass; the smoke test passes against the signed exe (this is the PyInstaller-appended-signature proof); download the draft zip in a browser on a clean Windows machine and note the SmartScreen dialog and the Digital Signatures tab on `engram.exe`. Record the result in the PR.
 
 ### PR 2: docs and release notes
@@ -191,7 +192,7 @@ Goal: defend against a tampered release asset, which the current same-origin SHA
 - **Pin the publisher subject (CN), never the thumbprint.** Azure certificates rotate about every 72 hours, so a thumbprint pin would break every release.
 - **Trust on first signed:** enforce only if the currently running `engram.exe` is itself validly signed. Users updating from the last unsigned release to the first signed one must not be blocked. Ship the first signed release in warn-only mode (log and surface in diagnostics), then flip to enforcing.
 - Keep it out of the `.bat` helper; do it in Python before the swap so a failure leaves state in `ERROR` with the live install untouched, like the other verifier failures.
-- Tests: pure-function tests with the PowerShell/`ctypes` call mocked (valid, invalid, unsigned, wrong subject, current-build-unsigned skip); no real signing needed. Remember `tests/unit/test_matched_episode_consumers.py`-style guards do not apply here, but the existing updater tests that call `_verify_extracted` must still pass untouched.
+- Tests: pure-function tests with the PowerShell/`ctypes` call mocked (valid, invalid, unsigned, wrong subject, current-build-unsigned skip); no real signing needed. The existing updater tests that call `_verify_extracted` must still pass untouched.
 
 ### PR 1 variant for Route B (SignPath)
 
