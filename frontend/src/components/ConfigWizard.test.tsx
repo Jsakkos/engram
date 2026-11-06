@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { toast } from 'sonner';
 import ConfigWizard from './ConfigWizard';
 
@@ -662,7 +662,11 @@ describe('ConfigWizard — scroll reset on step change (#725)', () => {
             // Stand in for the browser: scrolling the anchor into view moves the pane.
             (this.closest('.wizard-body') as HTMLElement).scrollTop = 240;
         });
+        const originalScrollIntoView = Element.prototype.scrollIntoView;
         Element.prototype.scrollIntoView = scrollIntoView;
+        onTestFinished(() => {
+            Element.prototype.scrollIntoView = originalScrollIntoView;
+        });
         const { container } = render(<ConfigWizard {...noop} isOnboarding={false} initialSection="gpu" />);
         await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
         const anchor = document.getElementById('setting-gpu-acceleration');
