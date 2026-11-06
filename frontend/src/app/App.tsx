@@ -309,7 +309,10 @@ function MainDashboard() {
   // inferring it from an empty list. Re-checked whenever the live job count changes.
   const [hasJobHistory, setHasJobHistory] = useState<boolean | null>(null);
   useEffect(() => {
-    if (DEV_MODE || jobs.length > 0) return;
+    if (DEV_MODE) return;
+    // A live job is proof of history; without this a stale `false` would flash the
+    // welcome copy when the list later empties (jobs cleared) before the refetch lands.
+    if (jobs.length > 0) { setHasJobHistory(true); return; }
     let cancelled = false;
     fetch('/api/jobs/stats?include_all_states=true')
       .then((r) => (r.ok ? r.json() : null))
