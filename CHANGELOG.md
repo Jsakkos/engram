@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
+- TheTVDB episode numbering can now be reached for a TV disc in review. Correcting a disc's identity by typing a show name (without picking a search result) could bind the TV disc to a same-named movie (Justice League the 2001 series lost to the 2017 film on popularity), so Engram never linked the show to TheTVDB and never suggested its numbering. The lookup now searches the type you chose, a correction to a different show or season starts that show's numbering decision fresh, and while a TheTVDB key is configured the review page's **Episode ordering** selector offers **TheTVDB** for any disc in review, not only when the two catalogues were detected to differ. The Settings text now says what the key does: on its own it changes nothing. (#862)
 
 ## [0.44.0] - 2026-10-25
 

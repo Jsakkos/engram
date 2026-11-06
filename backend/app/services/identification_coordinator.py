@@ -1727,6 +1727,7 @@ class IdentificationCoordinator:
             # 2026-07-22).
             _prev_title = job.detected_title
             _prev_tmdb_id = job.tmdb_id
+            _prev_season = job.detected_season
 
             # Post-rip: staged files, or titles already ripped/filed (#774)
             has_ripped = await _disc_already_ripped(session, job)
@@ -1765,13 +1766,25 @@ class IdentificationCoordinator:
 
                     config = await get_config()
                     if config.tmdb_api_key:
+                        # The user asserted the type, so look up in that namespace.
+                        # Without it a same-named movie can outrank the series on
+                        # popularity ("Justice League" 2017 vs the 2001 show), and
+                        # a TV job bound to a movie id 404s on every /tv lookup,
+                        # so TheTVDB numbering can never be linked (#862).
                         _signal = await asyncio.to_thread(
-                            classify_from_tmdb, title, config.tmdb_api_key
+                            classify_from_tmdb,
+                            title,
+                            config.tmdb_api_key,
+                            prefer_content_type=job.content_type,
                         )
                         # The key was tried and accepted (no TmdbAuthError) — any
                         # stale "rejected" marker from identify time is now wrong
                         # regardless of whether results were found (#243).
                         job.tmdb_degraded_reason = None
+                        if _signal and _signal.content_type != job.content_type:
+                            # Only the other type matched: its id names a different
+                            # catalogue entry, so keep the user's title without it.
+                            _signal = None
                         if _signal and _signal.tmdb_id:
                             job.tmdb_id = _signal.tmdb_id
                             if _signal.tmdb_name:
@@ -1809,6 +1822,18 @@ class IdentificationCoordinator:
             if _year is None and job.tmdb_id == _old_tmdb_id:
                 _year = _old_year
             job.tmdb_year = _year
+
+            if (job.tmdb_id, job.detected_season) != (_prev_tmdb_id, _prev_season):
+                # The numbering decision belongs to the show and season it was
+                # made for. Start the corrected identity on TMDB with no
+                # suggestion; the restarted subtitle download runs
+                # decide_job_namespace again for it (#862).
+                from app.core.episode_namespace import NAMESPACE_TMDB
+
+                job.episode_namespace = NAMESPACE_TMDB
+                job.episode_crosswalk_json = None
+                job.tvdb_divergence_json = None
+                job.episode_namespace_note = None
 
             # The question is answered — retire the walk-away CTA (B5); the ""
             # in the broadcast below clears it on the frontend merge.
