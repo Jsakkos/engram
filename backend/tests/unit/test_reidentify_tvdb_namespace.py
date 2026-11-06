@@ -123,6 +123,38 @@ class TestReIdentifyLookupHonoursContentType:
 
         assert (await _get(job_id)).tmdb_id is None
 
+    async def test_a_job_already_bound_to_the_other_type_is_unbound(self, tmp_path, monkeypatch):
+        """Job 120 as it is today: a TV job holding the movie's id. A lookup whose
+        only hit is that same movie proves the id is the wrong type, so drop it
+        (and the numbering made for it) instead of keeping the 404ing id."""
+
+        def movie_only(name, api_key, timeout=5.0, prefer_content_type=None):
+            return _JL_MOVIE
+
+        monkeypatch.setattr("app.core.tmdb_classifier.classify_from_tmdb", movie_only)
+        job_id = await _seed(
+            tmp_path,
+            tmdb_id=141052,
+            detected_title="Justice League",
+            detected_season=1,
+            tvdb_divergence_json=json.dumps({"season": 1, "tmdb": 24, "tvdb": 26}),
+        )
+
+        await _coord().re_identify(job_id, "Justice League", "tv", season=1)
+
+        job = await _get(job_id)
+        assert job.tmdb_id is None
+        assert job.tvdb_divergence_json is None
+
+    async def test_failed_lookup_keeps_the_existing_id(self, tmp_path, monkeypatch):
+        """No answer at all (TMDB down, no results) is not evidence against the id."""
+        monkeypatch.setattr("app.core.tmdb_classifier.classify_from_tmdb", lambda *a, **k: None)
+        job_id = await _seed(tmp_path, tmdb_id=1618, detected_season=1)
+
+        await _coord().re_identify(job_id, "Justice League", "tv", season=1)
+
+        assert (await _get(job_id)).tmdb_id == 1618
+
     async def test_movie_correction_still_looks_up_without_a_tv_preference(
         self, tmp_path, classify
     ):

@@ -1784,6 +1784,13 @@ class IdentificationCoordinator:
                         if _signal and _signal.content_type != job.content_type:
                             # Only the other type matched: its id names a different
                             # catalogue entry, so keep the user's title without it.
+                            # If the job already holds that very id (a TV job bound
+                            # to the movie by an earlier lookup, as in #862), the id
+                            # is proven wrong-type: unbind it rather than keep an id
+                            # every /tv lookup 404s on. A lookup with no answer at
+                            # all is no such evidence, so it leaves the id alone.
+                            if job.tmdb_id is not None and job.tmdb_id == _signal.tmdb_id:
+                                job.tmdb_id = None
                             _signal = None
                         if _signal and _signal.tmdb_id:
                             job.tmdb_id = _signal.tmdb_id
