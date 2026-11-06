@@ -7,6 +7,9 @@ All notable changes to Engram will be documented in this file.
 ### Added
 
 - **Shows in other languages are matched in their own language.** A show whose original language is not English (German, French, Japanese, ...) used to go to review track by track whenever the disc had no English audio. Engram now downloads the show's subtitles in its original language too, transcribes the original-language audio track and matches the two, so the tracks of a German show on a German disc are matched to their episodes like an English show's; a track it is less sure of goes to review as usual. A disc with an English dub is matched in the original language; a track with only the dub is matched in English; a show with no subtitles in its language is matched in English exactly as before. Japanese, Chinese and Thai matches always go to review for now. The review page names the language a track was matched in. (#241)
+### Fixed
+
+- One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
 
 ## [0.44.0] - 2026-10-25
 

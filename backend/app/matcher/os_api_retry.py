@@ -86,6 +86,42 @@ def os_download_temp_name() -> str:
     return str(Path(tempfile.gettempdir()) / f"engram-os-{uuid.uuid4().hex}")
 
 
+def _api_error_message(exc: BaseException) -> str | None:
+    """The ``message`` the OpenSubtitles API sent back with a failed request.
+
+    The library raises ``OpenSubtitlesException(str(http_err))`` from inside its
+    ``except HTTPError`` block, so the text only says "406 Client Error"; the
+    server's JSON body is reachable through the implicit exception chain
+    (``__context__``), whose ``HTTPError`` still holds the response.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        response = getattr(current, "response", None)
+        if response is not None:
+            try:
+                body = response.json()
+            except (ValueError, AttributeError):
+                body = None
+            if isinstance(body, dict) and isinstance(body.get("message"), str):
+                return body["message"]
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def is_invalid_file_id_error(exc: BaseException) -> bool:
+    """True when the server refused one upload's ``file_id`` (#857).
+
+    The search can list an upload whose file is no longer served; ``/download``
+    then answers ``406 {"message":"Invalid file_id"}``. That is about one search
+    result, so it is never worth retrying and must not abort the caller's loop.
+    A spent daily quota is ALSO a 406, which is why this keys on the message.
+    """
+    message = _api_error_message(exc)
+    return message is not None and "invalid file_id" in message.lower()
+
+
 def _parse_retry_after(exc: Exception) -> float | None:
     """Extract Retry-After (seconds) from an exception's response, if present.
 
@@ -155,6 +191,9 @@ def os_api_call(
         try:
             return callable_(*args, **kwargs)
         except _RETRYABLE_EXCEPTIONS as exc:
+            if is_invalid_file_id_error(exc):
+                # Permanent for this upload: retrying only adds latency.
+                raise
             retry_after = _parse_retry_after(exc)
             sleep_for = retry_after if retry_after is not None else delay
             is_rate_limit = "429" in str(exc) or retry_after is not None
