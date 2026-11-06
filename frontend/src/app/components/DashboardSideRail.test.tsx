@@ -43,8 +43,30 @@ describe('DashboardSideRail activity log', () => {
         );
         rerender(<DashboardSideRail jobs={jobs} titlesMap={{ 1: [title(10, 1, 1, 'matching')] }} />);
         const row = screen.getByTestId('sv-side-rail-log-entry');
-        expect(row.textContent).toContain('A_VERY_LONG_V…');
+        expect(row.textContent).toContain('A_VERY_…A_DISC');
         expect(row.textContent).not.toContain('A_VERY_LONG_VOLUME_LABEL');
+    });
+
+    it('keeps the disc suffix visible so S1D1 and S1D2 stay distinguishable', () => {
+        const jobs = [job(1, 'LONG_SHOW_NAME_HERE_S1D1'), job(2, 'LONG_SHOW_NAME_HERE_S1D2')];
+        const before = { 1: [title(10, 1, 1, 'ripping')], 2: [title(20, 2, 1, 'ripping')] };
+        const after = { 1: [title(10, 1, 1, 'matching')], 2: [title(20, 2, 1, 'matching')] };
+        const { rerender } = render(<DashboardSideRail jobs={jobs} titlesMap={before} />);
+        rerender(<DashboardSideRail jobs={jobs} titlesMap={after} />);
+        const subjects = screen
+            .getAllByTestId('sv-side-rail-log-entry')
+            .map((r) => r.textContent ?? '');
+        expect(subjects.some((r) => r.includes('S1D1'))).toBe(true);
+        expect(subjects.some((r) => r.includes('S1D2'))).toBe(true);
+    });
+
+    it('exposes the full disc label as a tooltip on the subject', () => {
+        const jobs = [job(1, 'A_VERY_LONG_VOLUME_LABEL_FOR_A_DISC')];
+        const { rerender } = render(
+            <DashboardSideRail jobs={jobs} titlesMap={{ 1: [title(10, 1, 1, 'ripping')] }} />,
+        );
+        rerender(<DashboardSideRail jobs={jobs} titlesMap={{ 1: [title(10, 1, 1, 'matching')] }} />);
+        expect(screen.getByTitle('A_VERY_LONG_VOLUME_LABEL_FOR_A_DISC · T01')).toBeInTheDocument();
     });
 
     it('falls back to the job id when the disc has no label', () => {
