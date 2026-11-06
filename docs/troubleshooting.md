@@ -96,21 +96,22 @@ audio tracks its language settings select, so a track on the disc can be missing
 file. In MakeMKV, open **Preferences > Language** (or adjust the default track selection),
 add the language, and re-rip the track.
 
-On a disc with several audio tracks, Engram picks the one in the language it matches in,
-whichever track the disc marks as the default.
+On a disc with several audio tracks, Engram listens to the English one when there is one,
+and otherwise to the one in the show's own language, whichever track the disc marks as the
+default.
 
 ## Shows in other languages
 
-A show whose original language is not English (on TMDB) is matched in that language when
-subtitles in it can be found: Engram downloads them alongside the English ones, listens
-to the original-language audio track, and compares the two, so a German show on a German
-disc is matched to its episodes like an English show. The review page says "matched in
-German" for such a track.
+A show whose original language is not English (on TMDB) can be matched in that language:
+Engram downloads its subtitles in that language alongside the English ones, and a track
+with no English audio is matched by its original-language audio track, so a German show on
+a German disc is matched to its episodes like an English show. The review page says
+"matched in German" for such a track.
 
-- **A disc with the original audio and an English dub** is matched in the original
-  language. A track that only has the English dub is matched in English.
-- **No subtitles in the show's language** (the season has fewer than two): the show is
-  matched in English, exactly as before.
+- **A track with English audio** (an English dub) is matched in English, exactly as before,
+  even when the original audio is on the disc too.
+- **Too few subtitles in the show's language** (they cover less than 80% of the season's
+  episodes): the show is matched in English, exactly as before.
 - **Japanese, Chinese and Thai** matches always go to review, however confident, until
   real discs show how far their confidence can be trusted. Check the suggestion and save.
 - Subtitles in other languages stay on your machine, in their own folder in the subtitle

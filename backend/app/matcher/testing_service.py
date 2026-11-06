@@ -592,7 +592,9 @@ def _heal_precomputed_gaps(
     return healed
 
 
-def _release_matches_episode(release: str | None, expected_title: str, *, season: int) -> bool:
+def _release_matches_episode(
+    release: str | None, expected_title: str, *, season: int, check_title: bool = True
+) -> bool:
     """Return False when an OpenSubtitles ``release`` clearly names a DIFFERENT
     episode than the one requested; True when it's consistent or uninformative.
 
@@ -606,12 +608,18 @@ def _release_matches_episode(release: str | None, expected_title: str, *, season
     1. An explicit ``SxxEyy`` whose season differs from ``season``.
     2. An explicit title after an episode marker ("Episode N - Title", "SxxEyy: Title",
        "NxNN - Title") that shares no word — and is no substring — with ``expected_title``.
+
+    ``check_title=False`` keeps only (1): a release in another language names its
+    episode in that language, and TMDB's titles are English, so a title mismatch is
+    no evidence of a mislabel there.
     """
-    if not release or not expected_title:
+    if not release or (check_title and not expected_title):
         return True
     sxx = re.search(r"s(\d{1,2})e\d{1,3}", release, re.IGNORECASE)
     if sxx and int(sxx.group(1)) != season:
         return False
+    if not check_title:
+        return True
     marker = re.search(
         r"(?:episode\s+\d+|s\d{1,2}e\d{1,3}|\d{1,2}x\d{1,3})\s*[-–:]\s*(.+)$",
         release,
@@ -960,10 +968,13 @@ def download_subtitles(
                             f"season {season} (mislabeled); skipping"
                         )
                         continue
+                    # TMDB's titles are English: off English only the release's
+                    # season is checked.
                     if not _release_matches_episode(
                         getattr(subtitle, "release", None),
                         episode_titles.get(ep_num, ""),
                         season=season,
+                        check_title=language == "en",
                     ):
                         logger.warning(
                             f"OpenSubtitles S{season:02d}E{ep_num:02d} release "

@@ -30,18 +30,23 @@ def test_opensubtitles_language_parameter(language, param):
     assert ts.opensubtitles_languages(language) == param
 
 
-def _download(tmp_path, language):
-    """Run download_subtitles under ``language`` with one OpenSubtitles hit for E01."""
+def _download(tmp_path, language, release=None, episodes=()):
+    """Run download_subtitles under ``language`` with one OpenSubtitles hit for E01.
+
+    ``episodes`` is the season roster (TMDB, ``en-US`` titles) the release is
+    validated against.
+    """
     (tmp_path / "data").mkdir(parents=True, exist_ok=True)
-    hit = types.SimpleNamespace(episode_number=1, season_number=1, release=None, file_id="f1")
+    hit = types.SimpleNamespace(episode_number=1, season_number=1, release=release, file_id="f1")
     os_client = Mock()
-    seen = {}
+    seen = {"downloads": 0}
 
     def fake_os_api_call(func, *args, **kwargs):
         if func is os_client.search:
             seen["languages"] = kwargs["languages"]
             return types.SimpleNamespace(data=[hit])
         if func is os_client.download_and_save:
+            seen["downloads"] += 1
             raw = tmp_path / "raw.srt"
             raw.write_text(_VALID_SRT, encoding="utf-8")
             return str(raw)
@@ -57,7 +62,7 @@ def _download(tmp_path, language):
         patch("app.services.config_service.get_config_sync", return_value=_mock_config(tmp_path)),
         patch.object(ts, "fetch_show_details", return_value={"name": "Babylon Berlin"}),
         patch.object(ts, "fetch_season_details", return_value=2),
-        patch.object(ts, "fetch_season_episodes", return_value=[]),
+        patch.object(ts, "fetch_season_episodes", return_value=list(episodes)),
         patch.object(ts, "_precomputed_skip_result", return_value=None),
         patch.object(ts, "_os_client_and_reason", return_value=(os_client, None)),
         patch.object(ts, "os_api_call", side_effect=fake_os_api_call),
@@ -82,6 +87,34 @@ class TestDownloadInTheBoundLanguage:
         assert Path(result["episodes"][0]["path"]).parent.name == "70523@de"
         assert [j.language for j in seen["jobs"]] == ["de"]
         assert not (tmp_path / "data" / "70523").exists()
+
+    _ROSTER = (
+        {"episode_number": 1, "name": "Before the Storm"},
+        {"episode_number": 2, "name": "The Raid"},
+    )
+
+    def test_german_release_title_is_not_read_against_english_titles(self, tmp_path):
+        # TMDB's titles are en-US; a German release's title shares no word with
+        # them and is not evidence of a mislabeled episode.
+        _, seen = _download(
+            tmp_path,
+            "de",
+            release="Babylon.Berlin.S01E01 - Der Tod im Tunnel",
+            episodes=self._ROSTER,
+        )
+        assert seen["downloads"] == 1
+
+    def test_german_release_from_another_season_is_still_skipped(self, tmp_path):
+        _, seen = _download(
+            tmp_path, "de", release="Babylon.Berlin.S02E01.German", episodes=self._ROSTER
+        )
+        assert seen["downloads"] == 0
+
+    def test_english_release_with_another_title_is_still_skipped(self, tmp_path):
+        _, seen = _download(
+            tmp_path, "en", release="Babylon.Berlin.S01E01 - Gunfire", episodes=self._ROSTER
+        )
+        assert seen["downloads"] == 0
 
     def test_tvsubtitles_skipped_for_a_language_it_lacks(self, tmp_path):
         _, seen = _download(tmp_path, "ja")
@@ -227,3 +260,22 @@ class TestCoordinatorFlow:
         job = await _run(flow)
         assert job.subtitle_status == "failed"
         assert flow["calls"][-1] == ("en", True)
+
+
+@pytest.mark.unit
+class TestShowLanguageDownloadLogs:
+    """The show name is user input: a line break in it must not forge a log line (CodeQL)."""
+
+    @pytest.mark.parametrize("german", ["downloaded", "raise"], ids=["info", "warning"])
+    async def test_show_name_cannot_split_a_log_line(self, flow, caplog, german):
+        import logging
+
+        flow["german"] = german
+        coord = _bare_coordinator()
+        with caplog.at_level(logging.INFO, logger="app.services.matching_coordinator"):
+            await coord._download_in_show_language(
+                "Babylon" + chr(10) + "INFO forged entry", 1, 70523, "tmdb"
+            )
+        ours = [r.getMessage() for r in caplog.records if "forged entry" in r.getMessage()]
+        assert ours
+        assert not any(chr(10) in message or chr(13) in message for message in ours)

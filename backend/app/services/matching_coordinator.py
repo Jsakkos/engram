@@ -2940,7 +2940,11 @@ class MatchingCoordinator:
         language = await show_language(tmdb_id)
         if not language or language == "en":
             return None
-        logger.info(f"Downloading {language} subtitles for {show_name} S{season}")
+        # The show name is user input and the language comes from TMDB: both are
+        # sanitized so neither can split a log line.
+        safe_show = sanitize_log_value(show_name)
+        safe_language = sanitize_log_value(language)
+        logger.info(f"Downloading {safe_language} subtitles for {safe_show} S{season}")
         try:
             with namespace_context(namespace), match_language_context(language):
                 return await asyncio.to_thread(
@@ -2948,7 +2952,8 @@ class MatchingCoordinator:
                 )
         except Exception as e:  # noqa: BLE001 - the decision falls back to English
             logger.warning(
-                f"{language} subtitle download failed for {show_name} S{season}: {e}",
+                f"{safe_language} subtitle download failed for {safe_show} S{season}: "
+                f"{sanitize_log_value(e)}",
                 exc_info=True,
             )
             return None
