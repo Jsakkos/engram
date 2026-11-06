@@ -986,11 +986,15 @@ def _attach_calibrated_confidence(
     md["ratio_confidence"] = components["ratio_confidence"]
     md["coverage"] = components["coverage"]
 
+    # Scale by vote mass, the key the leaderboard is sorted by: scaled by the
+    # mean, a one-vote runner-up with a higher cosine would show above the
+    # headline, and conflict resolution copies that value onto a reassigned title.
+    top_mass = _vote_mass(results_summary[0])
     runner_ups = []
     for r in results_summary:
         if r["score"] <= 0:
             continue
-        ru_confidence = _clamp01(confidence * (r["score"] / top1)) if top1 > 0 else 0.0
+        ru_confidence = _clamp01(confidence * (_vote_mass(r) / top_mass)) if top_mass > 0 else 0.0
         runner_ups.append(
             {
                 "episode": r["episode"],
@@ -2312,6 +2316,10 @@ class EpisodeMatcher:
             best_score = 0
             best_rank = 0
             best_match = None
+            # One key for picking the winner and for ordering the leaderboard, so
+            # results_summary[0] is always best_match (the legacy test flag ranks
+            # by its own score).
+            rank_key = _vote_mass if self.use_ranked_voting else (lambda r: r["score"])
 
             results_summary = []
 
@@ -2339,7 +2347,7 @@ class EpisodeMatcher:
 
                 # Vote mass, not the mean: one stray vote with a slightly higher
                 # cosine must not outrank a run of votes.
-                rank = cov.vote_mass if self.use_ranked_voting else score
+                rank = rank_key(match_info)
                 if rank > best_rank:
                     best_rank = rank
                     best_score = score
@@ -2426,7 +2434,7 @@ class EpisodeMatcher:
                 # conflict resolution. All candidates (incl. the winner) appear in
                 # runner_ups so the UI can show the full leaderboard. See
                 # calibrate_confidence for rationale.
-                results_summary.sort(key=_vote_mass, reverse=True)
+                results_summary.sort(key=rank_key, reverse=True)
                 _attach_calibrated_confidence(best_match, results_summary, video_duration)
 
                 score_gap = best_match["match_details"].get("score_gap", 0.0)

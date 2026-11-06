@@ -43,6 +43,17 @@ class TestVoteMassRanking:
         assert md["separation"] > 0.9
         assert md["confidence"] >= ei.CONFIDENCE_ACCEPT_FLOOR
 
+    def test_a_one_vote_runner_up_with_a_higher_mean_shows_below_the_winner(self):
+        # Sorted by mass, the runner-up's mean (0.17) is above the winner's (0.16);
+        # scaling its confidence by the mean would show it above the headline.
+        md = _attach([("S1E3", 0.160, 19), ("S1E2", 0.170, 1)])
+        winner, runner_up = md["runner_ups"][0], md["runner_ups"][1]
+        assert winner["episode"] == "S1E3"
+        assert winner["confidence"] == pytest.approx(md["confidence"])
+        assert runner_up["episode"] == "S1E2"
+        assert runner_up["confidence"] < md["confidence"]
+        assert runner_up["confidence"] == pytest.approx(md["confidence"] * 0.17 / (0.16 * 19))
+
     def test_a_real_tie_still_reads_as_one(self):
         md = _attach([("S1E3", 0.160, 10), ("S1E2", 0.155, 10)])
         assert md["separation"] < 0.05
