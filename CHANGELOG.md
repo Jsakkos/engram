@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- When OpenSubtitles offers several subtitles for an episode, Engram now downloads the most reputable one: files from trusted uploaders and with more downloads first, machine- and AI-translated files only as a last resort. It used to take whichever the search listed first, which for a German show was a machine translation from Hungarian whose wording no longer followed the dialogue, and the episode lost most of its matching votes. (#841, thanks @wintheriscomming!)
 - A brand-new install no longer greets you with "All operations complete". With no job history, the dashboard now welcomes you and offers both ways in: insert a disc, or **Import** rips and disc backups you already have, plus a Getting started link. The old empty-state text returns as soon as any job exists (#721).
 - In Settings, a library or staging folder that doesn't exist yet is no longer shown as a red error. It now reads "Will be created on first use" in a neutral tone, and the server only says so when it can keep the promise: the nearest existing parent folder must be writable. A missing folder under an unwritable parent, or beneath a file, is still an error (#724).
 - One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
