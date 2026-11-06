@@ -11,7 +11,7 @@ import { ArrowUp, ExternalLink, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { SvPanel, sv } from "../app/components/synapse";
-import { apiFetchVoid, ApiError } from "../api/client";
+import { apiErrorDetail, apiFetchVoid, ApiError } from "../api/client";
 import type { UpdateStatus } from "../types";
 
 // Tailwind's preflight zeroes margins on p/ul/li and strips heading sizes, list
@@ -199,7 +199,11 @@ export default function UpdateModal({
             toast.info("Restarting to apply update…");
         } catch (err) {
             if (err instanceof ApiError && err.status === 409) {
-                toast.error("A disc operation is in progress. Please wait before restarting.");
+                // 409 is also "the install folder holds your files" (#825).
+                toast.error(
+                    apiErrorDetail(err.body) ??
+                        "A disc operation is in progress. Please wait before restarting.",
+                );
             } else if (err instanceof ApiError && err.status === 400) {
                 toast.error("Updates cannot be applied in dev mode.");
             } else {

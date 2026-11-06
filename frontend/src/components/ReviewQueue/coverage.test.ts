@@ -7,6 +7,7 @@ import {
     collidingCodes,
     buildCandidates,
     episodeParts,
+    formatEpisodeCode,
     isMultiEpisode,
     normalizeEpisodeCode,
     parseEpisodeCode,
@@ -194,5 +195,25 @@ describe('selectionCollides', () => {
     it('never flags an empty or pseudo selection', () => {
         expect(selectionCollides(undefined, new Set(['S03E01']))).toBe(false);
         expect(selectionCollides('extra', new Set(['extra']))).toBe(false);
+    });
+});
+
+describe('formatEpisodeCode', () => {
+    // The one place the UI builds a code from numbers (#830): the manual
+    // "also covers" picker must emit what the backend and organizer expect.
+    it('writes a contiguous run as the compact range', () => {
+        expect(formatEpisodeCode(1, [1, 2])).toBe('S01E01-E02');
+        expect(formatEpisodeCode(2, [11, 12, 13])).toBe('S02E11-E13');
+    });
+
+    it('writes a single episode plainly and a gapped set run-on', () => {
+        expect(formatEpisodeCode(1, [7])).toBe('S01E07');
+        expect(formatEpisodeCode(1, [1, 3])).toBe('S01E01E03');
+    });
+
+    it('round-trips through the parser', () => {
+        for (const eps of [[7], [1, 2, 3], [1, 3]]) {
+            expect(parseEpisodeCode(formatEpisodeCode(12, eps))).toEqual({ season: 12, episodes: eps });
+        }
     });
 });

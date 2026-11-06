@@ -85,10 +85,12 @@ No Python or Node.js required — the Config Wizard opens in your browser on fir
 
 | Platform | Download | Run |
 |----------|----------|-----|
-| Windows | `engram-windows-x64.zip` | `engram.exe` |
+| Windows | `engram-win-x64.zip` | `engram.exe` |
 | Linux (x64) | `engram-linux-x64.tar.gz` | `./engram/engram` |
 | Linux (arm64 / Jetson) | `engram-linux-arm64.tar.gz` | `./engram/engram` |
 | macOS | `engram-macos-arm64.tar.gz` | `./engram/engram` |
+
+Keep your libraries, staging folder and backups outside the folder you extract Engram into: an update replaces that whole folder.
 
 On Linux arm64 (e.g. NVIDIA Jetson), download `engram-linux-arm64.tar.gz`. ASR runs on the CPU out of the box; GPU acceleration needs an on-device build step — see [Jetson setup](docs/development/jetson.md).
 
@@ -181,7 +183,7 @@ See the [configuration guide](docs/getting-started/configuration.md) for the ful
 
 Full documentation is published at **[jsakkos.github.io/engram](https://jsakkos.github.io/engram/)**.
 
-- **Getting started** — [Installation](docs/getting-started/installation.md) · [Configuration](docs/getting-started/configuration.md) · [Simulation](docs/getting-started/simulation.md) · [Troubleshooting](docs/troubleshooting.md)
+- **Getting started** — [Installation](docs/getting-started/installation.md) · [Configuration](docs/getting-started/configuration.md) · [Simulation](docs/getting-started/simulation.md) · [Troubleshooting](docs/troubleshooting.md) · [Getting Help](docs/getting-help.md)
 - **User guide** — [Dashboard](docs/guide/dashboard.md) · [Import Watch Folder](docs/guide/import-watch-folder.md) · [Performance & Hardware](docs/guide/performance.md) · [Review Queue](docs/guide/review-queue.md) · [Job History](docs/guide/history.md) · [Linux / macOS setup](docs/guide/linux-setup.md)
 - **Architecture** — [Overview](docs/architecture/overview.md) · [State Machine](docs/architecture/state-machine.md) · [WebSocket Protocol](docs/architecture/websocket.md)
 - **API reference** — [REST Endpoints](docs/api/rest.md) · [Data Models](docs/api/models.md)
@@ -190,7 +192,9 @@ Full documentation is published at **[jsakkos.github.io/engram](https://jsakkos.
 
 ## Community
 
-Questions, ideas, or just want to share what you're ripping? Join the Engram community on **[Discord](https://discord.gg/G8fjjGswdc)**. It's the fastest way to get help, follow development, and talk to other users. For bugs and feature requests, [open an issue](https://github.com/Jsakkos/engram/issues).
+Questions, ideas, or just want to share what you're ripping? Join the Engram community on **[Discord](https://discord.gg/G8fjjGswdc)**. It's the fastest way to get help, follow development, and talk to other users.
+
+**Bugs and feature requests:** in Discord, run `/bug` or `/feature`. **Trace**, our support bot, asks for what's missing, checks for an existing issue, and drafts a GitHub issue that you file with one click. Attach the job's [diagnostics bundle](docs/troubleshooting.md#diagnostics-bundle) and it reads the logs for you. For a quick question, post in the `#ask-engram` forum, mention `@Trace`, or use `/ask`. Prefer GitHub? [Open an issue](https://github.com/Jsakkos/engram/issues) directly. Full guide: [Getting Help & Reporting Issues](docs/getting-help.md).
 
 ## License
 
@@ -202,5 +206,6 @@ AGPL-3.0. See [LICENSE](LICENSE).
 - [mkv-episode-matcher](https://github.com/Jsakkos/mkv-episode-matcher) for episode matching
 - [TheDiscDB](https://thediscdb.com/) for disc content-hash lookups
 - [TMDB](https://www.themoviedb.org/) for media metadata and poster art
+- Episode data for TheTVDB-numbered shows is provided by [TheTVDB](https://thetvdb.com).
 
 And thank you to Engram's community [contributors](CONTRIBUTORS.md) 💜

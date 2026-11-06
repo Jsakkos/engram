@@ -43,6 +43,24 @@ async def test_browse_lists_dirs_and_mkvs(client, tmp_path: Path):
     assert data["cwd"] == str(tmp_path.resolve())
 
 
+async def test_browse_lists_and_counts_every_importable_container(client, tmp_path: Path):
+    _mkv(tmp_path / "Season 1" / "a.mp4")
+    _mkv(tmp_path / "Season 1" / "b.ts")
+    _mkv(tmp_path / "Season 1" / "c.avi")  # not importable
+    _mkv(tmp_path / "loose.m4v")
+    _mkv(tmp_path / "clip.M2TS")
+    _mkv(tmp_path / "notes.txt")
+
+    res = await client.get("/api/import/browse", params={"path": str(tmp_path)})
+    assert res.status_code == 200
+    names = {e["name"]: e for e in res.json()["entries"]}
+    # The "mkv" wire type and mkv_count name are kept for compatibility.
+    assert names["Season 1"]["mkv_count"] == 2
+    assert names["loose.m4v"]["type"] == "mkv"
+    assert names["clip.M2TS"]["type"] == "mkv"
+    assert "notes.txt" not in names
+
+
 async def test_browse_empty_path_returns_roots(client):
     res = await client.get("/api/import/browse", params={"path": ""})
     assert res.status_code == 200

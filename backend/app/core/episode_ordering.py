@@ -35,6 +35,9 @@ ORDERING_DIGITAL = "digital"
 ORDERING_STORY_ARC = "story_arc"
 ORDERING_PRODUCTION = "production"
 ORDERING_TV = "tv"
+# TheTVDB official order (spec 2026-10-08). NOT a TMDB episode group and never
+# projected: a TVDB job's codes are already in TVDB numbering. Per-show only.
+ORDERING_TVDB = "tvdb"
 
 # TMDB episode-group ``type`` enum -> our ordering string.
 _TMDB_TYPE_TO_ORDERING = {
@@ -57,12 +60,16 @@ _ORDERING_TO_TMDB_TYPE = {v: k for k, v in _TMDB_TYPE_TO_ORDERING.items()}
 #   - absolute (type 2): dissolves season boundaries; anime corpora mislabeled
 #   - digital (4) / story_arc (5) / production (6) / tv (7): no demonstrated need
 # Re-enable one by adding its constant back to this frozenset (and the Config UI).
+# The per-show selector additionally offers TheTVDB (PER_SHOW_ORDERINGS); the
+# global dropdown deliberately does not, because TVDB numbering is wrong for
+# most shows. This intentionally ends the per-show/global lock-step above.
 ALLOWED_ORDERINGS = frozenset(
     {
         ORDERING_AIRED,
         ORDERING_DVD,
     }
 )
+PER_SHOW_ORDERINGS = ALLOWED_ORDERINGS | {ORDERING_TVDB}
 
 _SEASON_NAME_RE = re.compile(
     r"(?:season|series|volume|vol\.?|part|book|chapter)\s*0*(\d+)", re.IGNORECASE

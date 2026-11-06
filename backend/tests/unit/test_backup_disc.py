@@ -26,6 +26,7 @@ class TestBuildBackupCommand:
             "mmk",
             "-r",
             "--noscan",
+            "--minlength=120",
             "--progress=-same",
             "--decrypt",
             "backup",

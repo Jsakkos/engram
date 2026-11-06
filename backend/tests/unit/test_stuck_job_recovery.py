@@ -492,6 +492,119 @@ async def test_advance_no_file_fails_track(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_user_advance_clears_orphaned_queued_title_with_file(tmp_path):
+    """#776: a QUEUED track whose match task is gone is not waiting on a slot.
+    A user Force sends it to REVIEW so the job can leave MATCHING."""
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, state=JobState.MATCHING)
+    orphan = await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+
+    assert await job_manager.reconcile_and_advance(job_id, reason="test", user_initiated=True)
+
+    assert (await _title(orphan)).state == TitleState.REVIEW
+    assert (await _job(job_id)).state == JobState.REVIEW_NEEDED
+
+
+@pytest.mark.asyncio
+async def test_user_advance_fails_orphaned_queued_title_without_file(tmp_path, monkeypatch):
+    async def _no_discord(*args, **kwargs):
+        return None
+
+    # The job lands in FAILED; keep the terminal notification task from leaking.
+    monkeypatch.setattr(job_manager, "_send_discord_notification", _no_discord)
+    job_id = await _make_job(tmp_path, state=JobState.MATCHING)
+    orphan = await _add_title(job_id, 0, TitleState.QUEUED)  # no file
+
+    assert await job_manager.reconcile_and_advance(job_id, reason="test", user_initiated=True)
+
+    assert (await _title(orphan)).state == TitleState.FAILED
+
+
+@pytest.mark.asyncio
+async def test_user_advance_spares_queued_title_with_live_match(tmp_path):
+    """A QUEUED track whose match task exists (parked on the semaphore) is draining,
+    not orphaned: even a user Force leaves it alone."""
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, state=JobState.MATCHING)
+    waiting = await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+
+    release = asyncio.Event()
+
+    async def parked_on_semaphore(*args, **kwargs):
+        await release.wait()
+
+    matching = job_manager._matching
+    original = matching._run_match_single_file
+    matching._run_match_single_file = parked_on_semaphore
+    try:
+        # Created, not yet started: registration must already count it as live.
+        task = asyncio.create_task(matching.match_single_file(job_id, waiting, f))
+        assert await job_manager.reconcile_and_advance(job_id, reason="test", user_initiated=True)
+        assert (await _title(waiting)).state == TitleState.QUEUED
+    finally:
+        release.set()
+        await asyncio.gather(task)
+        matching._run_match_single_file = original
+
+    assert not matching.has_live_match(waiting)
+
+
+@pytest.mark.asyncio
+async def test_match_cancelled_before_first_step_is_not_live(tmp_path):
+    """A match task cancelled before it ever runs (job cancel or eject right after
+    dispatch) must not keep its title counted as live, or Force could never clear it."""
+    matching = job_manager._matching
+    task = asyncio.create_task(matching.match_single_file(1, 77, tmp_path / "t.mkv"))
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+    assert task.cancelled()
+    assert not matching.has_live_match(77)
+
+
+@pytest.mark.asyncio
+async def test_match_coroutine_never_scheduled_is_not_live(tmp_path):
+    matching = job_manager._matching
+    coro = matching.match_single_file(1, 78, tmp_path / "t.mkv")
+    assert matching.has_live_match(78)
+
+    coro.close()  # e.g. the caller raised before create_task
+
+    assert not matching.has_live_match(78)
+
+
+@pytest.mark.asyncio
+async def test_user_advance_spares_identity_parked_queued_titles(tmp_path):
+    """Titles parked QUEUED behind an unanswered identity prompt have no task by
+    design; answering the prompt releases them, so Force must not."""
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(
+        tmp_path, state=JobState.RIPPING, identity_prompt_json=_IDENTITY_PROMPT
+    )
+    parked = await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+
+    assert await job_manager.reconcile_and_advance(job_id, reason="test", user_initiated=True)
+
+    assert (await _title(parked)).state == TitleState.QUEUED
+
+
+@pytest.mark.asyncio
+async def test_watchdog_advance_still_spares_orphaned_queued_title(tmp_path):
+    """The watchdog keeps its rule (queued is never stuck); only a user Force reaps."""
+    f = tmp_path / "disc_t00.mkv"
+    f.write_bytes(b"x")
+    job_id = await _make_job(tmp_path, state=JobState.MATCHING)
+    queued = await _add_title(job_id, 0, TitleState.QUEUED, output=str(f))
+
+    assert await job_manager.reconcile_and_advance(job_id, reason="watchdog")
+
+    assert (await _title(queued)).state == TitleState.QUEUED
+
+
+@pytest.mark.asyncio
 async def test_advance_rejects_terminal(tmp_path):
     job_id = await _make_job(tmp_path, state=JobState.COMPLETED)
     assert await job_manager.reconcile_and_advance(job_id) is False

@@ -216,3 +216,41 @@ class TestDS9Job153Reproduction:
         assert result.content_type == ContentType.TV
         # Fix 3: identity is corroborated, so no spurious review
         assert result.needs_review is False
+
+
+def _real_scan(name: str) -> list[TitleInfo]:
+    """Titles from a trimmed real MakeMKV scan log (tests/fixtures/makemkv_scans)."""
+    from pathlib import Path
+
+    from app.core.extractor import MakeMKVExtractor
+
+    path = Path(__file__).parent.parent / "fixtures" / "makemkv_scans" / name
+    extractor = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+    titles, _ = extractor._parse_disc_info(path.read_text(encoding="utf-8"))
+    return sorted(titles, key=lambda t: t.index)
+
+
+@pytest.mark.pipeline
+class TestRealScanPlayAll:
+    """#634: Play-All found from the disc's own structure, end to end."""
+
+    @pytest.mark.parametrize(
+        ("scan", "label", "play_all"),
+        [
+            # Blu-ray: the Play-All playlist's clips contain every episode's clips
+            ("south_park_s6d1_bluray.txt", "SOUTH_PARK_S6D1", [3]),
+            ("south_park_s16d2_bluray.txt", "SOUTH_PARK_S16D2", [7]),
+            # DVD: runtime and size equal the sum of the episode titles
+            ("project_runway_disc1_dvd.txt", "PROJECT_RUNWAY_S1D1", [0]),
+            ("project_runway_disc3_dvd.txt", "PROJECT_RUNWAY_S1D3", [0]),
+            ("arrested_development_s1d1_dvd.txt", "ARRESTED_DEVELOPMENT_S1D1", []),
+            ("for_all_mankind_s1d4_bluray.txt", "FOR_ALL_MANKIND_S1D4", []),
+        ],
+    )
+    def test_play_all(self, analyst, scan, label, play_all):
+        # A TV TMDB signal, as the real jobs had: label alone leaves Project
+        # Runway disc 3 (Play-All + a double-length episode) an ambiguous movie.
+        signal = TmdbSignal(content_type=ContentType.TV, confidence=0.9, tmdb_id=1)
+        result = analyst.analyze(_real_scan(scan), label, tmdb_signal=signal)
+        assert result.content_type == ContentType.TV
+        assert result.play_all_title_indices == play_all

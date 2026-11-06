@@ -13,6 +13,7 @@ import { isActivePipelineState } from "./discState";
 import { useElapsedTime } from "../hooks/useElapsedTime";
 import { sv, SvPanel, SvLabel, SvDiscInsert, SvProgressBar, type DiscInsertPhase } from "./synapse";
 import { formatEta } from "../../utils/formatting";
+import { useJobRecovery } from "../../api/recoveryClient";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "review_needed" | "backing_up" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
@@ -115,6 +116,11 @@ export interface DiscData {
   backupStatus?: string | null;
   /** Backend prose explaining a skipped or failed backup; rendered verbatim. */
   backupStatusReason?: string | null;
+  /** Backend-computed: no progress past the stall threshold (#718). Drives
+   *  whether Force advance is a primary control or lives in the overflow menu. */
+  looksStuck?: boolean;
+  /** Seconds since the job last made progress, when stuck. */
+  stalledForSeconds?: number | null;
   /** True when at least one title on this disc has a rip-level failure (re-rippable). */
   hasDamagedTrack?: boolean;
   /** How this disc's identity was obtained, from the backend's
@@ -141,6 +147,9 @@ interface DiscCardProps {
   onIdentify?: () => void;
   /** Label for the identify CTA, e.g. "Name this disc" / "Select season". */
   identifyLabel?: string;
+  /** Retry a failed job from its staging files (#713). The card shows the
+   *  button only once the backend confirms staging still holds ripped files. */
+  onRetryFromStaging?: () => void;
 }
 
 /**
@@ -234,8 +243,9 @@ function CoverOverlay({ children }: { children: React.ReactNode }) {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onSkipTrack, onUnskipTrack, onReview, onReIdentify, onAdvance, onEject, onReportBug, onOpenSettings, onIdentify, identifyLabel }, ref) => {
+  ({ disc, onCancel, onSkipTrack, onUnskipTrack, onReview, onReIdentify, onAdvance, onEject, onReportBug, onOpenSettings, onIdentify, identifyLabel, onRetryFromStaging }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
+    const recovery = useJobRecovery(disc.state === "error" && onRetryFromStaging ? disc.id : null);
     const posterUrl = usePosterImage(disc.id, disc.title);
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
     const elapsed = useElapsedTime(isActive ? disc.startedAt : undefined);
@@ -512,6 +522,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     isImport={disc.sourceType === 'import'}
                     emphasizeReIdentify={showIdentityReview}
                     manualIdentity={isManualIdentity}
+                    onRetryFromStaging={recovery?.can_retry ? onRetryFromStaging : undefined}
+                    looksStuck={disc.looksStuck}
+                    stalledForSeconds={disc.stalledForSeconds}
                   />
                 </div>
               </div>

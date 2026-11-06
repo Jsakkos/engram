@@ -9,6 +9,7 @@ A job enters the `REVIEW_NEEDED` state when any of the following occur:
 - **Low-confidence matches** -- the episode matching engine, which compares a transcript of the title's audio against reference subtitles, returned results below the auto-match threshold.
 - **Ambiguous content type** -- the disc analysis could not confidently determine whether the disc is TV or movie content.
 - **Multiple feature-length titles** -- a movie disc has more than one title that could be the main feature (e.g., Theatrical, Extended, and Director's Cut versions on the same disc).
+- **No feature on the disc** -- a movie disc where even the longest title is far shorter than the movie's TMDB runtime, typically a bonus disc that identified as the film. Engram holds it rather than filing a featurette as the movie.
 - **Unreadable disc label** -- the volume label is generic or unreadable, triggering a name prompt modal on the dashboard before the review queue.
 - **Catalog-number label** -- the volume label looks like a publisher catalog code (e.g., `BBCDVD1550`, `FHED3456`) and TMDB/DiscDB lookups failed, triggering a name prompt.
 - **File conflicts** -- an output file already exists in the library at the expected path.
@@ -101,7 +102,11 @@ For each title, two buttons are available:
 - **SELECT** -- keep this title and organize it to the library. The edition tag (if entered) is included in the output path.
 - **DISCARD** -- skip this title.
 
-Selecting or discarding a title immediately submits the review and returns you to the dashboard, where the job resumes its pipeline.
+Selecting or discarding a title immediately submits the review and returns you to the dashboard, where the job resumes its pipeline. Selecting a title deletes the other ripped versions; those are then no longer listed.
+
+### Bonus discs: file everything as extras
+
+Above the titles, **FILE ALL AS EXTRAS** files every title still listed (the ones you have not discarded) into the movie's `Extras/` folder and completes the job, without choosing a feature. Use it for a bonus disc that Engram identified as the movie itself. The movie's own file is never touched, and the new extras are numbered after any already in that folder, so a bonus disc adds to the extras from the movie disc instead of replacing them. The button asks for a second click to confirm.
 
 ## How Review Resumes the Pipeline
 

@@ -71,11 +71,18 @@ def _derive_assignment(job: DiscJob, title: DiscTitle) -> tuple[str, int | None,
     fingerprint_disc_classifier also drops a non-integer episode, so the range could
     not round-trip anyway. Under-counting one row keeps the rest of the layout. The
     TheDiscDB export, whose ingest accepts strings, keeps the range form.
+    A TheTVDB-numbered job's code is translated to TMDB first; untranslatable titles become "discarded".
     """
     if title.is_extra:
         return "extra", None, None
 
-    parsed = parse_episode_code(title.matched_episode)
+    # The network keys TMDB numbering. A TheTVDB job's code is translated; one
+    # with no 1:1 TMDB equivalent (a split part) is sent as "discarded" so the
+    # shared network never receives a TVDB-numbered key (spec 2026-10-08).
+    from app.core.episode_namespace import to_tmdb_code
+
+    code = to_tmdb_code(job.episode_namespace, job.episode_crosswalk_json, title.matched_episode)
+    parsed = parse_episode_code(code)
     if parsed is not None:
         season, episodes = parsed
         if len(episodes) == 1:

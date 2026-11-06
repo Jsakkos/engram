@@ -5,7 +5,11 @@ signal agrees a track is too short to be an episode, because a wrongly skipped
 episode means re-inserting an already-ejected disc.
 """
 
-from app.core.episode_runtime import ShortTitle, find_short_titles
+from app.core.episode_runtime import (
+    ShortTitle,
+    find_short_titles,
+    matches_disc_episode_group,
+)
 
 
 def _m(minutes: float) -> int:
@@ -140,3 +144,60 @@ class TestNoAction:
     def test_zero_duration_ignored(self):
         disc = [(0, _m(38)), (1, _m(39)), (2, 0), (3, _m(38))]
         assert find_short_titles(disc, [38]) == []
+
+
+# MXC (Most Extreme Elimination Challenge) S1: TMDB lists every episode at a
+# 30-minute broadcast slot; the DVD's episode tracks run ~20-21 minutes (#770, #801).
+MXC_RUNTIMES = [30] * 13
+MXC_DISC = _disc(20.1, 20.0, 20.1, 21.0, 20.4, 20.2, 20.1, 8.0, 5.4)
+
+
+class TestMxcPreRipFilter:
+    def test_mxc_episodes_survive_the_pre_rip_filter(self):
+        """TMDB alone calls every MXC episode short; the disc's own episode group
+        disagrees, so only the two featurettes (under half an episode) are skipped."""
+        assert _skipped(find_short_titles(MXC_DISC, MXC_RUNTIMES)) == {7, 8}
+
+
+class TestDiscEpisodeGroup:
+    """Post-rip extras gate (#801): when TMDB's runtimes match no group of
+    similar-length tracks on the disc, the disc's episode group is the better
+    yardstick, so its tracks are admitted to matching instead of filed as extras."""
+
+    def test_mxc_episode_tracks_admitted_with_no_matched_peers(self):
+        for index in range(7):
+            assert matches_disc_episode_group(index, MXC_DISC, MXC_RUNTIMES) is True
+
+    def test_mxc_featurettes_still_extras(self):
+        assert matches_disc_episode_group(7, MXC_DISC, MXC_RUNTIMES) is False
+        assert matches_disc_episode_group(8, MXC_DISC, MXC_RUNTIMES) is False
+
+    def test_disc_agreeing_with_tmdb_keeps_the_tmdb_gate(self):
+        """Episodes match TMDB, so an off-runtime group of featurettes is a real
+        group of extras, not evidence that TMDB is wrong."""
+        disc = _disc(44, 45, 44, 43, 12, 12, 13)
+        runtimes = [44] * 22
+        assert matches_disc_episode_group(4, disc, runtimes) is False
+
+    def test_featurette_group_does_not_outrank_the_episode_group(self):
+        """More featurettes than episodes, TMDB wrong for both: the group nearer
+        TMDB's runtime is the episode group."""
+        disc = _disc(20, 20, 21, 6, 6, 6, 6, 7)
+        assert matches_disc_episode_group(0, disc, MXC_RUNTIMES) is True
+        assert matches_disc_episode_group(3, disc, MXC_RUNTIMES) is False
+
+    def test_group_far_below_tmdb_is_not_an_episode_group(self):
+        """A disc of 5-minute shorts against 30-minute episodes is not TMDB
+        mis-measuring an episode."""
+        disc = _disc(5, 5, 5, 6)
+        assert matches_disc_episode_group(0, disc, MXC_RUNTIMES) is False
+
+    def test_too_few_tracks_for_a_group(self):
+        disc = _disc(20, 20, 8)
+        assert matches_disc_episode_group(0, disc, MXC_RUNTIMES) is False
+
+    def test_no_runtimes_no_override(self):
+        assert matches_disc_episode_group(0, MXC_DISC, []) is False
+
+    def test_unknown_track(self):
+        assert matches_disc_episode_group(99, MXC_DISC, MXC_RUNTIMES) is False

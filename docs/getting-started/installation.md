@@ -75,9 +75,12 @@ brew install ffmpeg
 
 The simplest way to get started on Windows -- no Python or Node.js required.
 
-1. Download `engram-windows-x64.zip` from the [Releases](https://github.com/Jsakkos/engram/releases) page.
+1. Download `engram-win-x64.zip` from the [Releases](https://github.com/Jsakkos/engram/releases) page (older releases call it `engram-windows-x64.zip`).
 2. Extract the archive.
 3. Run `engram.exe`.
+
+!!! warning "Keep your library outside the Engram folder"
+    Put your TV and movie libraries, staging folder and backups somewhere other than the folder you extracted Engram into (for example `D:\Media\TV`, not `D:\engram\TV`). An update replaces the whole Engram folder. Current versions refuse to update while anything else is in it; versions up to 0.43.0 could delete it.
 
 The Config Wizard will open in your browser on first launch to walk you through setup.
 

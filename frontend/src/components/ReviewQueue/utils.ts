@@ -68,6 +68,65 @@ export function titleDisplayName(title: DiscTitle): string {
 }
 
 /**
+ * A movie extra held for a keep/discard choice (extras policy "ask", #773). It
+ * is filed into Extras/ when the feature is selected unless discarded first.
+ */
+export function isHeldMovieExtra(title: DiscTitle): boolean {
+    return !!title.is_extra && title.state === 'review';
+}
+
+/**
+ * A movie title whose rip was deleted when another title was selected (#812).
+ * The backend writes this reason (`UNSELECTED_BY_USER_REASON` in
+ * finalization_coordinator.py) and refuses to select such a title.
+ */
+export function isRemovedBySelect(title: DiscTitle): boolean {
+    return title.state === 'failed' && parseMatchDetails(title).reason === 'Unselected by user';
+}
+
+/**
+ * Titles the movie review lists. Extras the "skip" policy already discarded
+ * (before the rip, or after it), titles the reviewer discarded here, and titles
+ * whose file an earlier Select deleted are settled and would only offer a
+ * misleading Select.
+ */
+export function movieReviewTitles(titles: DiscTitle[]): DiscTitle[] {
+    return titles.filter(
+        (t) =>
+            t.state !== 'skipped' &&
+            !(t.is_extra && t.state === 'completed') &&
+            t.matched_episode !== 'skip' &&
+            !isRemovedBySelect(t),
+    );
+}
+
+/**
+ * The titles "file all as extras" would file (#813): every listed title still
+ * holding a rip. Mirrors the server's filter in
+ * `FinalizationCoordinator.file_movie_as_extras`.
+ */
+export function movieExtrasOnlyTitles(titles: DiscTitle[]): DiscTitle[] {
+    return movieReviewTitles(titles).filter((t) => t.state !== 'failed' && t.state !== 'completed');
+}
+
+export type MovieReviewNotice = 'conflict' | 'nothing_selectable' | 'held_extras' | 'pick_version';
+
+/**
+ * Which notice heads the movie review. "pick_version" is only the right ask
+ * when something is left to pick: with every listed title a held extra (or
+ * nothing listed at all) the page must say there is no feature to select.
+ */
+export function movieReviewNotice(titles: DiscTitle[]): MovieReviewNotice {
+    if (titles.some((t) => t.state === 'review' && parseMatchDetails(t).error === 'file_exists')) {
+        return 'conflict';
+    }
+    if (!movieReviewTitles(titles).some((t) => !isHeldMovieExtra(t))) {
+        return 'nothing_selectable';
+    }
+    return titles.some(isHeldMovieExtra) ? 'held_extras' : 'pick_version';
+}
+
+/**
  * Color a confidence score: green (auto-match), yellow (plausible), red (weak).
  */
 export function confidenceColor(confidence: number): string {
@@ -113,4 +172,21 @@ export function buildInitialSelections(titles: DiscTitle[]): {
         }
     }
     return { episodes, actions };
+}
+
+/**
+ * The ordering the selector should treat as active for THIS job.
+ *
+ * `current_ordering` is the show's preference, but a job can fall back to TMDB
+ * numbering (TheTVDB unavailable when it matched). In that case the job is
+ * really on the canonical aired numbering, so report "aired": selecting
+ * TheTVDB is then a real move (a retry of the switch), not a no-op.
+ */
+export function effectiveOrdering(roster: {
+    current_ordering?: string;
+    episode_source?: 'tmdb' | 'tvdb';
+}): string {
+    if (roster.episode_source === 'tvdb') return 'tvdb';
+    const current = roster.current_ordering ?? 'aired';
+    return current === 'tvdb' ? 'aired' : current;
 }

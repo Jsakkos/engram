@@ -379,7 +379,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                 )}
                 {preview && preview.total_jobs === 0 && (
                   <p style={{ fontFamily: sv.mono, fontSize: 11, color: sv.inkDim }}>
-                    No MKV files or disc backups found here.
+                    No video files or disc backups found here.
                   </p>
                 )}
                 {discImages.length > 0 && (
@@ -424,7 +424,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
                         <span style={{ color: sv.magenta }}>1 job</span>
                       </div>
                     ))}
-                    {/* An MKV import files what has already been ripped; a disc
+                    {/* A video-file import files what has already been ripped; a disc
                         backup import starts a full extraction, which is a far
                         longer operation. Say so before START is pressed. */}
                     <p
@@ -594,7 +594,7 @@ export default function ImportModal({ onClose, defaultPath, defaultDestinationMo
 
 /**
  * A disc backup is not a folder of media, so it does not get the folder icon or
- * an "N mkv" count (it has none). It gets the disc mark in magenta plus a short
+ * an "N video" count (it has none). It gets the disc mark in magenta plus a short
  * kind tag, so a shelf of backups is distinguishable at a glance from the
  * season folders sitting next to it.
  */
@@ -655,7 +655,7 @@ function Row({
         </span>
       )}
       {count != null && count > 0 && (
-        <span style={{ fontSize: 9, color: sv.cyan }}>{count} mkv</span>
+        <span style={{ fontSize: 9, color: sv.cyan }}>{count} video</span>
       )}
     </button>
   );

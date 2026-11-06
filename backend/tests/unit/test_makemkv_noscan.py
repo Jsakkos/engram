@@ -37,7 +37,7 @@ def test_the_flag_is_makemkvs_spelling():
 class TestNoscanOnEveryCall:
     def test_scan(self):
         cmd = _build_scan_command("mmk", "dev:E:")
-        assert cmd == ["mmk", "-r", NOSCAN, "info", "dev:E:"]
+        assert cmd == ["mmk", "-r", NOSCAN, "--minlength=120", "info", "dev:E:"]
 
     def test_rip_all_pass(self):
         [(_, cmd)] = _build_rip_commands("mmk", "dev:E:", "/out", None)
@@ -69,7 +69,7 @@ class TestNoscanOnEveryCall:
     async def test_scan_disc_runs_the_built_command(self):
         # Guards against the scan path drifting back to an inline argv that
         # bypasses _build_scan_command.
-        ex = MakeMKVExtractor(makemkv_path=Path("mmk"))
+        ex = MakeMKVExtractor(makemkv_path=Path("mmk"), min_title_length=120)
         with patch("app.core.extractor.subprocess.Popen") as popen:
             proc = popen.return_value
             proc.communicate.return_value = ("", "")

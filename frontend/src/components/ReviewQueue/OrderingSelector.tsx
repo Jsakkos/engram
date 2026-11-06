@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { sv } from '../../app/components/synapse';
+import { TvdbAttribution } from './TvdbAttribution';
 import type { OrderingOption } from './types';
 
 /**
@@ -13,15 +14,18 @@ export function OrderingSelector({
     options,
     current,
     onChange,
+    reselectable,
 }: {
     options: OrderingOption[];
     current: string;
     onChange: (ordering: string) => void | Promise<void>;
+    /** An ordering that fires onChange even when it is already `current`. */
+    reselectable?: string;
 }) {
     const [busy, setBusy] = useState(false);
 
     const handle = async (next: string) => {
-        if (next === current || busy) return;
+        if ((next === current && next !== reselectable) || busy) return;
         setBusy(true);
         try {
             await onChange(next);
@@ -88,10 +92,13 @@ export function OrderingSelector({
                 })}
             </div>
             <span style={{ fontFamily: sv.sans, fontSize: 10, color: sv.inkDim }}>
-                {activeDiverges
-                    ? 'Files use this ordering; matching & history stay canonical.'
-                    : 'Aired order — matches the canonical numbering.'}
+                {current === 'tvdb'
+                    ? 'Matching and files use TheTVDB numbering for this show.'
+                    : activeDiverges
+                      ? 'Files use this ordering; matching & history stay canonical.'
+                      : 'Aired order: matches the canonical numbering.'}
             </span>
+            {options.some((o) => o.ordering === 'tvdb') && <TvdbAttribution />}
         </div>
     );
 }

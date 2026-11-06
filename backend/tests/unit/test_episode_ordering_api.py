@@ -76,3 +76,20 @@ class TestPerShowOrderingEndpoints:
     async def test_put_rejects_absolute(self, client):
         resp = await client.put("/api/shows/1437/ordering", json={"ordering": "absolute"})
         assert resp.status_code == 422
+
+
+@pytest.mark.unit
+class TestShowOrderingSourceReporting:
+    async def test_blank_pref_reports_default_and_dismissal_flag(self, client):
+        from app.models.show_ordering import ShowOrderingPreference
+
+        async with _unit_session_factory() as s:
+            s.add(ShowOrderingPreference(tmdb_id=1620, ordering=""))
+            await s.commit()
+        body = (await client.get("/api/shows/1620/ordering")).json()
+        assert body["source"] == "default"
+        assert body["tvdb_suggestion_dismissed"] is False
+
+    async def test_put_still_rejects_tvdb(self, client):
+        resp = await client.put("/api/shows/1620/ordering", json={"ordering": "tvdb"})
+        assert resp.status_code == 422

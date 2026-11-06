@@ -78,6 +78,8 @@ backend/*.db
 backend/*.db-shm
 backend/*.db-wal
 backend/*.db.bak
+backend/*.db.bak-*
+backend/*.db.version
 backend/engram_e2e.db-shm
 backend/engram_e2e.db-wal
 
@@ -111,3 +113,10 @@ artifacts/
 
 # Git worktrees
 .worktrees/
+
+# Generated at build time from the TVDB_API_KEY secret (see backend/engram.spec)
+backend/hooks/rthook_tvdb_generated.py
+
+# Local development
+.envrc
+.direnv/

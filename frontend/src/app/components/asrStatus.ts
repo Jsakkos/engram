@@ -38,7 +38,7 @@ export type AsrStatus = {
   gpu_runtime_installed: boolean;
   gpu_download_size_bytes: number;
   gpu_download: GpuDownload;
-  gpu_fallback_reason?: "runtime_missing" | "register_failed" | null;
+  gpu_fallback_reason?: "runtime_missing" | "register_failed" | "load_failed" | null;
   gpu_state: GpuState;
 };
 

@@ -1,0 +1,312 @@
+{
+ "_source": "Hey Arnold! (TMDB 537) S2: TMDB /tv/{id}/season/2 and OpenSubtitles search (parent_tmdb_id, season_number, type=episode, languages=en), captured 2026-10-20. Release strings verbatim; other fields dropped.",
+ "season": 2,
+ "corpus_codes": [
+  "S02E01",
+  "S02E02",
+  "S02E03",
+  "S02E04",
+  "S02E05",
+  "S02E06",
+  "S02E07",
+  "S02E08",
+  "S02E09",
+  "S02E10",
+  "S02E11",
+  "S02E12",
+  "S02E13",
+  "S02E14",
+  "S02E15",
+  "S02E16",
+  "S02E17",
+  "S02E18",
+  "S02E19",
+  "S02E20"
+ ],
+ "roster": [
+  {
+   "episode_number": 1,
+   "name": "Save the Tree",
+   "air_date": "1997-09-22",
+   "runtime": 11
+  },
+  {
+   "episode_number": 2,
+   "name": "New Teacher",
+   "air_date": "1997-09-22",
+   "runtime": 11
+  },
+  {
+   "episode_number": 3,
+   "name": "Helga's Love Potion",
+   "air_date": "1997-09-24",
+   "runtime": 11
+  },
+  {
+   "episode_number": 4,
+   "name": "Gerald's Secret",
+   "air_date": "1997-09-24",
+   "runtime": 11
+  },
+  {
+   "episode_number": 5,
+   "name": "The Big Scoop",
+   "air_date": "1997-09-29",
+   "runtime": 11
+  },
+  {
+   "episode_number": 6,
+   "name": "Harold's Kitty",
+   "air_date": "1997-09-29",
+   "runtime": 11
+  },
+  {
+   "episode_number": 7,
+   "name": "Longest Monday",
+   "air_date": "1997-10-01",
+   "runtime": 11
+  },
+  {
+   "episode_number": 8,
+   "name": "Eugene's Pet",
+   "air_date": "1997-10-01",
+   "runtime": 11
+  },
+  {
+   "episode_number": 9,
+   "name": "Monkey Business",
+   "air_date": "1997-10-06",
+   "runtime": 11
+  },
+  {
+   "episode_number": 10,
+   "name": "Big Caesar",
+   "air_date": "1997-10-06",
+   "runtime": 11
+  },
+  {
+   "episode_number": 11,
+   "name": "Ransom",
+   "air_date": "1997-10-08",
+   "runtime": 11
+  },
+  {
+   "episode_number": 12,
+   "name": "Ms. Perfect",
+   "air_date": "1997-10-08",
+   "runtime": 11
+  },
+  {
+   "episode_number": 13,
+   "name": "Arnold's Halloween",
+   "air_date": "1997-10-27",
+   "runtime": 23
+  },
+  {
+   "episode_number": 14,
+   "name": "Arnold Saves Sid",
+   "air_date": "1997-10-13",
+   "runtime": 11
+  },
+  {
+   "episode_number": 15,
+   "name": "Hookey",
+   "air_date": "1997-10-13",
+   "runtime": 11
+  },
+  {
+   "episode_number": 16,
+   "name": "Freeze Frame",
+   "air_date": "1997-10-15",
+   "runtime": 11
+  },
+  {
+   "episode_number": 17,
+   "name": "Phoebe Cheats",
+   "air_date": "1997-10-15",
+   "runtime": 11
+  },
+  {
+   "episode_number": 18,
+   "name": "Mud Bowl",
+   "air_date": "1997-10-20",
+   "runtime": 11
+  },
+  {
+   "episode_number": 19,
+   "name": "Gerald Moves Out",
+   "air_date": "1997-10-20",
+   "runtime": 11
+  },
+  {
+   "episode_number": 20,
+   "name": "The High Life",
+   "air_date": "1997-10-22",
+   "runtime": 11
+  },
+  {
+   "episode_number": 21,
+   "name": "Best Friends",
+   "air_date": "1997-10-22",
+   "runtime": 11
+  },
+  {
+   "episode_number": 22,
+   "name": "Steely Phil",
+   "air_date": "1997-10-29",
+   "runtime": 11
+  },
+  {
+   "episode_number": 23,
+   "name": "Quantity Time",
+   "air_date": "1997-10-29",
+   "runtime": 11
+  },
+  {
+   "episode_number": 24,
+   "name": "Eating Contest",
+   "air_date": "1997-11-03",
+   "runtime": 11
+  },
+  {
+   "episode_number": 25,
+   "name": "Rhonda's Glasses",
+   "air_date": "1997-11-03",
+   "runtime": 11
+  },
+  {
+   "episode_number": 26,
+   "name": "Helga's Boyfriend",
+   "air_date": "1997-11-05",
+   "runtime": 11
+  },
+  {
+   "episode_number": 27,
+   "name": "Crush on Teacher",
+   "air_date": "1997-11-05",
+   "runtime": 11
+  },
+  {
+   "episode_number": 28,
+   "name": "Hall Monitor",
+   "air_date": "1997-11-10",
+   "runtime": 11
+  },
+  {
+   "episode_number": 29,
+   "name": "Harold's Bar Mitzvah",
+   "air_date": "1997-11-10",
+   "runtime": 11
+  },
+  {
+   "episode_number": 30,
+   "name": "Coach Wittenberg",
+   "air_date": "1997-11-12",
+   "runtime": 11
+  },
+  {
+   "episode_number": 31,
+   "name": "Four-Eyed Jack",
+   "air_date": "1997-11-12",
+   "runtime": 11
+  },
+  {
+   "episode_number": 32,
+   "name": "Eugene Goes Bad",
+   "air_date": "1997-11-17",
+   "runtime": 11
+  },
+  {
+   "episode_number": 33,
+   "name": "What's Opera, Arnold?",
+   "air_date": "1997-11-17",
+   "runtime": 11
+  },
+  {
+   "episode_number": 34,
+   "name": "Tour de Pond",
+   "air_date": "1997-11-24",
+   "runtime": 11
+  },
+  {
+   "episode_number": 35,
+   "name": "Teachers' Strike",
+   "air_date": "1997-11-24",
+   "runtime": 11
+  },
+  {
+   "episode_number": 36,
+   "name": "Runaway Float",
+   "air_date": "1997-12-01",
+   "runtime": 11
+  },
+  {
+   "episode_number": 37,
+   "name": "Partners",
+   "air_date": "1997-12-01",
+   "runtime": 11
+  }
+ ],
+ "releases": {
+  "1": [
+   "S02E01.Save the tree.New Teacher"
+  ],
+  "2": [
+   "S02E02.Helga's love potion.Gerald's Secret"
+  ],
+  "3": [
+   "S02E03.The big scoop.Harold's kitty"
+  ],
+  "4": [
+   "S02E04.Longest Monday.Eugene's pet"
+  ],
+  "5": [
+   "S02E05.Monkey buisness.Big caeser"
+  ],
+  "6": [
+   "S02E06.Ransom.Ms.Perfect"
+  ],
+  "7": [
+   "S02E07.Arnold's Halloween"
+  ],
+  "8": [
+   "S02E08.Arnold saves Sid.Hookey"
+  ],
+  "9": [
+   "S02E09.Freeze frame.Phoebe cheats"
+  ],
+  "10": [
+   "S02E10.Mudbowl.Gerald moves out"
+  ],
+  "11": [
+   "S02E11.The high life.Best friends"
+  ],
+  "12": [
+   "S02E12.Steely Phil.Quantity time"
+  ],
+  "13": [
+   "S02E13.Eating Contest.Rhonda's glasses"
+  ],
+  "14": [
+   "S02E14.Helga's boyfriend.Crush on Teacher"
+  ],
+  "15": [
+   "S02E15.Hall moniter.Harold's bar mitzvah"
+  ],
+  "16": [
+   "S02E16.Coach Wittenberg.four eyed jack"
+  ],
+  "17": [
+   "S02E17.Eugene goes bad.What's opera Arnold"
+  ],
+  "18": [
+   "S02E18.Tour de pond.Teachers strike"
+  ],
+  "19": [
+   "S02E19.part time friends.Biosquare"
+  ],
+  "20": [
+   "S02E20.Runaway float.Partners"
+  ]
+ }
+}

@@ -129,7 +129,7 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
         )
         with (
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=synopses,
             ),
             patch("app.core.ai_client.httpx.AsyncClient", return_value=client),
@@ -170,7 +170,9 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
             ai_local_base_url=_LOCAL_BASE_URL,
             tmdb_api_key="t",
         )
-        job = SimpleNamespace(id=1, detected_title="The Expanse", detected_season=1)
+        job = SimpleNamespace(
+            id=1, detected_title="The Expanse", detected_season=1, episode_namespace="tmdb"
+        )
         title = SimpleNamespace(id=7)
         synopses = [{"episode_number": 2, "name": "Cargo", "overview": "A heist."}]
         client = _mock_transport(
@@ -192,7 +194,7 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
                 return_value="/staging/t7.mkv",
             ),
             patch(
-                "app.matcher.llm_episode_matcher.fetch_season_episodes",
+                "app.matcher.llm_episode_matcher.season_episodes",
                 return_value=synopses,
             ),
             patch("app.core.ai_client.httpx.AsyncClient", return_value=client),

@@ -137,6 +137,30 @@ export async function reassignEpisode(
 }
 
 /**
+ * Re-identify a disc (confirm which show/movie it is). The backend runs the
+ * identification in the background and broadcasts the job update, so callers
+ * should refresh the job rather than expect the new identity in the response.
+ */
+export async function reIdentifyJob(
+  jobId: number,
+  title: string,
+  contentType: string,
+  season?: number,
+  tmdbId?: number,
+): Promise<void> {
+  return apiFetchVoid(`/api/jobs/${jobId}/re-identify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title,
+      content_type: contentType,
+      season: season ?? null,
+      tmdb_id: tmdbId ?? null,
+    }),
+  });
+}
+
+/**
  * Set a show's output ordering preference (#200), keyed by TMDB id. Ordering is
  * a property of the show (not a one-off review decision), so it persists and
  * applies to future organizes. The caller should refetch the season roster
@@ -148,6 +172,56 @@ export async function setShowOrdering(tmdbId: number, ordering: string): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ordering }),
   });
+}
+
+/** The backend's `{"detail": "..."}` sentence from an error body, or null. */
+export function apiErrorDetail(body: string): string | null {
+  try {
+    const detail = JSON.parse(body)?.detail;
+    return typeof detail === 'string' && detail.trim() ? detail.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-throw an {@link ApiError} as a plain Error carrying the backend's
+ * `{"detail": "..."}` sentence, so a caller can show `e.message` verbatim
+ * instead of the raw "Request failed (503 ...): {json}" form.
+ */
+async function withDetail(call: Promise<void>): Promise<void> {
+  let failure: ApiError;
+  try {
+    await call;
+    return;
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e;
+    failure = e;
+  }
+  let detail: string | null = null;
+  try {
+    const parsed = JSON.parse(failure.body);
+    if (typeof parsed?.detail === 'string' && parsed.detail.trim()) detail = parsed.detail.trim();
+  } catch {
+    // Not JSON: fall through to the status-based message.
+  }
+  throw new Error(detail ?? `Request failed (${failure.status}).`);
+}
+
+/** Switch a job between TMDB and TheTVDB numbering; the backend re-downloads and re-matches. */
+export async function setEpisodeNamespace(jobId: number, namespace: 'tmdb' | 'tvdb'): Promise<void> {
+  return withDetail(
+    apiFetchVoid(`/api/jobs/${jobId}/episode-namespace`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ namespace }),
+    }),
+  );
+}
+
+/** Stop suggesting TheTVDB numbering for a show. */
+export async function dismissTvdbSuggestion(tmdbId: number): Promise<void> {
+  return withDetail(apiFetchVoid(`/api/shows/${tmdbId}/tvdb-suggestion/dismiss`, { method: 'POST' }));
 }
 
 /**
@@ -196,14 +270,21 @@ export async function reripTitle(jobId: number, titleId: number): Promise<void> 
   return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/rerip`, { method: 'POST' });
 }
 
-/** Skip a queued/not-yet-ripped title so MakeMKV does not rip it. */
+/**
+ * Skip a not-yet-ripped title so MakeMKV does not rip it. Rejects with the
+ * server's reason when the title can no longer be skipped.
+ */
 export async function skipRipTitle(jobId: number, titleId: number): Promise<void> {
-  return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/skip-rip`, { method: 'POST' });
+  return withDetail(
+    apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/skip-rip`, { method: 'POST' }),
+  );
 }
 
-/** Reverse a skip while the title has not been ripped yet. */
+/** Reverse a skip while the title has not been ripped yet. Rejects with the server's reason. */
 export async function unskipRipTitle(jobId: number, titleId: number): Promise<void> {
-  return apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/unskip-rip`, { method: 'POST' });
+  return withDetail(
+    apiFetchVoid(`/api/jobs/${jobId}/titles/${titleId}/unskip-rip`, { method: 'POST' }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +403,10 @@ export async function commitManualSubtitles(
  * One row in the import picker. "disc_image" is a folder holding a BDMV or
  * VIDEO_TS tree (a whole-disc backup) and "iso" is a disc image file; neither
  * carries an mkv_count, because neither is a folder of finished media.
+ *
+ * "mkv" and mkv_count predate non-MKV import and keep their names for wire
+ * compatibility: they cover every importable container (.mkv, .mp4, .m4v,
+ * .ts, .m2ts; see backend app/core/media_formats.py).
  */
 export interface BrowseEntry {
   name: string;

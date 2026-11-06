@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a bug or request a feature with Trace (Discord)
+    url: https://discord.gg/G8fjjGswdc
+    about: Run /bug or /feature in the Engram Discord. Trace, the support bot, asks for what's missing, checks for duplicates, and drafts the issue for you to file.
+  - name: Getting help and reporting issues
+    url: https://jsakkos.github.io/engram/getting-help/
+    about: What to include in a report, and how to attach a diagnostics bundle.

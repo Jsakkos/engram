@@ -11,6 +11,7 @@ Stubbing also makes "which identification did this job get?" directly assertable
 which is the behaviour under test.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -274,6 +275,47 @@ class TestStart:
         assert identification_calls[image_job.id] == "identify_disc"
         assert mkv_job.import_manifest_json is not None
         assert identification_calls[mkv_job.id] == "identify_from_staging"
+
+    async def test_a_stream_clip_pick_extracts_the_whole_backup(
+        self, client, tmp_path: Path, identification_calls
+    ):
+        # A loose .m2ts under BDMV/STREAM is a clip, not a title: the import is
+        # redirected to the backup it sits in, never filed as a ready-made video.
+        d = _bdmv(tmp_path, "Inception (2010)")
+        clip = d / "BDMV" / "STREAM" / "00001.m2ts"
+
+        res = await client.post(
+            "/api/import/start", json={"path": str(clip), "destination_mode": "library"}
+        )
+        assert res.status_code == 200
+        job_ids = res.json()["job_ids"]
+        assert len(job_ids) == 1
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_ids[0])
+        assert job.source_spec == f"file:{d.resolve()}"
+        assert job.import_manifest_json is None
+        assert identification_calls[job.id] == "identify_disc"
+
+    async def test_an_mp4_folder_is_filed_through_manual_import(
+        self, client, tmp_path: Path, identification_calls
+    ):
+        f = tmp_path / "Seinfeld" / "Season 4" / "e1.mp4"
+        _mkv(f)
+
+        res = await client.post(
+            "/api/import/start",
+            json={"path": str(tmp_path / "Seinfeld"), "destination_mode": "library"},
+        )
+        assert res.status_code == 200
+        job_ids = res.json()["job_ids"]
+        assert len(job_ids) == 1
+
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_ids[0])
+        assert job.source_spec is None
+        assert json.loads(job.import_manifest_json)["files"] == [str(f.resolve())]
+        assert identification_calls[job.id] == "identify_from_staging"
 
     async def test_an_empty_folder_is_still_rejected(self, client, tmp_path: Path):
         (tmp_path / "empty").mkdir()

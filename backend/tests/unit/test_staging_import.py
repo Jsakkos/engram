@@ -52,7 +52,7 @@ class TestStagingImportEndpoint:
             json={"staging_path": str(empty_dir)},
         )
         assert resp.status_code == 404
-        assert "no mkv files" in resp.json()["detail"].lower()
+        assert "no video files" in resp.json()["detail"].lower()
 
     async def test_directory_with_non_mkv_files_returns_404(self, client: AsyncClient, tmp_path):
         """A directory with only non-MKV files should return 404."""

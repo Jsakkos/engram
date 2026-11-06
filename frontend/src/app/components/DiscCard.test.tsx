@@ -448,9 +448,9 @@ describe('BACKING UP action affordances', () => {
     expect(screen.getByTestId('eject-button')).toBeInTheDocument();
   });
 
-  it('offers Force-advance, because the job is actively processing', () => {
+  it('keeps Force-advance reachable, because the job is actively processing', () => {
     render(<DiscCard disc={backingUp()} onAdvance={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Force job to next step' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeInTheDocument();
   });
 
   it('renders the backup progress panel when a percentage is present', () => {
@@ -479,5 +479,94 @@ describe('DiscCard: disc backup outcome', () => {
     expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
     rerender(<DiscCard disc={makeDisc({ backupStatus: 'completed' })} />);
     expect(screen.queryByTestId('sv-backup-warning')).not.toBeInTheDocument();
+  });
+});
+
+describe('DiscCard: failed job recovery (#713)', () => {
+  function stubRecovery(body: Record<string, unknown>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        String(url).endsWith('/recovery')
+          ? Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+          : Promise.resolve({ ok: false }),
+      ),
+    );
+  }
+
+  const recoveryCalls = () =>
+    vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith('/recovery')).length;
+
+  const retryable = {
+    job_id: 1, staging_path: 'C:/staging/X', staging_exists: true,
+    file_count: 3, can_retry: true, reason: null,
+  };
+
+  it('offers Retry on a failed card whose staging still holds files, behind a confirm', async () => {
+    stubRecovery(retryable);
+    const onRetry = vi.fn();
+    render(<DiscCard disc={makeDisc({ state: 'error', needsReview: false })} onRetryFromStaging={onRetry} />);
+
+    fireEvent.click(await screen.findByTestId('retry-from-staging-button'));
+    expect(onRetry).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('hides Retry when the staging folder is gone', async () => {
+    stubRecovery({ ...retryable, staging_exists: false, file_count: 0, can_retry: false, reason: 'gone' });
+    render(<DiscCard disc={makeDisc({ state: 'error', needsReview: false })} onRetryFromStaging={vi.fn()} />);
+    await vi.waitFor(() => expect(recoveryCalls()).toBe(1));
+    expect(screen.queryByTestId('retry-from-staging-button')).not.toBeInTheDocument();
+  });
+
+  it('never asks for recovery on a job that did not fail', () => {
+    stubRecovery(retryable);
+    render(<DiscCard disc={makeDisc({ state: 'completed', needsReview: false })} onRetryFromStaging={vi.fn()} />);
+    expect(recoveryCalls()).toBe(0);
+    expect(screen.queryByTestId('retry-from-staging-button')).not.toBeInTheDocument();
+  });
+});
+
+// #718: Force advance is the manual counterpart of the stale-job watchdog. On a
+// healthy job it is clutter next to Eject and Cancel, so it only graduates to a
+// primary control once the backend says the job looks stuck.
+describe('Force advance placement (#718)', () => {
+  const ripping = (over: Partial<DiscData> = {}) =>
+    makeDisc({ state: 'ripping', needsReview: false, ...over });
+  const FORCE = { name: 'Force job to next step' };
+
+  it('hides Force from the primary controls on a healthy job', () => {
+    render(<DiscCard disc={ripping()} onAdvance={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: FORCE.name })).not.toBeInTheDocument();
+  });
+
+  it('still reaches Force through the overflow menu on a healthy job', () => {
+    const onAdvance = vi.fn();
+    render(<DiscCard disc={ripping()} onAdvance={onAdvance} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Force advance/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Force advance' })); // confirm dialog
+    expect(onAdvance).toHaveBeenCalledTimes(1);
+  });
+
+  it('promotes Force to a primary control when the job looks stuck', () => {
+    render(<DiscCard disc={ripping({ looksStuck: true, stalledForSeconds: 400 })} onAdvance={vi.fn()} />);
+    expect(screen.getByRole('button', { name: FORCE.name })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+  });
+
+  it('puts the inactivity duration in the stuck Force tooltip', () => {
+    render(<DiscCard disc={ripping({ looksStuck: true, stalledForSeconds: 400 })} onAdvance={vi.fn()} />);
+    expect(screen.getByRole('button', { name: FORCE.name })).toHaveAttribute(
+      'title',
+      expect.stringContaining('6m 40s'),
+    );
+  });
+
+  it('shows neither control without an advance handler or in a resting state', () => {
+    render(<DiscCard disc={ripping()} />);
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
   });
 });

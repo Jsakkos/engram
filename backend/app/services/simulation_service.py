@@ -1052,6 +1052,9 @@ class SimulationService:
                 content_hash="SIMHASH123",
                 detected_title="Damaged Show",
                 detected_season=1,
+                # A confirmed show: the review page leads with identifying a disc
+                # whose tmdb_id is null, which would hide the damaged-track notice.
+                tmdb_id=100003,
             )
             session.add(job)
             await session.commit()

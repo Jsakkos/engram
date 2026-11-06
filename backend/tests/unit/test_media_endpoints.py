@@ -106,6 +106,24 @@ class TestMediaEndpoint:
         assert r.status_code == 200
         assert r.content == MEDIA_BYTES
         assert r.headers["accept-ranges"] == "bytes"
+        assert r.headers["content-type"] == "video/x-matroska"
+
+    @pytest.mark.parametrize(
+        ("name", "media_type"), [("ep.mp4", "video/mp4"), ("rec.ts", "video/mp2t")]
+    )
+    async def test_an_imported_container_is_served_with_its_own_type(
+        self, client, tmp_path, media_file, name, media_type
+    ):
+        staging, _ = media_file
+        f = staging / name
+        f.write_bytes(MEDIA_BYTES)
+        await _seed_config(str(staging), str(tmp_path / "movies"), str(tmp_path / "tv"))
+        job, title = await _seed_job_and_title(output_filename=str(f))
+
+        r = await client.get(f"/api/jobs/{job.id}/titles/{title.id}/media")
+
+        assert r.status_code == 200
+        assert r.headers["content-type"] == media_type
 
     async def test_range_request_returns_206_partial(self, client, tmp_path, media_file):
         staging, f = media_file

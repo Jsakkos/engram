@@ -14,6 +14,7 @@ from app.matcher.asr_models import (
     detect_asr_device,
     get_cached_model,
     gpu_detected,
+    gpu_fallback_reason,
     resolve_asr_runtime,
     set_asr_device,
 )
@@ -202,6 +203,35 @@ class TestModelConstruction:
             model.load()
         assert calls[0]["num_workers"] == 3
         assert "cpu_threads" not in calls[0]  # GPU path must not pass cpu_threads
+
+    def test_cuda_load_failure_is_reported_as_cpu(self):
+        # The startup decision pins "cuda" once the libs register, but the model load can
+        # still fail and drop to CPU. That fallback used to be invisible: the badge kept
+        # saying "CUDA float16" while every transcription ran on the CPU.
+        _model_cache.clear()
+        calls = []
+
+        class FailingCudaWhisper:
+            def __init__(self, model_name, **kwargs):
+                calls.append(kwargs)
+                self.device = kwargs["device"]
+
+            def transcribe(self, *args, **kwargs):
+                if self.device == "cuda":
+                    raise RuntimeError("Library cublas64_12.dll is not found or cannot be loaded")
+                return iter([]), None
+
+        set_asr_device("cuda")
+        with (
+            patch("faster_whisper.WhisperModel", FailingCudaWhisper),
+            patch("app.matcher.asr_models.psutil.cpu_count", return_value=4),
+        ):
+            model = FasterWhisperModel("small", requested_workers=1)
+            model.load()
+
+        assert model.device == "cpu"
+        assert detect_asr_device() == "cpu"
+        assert gpu_fallback_reason() == "load_failed"
 
     def test_concurrent_get_cached_model_constructs_once(self):
         # N threads racing on a cold cache must build exactly ONE shared model, not N

@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 
+from app.core import episode_ordering
 from app.models.app_config import AppConfig
 from app.models.show_ordering import ShowOrderingPreference
 from app.services.episode_ordering_service import resolve_show_ordering
@@ -142,3 +143,26 @@ class TestResolveShowOrdering:
         await _set_global(session, "absolute")  # deferred in v1
         ordering, group_id = await resolve_show_ordering(1437, session)
         assert (ordering, group_id) == ("aired", None)
+
+
+@pytest.mark.unit
+class TestTvdbOrdering:
+    async def test_tvdb_preference_resolves_to_tvdb_without_group(self, session):
+        session.add(ShowOrderingPreference(tmdb_id=1618, ordering="tvdb"))
+        await session.commit()
+        with patch(
+            "app.services.episode_ordering_service.episode_ordering.resolve_episode_group_id"
+        ) as m:
+            assert await resolve_show_ordering(1618, session) == ("tvdb", None)
+        assert m.call_count == 0
+
+    async def test_blank_preference_follows_global_default(self, session):
+        session.add(ShowOrderingPreference(tmdb_id=1619, ordering=""))
+        await session.commit()
+        ordering, _ = await resolve_show_ordering(1619, session)
+        assert ordering == "aired"
+
+    def test_tvdb_is_per_show_only(self):
+        assert episode_ordering.ORDERING_TVDB == "tvdb"
+        assert "tvdb" in episode_ordering.PER_SHOW_ORDERINGS
+        assert "tvdb" not in episode_ordering.ALLOWED_ORDERINGS
