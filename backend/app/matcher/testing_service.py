@@ -26,7 +26,12 @@ from app.core.episode_namespace import (
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.numbering_crosswalk import is_segmented_marker
-from app.matcher.os_api_retry import _RETRYABLE_EXCEPTIONS, os_api_call, os_download_temp_name
+from app.matcher.os_api_retry import (
+    _RETRYABLE_EXCEPTIONS,
+    is_invalid_file_id_error,
+    os_api_call,
+    os_download_temp_name,
+)
 from app.matcher.provider_scheduler import EpisodeJob, run_jobs
 from app.matcher.srt_utils import extract_audio_chunk, get_video_duration
 from app.matcher.subtitle_provider import LocalSubtitleProvider
@@ -984,13 +989,27 @@ def download_subtitles(
                         # is exhausted (not the per-minute limit), and
                         # retrying same-day for 90s+ doesn't help; we'd
                         # rather fall back to scrapers and move on.
-                        srt_file = os_api_call(
-                            _os_client.download_and_save,
-                            subtitle,
-                            filename=os_download_temp_name(),
-                            max_attempts=2,
-                            base_delay=5.0,
-                        )
+                        try:
+                            srt_file = os_api_call(
+                                _os_client.download_and_save,
+                                subtitle,
+                                filename=os_download_temp_name(),
+                                max_attempts=2,
+                                base_delay=5.0,
+                            )
+                        except Exception as dl_exc:
+                            # One dead upload (#857) costs only itself: leave the
+                            # episode unseen so a later result for it can serve.
+                            # Anything else (quota, network) still ends the loop.
+                            if not is_invalid_file_id_error(dl_exc):
+                                raise
+                            logger.warning(
+                                f"OpenSubtitles refused file_id "
+                                f"{getattr(subtitle, 'file_id', None)!r} for "
+                                f"{episode_code_api} (Invalid file_id); trying the "
+                                "next result"
+                            )
+                            continue
                         if srt_file and is_valid_srt_file(Path(srt_file)):
                             shutil.move(str(srt_file), srt_target)
                             api_srt_map[ep_num] = srt_target
