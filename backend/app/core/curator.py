@@ -543,7 +543,8 @@ class EpisodeCurator:
                 # yet, so a confident match in an unspaced script still goes to a
                 # person (maintainer decision, spec 2026-10-20).
                 language = current_match_language()
-                if language in UNSPACED_LANGUAGES and not needs_review:
+                held_only_for_script = language in UNSPACED_LANGUAGES and not needs_review
+                if held_only_for_script:
                     needs_review = True
                     details = dict(details)
                     details["uncalibrated_language"] = language
@@ -551,8 +552,10 @@ class EpisodeCurator:
                 # LLM episode-matching fallback — only runs when the primary
                 # match needs review, config is enabled, and the season is known.
                 # Reuse the primary matcher's transcript if it took the
-                # full-file fallback path (avoids re-running Whisper).
-                if needs_review and season:
+                # full-file fallback path (avoids re-running Whisper). Skipped for
+                # a confident match held only for its script: the review pre-fills
+                # it, and a full-file pass plus an AI call would second-guess it.
+                if needs_review and season and not held_only_for_script:
                     existing_transcript = match.get("transcript") if match else None
                     enriched = await self._maybe_add_llm_suggestion(
                         file_path=file_path,

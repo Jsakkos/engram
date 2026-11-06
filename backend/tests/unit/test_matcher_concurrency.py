@@ -77,7 +77,7 @@ def test_concurrent_cross_season_match_keeps_each_thread_on_its_own_season(
     b_rebuilt = threading.Event()  # thread B has rebuilt the (shared) references
 
     class FakeModel:
-        def transcribe(self, audio_path):
+        def transcribe(self, audio_path, language=None):
             ap = str(audio_path)
             if "S08E02" in ap:  # thread A's audio -> should match S08E02
                 if not a_scanning.is_set():
