@@ -117,6 +117,31 @@ class TestDescribePath:
         assert status.ok is False
         assert "doesn't exist" in status.reason
 
+    def test_a_missing_folder_under_a_writable_parent_will_be_created(self, tmp_path):
+        status = describe_path(str(tmp_path / "not-yet"))
+        assert status.will_create is True
+        assert "will create" in status.reason
+
+    def test_a_deep_missing_folder_checks_the_nearest_existing_parent(self, tmp_path):
+        status = describe_path(str(tmp_path / "a" / "b" / "c"))
+        assert status.will_create is True
+        # Probing the parent must not create anything.
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_missing_folder_whose_parent_is_unwritable_is_not_promised(self, tmp_path):
+        with patch("pathlib.Path.touch", side_effect=PermissionError(13, "Permission denied")):
+            status = describe_path(str(tmp_path / "not-yet"))
+        assert status.will_create is False
+        assert status.reason is not None
+        assert "can't create" in status.reason.lower()
+
+    def test_a_missing_folder_below_a_file_is_not_promised(self, tmp_path):
+        blocker = tmp_path / "file.txt"
+        blocker.write_text("x")
+        status = describe_path(str(blocker / "sub"))
+        assert status.will_create is False
+        assert "file" in status.reason
+
     def test_a_relative_path_is_rejected(self):
         # It would resolve against wherever Engram happened to be started.
         status = describe_path("media/tv")

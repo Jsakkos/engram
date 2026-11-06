@@ -1127,7 +1127,8 @@
 
 /* Path check status — the live "will this folder actually work?" line under a
    library/staging field. Colour carries the verdict at a glance: an offline
-   share is a warning (the path may be right, just not mounted right now), while
+   share is a warning (the path may be right, just not mounted right now), a
+   missing-but-creatable folder is a neutral note, while
    an unwritable or malformed path is an error. */
 .path-status {
     display: block;
@@ -1139,6 +1140,10 @@
 
 .path-status-ok {
     color: var(--color-sv-cyan);
+}
+
+.path-status-note {
+    color: var(--color-sv-ink-dim);
 }
 
 .path-status-warn {
