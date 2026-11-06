@@ -491,12 +491,13 @@ class EpisodeCurator:
                 file_path, match_details=language_refusal_details(plan, job_language)
             )
         if language != job_language:
-            # The show's language has no stream in this file but English does:
-            # match this title in English. Under English the plan above returns
-            # English straight away, so this recurses once.
+            # The file has an English stream that plan_title_audio picked (English
+            # first, or the show's language has no stream here): match this title
+            # in English. Under English the plan above returns English straight
+            # away, so this recurses once.
             logger.info(
-                f"[Curator] {sanitize_log_value(file_path.name)}: no {job_language} audio; "
-                "matching this track in English"
+                f"[Curator] {sanitize_log_value(file_path.name)}: matching this track in "
+                f"English (job language {job_language})"
             )
             with match_language_context(language):
                 return await self._run_asr_identify(
