@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - One stray chunk vote no longer drags a correctly matched track's confidence to near zero. Engram picked the episode whose chunk votes had the highest average score, so a single vote for the wrong episode with a slightly higher score tied or beat a run of votes for the right one (19 against 1 calibrated to 0.003) and the track went to review. The winner and its confidence now come from the summed score of its votes, so agreement across many chunks counts. (#241)
+- One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
 
 ## [0.44.0] - 2026-10-25
 
