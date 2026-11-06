@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- A brand-new install no longer greets you with "All operations complete". With no job history, the dashboard now welcomes you and offers both ways in: insert a disc, or **Import** rips and disc backups you already have, plus a Getting started link. The old empty-state text returns as soon as any job exists (#721).
 - One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
 
 ## [0.44.0] - 2026-10-25

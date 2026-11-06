@@ -44,6 +44,7 @@ import {
   sv,
 } from "./components/synapse";
 import { DashboardSideRail } from "./components/DashboardSideRail";
+import { DashboardEmptyState } from "./components/DashboardEmptyState";
 
 type ViewMode = "expanded" | "compact";
 
@@ -56,19 +57,6 @@ const svButtonBase: React.CSSProperties = {
   letterSpacing: "0.20em",
   textTransform: "uppercase",
   cursor: "pointer",
-};
-
-/** Empty-state copy keyed by the active dashboard filter. */
-const emptyHeading: Record<"all" | "active" | "completed", string> = {
-  active: "› No active operations",
-  completed: "› No completed archives",
-  all: "› No discs detected",
-};
-
-const emptyBody: Record<"all" | "active" | "completed", string> = {
-  active: "All operations complete. Insert a disc to start a new job.",
-  completed: "No archived media yet. Completed jobs will appear here.",
-  all: "Insert a disc into your optical drive to begin archiving.",
 };
 
 function MainDashboard() {
@@ -316,6 +304,21 @@ function MainDashboard() {
   // Side-rail collapse breakpoint: below ~1100px (snapped half-monitor windows)
   // the 320px rail crushes the card column, so it folds away entirely.
   const railFits = useMediaQuery("(min-width: 1100px)");
+  // First-run = this install has never run a job. The dashboard list hides cleared
+  // jobs, so ask the stats endpoint (all states, cleared included) rather than
+  // inferring it from an empty list. Re-checked whenever the live job count changes.
+  const [hasJobHistory, setHasJobHistory] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (DEV_MODE || jobs.length > 0) return;
+    let cancelled = false;
+    fetch('/api/jobs/stats?include_all_states=true')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d) setHasJobHistory(d.total_jobs > 0); })
+      .catch(() => { /* non-critical: keep the standard empty state */ });
+    return () => { cancelled = true; };
+  }, [jobs.length, DEV_MODE]);
+  const firstRun = jobs.length === 0 && hasJobHistory === false;
+
   const showSideRail = filteredDiscs.length > 0 && viewMode === "expanded" && railFits;
   const [backgroundEffectsEnabled] = useBackgroundEffectsEnabled();
 
@@ -764,34 +767,11 @@ function MainDashboard() {
                 <circle cx="100" cy="100" r="1.5" fill={sv.bg0} />
               </svg>
             </motion.div>
-            <h2
-              data-testid="sv-empty-heading"
-              style={{
-                fontFamily: sv.display,
-                fontWeight: 700,
-                fontSize: 22,
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                color: sv.cyanHi,
-                textShadow: `0 0 12px ${sv.cyan}99`,
-                marginBottom: 10,
-              }}
-            >
-              {emptyHeading[filter]}
-            </h2>
-            <p
-              style={{
-                fontFamily: sv.mono,
-                fontSize: 11,
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                color: sv.inkDim,
-                maxWidth: 480,
-                lineHeight: 1.6,
-              }}
-            >
-              {emptyBody[filter]}
-            </p>
+            <DashboardEmptyState
+              filter={filter}
+              firstRun={firstRun}
+              onImport={() => setShowImport(true)}
+            />
           </motion.div>
         ) : viewMode === "compact" ? (
           /* Compact view — sv-token row layout */
