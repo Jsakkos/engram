@@ -642,6 +642,9 @@ class PathCheckResponse(BaseModel):
     # True when the location is fine to save but not reachable right now (an
     # offline share) — a warning, not a rejection.
     unreachable: bool = False
+    # True when the folder is missing but Engram can create it (its nearest
+    # existing parent is writable): a neutral note, not an error.
+    will_create: bool = False
     free_bytes: int | None = None
     reason: str | None = None
 
@@ -676,6 +679,7 @@ async def validate_path(
         writable=status.writable,
         is_network=status.is_network,
         unreachable=status.unreachable,
+        will_create=status.will_create,
         free_bytes=status.free_bytes,
         reason=status.reason,
     )
