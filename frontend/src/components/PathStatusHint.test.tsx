@@ -10,6 +10,7 @@ const OK: PathCheck = {
     writable: true,
     is_network: false,
     unreachable: false,
+    will_create: false,
     free_bytes: 5_660_000_000_000,
     reason: null,
 };
@@ -64,6 +65,35 @@ describe('PathStatusHint', () => {
         await waitFor(() => expect(screen.getByText(/isn't reachable/)).toBeInTheDocument());
         expect(container.querySelector('.path-status-warn')).toBeInTheDocument();
         expect(container.querySelector('.path-status-error')).not.toBeInTheDocument();
+    });
+
+    it('shows a creatable missing folder as a neutral note, not an error', async () => {
+        mockCheck({
+            ok: false,
+            exists: false,
+            writable: false,
+            will_create: true,
+            reason: "This folder doesn't exist yet. Engram will create it when it first needs it.",
+        });
+        const { container } = render(<PathStatusHint path="D:\Media\New" label="TV library" />);
+        await waitFor(() => expect(screen.getByText(/Will be created on first use/)).toBeInTheDocument());
+        expect(container.querySelector('.path-status-error')).not.toBeInTheDocument();
+        expect(container.querySelector('.path-status-warn')).not.toBeInTheDocument();
+        expect(container.querySelector('.path-status-note')).toBeInTheDocument();
+        expect(container).not.toHaveTextContent('✕');
+    });
+
+    it('still shows a missing folder whose parent is not writable as an error', async () => {
+        mockCheck({
+            ok: false,
+            exists: false,
+            writable: false,
+            will_create: false,
+            reason: "This folder doesn't exist and Engram can't create it in /media: Permission denied",
+        });
+        const { container } = render(<PathStatusHint path="D:\Media\New" label="TV library" />);
+        await waitFor(() => expect(screen.getByText(/can't create it/)).toBeInTheDocument());
+        expect(container.querySelector('.path-status-error')).toBeInTheDocument();
     });
 
     it('reports an unwritable path as an error', async () => {
