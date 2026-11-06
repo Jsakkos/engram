@@ -963,9 +963,7 @@ class TestMatchLanguageLadder:
         assert seen == [("en", 1)]
 
     async def test_original_first_language_prefers_its_own_stream(self, tmp_path, monkeypatch):
-        import app.matcher.audio_streams as audio_streams
-
-        monkeypatch.setattr(audio_streams, "ORIGINAL_FIRST_LANGUAGES", frozenset({"de"}))
+        monkeypatch.setattr("app.matcher.audio_streams.ORIGINAL_FIRST_LANGUAGES", frozenset({"de"}))
         curator, _, f, seen = self._curator(tmp_path, monkeypatch, ["en", "de"])
         result = await self._match(curator, f, "de")
         assert result.episode_code == "S01E03"

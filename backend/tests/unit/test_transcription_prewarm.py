@@ -906,10 +906,10 @@ class TestPrewarmMatchLanguage:
         suffix,
         original_first,
     ):
-        import app.matcher.audio_streams as audio_streams
-
         if original_first:
-            monkeypatch.setattr(audio_streams, "ORIGINAL_FIRST_LANGUAGES", frozenset({"de"}))
+            monkeypatch.setattr(
+                "app.matcher.audio_streams.ORIGINAL_FIRST_LANGUAGES", frozenset({"de"})
+            )
         p, _ = prewarmer
         p._matcher = LanguageMatcher(languages)
         job_id, f = await _seed_review_job(tmp_path)
