@@ -1781,7 +1781,11 @@ class IdentificationCoordinator:
                         # stale "rejected" marker from identify time is now wrong
                         # regardless of whether results were found (#243).
                         job.tmdb_degraded_reason = None
-                        if _signal and _signal.content_type != job.content_type:
+                        if (
+                            _signal
+                            and job.content_type in (ContentType.TV, ContentType.MOVIE)
+                            and _signal.content_type != job.content_type
+                        ):
                             # Only the other type matched: its id names a different
                             # catalogue entry, so keep the user's title without it.
                             # If the job already holds that very id (a TV job bound

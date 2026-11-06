@@ -155,6 +155,14 @@ class TestReIdentifyLookupHonoursContentType:
 
         assert (await _get(job_id)).tmdb_id == 1618
 
+    async def test_unknown_type_takes_the_lookup_as_before(self, tmp_path, classify):
+        """An "unknown" answer asserts no type, so nothing is a mismatch."""
+        job_id = await _seed(tmp_path, content_type=ContentType.UNKNOWN)
+
+        await _coord().re_identify(job_id, "Justice League", "unknown")
+
+        assert (await _get(job_id)).tmdb_id == 141052
+
     async def test_movie_correction_still_looks_up_without_a_tv_preference(
         self, tmp_path, classify
     ):
