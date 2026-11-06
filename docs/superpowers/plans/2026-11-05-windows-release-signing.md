@@ -2,7 +2,11 @@
 
 **Date:** 2026-11-05
 **Issue:** #729 (Sign Windows release builds), part of stable-release epic #734 (Tier 3, December 2026 freeze)
-**Status:** Proposed. Nothing is bought, enrolled or changed in `release.yml` by this document.
+**Status:** **Deferred by the maintainer (2026-11-05) until Engram has at least 1,000 users.** Free, open source project; no spending on signing for now. Nothing is bought, enrolled or changed in `release.yml` by this document. The plan below is kept ready to execute when the trigger is met.
+
+**Revisit trigger:** about 1,000 users (for example, the GitHub release download count for `engram-win-x64.zip`). On revisit, re-verify pricing, eligibility and the SignPath lead time, since the figures below date from 2026-11-05. The December freeze dates in section 4 no longer apply; re-base the timeline from the new start date, keeping the 1 to 20 business day validation window.
+
+**Zero-cost option if the maintainer wants signing sooner:** Route B (SignPath Foundation) is free. It was ranked as the hedge, not the lead, only because of its manual per-release approval and unpublished review time.
 **Builds on:** `docs/superpowers/reviews/2026-06-03-windows-code-signing.md` (which asked for Azure to be priced first)
 
 ## 1. TL;DR and recommendation
