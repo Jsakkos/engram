@@ -179,6 +179,12 @@ def build_title_list(titles, *, include_video_resolution: bool = False) -> list[
     """Build a title list dict for WebSocket broadcast.
 
     Used by titles_discovered broadcasts to send title metadata to the frontend.
+    The dashboard replaces its title rows with this list, so each row carries
+    its real state and the fields that explain it. Identification can already
+    have decided a row before the rip (a Play All row is COMPLETED + extra, a
+    short track auto-SKIPPED); reporting those as "pending" put a SKIP button
+    on a track the server had no rip left to skip, and skip-rip answered 400
+    (issue #754).
     """
     result = []
     for t in titles:
@@ -188,7 +194,10 @@ def build_title_list(titles, *, include_video_resolution: bool = False) -> list[
             "duration_seconds": t.duration_seconds,
             "file_size_bytes": t.file_size_bytes,
             "chapter_count": t.chapter_count,
-            "state": "pending",
+            "state": t.state.value if t.state else "pending",
+            "is_selected": t.is_selected,
+            "is_extra": t.is_extra,
+            "match_details": t.match_details,
         }
         if include_video_resolution and hasattr(t, "video_resolution") and t.video_resolution:
             entry["video_resolution"] = t.video_resolution

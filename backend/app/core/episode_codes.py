@@ -82,6 +82,45 @@ def normalize_episode_code(code: str | None) -> str:
     return format_episode_code(season, episodes)
 
 
+PSEUDO_CODES = ("extra", "skip")
+
+
+def canonical_assignment_code(code: str) -> str:
+    """Validate an assignment a person built by hand and return its canonical form.
+
+    The review page and the reassign endpoint accept whatever the client sends,
+    so a code is checked here before it is stored. ``parse_episode_code`` is
+    lenient on purpose (it reads matcher output and existing libraries), which is
+    wrong for a hand-built code: a backwards range "S01E05-E02" would be stored as
+    the set E05 + E02, a claim nobody made. So this rejects (``ValueError``):
+
+    - anything that is not an episode code or a pseudo-code ("extra"/"skip"),
+      which includes a range crossing seasons ("S01E12-S02E01"), since a filename
+      carries one season;
+    - a hyphenated range that runs backwards.
+
+    A gapped run-on set ("S01E01E03") is accepted: the matcher and TheDiscDB
+    produce them, and the review page re-saves pre-filled picks. Pseudo-codes are
+    matched exactly: the review UI sends them lowercase, and "EXTRA" is rejected
+    rather than stored as an unparseable episode.
+    """
+    if code in PSEUDO_CODES:
+        return code
+    parsed = parse_episode_code(code)
+    if parsed is None:
+        raise ValueError(
+            f"Invalid episode code: {code!r} "
+            "(expected SxxExx, a range in one season like S01E01-E03, 'extra' or 'skip')"
+        )
+    previous: int | None = None
+    for part in _EPISODE_PART_RE.finditer(code):
+        number = int(part.group(2))
+        if part.group(1) and previous is not None and number < previous:
+            raise ValueError(f"Invalid episode code: {code!r} (the range runs backwards)")
+        previous = number
+    return format_episode_code(*parsed)
+
+
 def episode_parts(code: str | None) -> list[str]:
     """Every single-episode code a (possibly multi-episode) code claims.
 

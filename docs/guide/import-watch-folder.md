@@ -1,6 +1,6 @@
 # Import Watch Folder
 
-The Import Watch Folder lets Engram ingest **pre-ripped MKV files** without a physical disc. Point
+The Import Watch Folder lets Engram ingest **pre-ripped video files** without a physical disc. Point
 it at a directory, drop files in (by hand, or automatically from a tool like
 [AutomaticRippingMachine](https://github.com/automatic-ripping-machine/automatic-ripping-machine)),
 and Engram runs them through the same identify → match → organize pipeline it uses for discs.
@@ -10,6 +10,28 @@ It's the right tool for:
 - Importing an existing library of pre-ripped files.
 - Machines without an optical drive (the primary workflow on macOS).
 - Chaining Engram after an external ripper that writes finished MKVs to a folder.
+
+## Supported file types
+
+| Type | Imported as |
+|------|-------------|
+| `.mkv`, `.mp4`, `.m4v`, `.ts`, `.m2ts` | Finished video files. Each file becomes one title and is filed **unchanged**: Engram never remuxes or transcodes, so an `.mp4` lands in the library as `Show - S01E01.mp4`. |
+| A folder holding `BDMV` or `VIDEO_TS`, or an `.iso` | A whole-disc backup. MakeMKV scans and extracts it like a disc in the drive. |
+
+Some things to know:
+
+- **Blu-ray stream clips are not episodes.** The `.m2ts` files inside `BDMV/STREAM` are fragments
+  that the disc's playlists stitch into titles. If you pick the `BDMV` folder, the `STREAM` folder
+  or a single clip inside it, Engram imports the whole backup that contains it instead.
+  A `.m2ts` that is *not* inside a `BDMV` tree is imported as an ordinary file.
+- **Loose `.vob` files are not supported.** A DVD title spans several VOBs, so import the
+  `VIDEO_TS` folder (or its parent) instead.
+- **One episode, one file.** `Show - S01E01.mkv` and `Show - S01E01.mp4` are the same episode to
+  Plex and Jellyfin, so Engram treats an existing copy in *either* container as a conflict and
+  applies your conflict setting (ask, skip, overwrite, rename) rather than filing a duplicate.
+- **DVR recordings (`.ts`)** often carry commercials and padding, so expect lower match
+  confidence and more reviews than with a clean disc rip.
+- **iTunes `.m4v` purchases** are usually DRM-protected and cannot be decoded, so they fail to match.
 
 ## Enable it
 

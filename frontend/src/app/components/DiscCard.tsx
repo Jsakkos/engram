@@ -13,6 +13,7 @@ import { isActivePipelineState } from "./discState";
 import { useElapsedTime } from "../hooks/useElapsedTime";
 import { sv, SvPanel, SvLabel, SvDiscInsert, SvProgressBar, type DiscInsertPhase } from "./synapse";
 import { formatEta } from "../../utils/formatting";
+import { useJobRecovery } from "../../api/recoveryClient";
 
 export type MediaType = "movie" | "tv" | "unknown";
 export type DiscState = "idle" | "scanning" | "review_needed" | "backing_up" | "ripping" | "matching" | "organizing" | "processing" | "completed" | "error";
@@ -115,6 +116,11 @@ export interface DiscData {
   backupStatus?: string | null;
   /** Backend prose explaining a skipped or failed backup; rendered verbatim. */
   backupStatusReason?: string | null;
+  /** Backend-computed: no progress past the stall threshold (#718). Drives
+   *  whether Force advance is a primary control or lives in the overflow menu. */
+  looksStuck?: boolean;
+  /** Seconds since the job last made progress, when stuck. */
+  stalledForSeconds?: number | null;
   /** True when at least one title on this disc has a rip-level failure (re-rippable). */
   hasDamagedTrack?: boolean;
   /** How this disc's identity was obtained, from the backend's
@@ -141,6 +147,9 @@ interface DiscCardProps {
   onIdentify?: () => void;
   /** Label for the identify CTA, e.g. "Name this disc" / "Select season". */
   identifyLabel?: string;
+  /** Retry a failed job from its staging files (#713). The card shows the
+   *  button only once the backend confirms staging still holds ripped files. */
+  onRetryFromStaging?: () => void;
 }
 
 /**
@@ -234,8 +243,9 @@ function CoverOverlay({ children }: { children: React.ReactNode }) {
 }
 
 const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
-  ({ disc, onCancel, onSkipTrack, onUnskipTrack, onReview, onReIdentify, onAdvance, onEject, onReportBug, onOpenSettings, onIdentify, identifyLabel }, ref) => {
+  ({ disc, onCancel, onSkipTrack, onUnskipTrack, onReview, onReIdentify, onAdvance, onEject, onReportBug, onOpenSettings, onIdentify, identifyLabel, onRetryFromStaging }, ref) => {
     const [isHovered, setIsHovered] = React.useState(false);
+    const recovery = useJobRecovery(disc.state === "error" && onRetryFromStaging ? disc.id : null);
     const posterUrl = usePosterImage(disc.id, disc.title);
     const isActive = !['completed', 'error', 'idle'].includes(disc.state);
     const elapsed = useElapsedTime(isActive ? disc.startedAt : undefined);
@@ -245,12 +255,16 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
     const doneTrackCount =
       disc.tracks?.filter(t => ["matched", "completed"].includes(t.state)).length ?? 0;
     const failedTrackCount = disc.tracks?.filter(t => t.state === "failed").length ?? 0;
+    // RIPPED excludes `failed`: a rip failure and a match failure share one state, so a
+    // track that ripped and then failed matching is not counted (no rip-complete marker).
     const countedTracks = disc.tracks?.filter(t => t.state !== "skipped") ?? [];
     const countedTrackTotal = countedTracks.length;
     const rippedTrackCount = countedTracks.filter(
       t => !["pending", "ripping", "failed"].includes(t.state),
     ).length;
-    const matchedTrackCount = countedTracks.filter(t => ["matched", "completed"].includes(t.state)).length;
+    const matchedTrackCount = countedTracks.filter(t =>
+      ["matched", "completed"].includes(t.state),
+    ).length;
 
     // A disc in review to confirm its IDENTITY (ambiguous/unconfirmed show) has
     // nothing to do in the episode review queue — the only useful action is
@@ -518,6 +532,9 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     isImport={disc.sourceType === 'import'}
                     emphasizeReIdentify={showIdentityReview}
                     manualIdentity={isManualIdentity}
+                    onRetryFromStaging={recovery?.can_retry ? onRetryFromStaging : undefined}
+                    looksStuck={disc.looksStuck}
+                    stalledForSeconds={disc.stalledForSeconds}
                   />
                 </div>
               </div>
@@ -721,7 +738,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(4, 1fr)",
+                      gridTemplateColumns: `repeat(${2 + (disc.currentSpeed ? 1 : 0) + (disc.etaSeconds !== undefined ? 1 : 0)}, 1fr)`,
                       gap: 16,
                     }}
                   >

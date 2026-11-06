@@ -182,7 +182,11 @@ describe("ImportModal", () => {
     fireEvent.click(screen.getByText(".."));
 
     await waitFor(() => expect(screen.getByText("King of Queens")).toBeInTheDocument());
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+    // The scroll happens in the row's effect, after the row's text is on screen: wait
+    // for it too, or a slow runner checks between the two (flaked in CI on #797).
+    await waitFor(() =>
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" }),
+    );
   });
 
   const blockedUnit = (over: Partial<client.BlockedUnit> = {}): client.BlockedUnit => ({
@@ -340,8 +344,8 @@ describe("ImportModal: disc backups", () => {
     expect(screen.getByText("iso")).toBeInTheDocument();
     // The disc mark, not the folder mark, and only on the two disc rows.
     expect(container.querySelectorAll(".import-disc-icon")).toHaveLength(2);
-    // A plain folder keeps its mkv count; the disc rows have none to show.
-    expect(screen.getByText("3 mkv")).toBeInTheDocument();
+    // A plain folder keeps its video count; the disc rows have none to show.
+    expect(screen.getByText("3 video")).toBeInTheDocument();
   });
 
   it("summarises disc backups in the preview and counts them as jobs", async () => {

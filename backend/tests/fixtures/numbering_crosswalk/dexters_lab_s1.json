@@ -1,0 +1,302 @@
+{
+ "_source": "Dexter's Laboratory (TMDB 4229) S1: TMDB /tv/{id}/season/1 and OpenSubtitles search (parent_tmdb_id, season_number, type=episode, languages=en), captured 2026-10-20. Release strings verbatim; other fields dropped.",
+ "season": 1,
+ "corpus_codes": [
+  "S01E01",
+  "S01E02",
+  "S01E03",
+  "S01E04",
+  "S01E05",
+  "S01E06",
+  "S01E07",
+  "S01E08",
+  "S01E09",
+  "S01E10",
+  "S01E11",
+  "S01E12",
+  "S01E13"
+ ],
+ "roster": [
+  {
+   "episode_number": 1,
+   "name": "DeeDeemensional",
+   "air_date": "1996-04-28",
+   "runtime": 7
+  },
+  {
+   "episode_number": 2,
+   "name": "Dial M for Monkey: Magmanamus",
+   "air_date": "1996-04-28",
+   "runtime": 7
+  },
+  {
+   "episode_number": 3,
+   "name": "Maternal Combat",
+   "air_date": "1996-04-28",
+   "runtime": 7
+  },
+  {
+   "episode_number": 4,
+   "name": "Dexter Dodgeball",
+   "air_date": "1996-05-05",
+   "runtime": 7
+  },
+  {
+   "episode_number": 5,
+   "name": "Dial M for Monkey: Rasslor",
+   "air_date": "1996-05-05",
+   "runtime": 7
+  },
+  {
+   "episode_number": 6,
+   "name": "Dexter's Assistant",
+   "air_date": "1996-05-05",
+   "runtime": 7
+  },
+  {
+   "episode_number": 7,
+   "name": "Dexter's Rival",
+   "air_date": "1996-05-12",
+   "runtime": 7
+  },
+  {
+   "episode_number": 8,
+   "name": "Dial M for Monkey: Simion",
+   "air_date": "1996-05-12",
+   "runtime": 7
+  },
+  {
+   "episode_number": 9,
+   "name": "Old Man Dexter",
+   "air_date": "1996-05-12",
+   "runtime": 7
+  },
+  {
+   "episode_number": 10,
+   "name": "Double Trouble",
+   "air_date": "1996-05-19",
+   "runtime": 7
+  },
+  {
+   "episode_number": 11,
+   "name": "Dial M for Monkey: Barbequor",
+   "air_date": "1996-05-19",
+   "runtime": 7
+  },
+  {
+   "episode_number": 12,
+   "name": "Changes",
+   "air_date": "1996-05-19",
+   "runtime": 7
+  },
+  {
+   "episode_number": 13,
+   "name": "Jurassic Pooch",
+   "air_date": "1996-05-26",
+   "runtime": 7
+  },
+  {
+   "episode_number": 14,
+   "name": "Dial M For Monkey: Orgon Grindor",
+   "air_date": "1996-05-26",
+   "runtime": 7
+  },
+  {
+   "episode_number": 15,
+   "name": "Dimwit Dexter",
+   "air_date": "1996-05-26",
+   "runtime": 7
+  },
+  {
+   "episode_number": 16,
+   "name": "Dee Dee's Room",
+   "air_date": "1996-06-02",
+   "runtime": 7
+  },
+  {
+   "episode_number": 17,
+   "name": "Dial M For Monkey: Huntor",
+   "air_date": "1996-06-02",
+   "runtime": 7
+  },
+  {
+   "episode_number": 18,
+   "name": "The Big Sister",
+   "air_date": "1996-06-02",
+   "runtime": 7
+  },
+  {
+   "episode_number": 19,
+   "name": "Star Spangled Sidekicks",
+   "air_date": "1996-11-20",
+   "runtime": 7
+  },
+  {
+   "episode_number": 20,
+   "name": "The Justice Friends: TV Super Pals",
+   "air_date": "1996-11-20",
+   "runtime": 7
+  },
+  {
+   "episode_number": 21,
+   "name": "Game Over",
+   "air_date": "1996-11-20",
+   "runtime": 7
+  },
+  {
+   "episode_number": 22,
+   "name": "Babysitter Blues",
+   "air_date": "1996-11-27",
+   "runtime": 7
+  },
+  {
+   "episode_number": 23,
+   "name": "The Justice Friends: Valhallen's Room",
+   "air_date": "1996-11-27",
+   "runtime": 7
+  },
+  {
+   "episode_number": 24,
+   "name": "Dream Machine",
+   "air_date": "1996-11-27",
+   "runtime": 7
+  },
+  {
+   "episode_number": 25,
+   "name": "Dollhouse Drama",
+   "air_date": "1996-12-04",
+   "runtime": 7
+  },
+  {
+   "episode_number": 26,
+   "name": "The Justice Friends: Krunk's Date",
+   "air_date": "1996-12-04",
+   "runtime": 7
+  },
+  {
+   "episode_number": 27,
+   "name": "The Big Cheese",
+   "air_date": "1996-12-04",
+   "runtime": 7
+  },
+  {
+   "episode_number": 28,
+   "name": "Way of the Dee Dee",
+   "air_date": "1996-12-11",
+   "runtime": 7
+  },
+  {
+   "episode_number": 29,
+   "name": "The Justice Friends: Say Uncle Sam",
+   "air_date": "1996-12-11",
+   "runtime": 7
+  },
+  {
+   "episode_number": 30,
+   "name": "Tribe Called Girl",
+   "air_date": "1996-12-11",
+   "runtime": 7
+  },
+  {
+   "episode_number": 31,
+   "name": "Spacecase",
+   "air_date": "1996-12-18",
+   "runtime": 7
+  },
+  {
+   "episode_number": 32,
+   "name": "The Justice Friends: Ratman",
+   "air_date": "1996-12-18",
+   "runtime": 7
+  },
+  {
+   "episode_number": 33,
+   "name": "Dexter's Debt",
+   "air_date": "1996-12-18",
+   "runtime": 7
+  },
+  {
+   "episode_number": 34,
+   "name": "The Justice Friends: Bee Where?",
+   "air_date": "1996-12-25",
+   "runtime": 7
+  },
+  {
+   "episode_number": 35,
+   "name": "Mandarker",
+   "air_date": "1996-12-25",
+   "runtime": 7
+  },
+  {
+   "episode_number": 36,
+   "name": "Inflata Dee Dee",
+   "air_date": "1997-01-01",
+   "runtime": 7
+  },
+  {
+   "episode_number": 37,
+   "name": "The Justice Friends: Can't Nap",
+   "air_date": "1997-01-01",
+   "runtime": 7
+  },
+  {
+   "episode_number": 38,
+   "name": "Monstory",
+   "air_date": "1997-01-01",
+   "runtime": 7
+  }
+ ],
+ "releases": {
+  "1": [
+   "Dexters.Laboratory.S01E01.WEBRip.x264-ION10"
+  ],
+  "2": [
+   "Dexters.Laboratory.S01E02.WEBRip.x264-ION10",
+   "1x02 - Dial M for Monkey Magmanamus"
+  ],
+  "3": [
+   "Dexters.Laboratory.S01E03.WEBRip.x264-ION10",
+   "1x03 - Maternal Combat"
+  ],
+  "4": [
+   "Dexters.Laboratory.S01E04.WEBRip.x264-ION10",
+   "1x04 - Dexter Dodgeball"
+  ],
+  "5": [
+   "Dexters.Laboratory.S01E05.WEBRip.x264-ION10",
+   "1x05 - Dial M for Monkey Rasslor"
+  ],
+  "6": [
+   "Dexters.Laboratory.S01E06.WEBRip.x264-ION10",
+   "1x06 - Dexter's Assistant"
+  ],
+  "7": [
+   "Dexters.Laboratory.S01E07.WEBRip.x264-ION10",
+   "1x07 - Dexter's Rival"
+  ],
+  "8": [
+   "Dexters.Laboratory.S01E08.WEBRip.x264-ION10",
+   "1x08 - Dial M for Monkey Simion"
+  ],
+  "9": [
+   "Dexters.Laboratory.S01E09.WEBRip.x264-ION10",
+   "1x09 - Old Man Dexter"
+  ],
+  "10": [
+   "Dexters.Laboratory.S01E10.WEBRip.x264-ION10",
+   "1x10 - Double Trouble"
+  ],
+  "11": [
+   "Dial M for Monkey Barbequor (BANNED EPISODE)",
+   "Dexters.Laboratory.S01E11.WEBRip.x264-ION10"
+  ],
+  "12": [
+   "Dexters.Laboratory.S01E12.WEBRip.x264-ION10",
+   "1x12 - Changes"
+  ],
+  "13": [
+   "Dexters.Laboratory.S01E13.WEBRip.x264-ION10",
+   "1x13 - Jurassic Pooch"
+  ]
+ }
+}

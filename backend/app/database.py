@@ -1,5 +1,6 @@
 """Database setup with SQLModel and async SQLite."""
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncGenerator
@@ -11,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
+from app import __version__
 from app.config import settings
+from app.database_backup import backup_before_migrate, mark_startup_complete
 
 # Import all models so their tables are registered with SQLModel.metadata
 from app.models import AppConfig, DiscJob  # noqa: F401
@@ -74,6 +77,15 @@ async_session = sessionmaker(
 
 async def init_db() -> None:
     """Initialize the database, creating all tables and running migrations."""
+    # Copy the file before anything below can change it (#730). Never raises.
+    await asyncio.to_thread(
+        backup_before_migrate,
+        settings.database_url,
+        SQLModel.metadata,
+        __version__,
+        alembic_ini=_ALEMBIC_INI,
+    )
+
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
@@ -93,6 +105,10 @@ async def init_db() -> None:
     await _migrate_app_config(engine)
 
     await _seed_headless_defaults()
+
+    # Only a startup that got this far counts as having migrated the database;
+    # one that died above backs up (or keeps its backup) again next time.
+    await asyncio.to_thread(mark_startup_complete, settings.database_url, __version__)
 
     logger.info("Database initialized successfully")
 

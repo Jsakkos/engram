@@ -1,11 +1,11 @@
 import type { CSSProperties } from 'react';
 import { Trash2, SkipForward } from 'lucide-react';
-import { toast } from 'sonner';
 import { IcoRetry } from '../../app/components/icons';
 import { SvActionButton, SvBadge, SvLabel, SvNotice, SvPanel, sv } from '../../app/components/synapse';
 import { FEATURES, EPISODE_CONFIG } from '../../config/constants';
 import type { DiscTitle } from '../../types';
-import { displayEpisodeCode, episodeParts, isRealCode } from './coverage';
+import { PlayerControls } from './PlayerControls';
+import { displayEpisodeCode, episodeParts, formatEpisodeCode, isRealCode, parseEpisodeCode } from './coverage';
 import type { Candidate, CoverageEntry } from './coverage';
 import type { LLMSuggestion, RosterEpisode } from './types';
 import type { LLMFeedback } from './llmFeedback';
@@ -18,7 +18,12 @@ import {
     titleDisplayName,
 } from './utils';
 
-const REVIEW_NOTICE_CODES = new Set(['references_unreadable', 'multi_episode_detected']);
+const REVIEW_NOTICE_CODES = new Set([
+    'references_unreadable',
+    'multi_episode_detected',
+    'numbering_divergent',
+    'audio_language_unsupported',
+]);
 
 type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
@@ -26,17 +31,6 @@ const monoFaint: CSSProperties = { fontFamily: sv.mono, fontSize: 11, color: sv.
 
 function pct(value: number): string {
     return `${Math.round(value * 100)}%`;
-}
-
-/**
- * Ripped file for this track, if one exists on disk.
- *
- * `output_filename` is the staging copy written at rip time; `organized_to`
- * is where it landed after being moved into the library. A track parked in a
- * pre-rip review has neither, and gets no playback controls.
- */
-function hasPlayableFile(title: DiscTitle): boolean {
-    return !!(title.output_filename || title.organized_to);
 }
 
 /**
@@ -127,30 +121,43 @@ export function Inspector({
     const conflictWith = [...new Set(selectionParts.flatMap((code) => takenByOther(code)))];
     const inConflict = conflictWith.length > 0;
 
-    const playable = hasPlayableFile(title);
-    // Deliberately asymmetric. The href is followed by this browser, so a
-    // root-relative path is right and matches every other call site. The copied
-    // URL is pasted into a different application, where a relative path means
-    // nothing, so it must be absolute. location.origin is the address this
-    // browser actually reached the app on, so the copied URL works anywhere
-    // that address does, whether it is localhost, a LAN address, or the Vite
-    // dev port (whose proxy forwards any HTTP client, not just the browser).
-    // The corollary is the known limit: reach the dashboard on localhost and
-    // the copied URL only works in a player on this same machine. Reach it on
-    // a LAN address and it works from anywhere on the LAN.
-    const playlistHref = `/api/jobs/${title.job_id}/titles/${title.id}/playlist.m3u`;
-    const mediaUrl = `${window.location.origin}/api/jobs/${title.job_id}/titles/${title.id}/media`;
-
-    const copyStreamUrl = async () => {
-        try {
-            await navigator.clipboard.writeText(mediaUrl);
-            toast.success('Stream URL copied');
-        } catch {
-            // Clipboard access is denied in some browsers over plain HTTP. Show the
-            // URL so the operator can still select it by hand rather than getting
-            // a silently dead button.
-            toast.error(`Could not copy. URL: ${mediaUrl}`);
-        }
+    // Manual multi-episode assignment (#830). The Manual picker holds the first
+    // episode and "Also covers" the last, so a hand-built range is contiguous
+    // within one season by construction and never runs backwards. A gapped pick
+    // can only come from the matcher; it is shown as matched, not rewritten.
+    const picked = selectionIsCode ? parseEpisodeCode(selection as string) : null;
+    const pickedFirst = picked ? picked.episodes[0] : null;
+    const pickedIsRun = !!picked && picked.episodes.every((n, i) => n === picked.episodes[0] + i);
+    // Later episodes the range can extend to: the roster when it describes the
+    // picked season, else generated numbers (TMDB unavailable, or a pick in
+    // another season than the roster's).
+    const laterEpisodes: { number: number; label: string }[] = !picked
+        ? []
+        : picked.season === season && episodes.length > 0
+          ? episodes
+                .filter((ep) => ep.episode_number > (pickedFirst as number))
+                .map((ep) => ({
+                    number: ep.episode_number,
+                    label: `through E${String(ep.episode_number).padStart(2, '0')}${ep.name ? ` · ${ep.name}` : ''}`,
+                }))
+          : generateEpisodeOptions(picked.season, EPISODE_CONFIG.DEFAULT_EPISODES_PER_SEASON)
+                .map((code) => ({ number: parseEpisodeCode(code)?.episodes[0] ?? 0, label: `through ${code}` }))
+                .filter((opt) => opt.number > (pickedFirst as number));
+    // A run whose last episode is not offered (e.g. the matcher's range ends past
+    // the roster) is shown as matched too: a controlled select with no matching
+    // option would fall back to "only this episode" and misstate the pick.
+    const pickedLast = picked ? picked.episodes[picked.episodes.length - 1] : null;
+    const alsoCoversValue =
+        !picked || picked.episodes.length === 1
+            ? ''
+            : pickedIsRun && laterEpisodes.some((opt) => opt.number === pickedLast)
+              ? String(pickedLast)
+              : 'as-matched';
+    const assignThrough = (value: string) => {
+        if (!picked || pickedFirst === null || value === 'as-matched') return;
+        const last = value ? Number(value) : pickedFirst;
+        const run = Array.from({ length: last - pickedFirst + 1 }, (_, i) => pickedFirst + i);
+        onAssign(formatEpisodeCode(picked.season, run));
     };
 
     const stateBadge = fileExists ? (
@@ -179,40 +186,7 @@ export function Inspector({
                         {formatDuration(title.duration_seconds)} · {formatSize(title.file_size_bytes)}
                         {title.video_resolution ? ` · ${title.video_resolution}` : ''} · {title.chapter_count} chapters
                     </div>
-                    {playable && (
-                        <div style={{ marginTop: 8 }}>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                {/* target=_blank protects unsaved review state: a 404 (staging
-                                    cleaned up since the page loaded) or 403 (LAN gate) would
-                                    otherwise navigate this tab to a raw JSON error body. On
-                                    success the attachment download closes the new tab itself. */}
-                                <SvActionButton
-                                    tone="cyan"
-                                    size="sm"
-                                    href={playlistHref}
-                                    target="_blank"
-                                    rel="noopener"
-                                    ariaLabel="Open in player (downloads a playlist file)"
-                                    title="Download a playlist that opens this track in your default video player"
-                                >
-                                    Open in player
-                                </SvActionButton>
-                                <SvActionButton
-                                    tone="neutral"
-                                    size="sm"
-                                    onClick={copyStreamUrl}
-                                    ariaLabel="Copy stream URL"
-                                    title="Copy the stream URL for your player's Open Network Stream"
-                                >
-                                    Copy stream URL
-                                </SvActionButton>
-                            </div>
-                            <div style={{ ...monoFaint, marginTop: 6, fontSize: 10 }}>
-                                Opens in your default player. Nothing happened? Copy the URL and use
-                                your player&apos;s &quot;Open Network Stream&quot;.
-                            </div>
-                        </div>
-                    )}
+                    <PlayerControls title={title} />
                 </div>
                 {stateBadge}
             </div>
@@ -318,7 +292,7 @@ export function Inspector({
                             No match data — use manual assignment below.
                         </div>
                     )}
-                    {candidates.map((cand) => {
+                    {candidates.map((cand, rank) => {
                         const others = takenByOther(cand.episodeCode);
                         const isGap = coverage[cand.episodeCode]?.status === 'missing';
                         const isSelected = selection === cand.episodeCode;
@@ -342,6 +316,14 @@ export function Inspector({
                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                                     <div style={{ minWidth: 0 }}>
                                         <div style={{ fontFamily: sv.mono, fontSize: 13, fontWeight: 600, color: sv.ink }}>
+                                            {rank < 3 && (
+                                                <kbd
+                                                    title={`Press ${rank + 1} to accept`}
+                                                    style={{ marginRight: 8, padding: '0 5px', fontSize: 10, color: sv.inkDim, border: `1px solid ${sv.lineMid}` }}
+                                                >
+                                                    {rank + 1}
+                                                </kbd>
+                                            )}
                                             {cand.episodeCode}
                                             {cand.episodeName && (
                                                 <span style={{ color: sv.inkDim, fontWeight: 400, fontSize: 11.5 }}> — {cand.episodeName}</span>
@@ -409,9 +391,11 @@ export function Inspector({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Manual</span>
                         <select
-                            value={selection && /^S\d+E\d+$/i.test(selection) ? selection : ''}
+                            value={picked ? formatEpisodeCode(picked.season, [picked.episodes[0]]) : ''}
                             onChange={(e) => e.target.value && onAssign(e.target.value)}
                             aria-label={`Manual episode for title ${title.title_index}`}
+                            aria-keyshortcuts="/"
+                            data-review-picker
                             style={{
                                 flex: 1,
                                 background: sv.bg0,
@@ -442,6 +426,44 @@ export function Inspector({
                                   ))}
                         </select>
                     </div>
+                    {/* row 1b: one track holding several consecutive episodes (#830) */}
+                    {picked && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ ...monoFaint, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase' }}>+ Also covers</span>
+                            <select
+                                value={alsoCoversValue}
+                                onChange={(e) => assignThrough(e.target.value)}
+                                aria-label={`Also covers, title ${title.title_index}`}
+                                title="For a track that holds several consecutive episodes, like a cartoon's two segments"
+                                style={{
+                                    flex: 1,
+                                    background: sv.bg0,
+                                    border: `1px solid ${alsoCoversValue ? sv.cyan : sv.lineMid}`,
+                                    color: alsoCoversValue ? sv.ink : sv.inkDim,
+                                    fontFamily: sv.mono,
+                                    fontSize: 12,
+                                    padding: '7px 9px',
+                                    outline: 'none',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <option value="">only this episode</option>
+                                {alsoCoversValue === 'as-matched' && (
+                                    <option value="as-matched">{`${displayEpisodeCode(selection as string)} (as matched)`}</option>
+                                )}
+                                {laterEpisodes.map(({ number, label }) => {
+                                    const others = takenByOther(formatEpisodeCode(picked.season, [number]));
+                                    return (
+                                        <option key={number} value={String(number)}>
+                                            {others.length > 0
+                                                ? `${label} · held by #${titleIndexById[others[0]] ?? others[0]}`
+                                                : label}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+                    )}
                     {/* row 2: action buttons */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
                         <SvActionButton

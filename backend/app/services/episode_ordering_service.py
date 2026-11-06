@@ -44,6 +44,8 @@ async def resolve_show_ordering(
 
     pref = await session.get(ShowOrderingPreference, tmdb_id)
     ordering = pref.ordering if (pref and pref.ordering) else global_default
+    if ordering == episode_ordering.ORDERING_TVDB:
+        return (episode_ordering.ORDERING_TVDB, None)
 
     if (
         ordering == episode_ordering.ORDERING_AIRED

@@ -76,18 +76,13 @@ export function isMultiEpisode(code: string): boolean {
 }
 
 /**
- * Canonicalize an episode code: zero-padded, a contiguous run as the compact
- * `S01E01-E03` range, a gapped set as the run-on `S01E01E03` (a hyphen there
- * would claim an episode the track doesn't hold). The matcher's main path emits
- * padded codes, but a fallback path can produce unpadded ones (e.g. "S1E14");
- * without normalizing, "S1E14" and "S01E14" wouldn't dedupe/collide against each
- * other or the (always-padded) season roster. Non-codes ('extra'/'skip'/'') pass
- * through unchanged.
+ * Build the canonical code for a season and its episodes: zero-padded, a
+ * contiguous run as the compact `S01E01-E03` range, a gapped set as the run-on
+ * `S01E01E03` (a hyphen there would claim an episode the track doesn't hold).
+ * Mirrors the backend's `format_episode_code`, so a code built here is the one
+ * the organizer names the file with.
  */
-export function normalizeEpisodeCode(code: string): string {
-    const parsed = parseEpisodeCode(code);
-    if (!parsed) return code;
-    const { season, episodes } = parsed;
+export function formatEpisodeCode(season: number, episodes: number[]): string {
     const pad = (n: number) => String(n).padStart(2, '0');
     const head = `S${pad(season)}E${pad(episodes[0])}`;
     if (episodes.length === 1) return head;
@@ -95,6 +90,19 @@ export function normalizeEpisodeCode(code: string): string {
     return contiguous
         ? `${head}-E${pad(episodes[episodes.length - 1])}`
         : head + episodes.slice(1).map((n) => `E${pad(n)}`).join('');
+}
+
+/**
+ * Canonicalize an episode code (see `formatEpisodeCode`). The matcher's main
+ * path emits padded codes, but a fallback path can produce unpadded ones (e.g.
+ * "S1E14"); without normalizing, "S1E14" and "S01E14" wouldn't dedupe/collide
+ * against each other or the (always-padded) season roster. Non-codes
+ * ('extra'/'skip'/'') pass through unchanged.
+ */
+export function normalizeEpisodeCode(code: string): string {
+    const parsed = parseEpisodeCode(code);
+    if (!parsed) return code;
+    return formatEpisodeCode(parsed.season, parsed.episodes);
 }
 
 /**

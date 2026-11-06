@@ -1313,6 +1313,20 @@ class TestOrderingProjectionNamespaceGuard:
     def _details(self, **extra) -> str:
         return json.dumps({"episode": "S1E1", **extra})
 
+    def test_tvdb_pref_on_tmdb_numbered_job_records_aired(self):
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title(self._details(), "tvdb", "tmdb") == "aired"
+        assert _ordering_for_title(self._details(), "tvdb", "tvdb") == "tvdb"
+
+    def test_tvdb_job_is_never_projected_even_if_the_show_now_prefers_dvd(self):
+        """A TVDB-numbered job's codes are TheTVDB coordinates; a TMDB episode
+        group cannot resolve them, whatever the show preference says later."""
+        from app.services.finalization_coordinator import _ordering_for_title
+
+        assert _ordering_for_title(self._details(), "dvd", "tvdb") == "tvdb"
+        assert _ordering_for_title(self._details(), "aired", "tvdb") == "tvdb"
+
     def test_mismatched_namespace_falls_back_to_aired(self):
         from app.services.finalization_coordinator import _ordering_for_title
 
@@ -1623,3 +1637,79 @@ class TestWrongSeasonRetryClearsBeforeDispatch:
         job, _ = await _load(job_id)
         assert job.detected_season == 3
         assert job.state == JobState.REVIEW_NEEDED
+
+
+@pytest.mark.unit
+class TestLanguageRefusedDisc:
+    """A disc of language-refused tracks is not a wrong show or season (#241)."""
+
+    _job = TestDetectWrongShow._job
+
+    @staticmethod
+    def _refused_title(idx, langs=("ja",)):
+        from app.matcher.subtitle_utils import AUDIO_LANGUAGE_ERROR_CODE
+
+        return DiscTitle(
+            job_id=1,
+            title_index=idx,
+            duration_seconds=1380,
+            state=TitleState.REVIEW,
+            match_details=json.dumps(
+                {"error": AUDIO_LANGUAGE_ERROR_CODE, "audio_languages": list(langs)}
+            ),
+        )
+
+    def test_all_foreign_disc_is_not_wrong_show(self):
+        titles = [self._refused_title(i) for i in range(3)]
+        assert _detect_wrong_show(self._job(), titles) is None
+
+    def test_all_foreign_disc_is_not_cross_season_rerun(self):
+        from app.services.finalization_coordinator import _detect_wrong_season
+
+        titles = [self._refused_title(i) for i in range(3)]
+        assert _detect_wrong_season(self._job(detected_season=1), titles) is False
+
+    def test_review_reason_names_language(self):
+        from app.services.finalization_coordinator import _language_review_summary
+
+        plain = DiscTitle(job_id=1, title_index=2, duration_seconds=1380, state=TitleState.REVIEW)
+        titles = [self._refused_title(0), self._refused_title(1, ("ja", "en")), plain]
+        assert _language_review_summary(titles) == "2 have no English audio (Japanese)."
+
+    def test_review_reason_without_known_language(self):
+        from app.services.finalization_coordinator import _language_review_summary
+
+        assert _language_review_summary([self._refused_title(0, ())]) == ("1 has no English audio.")
+
+    def test_no_summary_when_nothing_refused(self):
+        from app.services.finalization_coordinator import _language_review_summary
+
+        plain = DiscTitle(job_id=1, title_index=0, duration_seconds=1380, state=TitleState.REVIEW)
+        assert _language_review_summary([plain]) is None
+
+    async def test_completion_review_reason_names_language(self, tmp_path, monkeypatch):
+        from app.matcher.subtitle_utils import AUDIO_LANGUAGE_ERROR_CODE
+
+        broadcast = AsyncMock()
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", broadcast)
+        refusal = json.dumps({"error": AUDIO_LANGUAGE_ERROR_CODE, "audio_languages": ["ja"]})
+        job_id = await _seed_job(
+            [
+                (0, None, None, TitleState.REVIEW),
+                (1, None, None, TitleState.REVIEW),
+                (2, None, None, TitleState.REVIEW),
+            ],
+            staging=str(tmp_path),
+            match_details_by_idx={0: refusal, 1: refusal},
+        )
+        coord = _make_coord()
+        coord.finalize_disc_job = AsyncMock()
+
+        async with _unit_session_factory() as session:
+            await coord.check_job_completion(session, job_id)
+
+        job, _ = await _load(job_id)
+        assert job.state == JobState.REVIEW_NEEDED
+        assert job.review_reason == (
+            "3 title(s) need manual episode assignment. 2 have no English audio (Japanese)."
+        )

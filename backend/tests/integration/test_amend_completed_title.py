@@ -196,3 +196,49 @@ async def test_amend_to_occupied_episode_aborts_and_keeps_source(tmp_path, monke
     # The source was NOT moved and the occupied destination is intact.
     assert source.exists()
     assert occupied.read_text() == "already here"
+
+
+async def test_amend_to_episode_names_the_file_with_the_jobs_catalogue_title(tmp_path, monkeypatch):
+    """#826: a corrected track on a TheTVDB-numbered job takes the TVDB title for its number."""
+    job_id, title_id, lib = await _seed_completed_tv(tmp_path)
+    async with async_session() as session:
+        job = await session.get(DiscJob, job_id)
+        job.episode_namespace = "tvdb"
+        await session.commit()
+
+    from app.core import episode_titles
+    from app.core.episode_namespace import current_namespace
+    from app.models.app_config import AppConfig
+    from app.services import config_service, contribution_correction
+
+    fake_cfg = AppConfig(
+        library_tv_path=str(lib),
+        library_movies_path=str(tmp_path / "movies"),
+        naming_episode_format="{show} - S{season:02d}E{episode:02d} - {episode_title}",
+        tmdb_api_key="key",
+        enable_fingerprint_contributions=False,
+        contribution_pseudonym=None,
+    )
+    monkeypatch.setattr(config_service, "get_config", AsyncMock(return_value=fake_cfg))
+    monkeypatch.setattr(config_service, "get_config_sync", lambda: fake_cfg)
+    monkeypatch.setattr(
+        contribution_correction.ContributionCorrectionService,
+        "correct_title_contribution",
+        AsyncMock(return_value=None),
+    )
+
+    def _roster(show_id, season, api_key):
+        name = "TVDB title" if current_namespace() == "tvdb" else "TMDB title"
+        return [{"episode_number": 11, "name": name}]
+
+    episode_titles.clear_roster_cache()
+    monkeypatch.setattr(episode_titles, "season_episodes", _roster)
+
+    await job_manager.amend_title_assignment(
+        job_id, title_id, NewTarget(kind="episode", episode_code="S03E11")
+    )
+
+    async with async_session() as session:
+        title = await session.get(DiscTitle, title_id)
+        assert Path(title.organized_to).name == "Breaking Bad - S03E11 - TVDB title.mkv"
+    episode_titles.clear_roster_cache()

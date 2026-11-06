@@ -108,7 +108,7 @@ class TestMovieOrganization:
         )
 
         assert result["success"] is False
-        assert "No MKV files" in result["error"]
+        assert "No video files" in result["error"]
 
     def test_conflict_skip(self, tmp_path):
         """Existing file + skip mode → no overwrite."""
@@ -175,6 +175,28 @@ class TestTVOrganization:
         assert dest.name == "The Office - S01E01.mkv"
         assert "Season 01" in str(dest)
         assert "The Office" in str(dest)
+
+    def test_tvdb_ordering_is_never_projected(self, tmp_path, monkeypatch):
+        """A TheTVDB-numbered job's code is already the output number."""
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("project_episode must not run for a tvdb job")
+
+        monkeypatch.setattr("app.core.episode_ordering.project_episode", _boom)
+        source = tmp_path / "source.mkv"
+        source.write_bytes(b"x" * 1024)
+
+        result = organize_tv_episode(
+            source_file=source,
+            show_name="The Office",
+            episode_code="S01E01",
+            library_path=tmp_path / "library",
+            ordering="tvdb",
+            tmdb_id="1618",
+        )
+
+        assert result["success"] is True
+        assert result["final_path"].name == "The Office - S01E01.mkv"
 
     def test_tv_invalid_episode_code(self, tmp_path):
         """Invalid episode code → error."""
@@ -696,3 +718,135 @@ class TestMoveMediaFileRollback:
         assert "safe to retry" not in message
         # The orphan really is still there: the message is telling the truth.
         assert dest.exists() is True
+
+
+class TestSourceContainerIsKept:
+    """An import is moved untouched, so its library name keeps its container."""
+
+    def test_tv_mp4_keeps_its_extension(self, tmp_path):
+        source = tmp_path / "import" / "episode.MP4"
+        source.parent.mkdir()
+        source.write_bytes(b"x")
+
+        result = organize_tv_episode(
+            source_file=source,
+            show_name="The Office",
+            episode_code="S01E02",
+            library_path=tmp_path / "library",
+        )
+
+        assert result["success"] is True
+        assert result["final_path"].name == "The Office - S01E02.mp4"
+
+    def test_movie_ts_and_its_extras_keep_their_extensions(self, tmp_path):
+        staging = tmp_path / "import"
+        staging.mkdir()
+        main = staging / "feature.ts"
+        main.write_bytes(b"x" * 100)
+        extra = staging / "featurette.m4v"
+        extra.write_bytes(b"x")
+
+        result = organize_movie(
+            staging_dir=main,
+            movie_name="Inception",
+            year=2010,
+            library_path=tmp_path / "library",
+            extra_files=[extra],
+        )
+
+        assert result["success"] is True
+        assert result["main_file"].name == "Inception (2010).ts"
+        assert [p.name for p in result["extras"]] == ["Extra 1.m4v"]
+
+    def test_movie_folder_scan_finds_a_lone_mp4(self, tmp_path):
+        staging = tmp_path / "import"
+        staging.mkdir()
+        (staging / "feature.mp4").write_bytes(b"x")
+
+        result = organize_movie(
+            staging_dir=staging, movie_name="Inception", library_path=tmp_path / "library"
+        )
+
+        assert result["success"] is True
+        assert result["main_file"].name == "Inception.mp4"
+
+    def test_tv_extra_keeps_its_extension(self, tmp_path):
+        source = tmp_path / "bonus.m2ts"
+        source.write_bytes(b"x")
+
+        result = organize_tv_extras(
+            source_file=source,
+            show_name="Psych",
+            season=1,
+            library_path=tmp_path / "library",
+            title_index=3,
+        )
+
+        assert result["success"] is True
+        assert result["final_path"].name == "Psych Disc 1 Extra t03.m2ts"
+
+
+class TestCrossContainerConflicts:
+    """S01E01.mkv and S01E01.mp4 are one library slot, not two episodes."""
+
+    def _existing(self, tmp_path, name="Test Show - S01E01.mkv"):
+        dest_dir = tmp_path / "library" / "Test Show" / "Season 01"
+        dest_dir.mkdir(parents=True)
+        (dest_dir / name).write_bytes(b"existing")
+        return dest_dir
+
+    def _organize(self, tmp_path, mode):
+        source = tmp_path / "incoming.mp4"
+        source.write_bytes(b"new")
+        return organize_tv_episode(
+            source_file=source,
+            show_name="Test Show",
+            episode_code="S01E01",
+            library_path=tmp_path / "library",
+            conflict_resolution=mode,
+        )
+
+    def test_ask_reports_the_other_container_as_the_conflict(self, tmp_path):
+        dest_dir = self._existing(tmp_path)
+        result = self._organize(tmp_path, "ask")
+        assert result["success"] is False
+        assert result["error_code"] == "FILE_EXISTS"
+        assert result["existing_path"] == str(dest_dir / "Test Show - S01E01.mkv")
+        assert not (dest_dir / "Test Show - S01E01.mp4").exists()
+
+    def test_skip_leaves_both_alone(self, tmp_path):
+        dest_dir = self._existing(tmp_path)
+        result = self._organize(tmp_path, "skip")
+        assert result.get("skipped") is True
+        assert sorted(p.name for p in dest_dir.iterdir()) == ["Test Show - S01E01.mkv"]
+
+    def test_overwrite_replaces_the_old_container(self, tmp_path):
+        dest_dir = self._existing(tmp_path)
+        result = self._organize(tmp_path, "overwrite")
+        assert result["success"] is True
+        assert sorted(p.name for p in dest_dir.iterdir()) == ["Test Show - S01E01.mp4"]
+
+    def test_rename_versions_past_the_other_container(self, tmp_path):
+        dest_dir = self._existing(tmp_path)
+        (dest_dir / "Test Show - S01E01 (v2).ts").write_bytes(b"older")
+        result = self._organize(tmp_path, "rename")
+        assert result["success"] is True
+        assert result["final_path"].name == "Test Show - S01E01 (v3).mp4"
+
+    def test_tv_extra_slot_taken_by_another_container(self, tmp_path):
+        extras = tmp_path / "library" / "Psych" / "Season 01" / "Extras"
+        extras.mkdir(parents=True)
+        (extras / "Psych Disc 1 Extra t03.mkv").write_bytes(b"existing")
+        source = tmp_path / "bonus.mp4"
+        source.write_bytes(b"x")
+
+        result = organize_tv_extras(
+            source_file=source,
+            show_name="Psych",
+            season=1,
+            library_path=tmp_path / "library",
+            title_index=3,
+        )
+
+        assert result["error_code"] == "FILE_EXISTS"
+        assert source.exists()

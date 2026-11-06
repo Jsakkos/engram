@@ -18,6 +18,9 @@ def test_is_external_excludes_owner_and_bots(contrib):
     assert contrib.is_external("dependabot[bot]") is False  # [bot] suffix
     assert contrib.is_external("renovate") is False  # explicit bot login
     assert contrib.is_external("github-actions") is False
+    # Claude Code's Co-Authored-By trailer resolves to the plain `claude` login.
+    assert contrib.is_external("claude") is False
+    assert contrib.is_external("Claude") is False
     assert contrib.is_external("") is False
     assert contrib.is_external(None) is False
 

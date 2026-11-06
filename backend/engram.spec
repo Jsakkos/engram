@@ -144,6 +144,19 @@ _fpcalc_path = os.path.join("app", "bin", _fpcalc_name)
 if os.path.isfile(_fpcalc_path):
     binaries.append((_fpcalc_path, "bin"))
 
+# TheTVDB project key (free licensed tier). Injected by release.yml from the
+# TVDB_API_KEY Actions secret into a generated, gitignored runtime hook, so the
+# key ships in the binary without ever being committed. Absent locally: the
+# feature stays off unless the user enters a key or sets the env var.
+runtime_hooks = ["hooks/rthook_headless.py"] if HEADLESS else []
+_tvdb_key = os.environ.get("TVDB_API_KEY", "").strip()
+if _tvdb_key:
+    _hook = os.path.join("hooks", "rthook_tvdb_generated.py")
+    with open(_hook, "w", encoding="utf-8") as fh:
+        fh.write("import os\n\n")
+        fh.write(f"os.environ.setdefault('TVDB_API_KEY', {_tvdb_key!r})\n")
+    runtime_hooks.append(_hook)
+
 a = Analysis(
     ["run.py"],
     pathex=[],
@@ -152,7 +165,7 @@ a = Analysis(
     hiddenimports=all_hidden,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=["hooks/rthook_headless.py"] if HEADLESS else [],
+    runtime_hooks=runtime_hooks,
     excludes=[],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

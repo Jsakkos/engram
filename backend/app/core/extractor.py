@@ -21,6 +21,8 @@ from pathlib import Path
 
 from app.core.analyst import TitleInfo
 from app.core.disc_source import NOSCAN, DiscSource, SourceKind
+from app.core.errors import MakeMKVLicenseError
+from app.core.languages import normalize_language
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,32 @@ REGION_MISMATCH_FAILURE_REASON = (
     "Ripping stalled: the drive's region setting does not match this disc's "
     "region, so MakeMKV could not open the disc. Set the drive's region to match "
     "the disc, or use a region-free drive."
+)
+
+LICENSE_KEY_EXPIRED_MESSAGE = (
+    "MakeMKV's key has expired, so it will not open discs. Copy the current beta key "
+    "from the MakeMKV forum into Settings, or enter a purchased key."
+)
+LICENSE_VERSION_EXPIRED_MESSAGE = (
+    "This MakeMKV version is too old and has expired, so it will not open discs. "
+    "Update MakeMKV to the latest version, then try again."
+)
+
+# The ONLY place licence failures are recognized. makemkvcon reports both as an
+# MSG line whose first quoted field is the human text (see _MSG_TEXT_RE), but the
+# numeric code is shared with unrelated messages, so we match the English text.
+# Reconstructed from forum reports (#714): "Evaluation period has expired. Please
+# purchase the license key..." (expired key/trial) and "This application version is
+# too old. Please download the latest version..." (expired beta build).
+_LICENSE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"evaluation period has expired|key (?:has )?expired", re.I),
+        LICENSE_KEY_EXPIRED_MESSAGE,
+    ),
+    (
+        re.compile(r"application version is too old|version is too old", re.I),
+        LICENSE_VERSION_EXPIRED_MESSAGE,
+    ),
 )
 
 # Consecutive stable-size polls required before declaring in-flight title completion.
@@ -192,11 +220,26 @@ def _files_to_ignore(output_dir: Path, title_indices: list[int] | None) -> set[s
     return ignore
 
 
+# MakeMKV's own default for ``--minlength``: titles shorter than this many seconds
+# are hidden from a scan and never ripped. Configurable as
+# ``AppConfig.makemkv_min_title_length`` (#771) for discs whose specials run short.
+DEFAULT_MIN_TITLE_LENGTH = 120
+
+
+def _minlength_flag(min_length: int) -> str:
+    """The ``--minlength`` switch. Every scan, rip and backup carries the same one:
+    MakeMKV numbers titles AFTER this filter, so a scan and a rip run with different
+    minimums would disagree about which title index is which."""
+    return f"--minlength={int(min_length)}"
+
+
 def _build_rip_commands(
     makemkv_path: str,
     drive_spec: str,
     output_dir: str,
     title_indices: list[int] | None,
+    *,
+    min_length: int = DEFAULT_MIN_TITLE_LENGTH,
 ) -> list[tuple[int | None, list[str]]]:
     """Build ``(title_index, argv)`` rip commands.
 
@@ -205,15 +248,25 @@ def _build_rip_commands(
     otherwise each command carries the specific title index so the rip loop can
     consult the live skip-set before starting it.
     """
-    base = [makemkv_path, "-r", NOSCAN, "--progress=-same", "mkv", drive_spec]
+    base = [
+        makemkv_path,
+        "-r",
+        NOSCAN,
+        _minlength_flag(min_length),
+        "--progress=-same",
+        "mkv",
+        drive_spec,
+    ]
     if not title_indices:
         return [(None, [*base, "all", output_dir])]
     return [(idx, [*base, str(idx), output_dir]) for idx in title_indices]
 
 
-def _build_scan_command(makemkv_path: str, source_spec: str) -> list[str]:
+def _build_scan_command(
+    makemkv_path: str, source_spec: str, *, min_length: int = DEFAULT_MIN_TITLE_LENGTH
+) -> list[str]:
     """Build the argv for a robot-mode disc scan."""
-    return [makemkv_path, "-r", NOSCAN, "info", source_spec]
+    return [makemkv_path, "-r", NOSCAN, _minlength_flag(min_length), "info", source_spec]
 
 
 # PRGV:current,total,max is MakeMKV's global progress line. `current` is the
@@ -228,7 +281,13 @@ _PRGV_RE = re.compile(r"^PRGV:(\d+),(\d+),(\d+)")
 _MSG_TEXT_RE = re.compile(r'^MSG:\d+,\d+,\d+,"([^"]*)"')
 
 
-def _build_backup_command(makemkv_path: str, source_spec: str, dest: str) -> list[str]:
+def _build_backup_command(
+    makemkv_path: str,
+    source_spec: str,
+    dest: str,
+    *,
+    min_length: int = DEFAULT_MIN_TITLE_LENGTH,
+) -> list[str]:
     """Build the argv for a full decrypted disc backup.
 
     ``makemkvcon backup`` accepts only a ``disc:N`` source, never ``dev:`` and
@@ -244,6 +303,10 @@ def _build_backup_command(makemkv_path: str, source_spec: str, dest: str) -> lis
         makemkv_path,
         "-r",
         NOSCAN,
+        # A backup copies the whole disc regardless. The flag rides along for
+        # consistency: what must match the scan is the later extract from the
+        # backup, which goes through _build_rip_commands with the same value.
+        _minlength_flag(min_length),
         "--progress=-same",
         "--decrypt",
         "backup",
@@ -267,6 +330,21 @@ def _parse_backup_progress(line: str) -> float | None:
     return min(100.0, total / maximum * 100.0)
 
 
+def detect_license_failure(*outputs: str) -> str | None:
+    """A user-facing licence error if *output* has a MakeMKV licence MSG line, else None.
+
+    Only MSG lines count, so disc-supplied text (TINFO/CINFO) cannot trigger it.
+    """
+    for line in (ln for out in outputs for ln in out.splitlines()):
+        m = _MSG_TEXT_RE.match(line.strip())
+        if not m:
+            continue
+        for pattern, message in _LICENSE_PATTERNS:
+            if pattern.search(m.group(1)):
+                return message
+    return None
+
+
 def _last_msg_text(output: str) -> str | None:
     """The text of the last MSG line in MakeMKV output, for error reporting."""
     last = None
@@ -284,30 +362,18 @@ def should_abort_all_pass(
 ) -> bool:
     """Whether a full-disc 'all' pass should stop at the title just opened.
 
-    True only when BOTH hold:
+    True when the title MakeMKV just opened is one the user skipped. That is
+    a title boundary: the previous title has finished and the file just
+    created is still a stub, so stopping throws nothing away. The caller then
+    re-rips every title that is still wanted one at a time (the one-pass +
+    per-title fallback in ``job_manager``), which is the same path a skip
+    made before the rip started takes. Letting the pass run on instead ripped
+    each skipped title in full only to delete it (issue #765). Killing the
+    process mid-title is never done: that threw away the rip in flight, which
+    is why skipping a *later* track used to stop the *current* one (#580).
 
-    * the title MakeMKV just opened is user-skipped, and
-    * every title still ahead of it is user-skipped too.
-
-    That is exactly the case where stopping costs nothing: the previous title
-    finished, the file just created is still a stub, and no wanted title
-    remains on the disc. Any other skip is honored by letting the pass run to
-    the end and deleting the skipped title's file once MakeMKV finishes it
-    (``job_manager._on_title_ripped``). Killing the process mid-title instead
-    threw away the rip in flight — which is why skipping a *later* track used
-    to stop the *current* one.
-
-    "Still ahead" is ``native > opened_native``: MakeMKV saves titles in
-    ascending disc-native order. That is a stronger assumption than the
-    completion detector's, which needs only that one title is written at a
-    time; ordering is what lets the caller take the highest newly-appeared
-    native as "the title just opened". Ordering is deliberate rather than
-    tracking which titles have been seen — ``makemkvcon mkv <disc> all``
-    applies MakeMKV's own selection profile, so a short title the scan
-    recorded may never be written at all. A seen-set rule would leave such a
-    title outstanding forever and the abort could never fire; with ordering,
-    only a filtered title *above* the current one suppresses it, and
-    suppressing is fail-safe (the pass simply runs to the end).
+    The opened title is the highest newly-appeared native number, because
+    MakeMKV saves titles in ascending disc-native order.
 
     ``opened_native`` is MakeMKV's disc-native title number, parsed from the
     output filename. ``disc_title_map`` maps that number to the scan-order
@@ -318,10 +384,7 @@ def should_abort_all_pass(
     if not disc_title_map:
         return False
     opened = disc_title_map.get(opened_native)
-    if opened is None or opened not in skipped_indices:
-        return False
-    remaining = {scan for native, scan in disc_title_map.items() if native > opened_native}
-    return remaining <= skipped_indices
+    return opened is not None and opened in skipped_indices
 
 
 def _safe_callback(cb: Callable, *args, label: str) -> None:
@@ -405,6 +468,11 @@ class BackupResult:
     # still has a usable backup at dest, but this run did not verify it: it is
     # whatever was on disk already.
     already_existed: bool = False
+
+
+# SINFO attr-1 (stream type) codes in MakeMKV robot output.
+_SINFO_AUDIO = "6202"
+_SINFO_SUBTITLES = "6203"
 
 
 class ScanTimeoutError(Exception):
@@ -754,8 +822,11 @@ def _delete_partials_at_abort(
 class MakeMKVExtractor:
     """Wrapper for MakeMKV command-line interface."""
 
-    def __init__(self, makemkv_path: Path | None = None) -> None:
+    def __init__(
+        self, makemkv_path: Path | None = None, *, min_title_length: int | None = None
+    ) -> None:
         self._makemkv_path_override = makemkv_path
+        self._min_title_length_override = min_title_length
         # Per-job process tracking for multi-drive cancel isolation.
         # Each running job registers its subprocess here so cancel() only
         # terminates the correct process.
@@ -775,10 +846,11 @@ class MakeMKVExtractor:
         self._ejected_jobs: set[int] = set()
         # Per-job set of title_index values to skip. Checked before each
         # per-title rip command so a queued-but-not-yet-ripped title can be
-        # dropped mid-rip. A full-disc "all" pass cannot honor this (one process
-        # rips everything); those skips are handled downstream by deleting the
-        # finished file. Single-writer per job under the rip thread + async
-        # skip calls; set mutation is atomic under the GIL.
+        # dropped mid-rip. A full-disc "all" pass honors it at the next title
+        # boundary (should_abort_all_pass); a title that was already being
+        # written when it was skipped is deleted downstream once it finishes.
+        # Single-writer per job under the rip thread + async skip calls; set
+        # mutation is atomic under the GIL.
         self._skipped_indices: dict[int, set[int]] = {}
         # Per-source locks prevent concurrent MakeMKV operations on one source.
         # Two makemkvcon processes fighting over one drive causes both to stall.
@@ -792,6 +864,16 @@ class MakeMKVExtractor:
         from app.services.config_service import get_config_sync
 
         return Path(get_config_sync().makemkv_path)
+
+    @property
+    def min_title_length(self) -> int:
+        """MakeMKV ``--minlength`` in seconds, read from config unless set explicitly."""
+        if self._min_title_length_override is not None:
+            return self._min_title_length_override
+        from app.services.config_service import get_config_sync
+
+        configured = get_config_sync().makemkv_min_title_length
+        return DEFAULT_MIN_TITLE_LENGTH if configured is None else configured
 
     def _get_source_lock(self, source: DiscSource | str) -> asyncio.Lock:
         """Get or create the per-source lock serializing MakeMKV operations.
@@ -856,7 +938,9 @@ class MakeMKVExtractor:
         """Internal scan implementation (caller must hold the source lock)."""
         source_spec = _to_source_spec(source)
 
-        cmd = _build_scan_command(str(self.makemkv_path), source_spec)
+        cmd = _build_scan_command(
+            str(self.makemkv_path), source_spec, min_length=self.min_title_length
+        )
 
         start = time.monotonic()
         logger.info(f"Scanning disc: {' '.join(cmd)}")
@@ -886,6 +970,11 @@ class MakeMKVExtractor:
             if result.stderr:
                 logger.debug(f"MakeMKV stderr: {result.stderr[:500]}")
 
+            license_error = detect_license_failure(result.stdout or "", result.stderr or "")
+            if license_error:
+                logger.error(f"MakeMKV scan refused by licence check: {license_error}")
+                raise MakeMKVLicenseError(license_error)
+
             if result.returncode != 0:
                 logger.error(
                     f"MakeMKV scan failed after {elapsed:.1f}s "
@@ -905,6 +994,8 @@ class MakeMKVExtractor:
 
             return titles, disc_name
 
+        except MakeMKVLicenseError:
+            raise
         except FileNotFoundError:
             logger.error(f"MakeMKV not found at: {self.makemkv_path}")
             return [], ""
@@ -999,6 +1090,7 @@ class MakeMKVExtractor:
             source_spec,
             str(output_dir),
             title_indices,
+            min_length=self.min_title_length,
         )
         if not title_indices:
             logger.info("Ripping ALL titles")
@@ -1034,7 +1126,7 @@ class MakeMKVExtractor:
         region_mismatch = [False]
 
         # Set by the reader loop when a full-disc "all" pass is stopped at a title
-        # boundary because every remaining title is user-skipped. The RipResult
+        # boundary because the title just opened is user-skipped. The RipResult
         # returns below read it, so — like region_mismatch — it lives out here
         # rather than inside run_rip_with_streaming.
         aborted_for_skip = [False]
@@ -1275,8 +1367,9 @@ class MakeMKVExtractor:
 
                     # Live skip: a queued title the user skipped before MakeMKV
                     # reached it is dropped here. (The "all" pass has
-                    # title_index None and cannot be skipped this way; those are
-                    # handled by deleting the finished file downstream.)
+                    # title_index None and cannot be skipped this way; it stops
+                    # at the skipped title's boundary instead, see
+                    # should_abort_all_pass.)
                     if title_index is not None and title_index in self._skipped_indices.get(
                         job_id, set()
                     ):
@@ -1373,9 +1466,9 @@ class MakeMKVExtractor:
                                 stub = _boundary_abort_stub()
                                 if stub is not None:
                                     logger.info(
-                                        f"Job {job_id}: every remaining title is "
-                                        f"user-skipped; stopping the full-disc pass "
-                                        f"at {stub}"
+                                        f"Job {job_id}: {stub} is user-skipped; "
+                                        f"stopping the full-disc pass at its "
+                                        f"boundary"
                                     )
                                     aborted_for_skip[0] = True
                                     aborted_stub[0] = stub
@@ -1605,10 +1698,11 @@ class MakeMKVExtractor:
             stalled_list = sorted(stalled) if stalled else None
 
             if returncode != 0 and not stalled:
+                license_error = detect_license_failure(*output_lines, stderr)
                 return RipResult(
                     success=False,
                     output_files=output_files,
-                    error_message=stderr or "Unknown error during ripping",
+                    error_message=license_error or stderr or "Unknown error during ripping",
                     stalled_titles=stalled_list,
                     failure_reason=REGION_MISMATCH_FAILURE_REASON if region_mismatch[0] else None,
                 )
@@ -1728,7 +1822,12 @@ class MakeMKVExtractor:
         # Built before the lock is taken: an unusable source is a caller bug,
         # and there is no reason to make it queue behind a live drive operation.
         try:
-            cmd = _build_backup_command(str(self.makemkv_path), spec, str(dest) + ".partial")
+            cmd = _build_backup_command(
+                str(self.makemkv_path),
+                spec,
+                str(dest) + ".partial",
+                min_length=self.min_title_length,
+            )
         except ValueError as e:
             logger.error(f"Job {safe_job}: cannot back up from {safe_spec}: {e}")
             return BackupResult(success=False, error_message=str(e))
@@ -1927,9 +2026,24 @@ class MakeMKVExtractor:
         """
         titles: dict[int, TitleInfo] = {}
         disc_name = ""
+        # (title, stream) -> {"type": SINFO attr-1 code, "lang": attr-3 value}. Filled
+        # per line and classified after the loop: attr order is not guaranteed.
+        streams: dict[tuple[int, int], dict[str, str]] = {}
 
         for line in output.split("\n"):
             line = line.strip()
+
+            # Stream info: SINFO:<title>,<stream>,<attr>,<code>,"<value>"
+            if line.startswith("SINFO:"):
+                match = re.match(r"SINFO:(\d+),(\d+),(\d+),(\d+),\"(.*)\"", line)
+                if match:
+                    key = (int(match.group(1)), int(match.group(2)))
+                    attr_id = int(match.group(3))
+                    if attr_id == 1:  # Stream type, keyed on its numeric code
+                        streams.setdefault(key, {})["type"] = match.group(4)
+                    elif attr_id == 3:  # Stream language code (ISO 639-2)
+                        streams.setdefault(key, {})["lang"] = match.group(5)
+                continue
 
             # Capture disc display name from CINFO attr 2
             if line.startswith("CINFO:"):
@@ -1960,8 +2074,15 @@ class MakeMKVExtractor:
                         title.name = value
                     elif attr_id == 9:  # Duration (H:MM:SS)
                         title.duration_seconds = self._parse_duration(value)
-                    elif attr_id == 10:  # Size
-                        title.size_bytes = self._parse_size(value)
+                    elif attr_id == 10:  # Size, rounded for display (e.g., "7.0 GB")
+                        if not title.size_bytes:
+                            title.size_bytes = self._parse_size(value)
+                    elif attr_id == 11:  # Size in exact bytes; wins over the rounded attr 10
+                        try:
+                            title.size_bytes = int(value)
+                        except ValueError:
+                            # Malformed exact size: keep whatever attr 10 set.
+                            pass
                     elif attr_id == 8:  # Chapter count
                         try:
                             title.chapter_count = int(value)
@@ -1980,8 +2101,19 @@ class MakeMKVExtractor:
                         title.segment_map = value
                     elif attr_id == 27:  # Suggested output filename (e.g., "Show - S3_t00.mkv")
                         title.disc_title = value
-                    elif attr_id == 28:  # Language code - good for filtering later
-                        pass
+                    # attr 28 is MakeMKV's METADATA language, not the audio language:
+                    # a title whose only audio is Osage still reports "eng" there. The
+                    # audio language comes from SINFO attr 3 above (issue #241).
+
+        for (title_idx, _stream_idx), stream in sorted(streams.items()):
+            title = titles.get(title_idx)
+            if title is None:
+                continue
+            lang = normalize_language(stream.get("lang"))
+            if stream.get("type") == _SINFO_AUDIO:
+                title.audio_languages.append(lang)
+            elif stream.get("type") == _SINFO_SUBTITLES:
+                title.subtitle_languages.append(lang)
 
         return list(titles.values()), disc_name
 

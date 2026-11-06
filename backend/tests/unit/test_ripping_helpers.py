@@ -6,7 +6,11 @@ from types import SimpleNamespace
 import pytest
 
 from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState, TitleState
-from app.services.ripping_helpers import find_staging_file, resolve_title_from_filename
+from app.services.ripping_helpers import (
+    build_title_list,
+    find_staging_file,
+    resolve_title_from_filename,
+)
 from tests.unit.conftest import _unit_session_factory
 
 
@@ -180,3 +184,55 @@ async def test_resolve_falls_back_to_title_index_when_output_index_unset():
         t = await resolve_title_from_filename(Path("E1_t03.mkv"), titles, 4, job_id, session)
     assert t is not None
     assert t.title_index == 3
+
+
+@pytest.mark.unit
+def test_build_title_list_reports_a_play_all_row_as_already_decided():
+    """Issue #754: identification finalizes a Play All concatenation row as
+    COMPLETED + extra + deselected before the rip. The titles_discovered
+    broadcast hard-coded every row to "pending", so the dashboard showed the
+    3-hour Play All track as queued with a SKIP button, and skip-rip (PENDING
+    only) answered 400 to every press."""
+    play_all = DiscTitle(
+        id=8,
+        job_id=1,
+        title_index=8,
+        duration_seconds=11084,
+        file_size_bytes=10_000,
+        chapter_count=40,
+        state=TitleState.COMPLETED,
+        is_selected=False,
+        is_extra=True,
+        match_details='{"reason": "Play All concatenation title"}',
+    )
+    episode = DiscTitle(id=2, job_id=1, title_index=2, duration_seconds=1320)
+
+    by_index = {e["title_index"]: e for e in build_title_list([play_all, episode])}
+
+    assert by_index[8]["state"] == "completed"
+    assert by_index[8]["is_selected"] is False
+    assert by_index[8]["is_extra"] is True
+    assert by_index[8]["match_details"] == '{"reason": "Play All concatenation title"}'
+    assert by_index[2]["state"] == "pending"
+    assert by_index[2]["is_selected"] is True
+
+
+@pytest.mark.unit
+def test_build_title_list_keeps_an_auto_skipped_rows_state_and_reason():
+    """A track the short-title filter skipped before the rip must not be
+    re-announced as pending, or its SKIP button returns and its reason chip
+    disappears."""
+    short = DiscTitle(
+        id=3,
+        job_id=1,
+        title_index=3,
+        duration_seconds=120,
+        state=TitleState.SKIPPED,
+        is_selected=False,
+        match_details='{"reason": "short", "skipped": true, "auto_skipped": true}',
+    )
+
+    (entry,) = build_title_list([short])
+
+    assert entry["state"] == "skipped"
+    assert entry["match_details"] == short.match_details

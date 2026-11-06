@@ -5,11 +5,13 @@ app, real async_session from app.database. The update_checker singleton's state
 is reset between tests.
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
-from app.core.updater import UpdateStatus, update_checker
+from app.core.updater import UpdateError, UpdateStatus, update_checker
 from app.database import async_session, init_db
 from app.main import app
 from app.models import AppConfig
@@ -163,3 +165,25 @@ class TestRestartForUpdate:
 
         response = await client.post("/api/updates/restart")
         assert response.status_code == 400
+
+    async def test_restart_refuses_when_install_dir_holds_user_files(
+        self, client: AsyncClient, monkeypatch
+    ):
+        """#825: the refusal must reach the user, so it happens before the 200."""
+        reason = "Engram can't update itself: its install folder D:\\engram also holds things"
+        update_checker._is_frozen = True
+        update_checker.state = UpdateStatus.READY
+        monkeypatch.setattr(update_checker, "_check_no_active_jobs", AsyncMock())
+        monkeypatch.setattr(
+            update_checker, "_check_install_dir", AsyncMock(side_effect=UpdateError(reason))
+        )
+        apply = AsyncMock()
+        monkeypatch.setattr(update_checker, "apply_update", apply)
+        try:
+            response = await client.post("/api/updates/restart")
+        finally:
+            update_checker.state = UpdateStatus.IDLE
+            update_checker._is_frozen = False
+        assert response.status_code == 409
+        assert response.json()["detail"] == reason
+        apply.assert_not_awaited()

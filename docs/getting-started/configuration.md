@@ -59,7 +59,7 @@ By default Engram binds to `127.0.0.1` (localhost only), so the dashboard is onl
 1. Open the Settings page (gear icon) → **Preferences** step.
 2. Enable **"Allow access from other devices on my network (LAN)"**.
 3. The panel below the toggle shows your LAN address and a QR code once the change is applied.
-4. Click **Save** and **restart Engram** — the bind address is fixed at startup.
+4. Click **Save**, then **Restart now** when Settings offers it (packaged build) — the bind address is fixed at startup. A source or Docker run shows how to restart instead, and **Restart now** stays disabled while a disc is being processed.
 
 !!! warning "No authentication"
     Engram has no login. Anyone on your network can view job status and control the application.
@@ -90,6 +90,42 @@ Configuration is resolved in this priority order:
 2. **Environment variables** (or `.env` file) -- server-level settings only
 3. **Defaults** -- hardcoded in the `AppConfig` model
 
+## Moving Settings to Another Install
+
+**Settings > Import & Export** saves your configuration to a file and loads it on another install, for example when moving to a new machine, switching between the desktop build and Docker, or rebuilding after a lost database. First-run setup also offers **Restoring from another install? Import a settings file** on its first step.
+
+### Export
+
+**Download settings file** saves `engram-settings-YYYY-MM-DD.json` with your paths, preferences, thresholds, naming formats, Discord templates and toggles, and AI, TheDiscDB and OpenSubtitles choices.
+
+Keys and passwords (MakeMKV key, TMDB token, TheTVDB key, AI key, OpenSubtitles key and password, TheDiscDB key, Discord webhook) are left out unless you tick **Include keys and passwords**. The file is then named `...-with-keys.json`. It is not encrypted: anyone who has it can use those credentials, so store it like a password.
+
+An export with keys works only when the dashboard is opened as `localhost` or by IP address (for example `http://192.168.1.50:8000`). Opened under another host name, Engram refuses, because that is how a malicious web page would try to read the file through your browser. Export without keys works from any address.
+
+These are never exported or imported, because they belong to one install:
+
+- whether first-run setup is finished (the new install still walks you through setup, with the imported values filled in)
+- LAN access (switch it on deliberately on the machine it exposes)
+- consent to share fingerprints with the Engram network
+
+### Import
+
+Choose a settings file and Engram shows every setting in it before anything changes:
+
+| Group | Meaning | Ticked by default |
+|-------|---------|-------------------|
+| **Changes** | Differs from what this install has | Yes |
+| **Check before applying** | A server Engram sends keys or data to (TheDiscDB URL, local AI URL, fingerprint server, Discord webhook, of which only the host is shown) or a program it runs (MakeMKV, FFmpeg, fpcalc). A file from someone else could point these somewhere you did not choose | No |
+| **Not found on this machine** | A folder or program path that does not exist here. Applying a folder creates it on this machine, so tick it only if that is where you want it | No |
+| **Network paths (not checked)** | A `\\server\share` path. Engram does not open network paths from an imported file, so it cannot say whether the share is there | No |
+| **Invalid** | Fails the same checks as saving in Settings (a bad naming placeholder, an internal webhook address, an unwritable library folder); the reason is shown | Cannot be ticked |
+| **Unchanged** | Already the same here | No |
+| **Not recognized** | Not a setting this version imports (a newer Engram's setting, or one of the per-install settings above); skipped | No |
+
+Keys and passwords show as **will be replaced**, never as values. Settings the file does not mention are left as they are, and a blank key in the file never clears a stored one. **Apply** checks the ticked settings again and writes all of them or, if any is refused, none.
+
+Both export and import are reachable from the machine running Engram, and from other devices only when LAN access is on.
+
 ## Configuration Fields
 
 ### Paths
@@ -117,6 +153,12 @@ Configuration is resolved in this priority order:
 | `matcher_min_confidence` | Minimum confidence to auto-accept an episode match | `0.6` |
 | `enable_gpu_acceleration` | Run transcription on an NVIDIA GPU (opt-in; downloads the CUDA runtime) | `false` |
 | `conflict_resolution_default` | File conflict handling | `"ask"` |
+| `makemkv_min_title_length` | MakeMKV's minimum title length, in seconds (`--minlength`) | `120` |
+
+`makemkv_min_title_length` is passed to MakeMKV on every scan, rip and backup.
+Titles shorter than it are hidden by MakeMKV and never reach Engram, so lower it
+(Settings, **Minimum Title Length**) if a disc's specials or featurettes run under
+two minutes. `0` shows every title, including menu loops and logos.
 
 `max_concurrent_matches` is the main matching-throughput knob. It's clamped to your hardware and
 takes effect on restart — see [Performance & Hardware](../guide/performance.md#concurrency-tuning)
@@ -245,6 +287,28 @@ against the episode runtimes and it is discarded as an extra.
 
 With `"keep"` or `"ask"`, every track is ripped so extras can be filed or reviewed.
 
+#### Movie discs
+
+The policy applies to movie discs too. Engram never drops a title that could be
+the movie itself: every feature-length cut (theatrical, extended, director's cut)
+is always ripped.
+
+| Policy | Before ripping | After ripping |
+|--------|----------------|---------------|
+| `"keep"` | Every title is ripped. | The feature is filed; every other title goes to the movie's `Extras/` folder. |
+| `"skip"` | Titles that cannot be the feature are skipped (see below). | Any non-feature title that was still ripped is discarded instead of filed. |
+| `"ask"` | Every title is ripped. | The disc waits in the Review Queue. Discard any extras you don't want, then **Select** the feature; the extras you kept go to `Extras/`. |
+
+Under `"skip"`, a title is skipped before ripping when:
+
+- **TheDiscDB** knows the disc and tags a different title as the main movie, or
+- it is shorter than the movie-length floor (`analyst_movie_min_duration`, 80
+  minutes by default) while at least one title on the disc is longer. A disc with
+  nothing that long (a short film) is ripped whole and sorted out afterwards.
+
+As with TV, skipped titles stay on the dashboard card with the reason and can be
+**UN-SKIP**ped until the rip reaches them.
+
 ### Import Watch Folder
 
 Engram can auto-ingest pre-ripped MKV files dropped into a watched folder. See the
@@ -369,7 +433,31 @@ the automatic edition tag.
 |---------|---------|--------------|
 | Show Folder Format | `{show}` | `{show}`, `{year}`, `{tmdb_id}` |
 | Season Folder Format | `Season {season:02d}` | `{season}` |
-| Episode Filename Format | `{show} - S{season:02d}E{episode:02d}` | `{show}`, `{season}`, `{episode}`, `{year}`, `{tmdb_id}` |
+| Episode Filename Format | `{show} - S{season:02d}E{episode:02d}` | `{show}`, `{season}`, `{episode}`, `{year}`, `{tmdb_id}`, `{episode_title}` |
+
+#### Episode titles in file names
+
+Add `{episode_title}` to the Episode Filename Format to put the episode's name in the file name:
+
+```
+Format "{show} - S{season:02d}E{episode:02d} - {episode_title}"
+  -> TV/Breaking Bad/Season 01/Breaking Bad - S01E05 - Gray Matter.mkv
+```
+
+The default format has no title, so nothing changes until you add the placeholder. Details:
+
+- **Unknown titles drop cleanly.** If Engram cannot find a title (no TMDB or TheTVDB data, or the
+  episode has no name yet), the placeholder is removed together with the separator next to it,
+  so you get `Breaking Bad - S01E05`, never `Breaking Bad - S01E05 - `.
+- **Same numbering as the episode.** The title comes from the catalogue the job's episode
+  numbers use: TMDB normally, TheTVDB when you chose TheTVDB order for the show.
+- **Tracks holding several episodes** list every title joined with ` & `, for example
+  `Show - S01E01-E02 - Title 1 & Title 2.mkv`. Titles that are exactly the same (ignoring case)
+  appear once. `&` is a legal file name character on Windows, Linux and macOS.
+- **File name safe.** Characters that cannot appear in a file name (`: ? " < > | * / \`) are
+  removed (`Who: What?` becomes `Who What`), and a title is cut at 100 characters.
+- **Library folder tools.** Already-filed episodes keep their old names. If you turn the
+  placeholder on and then re-organize an episode, the new, titled file sits beside the old one.
 
 #### Letting same-name titles coexist
 

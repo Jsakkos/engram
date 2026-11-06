@@ -42,10 +42,10 @@ export function SvTopBar({
 
   const root: CSSProperties = {
     height: 76,
-    padding: "0 28px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 12,
     borderBottom: `1px solid ${sv.line}`,
     background: "linear-gradient(180deg, rgba(18,24,39,0.7), transparent)",
     backdropFilter: "blur(8px)",
@@ -56,11 +56,19 @@ export function SvTopBar({
   };
 
   return (
-    <header style={root} data-testid="sv-topbar">
+    <header
+      style={root}
+      data-testid="sv-topbar"
+      className="px-4 min-[1100px]:px-7"
+    >
       {/* Left: Mark + wordmark */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
         <SvMark size={38} />
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {/* Below 900px the wordmark yields to the mark so the nav + controls fit. */}
+        <div
+          style={{ flexDirection: "column", gap: 2 }}
+          className="hidden min-[900px]:flex"
+        >
           <Wordmark
             size={22}
             color={sv.cyanHi}
@@ -75,9 +83,11 @@ export function SvTopBar({
               letterSpacing: "0.24em",
               color: sv.inkFaint,
               textTransform: "uppercase",
+              whiteSpace: "nowrap",
             }}
           >
-            <span style={{ color: sv.cyan }}>›</span> MEMORY · ARCHIVAL ·{" "}
+            <span style={{ color: sv.cyan }}>›</span>
+            <span className="hidden min-[1100px]:inline"> MEMORY · ARCHIVAL ·</span>{" "}
             {onVersionClick ? (
               <button
                 type="button"
@@ -106,7 +116,10 @@ export function SvTopBar({
       </div>
 
       {/* Center: nav */}
-      <nav style={{ display: "flex", alignItems: "center", gap: 4 }} data-testid="sv-topnav">
+      <nav
+        style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}
+        data-testid="sv-topnav"
+      >
         {navItems
           .filter((it) => it.show !== false)
           .map((item) => {
@@ -122,7 +135,7 @@ export function SvTopBar({
       </nav>
 
       {/* Right: LIVE pill + settings */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }} className="gap-2 min-[1100px]:gap-3">
         <button
           onClick={onManualClick}
           aria-label="Manual disc identity"
@@ -151,7 +164,7 @@ export function SvTopBar({
           }}
         >
           <IcoDisc size={14} />
-          MANUAL
+          <span className="hidden min-[1100px]:inline">MANUAL</span>
         </button>
         <button
           onClick={onImportClick}
@@ -181,7 +194,7 @@ export function SvTopBar({
           }}
         >
           <IcoLibrary size={14} />
-          IMPORT
+          <span className="hidden min-[1100px]:inline">IMPORT</span>
         </button>
         <SvBadge state={isConnected ? "live" : "queued"} dot>
           {isConnected ? "LIVE" : "OFFLINE"}
@@ -200,7 +213,7 @@ export function SvTopBar({
             [MOCK]
           </span>
         )}
-        <div style={{ width: 1, height: 24, background: sv.line }} />
+        <div style={{ width: 1, height: 24, background: sv.line }} className="hidden min-[1100px]:block" />
         <button
           onClick={onSettingsClick}
           aria-label="Settings"
@@ -235,7 +248,6 @@ export function SvTopBar({
 function NavTab({ item, active }: { item: NavItem; active: boolean }) {
   const wrap: CSSProperties = {
     position: "relative",
-    padding: "12px 18px",
     fontFamily: sv.mono,
     fontSize: 11,
     fontWeight: 600,
@@ -247,7 +259,9 @@ function NavTab({ item, active }: { item: NavItem; active: boolean }) {
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
+    whiteSpace: "nowrap",
   };
+  const tabPad = "px-2 py-3 min-[1100px]:px-[18px]";
   const underline: CSSProperties = {
     position: "absolute",
     left: 12,
@@ -293,6 +307,7 @@ function NavTab({ item, active }: { item: NavItem; active: boolean }) {
         aria-label={
           item.disabledHint ? `${item.label} — ${item.disabledHint}` : item.label
         }
+        className={tabPad}
         style={{ ...wrap, color: sv.inkFaint, cursor: "default" }}
         data-testid={`sv-nav-${item.label.toLowerCase()}`}
         data-active="false"
@@ -306,6 +321,7 @@ function NavTab({ item, active }: { item: NavItem; active: boolean }) {
   return (
     <Link
       to={item.to}
+      className={tabPad}
       style={wrap}
       data-testid={`sv-nav-${item.label.toLowerCase()}`}
       data-active={active ? "true" : "false"}

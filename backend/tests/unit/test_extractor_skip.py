@@ -133,21 +133,31 @@ class TestFilesIncompleteAtAbort:
 
 @pytest.mark.unit
 class TestShouldAbortAllPass:
-    """A full-disc 'all' pass may only be interrupted when stopping costs
-    nothing: MakeMKV just opened a title the user skipped, and every title
-    still ahead of it is skipped too."""
+    """A full-disc 'all' pass is interrupted at a title boundary whenever the
+    title MakeMKV just opened is one the user skipped. Nothing in flight is
+    lost there (the previous title has finished, the new file is a stub), and
+    the caller re-rips whatever is still wanted one title at a time (#765)."""
 
     def test_no_abort_when_the_opened_title_is_wanted(self):
         # native -> scan index. User skipped scan index 3; MakeMKV opened 2.
         m = {1: 1, 2: 2, 3: 3}
         assert should_abort_all_pass(2, m, {3}) is False
 
-    def test_no_abort_when_a_wanted_title_still_lies_ahead(self):
-        # The opened title IS skipped, but title 3 is still wanted. Killing the
-        # process here would cost a full disc re-open to rip title 3 alone, and
-        # would throw away whatever title 2 had written.
+    def test_aborts_at_a_skipped_title_even_when_a_wanted_title_lies_ahead(self):
+        # Issue #765: the opened title is skipped and title 3 is still wanted.
+        # Letting the pass run on rips the skipped title in full only to delete
+        # it; a run of skipped tracks at the front of a disc cost ~25 minutes.
+        # Stopping here costs a disc re-open for title 3, which the caller's
+        # per-title fallback does -- the same path a skip made before the rip
+        # started would have taken.
         m = {1: 1, 2: 2, 3: 3}
-        assert should_abort_all_pass(2, m, {2}) is False
+        assert should_abort_all_pass(2, m, {2}) is True
+
+    def test_aborts_when_the_first_title_opened_is_skipped(self):
+        # The #765 report: the user skipped the leading tracks while MakeMKV was
+        # still opening the disc. The first boundary is the first skipped title.
+        m = {0: 0, 1: 1, 2: 2, 3: 3}
+        assert should_abort_all_pass(0, m, {0, 1}) is True
 
     def test_aborts_when_the_opened_title_and_every_later_one_are_skipped(self):
         m = {1: 1, 2: 2, 3: 3}
@@ -181,8 +191,8 @@ class TestShouldAbortAllPass:
         m = {0: 1, 1: 2, 2: 3}  # native -> scan
         # Skipped scan indices {2, 3}; MakeMKV opened native 1 (== scan 2).
         assert should_abort_all_pass(1, m, {2, 3}) is True
-        # Same disc, only scan 2 skipped -> scan 3 is still wanted.
-        assert should_abort_all_pass(1, m, {2}) is False
+        # Same disc, only scan 3 skipped: native 1 (scan 2) is wanted.
+        assert should_abort_all_pass(1, m, {3}) is False
 
     def test_unknown_native_number_never_aborts(self):
         # A filename whose _tNN does not correspond to any scanned title.
@@ -271,15 +281,15 @@ def _rip_steps(
 class TestAllPassSkipAbort:
     """A skip during a full-disc 'all' pass is honored at TITLE BOUNDARIES only:
     a new ``*_tNN.mkv`` appears in the output dir, and the pass stops there when
-    that title and every later one are skipped. A skip that lands mid-title must
-    never interrupt the title being written."""
+    that title is skipped. A skip that lands mid-title must never interrupt the
+    title being written."""
 
     async def test_does_not_abort_mid_title_when_a_later_track_is_skipped(self, tmp_path):
-        # The exact user-reported regression: while title 1 is being written the
-        # user skips title 2, which has not been ripped yet. The pass MUST run
-        # on -- title 1's rip is not thrown away, and title 2 is dropped later by
-        # the caller once MakeMKV finishes writing it. The old rule terminated
-        # makemkvcon on the very next stdout line.
+        # The #580 regression: while title 1 is being written the user skips
+        # title 2, which has not been ripped yet. Title 1 MUST finish intact;
+        # the old rule terminated makemkvcon on the very next stdout line. The
+        # pass stops only once MakeMKV opens title 2 (#765), and title 3 is left
+        # for the caller's per-title fallback.
         procs: list[_RippingProc] = []
 
         def _fake_popen(cmd, **kwargs):
@@ -303,14 +313,45 @@ class TestAllPassSkipAbort:
                 disc_title_map={1: 1, 2: 2, 3: 3},
             )
 
-        assert result.aborted_for_skip is False
-        assert procs and procs[0].terminated is False
-        # Every title on the disc was written, including the skipped one.
-        assert {p.name for p in tmp_path.glob("*.mkv")} == {
-            "TEST_t01.mkv",
-            "TEST_t02.mkv",
-            "TEST_t03.mkv",
-        }
+        assert result.aborted_for_skip is True
+        assert procs and procs[0].terminated is True
+        # Title 1 finished in full; title 2's stub is gone; title 3 never opened.
+        assert {p.name for p in tmp_path.glob("*.mkv")} == {"TEST_t01.mkv"}
+        assert (tmp_path / "TEST_t01.mkv").stat().st_size == 4096
+
+    async def test_skipping_the_leading_titles_before_any_output_rips_none_of_them(self, tmp_path):
+        # Issue #765, job 79: the user skipped the first tracks while MakeMKV
+        # was still opening the disc. The pass used to rip every one of them in
+        # full and delete each file afterwards. It must now stop at the first
+        # skipped title, before writing any of it.
+        procs: list[_RippingProc] = []
+
+        def _fake_popen(cmd, **kwargs):
+            proc = _RippingProc(_rip_steps(tmp_path, [0, 1, 2, 3]))
+            procs.append(proc)
+            return proc
+
+        ex = MakeMKVExtractor(makemkv_path=Path("/usr/bin/makemkvcon"))
+        ex.skip_title_index(27, 0)
+        ex.skip_title_index(27, 1)
+
+        with (
+            patch("app.core.extractor.FS_POLL_INTERVAL", _TEST_POLL),
+            patch("app.core.extractor.subprocess.Popen", side_effect=_fake_popen),
+        ):
+            result = await ex.rip_titles(
+                "/dev/sr0",
+                tmp_path,
+                title_indices=None,
+                stall_timeout=0,
+                job_id=27,
+                disc_title_map={0: 0, 1: 1, 2: 2, 3: 3},
+            )
+
+        assert result.aborted_for_skip is True
+        assert result.success is True
+        assert procs and procs[0].terminated is True
+        assert list(tmp_path.glob("*.mkv")) == [], "a skipped title was written"
 
     async def test_aborts_at_the_boundary_when_every_remaining_title_is_skipped(self, tmp_path):
         # Title 1 finished; MakeMKV opens title 2. Both 2 and 3 are skipped, so

@@ -33,6 +33,12 @@ class AppConfig(SQLModel, table=True):
     # MakeMKV Configuration
     makemkv_path: str = ""  # Auto-detected on startup
     makemkv_key: str = ""  # License key
+    # MakeMKV --minlength (seconds): shorter titles are hidden from scans and never
+    # ripped. 120 is MakeMKV's own default; lower it for discs with short specials
+    # (#771). server_default so upgraded databases get the same value.
+    makemkv_min_title_length: int = Field(
+        default=120, sa_column_kwargs={"server_default": text("120")}
+    )
 
     # Paths - User's media library locations
     staging_path: str = ""  # Platform-aware default set on first run
@@ -55,6 +61,9 @@ class AppConfig(SQLModel, table=True):
 
     # TMDB API (for show metadata)
     tmdb_api_key: str = ""
+    # TheTVDB v4 project key override. Blank means "use the key built into this
+    # release" (TVDB_API_KEY env var, baked into frozen builds). Redacted on GET.
+    tvdb_api_key: str = ""
 
     # Matching concurrency (limits parallel Whisper ASR tasks to avoid GPU OOM)
     max_concurrent_matches: int = 2

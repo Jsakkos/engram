@@ -122,6 +122,8 @@ export function TitleList({
                         type="button"
                         onClick={() => onSelect(title.id)}
                         aria-pressed={isActive}
+                        aria-current={isActive ? 'true' : undefined}
+                        data-title-row={title.id}
                         style={{
                             position: 'relative',
                             display: 'flex',

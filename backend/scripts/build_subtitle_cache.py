@@ -70,7 +70,9 @@ from scipy import sparse
 
 from app.matcher import coverage_tracker
 from app.matcher.episode_identification import SubtitleCache, _corpus_show_dir
+from app.matcher.numbering_crosswalk import RosterEpisode, derive_crosswalk, is_segmented_season
 from app.matcher.numbering_scheme import (
+    SCHEME_DIVERGENT,
     SCHEME_UNKNOWN,
     derive_numbering_scheme,
 )
@@ -80,9 +82,11 @@ from app.matcher.testing_service import (
     download_subtitles,
     get_last_quota,
     probe_os_quota,
+    season_release_titles,
 )
 from app.matcher.tmdb_client import (
     fetch_season_details,
+    fetch_season_episodes,
     fetch_show_details,
     fetch_show_id,
     fetch_shows_by_vote_count,
@@ -652,7 +656,69 @@ def _render_tally(tally: "RunTally") -> str:
     return "\n".join(lines)
 
 
-def _season_numbering_entry(tmdb_id: int | None, season: int, reference_count: int) -> dict:
+def _season_roster(tmdb_id: int, season: int) -> list[RosterEpisode]:
+    """The season's TMDB roster with the titles, air dates and runtimes a crosswalk needs."""
+    from app.services.config_service import get_config_sync
+
+    episodes = fetch_season_episodes(str(tmdb_id), season, get_config_sync().tmdb_api_key)
+    return [
+        RosterEpisode(
+            episode_number=e["episode_number"],
+            name=e.get("name") or "",
+            air_date=e.get("air_date") or "",
+            runtime=e.get("runtime") or 0,
+        )
+        for e in episodes
+        if e.get("episode_number") is not None
+    ]
+
+
+def _segment_fields(tmdb_id: int, season: int, codes: list[str]) -> dict:
+    """The ``segmented`` / ``crosswalk`` / ``crosswalk_sources`` fields for a divergent season.
+
+    ``divergent`` only says the corpus and the roster disagree on the season's
+    size, which an ordinary season the pack is merely missing episodes of also
+    does. ``segmented`` is published only when TMDB's own roster shows segments
+    aired in shared half-hours, and only then is a crosswalk derived: structure
+    alone would shift an incomplete drama with a two-part premiere by one.
+
+    Empty when the roster is unavailable or the season is not segmented; a
+    segmented season keeps ``segmented`` even when nothing could be mapped. The
+    release lookup is optional evidence: when it fails, the TMDB roster alone
+    still maps seasons whose broadcast structure lines up.
+    """
+    # Same contract as the roster-size lookup above throughout: one season's
+    # failure must never abort a run covering hundreds of shows.
+    try:
+        roster = _season_roster(tmdb_id, season)
+    except Exception as e:
+        logger.warning(
+            f"  roster fetch failed for tmdb {tmdb_id} S{season:02d}: {e}", exc_info=True
+        )
+        return {}
+    if not is_segmented_season(roster):
+        return {}
+    fields: dict = {"segmented": True}
+    try:
+        releases = season_release_titles(str(tmdb_id), season)
+    except Exception as e:
+        logger.warning(
+            f"  release lookup failed for tmdb {tmdb_id} S{season:02d}; "
+            f"deriving the crosswalk from structure alone: {e}",
+            exc_info=True,
+        )
+        releases = None
+    try:
+        crosswalk = derive_crosswalk(season, codes, roster, releases)
+    except Exception as e:
+        logger.warning(f"  crosswalk failed for tmdb {tmdb_id} S{season:02d}: {e}", exc_info=True)
+        return fields
+    if crosswalk.mapping:
+        fields.update(crosswalk=crosswalk.mapping, crosswalk_sources=crosswalk.sources)
+    return fields
+
+
+def _season_numbering_entry(tmdb_id: int | None, season: int, codes: list[str]) -> dict:
     """Describe how one harvested season is numbered, for the manifest.
 
     The corpus is numbered by whatever the subtitle providers index; TMDB may
@@ -674,6 +740,11 @@ def _season_numbering_entry(tmdb_id: int | None, season: int, reference_count: i
     from a genuinely divergent one. That path is unreachable from this script's
     own loop (it resolves every show against TMDB before harvesting) but is the
     live unresolved-show path for the pack caller.
+
+    A ``divergent`` season also carries a ``crosswalk`` from each corpus code to
+    the TMDB code(s) it holds, when the evidence supports one (#760; see
+    ``app.matcher.numbering_crosswalk``). ``codes`` is the season's corpus in index
+    order.
     """
     if tmdb_id is None:
         return {"scheme": SCHEME_UNKNOWN}
@@ -693,10 +764,13 @@ def _season_numbering_entry(tmdb_id: int | None, season: int, reference_count: i
         # season simply becomes UNKNOWN.
         logger.warning(f"  roster lookup failed for tmdb {tmdb_id} S{season:02d}: {e}")
         roster_size = 0
-    scheme = derive_numbering_scheme(reference_count, roster_size)
+    scheme = derive_numbering_scheme(len(codes), roster_size)
     if scheme == SCHEME_UNKNOWN:
         return {"scheme": SCHEME_UNKNOWN}
-    return {"scheme": scheme, "roster_size": roster_size}
+    entry = {"scheme": scheme, "roster_size": roster_size}
+    if scheme == SCHEME_DIVERGENT:
+        entry.update(_segment_fields(tmdb_id, season, codes))
+    return entry
 
 
 def main() -> int:
@@ -986,7 +1060,7 @@ def main() -> int:
                     # Written after the same `continue` as episode_counts above,
                     # so the two dicts always carry the identical season key set.
                     season_numbering[str(season)] = _season_numbering_entry(
-                        show["tmdb_id"], season, len(codes)
+                        show["tmdb_id"], season, codes
                     )
 
                 if show_seasons:
