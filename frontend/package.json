@@ -1,7 +1,7 @@
 {
     "name": "engram-frontend",
     "private": true,
-    "version": "0.44.0",
+    "version": "0.44.1",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -20,7 +20,7 @@
         "@radix-ui/react-tooltip": "1.2.12",
         "clsx": "2.1.1",
         "lucide-react": "1.65.0",
-        "motion": "12.43.0",
+        "motion": "14.9.0",
         "qrcode.react": "^4.2.0",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
@@ -41,7 +41,7 @@
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
         "@vitejs/plugin-react": "^6.1.2",
-        "@vitest/coverage-v8": "^4.1.12",
+        "@vitest/coverage-v8": "^5.0.5",
         "autoprefixer": "^10.5.5",
         "eslint": "^10.8.1",
         "eslint-plugin-react-hooks": "^7.1.1",
@@ -55,6 +55,6 @@
         "typescript": "~6.0.3",
         "typescript-eslint": "^8.72.1",
         "vite": "^8.2.2",
-        "vitest": "^4.1.12"
+        "vitest": "^5.0.5"
     }
 }

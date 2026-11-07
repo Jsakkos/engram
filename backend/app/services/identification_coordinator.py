@@ -1903,10 +1903,11 @@ class IdentificationCoordinator:
             # subtitle attempt likely failed against the unresolvable label,
             # leaving subtitle_status="failed" and a stale `_subtitle_ready`
             # event that would gate matching back into REVIEW. (Review-resume
-            # only: the mid-rip case has its own cancel-then-prefetch handling
-            # below, via `mid_rip_subtitle_refresh` — it cancels the OLD show's
-            # in-flight download before starting a fresh one for the corrected
-            # show, since stale subtitle state DOES exist mid-rip.)
+            # with a known season only. Mid-rip answers and seasonless review
+            # answers take the cancel-then-prefetch route below, via
+            # `mid_rip_subtitle_refresh` / `seasonless_subtitle_refresh`: it
+            # cancels the OLD show's in-flight download before starting a fresh
+            # one for the corrected show.)
             should_restart_subtitles = (
                 not mid_rip
                 and job.content_type == ContentType.TV
@@ -1918,6 +1919,14 @@ class IdentificationCoordinator:
                 (job_id, job.detected_title, job.detected_season, job.tmdb_id)
                 if should_restart_subtitles
                 else None
+            )
+            # No season (the user chose "match across all seasons"): there is
+            # no single season to restart, so take the cancel-then-prefetch
+            # route the mid-rip branch uses. The prefetch falls back to every
+            # season, as set_name_and_resume does (#370). Without this the
+            # review answer started no reference download at all.
+            seasonless_subtitle_refresh = bool(
+                not mid_rip and is_tv and job.detected_title and job.detected_season is None
             )
 
             await ws_manager.broadcast_job_update(
@@ -1939,10 +1948,10 @@ class IdentificationCoordinator:
         # cleanup and would deadlock on the same connection.
         if restart_args is not None:
             await self._restart_subtitle_download(*restart_args)
-        if mid_rip_subtitle_refresh:
-            # Corrected show mid-rip: cancel the previous show's in-flight
-            # download (and clear its stale subtitle_status) before prefetching
-            # the corrected show — known season → that season, unknown → all.
+        if mid_rip_subtitle_refresh or seasonless_subtitle_refresh:
+            # Cancel the previous identity's in-flight download (and clear its
+            # stale subtitle_status) before prefetching the corrected show:
+            # known season (mid-rip only) → that season, unknown → all.
             await self._cancel_subtitle_download(job_id)
             await self._start_tv_subtitle_prefetch(job)
 

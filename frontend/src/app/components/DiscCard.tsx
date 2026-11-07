@@ -255,6 +255,16 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
     const doneTrackCount =
       disc.tracks?.filter(t => ["matched", "completed"].includes(t.state)).length ?? 0;
     const failedTrackCount = disc.tracks?.filter(t => t.state === "failed").length ?? 0;
+    // RIPPED excludes `failed`: a rip failure and a match failure share one state, so a
+    // track that ripped and then failed matching is not counted (no rip-complete marker).
+    const countedTracks = disc.tracks?.filter(t => t.state !== "skipped") ?? [];
+    const countedTrackTotal = countedTracks.length;
+    const rippedTrackCount = countedTracks.filter(
+      t => !["pending", "ripping", "failed"].includes(t.state),
+    ).length;
+    const matchedTrackCount = countedTracks.filter(t =>
+      ["matched", "completed"].includes(t.state),
+    ).length;
 
     // A disc in review to confirm its IDENTITY (ambiguous/unconfirmed show) has
     // nothing to do in the episode review queue — the only useful action is
@@ -728,7 +738,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gridTemplateColumns: `repeat(${2 + (disc.currentSpeed ? 1 : 0) + (disc.etaSeconds !== undefined ? 1 : 0)}, 1fr)`,
                       gap: 16,
                     }}
                   >
@@ -737,8 +747,13 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                       <SvStat label="ETA" value={formatEta(disc.etaSeconds)} />
                     )}
                     <SvStat
-                      label="TRACKS"
-                      value={`${doneTrackCount}/${totalTrackCount}`}
+                      label="RIPPED"
+                      value={`${rippedTrackCount}/${countedTrackTotal}`}
+                      color={sv.cyanHi}
+                    />
+                    <SvStat
+                      label="MATCHED"
+                      value={`${matchedTrackCount}/${countedTrackTotal}`}
                       color={sv.yellow}
                     />
                   </div>

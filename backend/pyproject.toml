@@ -1,6 +1,6 @@
 [project]
 name = "engram-backend"
-version = "0.44.0"
+version = "0.44.1"
 description = "Engram - Disc ripping and media organization backend"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
@@ -11,6 +11,12 @@ dependencies = [
     "uvicorn[standard]>=0.27.0",
     "sqlmodel>=0.0.14",
     "aiosqlite>=0.22.1",
+    # Held below 2.1: SQLAlchemy 2.1 (lock maintenance #856) breaks ~30 unit tests
+    # with "asyncio.Lock ... is bound to a different event loop" and unexpected
+    # job states in the job_manager / stuck-job-recovery / disc-eject paths.
+    # Lift once the engine/session code is audited against 2.1 and sqlmodel supports it
+    # (tracked in #878).
+    "sqlalchemy>=2.0,<2.1",
     # SQLAlchemy only requires greenlet on certain arches (its marker omits
     # macOS arm64), so declare it directly to guarantee the async engine — and
     # the PyInstaller bundle — has it on every platform.
@@ -53,10 +59,10 @@ docs = [
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
     "pytest-cov>=7.1.0",
-    "pytest-mock>=3.16.0",
+    "pytest-mock>=3.17.0",
     "ruff>=0.17.3",
     "hypothesis>=6.168.5",
 ]
