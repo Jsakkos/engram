@@ -14,7 +14,8 @@ dependencies = [
     # Held below 2.1: SQLAlchemy 2.1 (lock maintenance #856) breaks ~30 unit tests
     # with "asyncio.Lock ... is bound to a different event loop" and unexpected
     # job states in the job_manager / stuck-job-recovery / disc-eject paths.
-    # Lift once the engine/session code is audited against 2.1 and sqlmodel supports it.
+    # Lift once the engine/session code is audited against 2.1 and sqlmodel supports it
+    # (tracked in #878).
     "sqlalchemy>=2.0,<2.1",
     # SQLAlchemy only requires greenlet on certain arches (its marker omits
     # macOS arm64), so declare it directly to guarantee the async engine — and
