@@ -1903,10 +1903,11 @@ class IdentificationCoordinator:
             # subtitle attempt likely failed against the unresolvable label,
             # leaving subtitle_status="failed" and a stale `_subtitle_ready`
             # event that would gate matching back into REVIEW. (Review-resume
-            # only: the mid-rip case has its own cancel-then-prefetch handling
-            # below, via `mid_rip_subtitle_refresh` — it cancels the OLD show's
-            # in-flight download before starting a fresh one for the corrected
-            # show, since stale subtitle state DOES exist mid-rip.)
+            # with a known season only. Mid-rip answers and seasonless review
+            # answers take the cancel-then-prefetch route below, via
+            # `mid_rip_subtitle_refresh` / `seasonless_subtitle_refresh`: it
+            # cancels the OLD show's in-flight download before starting a fresh
+            # one for the corrected show.)
             should_restart_subtitles = (
                 not mid_rip
                 and job.content_type == ContentType.TV
