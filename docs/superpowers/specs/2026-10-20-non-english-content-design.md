@@ -253,9 +253,21 @@ usable audio stream is tagged with a non-English language.
 7. Language suffix `@<lang>` (the contributor used `.<lang>`) so one predicate covers `@tvdb` and
    language dirs.
 
+8. (Phase 2, 2026-10-25) The content language is read at the language decision, beside
+   `decide_job_namespace`, not at identification: a job's show is set in many places, and every one
+   of them passes the subtitle download. Phase 2 ships as three PRs in the order that keeps `main`
+   safe at every merge (plan `docs/superpowers/plans/2026-10-25-match-in-show-language.md`).
+
 ## Maintainer decisions (2026-10-20)
 
 1. Phase 2, a foreign show whose disc has both the original audio and an English dub: match in the
    **original language**.
+   *Amended 2026-10-25 (review of #843):* original language first only for languages with a
+   measured vote margin (`ORIGINAL_FIRST_LANGUAGES`, empty until #846 adds `de`). Every other
+   language is matched **English first**, and the show's language is used only when the file has
+   no English stream. A disc with English audio stays on today's path, and every phase 1 refusal
+   becomes a match attempt. A job also switches to the show's language only when that language's
+   references cover at least 80% of the season's episodes (`SWITCH_MIN_SEASON_COVERAGE`), recorded
+   with both counts in `DiscJob.match_language_note`.
 2. Phase 2, Japanese/Chinese/Thai (character n-grams, uncalibrated): **always park matches for
    review** until real-disc evidence calibrates them.

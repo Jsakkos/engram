@@ -170,6 +170,7 @@ async def isolate_database(monkeypatch):
     # wired SimulationService instance directly writes to engram.db unnoticed.
     _sim_mod = importlib.import_module("app.services.simulation_service")
     _ns_mod = importlib.import_module("app.services.episode_namespace_service")
+    _lang_mod = importlib.import_module("app.services.match_language_service")
 
     monkeypatch.setattr(_db_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_config_mod, "async_session", _unit_session_factory)
@@ -180,6 +181,7 @@ async def isolate_database(monkeypatch):
     monkeypatch.setattr(_prewarm_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_sim_mod, "async_session", _unit_session_factory)
     monkeypatch.setattr(_ns_mod, "async_session", _unit_session_factory)
+    monkeypatch.setattr(_lang_mod, "async_session", _unit_session_factory)
 
     # Redirect the cached sync engine in config_service so get_config_sync()
     # uses the in-memory test database instead of connecting to engram.db.
