@@ -43,6 +43,7 @@ if _backend_dir not in sys.path:
 
 from loguru import logger
 
+from app.core.match_language import is_local_only_corpus_dir
 from app.matcher.subtitle_utils import sanitize_filename
 from app.matcher.tmdb_client import fetch_show_id
 
@@ -212,9 +213,9 @@ def migrate_cache(
     norm_map = {_normalize(k): v for k, v in curated_map.items()}
     tally = Tally()
 
-    # "@tvdb" dirs hold TheTVDB-numbered references; never migrated.
+    # "@tvdb" and "@<lang>" dirs hold local-only references; never migrated.
     for show_dir in sorted(
-        d for d in data_dir.iterdir() if d.is_dir() and not d.name.endswith("@tvdb")
+        d for d in data_dir.iterdir() if d.is_dir() and not is_local_only_corpus_dir(d.name)
     ):
         name = show_dir.name
         tid, cls = resolve_dir(

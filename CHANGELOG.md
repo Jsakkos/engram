@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Shows in other languages can be matched in their own language.** A show whose original language is not English (German, French, Japanese, ...) used to go to review track by track whenever a track had no English audio. Engram now also downloads the show's subtitles in its original language, and a track without English audio is transcribed from its original-language audio and matched against them, so the tracks of a German show on a German disc are matched to their episodes like an English show's; a track it is less sure of goes to review as usual. A track with English audio, including an English dub, is still matched in English exactly as before, and so is every show whose original-language subtitles cover less than 80% of the season. Japanese, Chinese and Thai matches always go to review for now. The review page names the language a track was matched in. (#845, thanks @wintheriscomming!)
+
 ## [0.44.1] - 2026-11-07
 
 _Highlights: TheTVDB episode numbering is now reachable for TV discs in review, plus a round of dashboard and setup polish: per-disc activity log lines, separate ripped and matched track counts, and a first-run welcome._

@@ -59,6 +59,18 @@ export function getReviewReasons(title: DiscTitle): string[] {
 }
 
 /**
+ * English name of a language code from the backend ("de" → "German"). The
+ * platform supplies the names, so the frontend keeps no language table of its own.
+ */
+export function languageDisplayName(code: string): string {
+    try {
+        return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code.toUpperCase();
+    } catch {
+        return code.toUpperCase();
+    }
+}
+
+/**
  * Display name for a title — filename basename, or a generic fallback.
  */
 export function titleDisplayName(title: DiscTitle): string {

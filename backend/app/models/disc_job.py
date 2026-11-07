@@ -227,6 +227,15 @@ class DiscJob(SQLModel, table=True):
     # JSON {"S01E04": "S01E02", ...}: TVDB code -> TMDB code, 1:1 pairs only.
     # Persisted so contribution/export translate without a network call.
     episode_crosswalk_json: str | None = None
+    # The show's TMDB original_language and the language its episodes are matched
+    # in (issue #241), both normalized codes. Decided with the namespace, at the
+    # subtitle download; None means not decided, which reads as English.
+    content_language: str | None = None
+    match_language: str | None = None
+    # Why the job matches in that language: the show language's reference count
+    # against the season's episode count, e.g. "German references for 8 of 10
+    # episodes of season 1; matching in German". None for an English show.
+    match_language_note: str | None = None
 
     # Title information (JSON stored as string for simplicity)
     titles_json: str | None = None  # List of titles with durations

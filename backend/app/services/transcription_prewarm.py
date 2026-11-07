@@ -42,8 +42,10 @@ from pathlib import Path
 from sqlmodel import select
 
 from app.core.log_context import with_job_log_context
+from app.core.match_language import current_match_language, match_language_context
 from app.core.security import sanitize_log_value
 from app.database import async_session
+from app.matcher.audio_streams import plan_title_audio
 from app.models import DiscJob
 from app.models.disc_job import DiscTitle, TitleState
 
@@ -206,21 +208,29 @@ class TranscriptionPrewarmer:
             if matcher is None:
                 return
 
-            for file_path in files:
-                try:
-                    await self._prewarm_file(matcher, file_path, full_file=full_file)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.warning(
-                        f"Job {job_id}: prewarm failed for {file_path}: {e}", exc_info=True
-                    )
+            # The job's match language picks each file's stream, and with it the
+            # transcript keys, exactly as matching will.
+            with match_language_context(await self._job_match_language(job_id)):
+                for file_path in files:
+                    try:
+                        await self._prewarm_file(matcher, file_path, full_file=full_file)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        logger.warning(
+                            f"Job {job_id}: prewarm failed for {file_path}: {e}", exc_info=True
+                        )
             logger.info(f"Job {job_id}: transcript prewarm finished ({len(files)} file(s))")
         except asyncio.CancelledError:
             logger.debug(f"Job {job_id}: transcript prewarm cancelled mid-run")
             raise
         except Exception as e:
             logger.warning(f"Job {job_id}: transcript prewarm aborted: {e}", exc_info=True)
+
+    async def _job_match_language(self, job_id: int) -> str:
+        async with async_session() as session:
+            job = await session.get(DiscJob, job_id)
+            return (job.match_language if job else None) or "en"
 
     async def _load_candidate_files(self, job_id: int) -> list[Path]:
         """Files worth warming: a real ``output_filename`` on disk, not yet organized.
@@ -265,10 +275,14 @@ class TranscriptionPrewarmer:
 
         # A file with no audio the matcher can use will never be transcribed
         # (issue #241): warming it would only spend Whisper on the wrong language.
-        plan = await asyncio.to_thread(matcher.audio_plan, file_path)
+        # The same per-title ladder as the curator, so the same stream and keys.
+        language, plan = await asyncio.to_thread(plan_title_audio, matcher, file_path)
         if plan.verdict in ("foreign", "no_audio"):
             logger.debug(f"Prewarm: {file_path.name} has no matchable audio ({plan.verdict})")
             return
+        if language != current_match_language():
+            with match_language_context(language):
+                return await self._prewarm_file(matcher, file_path, full_file=full_file)
 
         duration = await asyncio.to_thread(get_video_duration, str(file_path))
         chunk_len = matcher.chunk_duration
@@ -292,7 +306,7 @@ class TranscriptionPrewarmer:
             wanted.append((0, int(duration)))
 
         # Coverage check WITHOUT loading the model: the config-derived key.
-        config_key = model_output_key(matcher._model_config())
+        config_key = model_output_key(matcher._model_config(), current_match_language())
         missing = await asyncio.to_thread(self._missing_spans, file_key, wanted, config_key)
         if not missing:
             logger.debug(f"Prewarm: {file_path.name} fully cached ({len(wanted)} spans); skipping")
