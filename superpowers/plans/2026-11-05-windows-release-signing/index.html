@@ -1,0 +1,2048 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/plans/2026-11-05-windows-release-signing/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Windows release signing: decision brief and implementation plan - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#windows-release-signing-decision-brief-and-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Windows release signing: decision brief and implementation plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-tldr-and-recommendation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. TL;DR and recommendation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-what-exists-today-verified-in-the-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What exists today (verified in the repo)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. What exists today (verified in the repo)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-signing-fits-the-update-flow-without-updater-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why signing fits the update flow without updater changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-options-compared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Options compared
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Options compared">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reading-of-the-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading of the table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-decisions-the-maintainer-must-make" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Decisions the maintainer must make
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Decisions the maintainer must make">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#timeline-against-the-december-freeze" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeline against the December freeze
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-one-time-setup-the-maintainer-does-not-automatable-by-an-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. One-time setup the maintainer does (not automatable by an agent)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. One-time setup the maintainer does (not automatable by an agent)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#route-a-azure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Route A (Azure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#route-b-signpath-only-if-activated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Route B (SignPath), only if activated
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-ci-changes-step-by-step-for-the-implementation-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. CI changes, step by step (for the implementation session)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. CI changes, step by step (for the implementation session)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pr-1-signing-step-in-build-windows-route-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR 1: signing step in build-windows (Route A)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pr-2-docs-and-release-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR 2: docs and release notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pr-3-optional-decision-d6-updater-verifies-the-publisher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR 3 (optional, decision D6): updater verifies the publisher
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pr-1-variant-for-route-b-signpath" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR 1 variant for Route B (SignPath)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-risks-and-open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Risks and open questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-acceptance-mapping-issue-729" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Acceptance mapping (issue #729)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="windows-release-signing-decision-brief-and-implementation-plan">Windows release signing: decision brief and implementation plan</h1>
+<p><strong>Date:</strong> 2026-11-05
+<strong>Issue:</strong> #729 (Sign Windows release builds), part of stable-release epic #734 (Tier 3, December 2026 freeze)
+<strong>Status:</strong> <strong>Deferred by the maintainer (2026-11-05) until Engram has at least 1,000 users.</strong> Free, open source project; no spending on signing for now. Nothing is bought, enrolled or changed in <code>release.yml</code> by this document. The plan below is kept ready to execute when the trigger is met.</p>
+<p><strong>Revisit trigger:</strong> about 1,000 users (for example, the GitHub release download count for <code>engram-win-x64.zip</code>). On revisit, re-verify pricing, eligibility and the SignPath lead time, since the figures below date from 2026-11-05. The December freeze dates in section 4 no longer apply; re-base the timeline from the new start date, keeping the 1 to 20 business day validation window.</p>
+<p><strong>Zero-cost option if the maintainer wants signing sooner:</strong> Route B (SignPath Foundation) is free. It was ranked as the hedge, not the lead, only because of its manual per-release approval and unpublished review time.
+<strong>Builds on:</strong> <code>docs/superpowers/reviews/2026-06-03-windows-code-signing.md</code> (which asked for Azure to be priced first)</p>
+<h2 id="1-tldr-and-recommendation">1. TL;DR and recommendation</h2>
+<p><strong>Start Azure Artifact Signing identity validation by Monday 2026-11-09, as an individual developer, if the maintainer's legal address and government ID are in the US or Canada.</strong> It is the only route that is cheap (about $10/month), has no hardware, authenticates from GitHub Actions with OIDC (no long-lived secret), and needs no per-release human click. Its one real risk is lead time: Microsoft says identity validation takes <strong>1 to 20 business days</strong>, so a worst case from 11-09 lands on 2026-12-07, which is inside the freeze window. That is why the decision is needed now, not in December.</p>
+<p>If the maintainer is <strong>not</strong> in the US or Canada as an individual, or validation stalls past <strong>2026-11-25</strong>, fall back to <strong>SignPath Foundation</strong> (free for OSI-licensed projects; Engram is AGPL-3.0, which qualifies). Its cost is paperwork and a manual approval click per release, and its review time is not published.</p>
+<p><strong>Do not buy an EV certificate.</strong> Since March 2024 EV no longer gives instant SmartScreen reputation, so its price premium buys nothing here. A classic OV certificate with a cloud HSM is the third choice: dearer, slower to set up, and no better on SmartScreen than the two above.</p>
+<p><strong>No route removes the SmartScreen prompt on day one.</strong> Signing replaces "Unknown publisher" with the verified publisher name and lets reputation accumulate against that identity. Expect weeks of downloads before the warning fades, on every option. State that in the release notes so users are not surprised.</p>
+<p>Two facts from the repo shrink the work and the cost:</p>
+<ol>
+<li><strong>The auto-updater is unaffected by SmartScreen.</strong> It downloads with <code>httpx</code> (<code>updater.py:_download</code>), so the files carry no Mark-of-the-Web. SmartScreen only bites on the first manual download of the zip. Signing is a first-install and Defender-reputation fix, not an update fix.</li>
+<li><strong>Only <code>engram.exe</code> and <code>fpcalc.exe</code> need signing.</strong> SmartScreen evaluates the launched executable, not the <code>.pyd</code>/<code>.dll</code> files inside <code>_internal/</code>. Signing the several hundred other PE files would burn signature quota (Azure) and, under SignPath, is not even allowed for third-party binaries. Issue #729 says "and the bundled native DLLs"; this plan deliberately narrows that (see decision D3).</li>
+</ol>
+<h2 id="2-what-exists-today-verified-in-the-repo">2. What exists today (verified in the repo)</h2>
+<table>
+<thead>
+<tr>
+<th>Fact</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows job builds with PyInstaller 6.20.0, then smoke test, CA-bundle and fpcalc checks, <code>--selftest</code>, <strong>then</strong> manifest, <strong>then</strong> zip</td>
+<td><code>.github/workflows/release.yml</code> job <code>build-windows</code></td>
+</tr>
+<tr>
+<td>Manifest is <code>sha256  relpath</code> for every file under <code>backend/dist/engram</code>; it is generated from the built tree</td>
+<td>step "Generate file manifest"</td>
+</tr>
+<tr>
+<td><code>sha256sums.txt</code> (zip hash) is computed in <code>create-release</code> from the downloaded artifact</td>
+<td><code>create-release</code></td>
+</tr>
+<tr>
+<td>Asset is named <code>engram-win-x64.zip</code> and must never contain "windows" (#825)</td>
+<td>comment above "Package"</td>
+</tr>
+<tr>
+<td><code>engram.exe</code> is the onedir launcher with <code>upx=True</code>; <code>fpcalc.exe</code> is bundled to <code>_internal/bin/</code></td>
+<td><code>backend/engram.spec</code></td>
+</tr>
+<tr>
+<td><code>fpcalc</code> is Chromaprint (LGPL-2.1+), downloaded and SHA-pinned by <code>fetch_fpcalc.py</code></td>
+<td><code>backend/scripts/fetch_fpcalc.py</code></td>
+</tr>
+<tr>
+<td>Updater: download, check zip against <code>sha256sums.txt</code>, extract to <code>.incoming</code>, <code>_verify_extracted</code> (sentinels + every manifest path exists), atomic promote, re-verify before swap, <code>.bat</code> robocopy + rename swap with rollback</td>
+<td><code>backend/app/core/updater.py</code> (<code>_download</code>, <code>_verify_extracted</code>, <code>apply_update</code>, <code>_restart_windows</code>)</td>
+</tr>
+<tr>
+<td>The updater checks <strong>existence</strong>, not hashes, of manifest entries, and does no Authenticode check</td>
+<td><code>_verify_extracted</code></td>
+</tr>
+<tr>
+<td>Triggers: tag push <code>v*</code> and <code>workflow_dispatch</code> with a <code>draft</code> input (hidden from <code>/releases/latest</code>, which the updater polls)</td>
+<td>top of <code>release.yml</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-signing-fits-the-update-flow-without-updater-changes">Why signing fits the update flow without updater changes</h3>
+<p>Signing changes the bytes of <code>engram.exe</code> and <code>fpcalc.exe</code>, so it must run <strong>before</strong> the manifest and zip steps. If it does, everything downstream is correct by construction: the manifest records signed hashes, the zip contains signed files, <code>create-release</code> hashes the signed zip, and <code>_verify_extracted</code> (existence check) is indifferent to hashes. The current step order already has the right shape; the sign step slots in right after "Build executable" and before the smoke test, so the smoke test also exercises the signed binary.</p>
+<p>Things that could still bite, and the guard for each:</p>
+<ul>
+<li><strong>PyInstaller archive and appended signature.</strong> The launcher carries its archive appended to the PE file. PyInstaller supports signing the finished executable (its bootloader accounts for the Authenticode blob), but this is the single most important thing to prove on the first dry run. The post-sign smoke test (server boots, <code>/api/detect-tools</code> finds fpcalc, <code>--selftest</code>) is the proof. Do not sign before PyInstaller finishes, and do not run UPX after signing.</li>
+<li><strong>UPX.</strong> <code>engram.spec</code> sets <code>upx=True</code>. If UPX is on the build PATH it packs binaries, which both raises AV false positives and would invalidate any signature applied earlier. The GitHub runner has no UPX by default, so this is probably inert today, but the implementation PR should confirm that and set <code>upx=False</code> explicitly for the Windows build so it cannot change silently.</li>
+<li><strong>Timestamping is mandatory.</strong> Azure certificates live about 72 hours (community-confirmed, not in official docs), so a signature without an RFC 3161 timestamp stops validating within days. The timestamp is what keeps old releases valid.</li>
+<li><strong>Defender locks during the swap.</strong> Unrelated to signing, but signed binaries have better odds of skipping the heavy first-scan hold that motivated the atomic-swap work. No code change needed.</li>
+</ul>
+<h2 id="3-options-compared">3. Options compared</h2>
+<p>All dollar figures are indicative and must be re-checked at purchase time. The Azure pricing page did not render dollar amounts when fetched; the $9.99 and $99.99 figures come from Microsoft's own code-signing-options page as relayed by secondary sources.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>A. Azure Artifact Signing</strong> (formerly Trusted Signing)</th>
+<th><strong>B. SignPath Foundation</strong></th>
+<th><strong>C. OV cert + cloud HSM</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Who qualifies</strong></td>
+<td>Organizations in US, Canada, EU, UK, AU, NZ, JP, KR, SG, CH, NO, IL. <strong>Individuals only if located in the US or Canada.</strong> Azure billing account must be type Individual, and its legal name and sold-to address must match the government ID. Needs a paid subscription (no free or sponsored).</td>
+<td>Open-source projects with an OSI license and no commercial dual licensing (AGPL-3.0 qualifies). Project must be released, maintained, have verifiable reputation, public "Code signing policy" section, MFA for team, defined Author/Reviewer/Approver roles.</td>
+<td>Anyone a CA will validate. Some CAs issue OV to individuals; many want a registered business.</td>
+</tr>
+<tr>
+<td><strong>Cost</strong></td>
+<td>Basic about $9.99/month (5,000 signatures); Premium about $99.99/month (100,000). Billing starts when the account is created, even if validation fails. Realistic cost for Engram: Basic, about $120/year.</td>
+<td>Free.</td>
+<td>Cert about $129 to $530/year (one year OV list prices) plus key storage: Azure Key Vault Premium HSM or Google Cloud KMS at a few dollars/month, or a CA-hosted signing service (SSL.com eSigner, priced by plan). Realistic: $200 to $400/year. EV is $349 to $669/year, not worth it.</td>
+</tr>
+<tr>
+<td><strong>Lead time</strong></td>
+<td>Account is minutes. Identity validation <strong>1 to 20 business days</strong>, plus the AU10TIX photo-ID and Authenticator step done by the maintainer.</td>
+<td>Not published. Unofficial reports guess 2 to 4 weeks. They also expect traction first and a download page that credits SignPath.</td>
+<td>CA validation typically days to about 2 weeks; then HSM or eSigner setup.</td>
+</tr>
+<tr>
+<td><strong>SmartScreen</strong></td>
+<td>Reputation attaches to the <strong>verified identity</strong>, not the cert, so rotation is fine, but Microsoft states there is <strong>no instant trust</strong>: new publishers see warnings for weeks and hundreds of clean installs. Each new build hash also starts cold.</td>
+<td>Same mechanics. Publisher shown is SignPath Foundation, shared across many OSS projects, which may help or may not; unverified.</td>
+<td>OV: reputation builds per certificate and publisher with download volume. A renewal that reuses the same identity builds faster. EV no longer differs.</td>
+</tr>
+<tr>
+<td><strong>CI integration</strong></td>
+<td>Best of the three. <code>azure/login@v3</code> with OIDC (no secret) then <code>azure/artifact-signing-action@v2</code>, Windows runner only. Fits <code>build-windows</code> as is.</td>
+<td>Heavier. Unsigned artifact is uploaded with <code>actions/upload-artifact</code>, then <code>signpath/github-action-submit-signing-request@v3</code> submits it, and <strong>an Approver clicks approve for every release</strong>. Policy allows GitHub-hosted runners only. Needs a "GitHub.com" Trusted Build System set up in SignPath, a project, signing policy and artifact configuration.</td>
+<td>Moderate to heavy. Typically AzureSignTool against Key Vault, or CA's eSigner client; long-lived credentials in GitHub secrets (conflicts with acceptance criterion "credentials only in encrypted secrets" in spirit if they are broad).</td>
+</tr>
+<tr>
+<td><strong>What can be signed</strong></td>
+<td>Any PE file, any count within quota.</td>
+<td><strong>Only your own binaries.</strong> <code>engram.exe</code> yes; third-party <code>fpcalc.exe</code> (Chromaprint) and bundled DLLs no (unsigned upstream binaries may ride along). Zip signing is by signing inner files, not the zip.</td>
+<td>Any file.</td>
+</tr>
+<tr>
+<td><strong>Per-release friction</strong></td>
+<td>None (tag push signs automatically).</td>
+<td>Manual approval per release adds a human step to the tag-to-release chain (<code>tag-release.yml</code> then <code>release.yml</code>); a slow approver stalls releases.</td>
+<td>None.</td>
+</tr>
+<tr>
+<td><strong>Main risk</strong></td>
+<td>Eligibility (US/CA individual) and a validation that can stall on mismatched name or address.</td>
+<td>Unpublished approval time; strict rules; fpcalc stays unsigned.</td>
+<td>Cost and key-custody complexity for no SmartScreen gain.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reading-of-the-table">Reading of the table</h3>
+<ul>
+<li><strong>A</strong> wins on cost, setup and automation, and loses only on the geographic and legal-identity gate and on a validation that Microsoft itself says can take four weeks.</li>
+<li><strong>B</strong> is the right hedge, not the lead: free, but its manual approval and unpublished lead time cut against a December freeze. Its approval step is arguably a feature for supply-chain hygiene, but a solo maintainer approving their own release adds little.</li>
+<li><strong>C</strong> is only worth choosing if A and B are both unavailable.</li>
+</ul>
+<h2 id="4-decisions-the-maintainer-must-make">4. Decisions the maintainer must make</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Decision</th>
+<th>Recommended answer</th>
+<th>Needed by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>D1</strong></td>
+<td>Which route to start.</td>
+<td>A (Azure), with B as a parallel hedge only if D2 says the maintainer is ineligible.</td>
+<td><strong>2026-11-09</strong></td>
+</tr>
+<tr>
+<td><strong>D2</strong></td>
+<td>Eligibility facts: is the maintainer's legal address and government ID in the US or Canada? Sign as an individual (name on the certificate is the legal name, with city and state) or via a registered entity?</td>
+<td>Individual if eligible. The legal name will be public on every release. Confirm they are comfortable with that.</td>
+<td><strong>2026-11-09</strong> (blocks everything)</td>
+</tr>
+<tr>
+<td><strong>D3</strong></td>
+<td>Signing scope.</td>
+<td><code>engram.exe</code> + bundled <code>fpcalc.exe</code> only. Do not sign <code>_internal</code> DLL/<code>.pyd</code> files.</td>
+<td>2026-11-13 (before implementation PR; does not gate the 11-09 validation start)</td>
+</tr>
+<tr>
+<td><strong>D4</strong></td>
+<td>Budget approval for about $10/month (about $120/year), billed from the day the account is created.</td>
+<td>Approve.</td>
+<td><strong>2026-11-09</strong></td>
+</tr>
+<tr>
+<td><strong>D5</strong></td>
+<td>Failure policy: what happens if signing fails on a tag.</td>
+<td>Fail the release hard, no silent unsigned fallback. Keep <code>workflow_dispatch</code> <code>draft=true</code> for dry runs. Hotfix path: re-run the workflow, do not add a skip flag.</td>
+<td>2026-11-13</td>
+</tr>
+<tr>
+<td><strong>D6</strong></td>
+<td>Should the updater verify the Authenticode publisher of the staged <code>engram.exe</code> before swapping (section 6, optional phase)?</td>
+<td>Yes, but as a later separate PR, warn-only for the first signed release, enforcing after.</td>
+<td>Before the stable tag</td>
+</tr>
+<tr>
+<td><strong>D7</strong></td>
+<td>Who is the SignPath Approver, and are they willing to be named publicly (only if B is used)?</td>
+<td>Only decide if B is activated.</td>
+<td>On fallback</td>
+</tr>
+</tbody>
+</table>
+<h3 id="timeline-against-the-december-freeze">Timeline against the December freeze</h3>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-11-09</td>
+<td>D1, D2, D4 decided. Create Azure subscription (billing account type Individual, name and address matching ID), register <code>Microsoft.CodeSigning</code>, create account, submit identity validation, complete the ID check on the phone.</td>
+</tr>
+<tr>
+<td>2026-11-13</td>
+<td>D3, D5 decided. Implementation PR can be written while validation is pending (the pipeline can be built and reviewed without a live profile; it only needs the profile for the dry run).</td>
+</tr>
+<tr>
+<td><strong>2026-11-25</strong></td>
+<td><strong>Tripwire.</strong> If validation is not Completed, open the SignPath application (needs the "Code signing policy" text on the README and download page first, see section 5) and decide whether a plan C quote is worth the effort. 11-09 plus 12 business days is 11-25.</td>
+</tr>
+<tr>
+<td>2026-12-07</td>
+<td>Latest date Microsoft's own 20-business-day bound reaches from an 11-09 start.</td>
+</tr>
+<tr>
+<td>By freeze</td>
+<td>First dry run on a draft release; first signed stable-line release candidate. If nothing is validated by then, ship the RC unsigned and add the "unsigned, here is why" note to the release body.</td>
+</tr>
+</tbody>
+</table>
+<p>Starting the Azure validation also costs nothing extra beyond the first $9.99, so the hedge is cheap. Applying to SignPath at the same time is allowed but costs real effort (policy text, role assignments) and the two identities would then be published under different publisher names, which fragments SmartScreen reputation. Do not run both unless the tripwire fires.</p>
+<h2 id="5-one-time-setup-the-maintainer-does-not-automatable-by-an-agent">5. One-time setup the maintainer does (not automatable by an agent)</h2>
+<p>Do not delegate these to a coding session: they need the maintainer's government ID, phone and billing details.</p>
+<h3 id="route-a-azure">Route A (Azure)</h3>
+<ol>
+<li>Confirm Azure billing account type is <strong>Individual</strong> and that its legal name and sold-to address exactly match the ID. Fix the billing account first; a mismatch forces a new validation request.</li>
+<li>Create a pay-as-you-go subscription (trial and sponsored subscriptions are not supported).</li>
+<li>Register the <code>Microsoft.CodeSigning</code> resource provider.</li>
+<li>Create an Artifact Signing account (<strong>Basic</strong> SKU is enough; pick a region and note its endpoint, for example <code>https://eus.codesigning.azure.net/</code>). Account names are 3 to 24 alphanumeric characters, globally unique.</li>
+<li>Assign yourself the <em>Artifact Signing Identity Verifier</em> role, then create an <strong>Individual, Public</strong> identity validation. Complete the AU10TIX ID flow with the phone and Microsoft Authenticator. Watch the portal for "Action Required".</li>
+<li>When Completed, create a <strong>Public Trust</strong> certificate profile (and optionally a <em>Public Trust Test</em> profile for the first dry run). Choose whether street address and postal code appear in the subject; leaving them off is the privacy-friendly default.</li>
+<li>Create an Entra app registration for GitHub, add a <strong>federated credential</strong> for <code>repo:Jsakkos/engram:environment:release-signing</code>, and assign it the <em>Artifact Signing Certificate Profile Signer</em> role on the account.</li>
+<li>In the GitHub repo create an <strong>Environment</strong> named <code>release-signing</code> (optionally with a required reviewer if a manual gate on signing is wanted). Add these as environment <strong>variables</strong>, not secrets, since OIDC makes them non-secret identifiers: <code>AZURE_CLIENT_ID</code>, <code>AZURE_TENANT_ID</code>, <code>AZURE_SUBSCRIPTION_ID</code>, <code>SIGNING_ENDPOINT</code>, <code>SIGNING_ACCOUNT</code>, <code>SIGNING_PROFILE</code>.</li>
+</ol>
+<p>This satisfies the issue's acceptance criterion "credentials live only in GitHub encrypted secrets" in a stronger form: there is no stored credential at all.</p>
+<h3 id="route-b-signpath-only-if-activated">Route B (SignPath), only if activated</h3>
+<p>Add a "Code signing policy" section to <code>README.md</code> and the download docs that credits SignPath.io and SignPath Foundation, lists Authors/Reviewers/Approvers and states the privacy policy; make sure the download page exists in its release form; apply at signpath.org/apply; once approved, add the GitHub.com Trusted Build System and a project/policy/artifact configuration (a <code>&lt;zip-file&gt;</code> root containing <code>engram.exe</code>), plus <code>SIGNPATH_API_TOKEN</code> as a secret. Third-party <code>fpcalc.exe</code> remains unsigned. Because this route adds a per-release approval, set the <code>submit-signing-request</code> timeouts well above the 600 s default or the release job will fail while waiting for a human.</p>
+<h2 id="6-ci-changes-step-by-step-for-the-implementation-session">6. CI changes, step by step (for the implementation session)</h2>
+<p>Land these as separate small PRs. None is merged until D1 to D5 are answered and the maintainer reports validation Completed.</p>
+<h3 id="pr-1-signing-step-in-build-windows-route-a">PR 1: signing step in <code>build-windows</code> (Route A)</h3>
+<p>File: <code>.github/workflows/release.yml</code>, job <code>build-windows</code> only. Linux and macOS jobs are untouched.</p>
+<ol>
+<li><strong>Job permissions.</strong> The workflow sets <code>permissions: contents: write</code>. A job-level <code>permissions</code> block replaces, not merges, so <code>build-windows</code> needs both <code>contents: read</code> (for checkout) and <code>id-token: write</code> (for OIDC). Declare them on the job, leaving <code>create-release</code> on the workflow default.</li>
+<li><strong>Environment.</strong> Add <code>environment: release-signing</code> to the job so the federated credential subject matches (it works for both tag and <code>workflow_dispatch</code> runs). A required reviewer can be added later, but then every tag release waits on a click, which gives up the "no per-release human click" advantage in section 3. Leave it off unless wanted. <code>build-windows</code> needs only <code>contents: read</code>, not <code>contents: write</code>; only <code>create-release</code> uploads assets.</li>
+<li><strong>Insert after "Build executable" and before "Smoke test built executable":</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure login (OIDC)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/login@&lt;full-sha&gt;</span><span class="w">   </span><span class="c1"># v3; pin to a full commit SHA, not the floating tag</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">with</span><span class="p">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">client-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_CLIENT_ID }}</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">tenant-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_TENANT_ID }}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">subscription-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Stage binaries to sign</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">shell</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pwsh</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="no">New-Item -ItemType Directory -Force sign-staging | Out-Null</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="no">Copy-Item backend/dist/engram/engram.exe sign-staging/</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="no">Copy-Item backend/dist/engram/_internal/bin/fpcalc.exe sign-staging/</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Sign engram.exe and fpcalc.exe</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/artifact-signing-action@&lt;full-sha&gt;</span><span class="w">   </span><span class="c1"># v2; pin to a full commit SHA, not the floating tag</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">  </span><span class="nt">with</span><span class="p">:</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.SIGNING_ENDPOINT }}</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="nt">signing-account-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.SIGNING_ACCOUNT }}</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="nt">certificate-profile-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.SIGNING_PROFILE }}</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="nt">files-folder</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sign-staging</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="nt">files-folder-filter</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exe</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="nt">file-digest</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SHA256</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="nt">timestamp-rfc3161</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://timestamp.acs.microsoft.com</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="nt">timestamp-digest</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SHA256</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Put signed binaries back and verify</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">  </span><span class="nt">shell</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pwsh</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">    </span><span class="no">Copy-Item sign-staging/engram.exe backend/dist/engram/engram.exe -Force</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">    </span><span class="no">Copy-Item sign-staging/fpcalc.exe backend/dist/engram/_internal/bin/fpcalc.exe -Force</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">    </span><span class="no">foreach ($f in "backend/dist/engram/engram.exe", "backend/dist/engram/_internal/bin/fpcalc.exe") {</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">      </span><span class="no">$sig = Get-AuthenticodeSignature $f</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">      </span><span class="no">if ($sig.Status -ne "Valid") { throw "$f signature status: $($sig.Status)" }</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">      </span><span class="no">if (-not $sig.TimeStamperCertificate) { throw "$f has no RFC 3161 timestamp" }</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">      </span><span class="no">Write-Host "$f signed by: $($sig.SignerCertificate.Subject)"</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">    </span><span class="no">}</span>
+</code></pre></div>
+<p>Notes for the implementer:
+   - Before signing, assert <code>sign-staging</code> contains exactly the two expected files, so a changed action filter cannot sign or miss anything silently.
+   - Staging into a temp folder makes the action's folder recursion semantics irrelevant and keeps the signature count at exactly two per release, far under the 5,000/month quota even with many dry runs.
+   - Verify the action's exact input names against its README at implementation time (the names above are from its current documentation; the README had no tagged release list when checked).
+   - Use <code>Get-AuthenticodeSignature</code> rather than locating <code>signtool.exe</code> in the SDK path. It is a built-in and gives status, signer and timestamp in one call. Treat <code>Valid</code> plus a timestamp as the gate. A stricter version also asserts <code>$sig.SignerCertificate.Subject</code> contains the expected publisher name (store that string as an environment variable <code>SIGNING_EXPECTED_SUBJECT</code> so a mis-pointed profile is caught).
+4. <strong>Leave unchanged:</strong> the smoke test, CA/fpcalc checks, <code>--selftest</code>, manifest and zip steps. They now run against signed files, which is the point.
+5. <strong>Add a new step between "Generate file manifest" and "Package"</strong> (not inside the earlier "Verify CA bundle" step, which runs before the manifest): re-run <code>Get-AuthenticodeSignature</code> on both <code>backend/dist/engram/engram.exe</code> and <code>backend/dist/engram/_internal/bin/fpcalc.exe</code> to prove nothing modified the signed files before they were zipped.
+6. <strong>Spec hardening. Precondition for the dry run, because UPX would corrupt the appended PyInstaller archive plus signature and make the dry run untrustworthy</strong> (same PR or an adjacent one): in <code>backend/engram.spec</code>, set <code>upx=False</code> for both <code>EXE</code> and <code>COLLECT</code> (or gate on <code>os.name != "nt"</code>). Check the runner's PATH for <code>upx</code> first so the change is understood rather than assumed.
+7. <strong>Dry run.</strong> Trigger <code>workflow_dispatch</code> with <code>draft: true</code> on the PR branch. Check: all three Windows verify steps pass; the smoke test passes against the signed exe (this is the PyInstaller-appended-signature proof); download the draft zip in a browser on a clean Windows machine and note the SmartScreen dialog and the Digital Signatures tab on <code>engram.exe</code>. Record the result in the PR.</p>
+<h3 id="pr-2-docs-and-release-notes">PR 2: docs and release notes</h3>
+<ul>
+<li><code>README.md</code> / user docs: one paragraph on the first-run SmartScreen prompt ("Engram is signed; Windows still shows a prompt until the publisher builds reputation. Click More info, then Run anyway"), and that auto-updates are unaffected.</li>
+<li><code>CHANGELOG.md</code> under <code>[Unreleased]</code>: user-facing line, referencing #729.</li>
+<li><code>CLAUDE.md</code> Release section: one bullet saying the Windows job signs <code>engram.exe</code> and <code>fpcalc.exe</code> before the manifest and zip, and that the order must be preserved.</li>
+<li>Update the 2026-06-03 review doc's status line to point at this plan (optional).</li>
+</ul>
+<h3 id="pr-3-optional-decision-d6-updater-verifies-the-publisher">PR 3 (optional, decision D6): updater verifies the publisher</h3>
+<p>Goal: defend against a tampered release asset, which the current same-origin SHA-256 checks cannot catch because the attacker who replaces the zip can replace <code>sha256sums.txt</code> and the manifest too.</p>
+<ul>
+<li>Add <code>_verify_signature(engram_exe: Path)</code> in <code>updater.py</code>, Windows only, invoked from <code>_download</code> after <code>_verify_extracted</code> and again in <code>apply_update</code> next to the existing re-verify. Implement via <code>WinVerifyTrust</code> through <code>ctypes</code>, or by shelling out to PowerShell <code>Get-AuthenticodeSignature</code> (slower and subject to Defender latency; use a generous timeout).</li>
+<li><strong>Pin the publisher subject (CN), never the thumbprint.</strong> Azure certificates rotate about every 72 hours, so a thumbprint pin would break every release.</li>
+<li><strong>Trust on first signed:</strong> enforce only if the currently running <code>engram.exe</code> is itself validly signed. Users updating from the last unsigned release to the first signed one must not be blocked. Ship the first signed release in warn-only mode (log and surface in diagnostics), then flip to enforcing.</li>
+<li>Keep it out of the <code>.bat</code> helper; do it in Python before the swap so a failure leaves state in <code>ERROR</code> with the live install untouched, like the other verifier failures.</li>
+<li>Tests: pure-function tests with the PowerShell/<code>ctypes</code> call mocked (valid, invalid, unsigned, wrong subject, current-build-unsigned skip); no real signing needed. The existing updater tests that call <code>_verify_extracted</code> must still pass untouched.</li>
+</ul>
+<h3 id="pr-1-variant-for-route-b-signpath">PR 1 variant for Route B (SignPath)</h3>
+<p>Only if the tripwire fires. In <code>build-windows</code>, after "Build executable": copy <code>engram.exe</code> into a clean folder, upload it with <code>actions/upload-artifact</code> (<code>id: unsigned</code>), run <code>signpath/github-action-submit-signing-request@v3</code> with <code>github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}</code>, <code>wait-for-completion: true</code> and a long timeout, <code>output-artifact-directory: signed</code>, then copy the signed <code>engram.exe</code> back into <code>backend/dist/engram/</code>. Skip <code>fpcalc.exe</code>. Everything after (verify, smoke test, manifest, zip) is identical. Document the publisher as SignPath Foundation in the verification step instead of the individual's name.</p>
+<h2 id="7-risks-and-open-questions">7. Risks and open questions</h2>
+<ul>
+<li><strong>Identity validation can stall.</strong> Microsoft allows three document-upload attempts and requires matching documents. Mitigation: fix billing account name and address before submitting; use a clean ID photo per the quickstart rules.</li>
+<li><strong>SmartScreen will still warn at first.</strong> Set expectations in the release notes and README (PR 2). The first Windows users to download after signing carry the reputation cost.</li>
+<li><strong>Public legal name on every release.</strong> An individual certificate shows the legal name plus city and state. This is a privacy decision (D2), not a technical one.</li>
+<li><strong>Account billing starts at creation.</strong> Create the account and submit validation the same day to avoid paying for idle months.</li>
+<li><strong>Azure region and service name drift.</strong> The product was renamed from Trusted Signing to Artifact Signing (CLI extension <code>artifact-signing</code>, action <code>azure/artifact-signing-action</code>); older blog posts and the June review use the old names and a different action. Use the current docs.</li>
+<li><strong>Action pinning.</strong> The repo's other workflows use major-version tags; for a signing action with access to a code-signing identity, pin to a full commit SHA.</li>
+<li><strong>Unverified claims.</strong> Pricing dollar amounts (Azure Basic/Premium), the 72-hour certificate lifetime, the SignPath 2 to 4 week review estimate and the OV/HSM price ranges come from secondary sources. Re-check each before spending money or setting dates.</li>
+<li><strong>EV claim conflict.</strong> One vendor blog claims EV still gives instant reputation. Microsoft-aligned and multiple other sources say it does not since March 2024. This plan follows the majority and the Microsoft guidance.</li>
+</ul>
+<h2 id="8-acceptance-mapping-issue-729">8. Acceptance mapping (issue #729)</h2>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Delivered by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows release artifacts are Authenticode-signed and timestamped</td>
+<td>PR 1: <code>engram.exe</code> and <code>fpcalc.exe</code>, RFC 3161 via <code>timestamp.acs.microsoft.com</code></td>
+</tr>
+<tr>
+<td>CI verifies the signatures before publishing</td>
+<td>PR 1: <code>Get-AuthenticodeSignature</code> gate (status Valid, timestamp present, optional subject check) before the smoke test and again before packaging</td>
+</tr>
+<tr>
+<td>Signing credentials live only in GitHub encrypted secrets</td>
+<td>PR 1 setup: OIDC federation, so no stored signing credential; identifiers live in a protected Environment</td>
+</tr>
+<tr>
+<td>(Narrowed) "and the bundled native DLLs"</td>
+<td>Deferred by decision D3: not needed for SmartScreen, costs quota, not permitted under SignPath</td>
+</tr>
+</tbody>
+</table>
+<h2 id="sources">Sources</h2>
+<ul>
+<li><a href="https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart">Quickstart: Set up Artifact Signing (Microsoft Learn)</a></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options">Code signing options for Windows app developers (Microsoft Learn)</a></li>
+<li><a href="https://github.com/Azure/artifact-signing-action">Artifact Signing GitHub Action</a></li>
+<li><a href="https://azure.microsoft.com/en-us/pricing/details/artifact-signing/">Artifact Signing pricing (Azure)</a></li>
+<li><a href="https://learn.microsoft.com/windows/apps/package-and-deploy/smartscreen-reputation">SmartScreen reputation for Windows apps (Microsoft Learn)</a></li>
+<li><a href="https://signpath.org/terms.html">SignPath Foundation conditions for open source projects</a></li>
+<li><a href="https://docs.signpath.io/trusted-build-systems/github">SignPath GitHub trusted build system docs</a></li>
+<li><a href="https://www.itechguides.com/best/code-signing-software/azure-artifact-signing/">Azure Artifact Signing review and pricing (itechguides)</a></li>
+<li><a href="https://my-ssl.com/learn/code-signing-certificate-price">Code signing certificate prices, OV vs EV (my-ssl.com)</a></li>
+<li><a href="https://www.ssl.com/products/software-integrity/code-signing/ov/">SSL.com OV code signing</a> and <a href="https://www.ssl.com/products/software-integrity/signing-service/">eSigner</a></li>
+<li><a href="https://www.todesktop.com/blog/posts/windows-apps-psa-ev-certs-do-not-grant-immediate-reputation-anymore">EV certificates no longer grant immediate reputation (ToDesktop)</a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>
