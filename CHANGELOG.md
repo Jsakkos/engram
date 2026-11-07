@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+## [0.44.1] - 2026-11-07
+
+_Highlights: TheTVDB episode numbering is now reachable for TV discs in review, plus a round of dashboard and setup polish: per-disc activity log lines, separate ripped and matched track counts, and a first-run welcome._
+
 ### Fixed
 
 - The setup wizard and Settings open each step or section scrolled to the top, checkbox descriptions read as normal sentence text instead of tracked capitals, and the inline action buttons (Test Token, Enable GPU acceleration) now have proper button styling with a visible keyboard focus ring (#725, #739, thanks @sinaiko0212!)
