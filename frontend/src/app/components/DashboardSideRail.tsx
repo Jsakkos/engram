@@ -8,6 +8,8 @@ interface ActivityEvent {
   ts: number;
   level: "info" | "warn" | "error" | "ok";
   subject: string;
+  /** Untruncated subject, shown as a tooltip. */
+  subjectTitle?: string;
   message: string;
 }
 
@@ -28,6 +30,20 @@ function parseMbPerSec(speedStr: string | undefined): number {
   if (!speedStr) return 0;
   const m = speedStr.match(/([\d.]+)\s*M[Bb]?\/s/);
   return m ? parseFloat(m[1]) : 0;
+}
+
+const DISC_LABEL_MAX = 14;
+
+/** Short disc tag for activity rows: volume label, else detected title, else `JOB <id>`. */
+function discTag(job: Job | undefined, jobId: number): { short: string; full: string } {
+  const raw = (job?.volume_label || job?.detected_title || "").trim();
+  if (!raw) return { short: `JOB ${jobId}`, full: `JOB ${jobId}` };
+  // Cut from the middle: the disc suffix (S1D1 vs S1D2) is what tells discs apart.
+  const short =
+    raw.length > DISC_LABEL_MAX
+      ? `${raw.slice(0, 7)}…${raw.slice(raw.length - (DISC_LABEL_MAX - 8))}`
+      : raw;
+  return { short, full: raw };
 }
 
 const LEVEL_COLOR: Record<ActivityEvent["level"], string> = {
@@ -111,6 +127,7 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
   useEffect(() => {
     const newEvents: ActivityEvent[] = [];
     const now = Date.now();
+    const jobsById = new Map(jobs.map((j) => [j.id, j]));
 
     // Job state transitions
     const currentJobs = new Map<number, JobState>();
@@ -147,11 +164,14 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
           title.state === "matched" || title.state === "completed" ? "ok" :
           title.state === "review" ? "warn" :
           "info";
+        const tag = discTag(jobsById.get(title.job_id), title.job_id);
+        const trackNo = `T${String(title.title_index).padStart(2, "0")}`;
         newEvents.push({
           id: `t${title.id}-${title.state}-${now}`,
           ts: now,
           level,
-          subject: `T${String(title.title_index).padStart(2, "0")}`,
+          subject: `${tag.short} · ${trackNo}`,
+          subjectTitle: `${tag.full} · ${trackNo}`,
           message:
             title.state === "matched" && title.matched_episode
               ? `MATCHED · ${title.matched_episode}`
@@ -366,7 +386,10 @@ export function DashboardSideRail({ jobs, titlesMap }: Props) {
                 }}
               >
                 <span style={{ color: sv.inkDim }}>{formatTimeOfDay(e.ts)}</span>
-                <span style={{ color: LEVEL_COLOR[e.level], fontWeight: 600 }}>
+                <span
+                  title={e.subjectTitle}
+                  style={{ color: LEVEL_COLOR[e.level], fontWeight: 600, whiteSpace: "nowrap" }}
+                >
                   {e.subject}
                 </span>
                 <span style={{ color: sv.inkDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
