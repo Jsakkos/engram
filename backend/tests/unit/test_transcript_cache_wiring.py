@@ -46,7 +46,7 @@ class FakeModel:
         self.calls = 0
         self.text_template = text_template
 
-    def transcribe(self, audio_path):
+    def transcribe(self, audio_path, language=None):
         self.calls += 1
         return {"text": " " + self.text_template.format(stem=Path(audio_path).stem) + " "}
 
@@ -178,7 +178,7 @@ class TestLayering:
         video = _video(tmp_path)
 
         class SilentModel(FakeModel):
-            def transcribe(self, audio_path):
+            def transcribe(self, audio_path, language=None):
                 self.calls += 1
                 return {"text": None}
 

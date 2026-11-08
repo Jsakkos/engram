@@ -18,9 +18,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 from app.core.episode_codes import episode_parts
-from app.core.match_language import ENGLISH, current_match_language
+from app.core.match_language import ENGLISH, UNSPACED_LANGUAGES, current_match_language
 from app.matcher import transcript_store
-from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
+from app.matcher.asr_models import (
+    detect_asr_device,
+    get_cached_model,
+    model_output_key,
+    whisper_language,
+)
 from app.matcher.audio_streams import (
     AudioPlan,
     follows_auto_pick,
@@ -916,6 +921,11 @@ def calibrate_confidence(
     return confidence, components
 
 
+def _vote_mass(entry: dict) -> float:
+    """Summed vote cosine of a results_summary entry; mean x votes when absent."""
+    return entry.get("vote_mass", entry["score"] * entry.get("vote_count", 0))
+
+
 def _attach_calibrated_confidence(
     best_match: dict,
     results_summary: list[dict],
@@ -932,17 +942,24 @@ def _attach_calibrated_confidence(
     ``match_details`` and builds ``runner_ups`` where each entry keeps its raw
     ``score`` (for cascading reassignment) and gains a calibrated ``confidence``
     scaled to the winner so the winner's leaderboard entry equals the headline.
+
+    Separation comes from the vote-mass gap (see _vote_mass): the mean-cosine
+    gap reads 19 votes against 1 as a tie.
     """
     if not results_summary:
         return
 
-    # results_summary is sorted by score descending by the caller.
+    # results_summary is sorted by vote mass descending by the caller.
     top1 = results_summary[0]["score"]
     if len(results_summary) >= 2:
         score_gap = top1 - results_summary[1]["score"]
+        # Separation comes from the vote-mass gap, which calibrate_confidence
+        # turns into gap / score; score_gap stays the reported mean-cosine gap.
+        top_mass, runner_mass = _vote_mass(results_summary[0]), _vote_mass(results_summary[1])
+        mass_gap = top1 * (top_mass - runner_mass) / top_mass if top_mass > 0 else 0.0
         runner_up_votes = results_summary[1].get("vote_count", 0)
     else:
-        score_gap = top1
+        score_gap = mass_gap = top1
         runner_up_votes = 0
 
     md = best_match.setdefault("match_details", {})
@@ -956,7 +973,7 @@ def _attach_calibrated_confidence(
     # but sourcing both here removes the implicit cross-reference invariant.
     confidence, components = calibrate_confidence(
         score=top1,
-        score_gap=score_gap,
+        score_gap=mass_gap,
         vote_count=vote_count,
         target_votes=target_votes,
         processed_coverage=processed_coverage,
@@ -976,11 +993,15 @@ def _attach_calibrated_confidence(
     md["ratio_confidence"] = components["ratio_confidence"]
     md["coverage"] = components["coverage"]
 
+    # Scale by vote mass, the key the leaderboard is sorted by: scaled by the
+    # mean, a one-vote runner-up with a higher cosine would show above the
+    # headline, and conflict resolution copies that value onto a reassigned title.
+    top_mass = _vote_mass(results_summary[0])
     runner_ups = []
     for r in results_summary:
         if r["score"] <= 0:
             continue
-        ru_confidence = _clamp01(confidence * (r["score"] / top1)) if top1 > 0 else 0.0
+        ru_confidence = _clamp01(confidence * (_vote_mass(r) / top_mass)) if top_mass > 0 else 0.0
         runner_ups.append(
             {
                 "episode": r["episode"],
@@ -1034,7 +1055,7 @@ class TfidfMatcher:
             f"{self.ref_matrix.shape[1]} features"
         )
 
-    def prepare(self, reference_files, subtitle_cache: SubtitleCache):
+    def prepare(self, reference_files, subtitle_cache: SubtitleCache, language: str = ENGLISH):
         """
         Fit TF-IDF vectorizer on all reference episode full texts.
 
@@ -1047,6 +1068,7 @@ class TfidfMatcher:
         Args:
             reference_files: List of paths to reference SRT files
             subtitle_cache: SubtitleCache instance for loading/caching SRT content
+            language: the references' language; unspaced scripts use character n-grams
         """
         self.ref_file_order = []
         corpus = []
@@ -1067,9 +1089,10 @@ class TfidfMatcher:
                 f"{', '.join(dropped)}"
             )
 
+        unspaced = language in UNSPACED_LANGUAGES
         self.vectorizer = TfidfVectorizer(
-            analyzer="word",
-            ngram_range=(1, 2),
+            analyzer="char_wb" if unspaced else "word",
+            ngram_range=(2, 4) if unspaced else (1, 2),
             max_features=10000,
             sublinear_tf=True,
         )
@@ -1173,6 +1196,11 @@ class MatchCoverage:
         if not self.matched_chunks:
             return 0.0
         return sum(c["duration"] / self.video_duration for c in self.matched_chunks)
+
+    @property
+    def vote_mass(self) -> float:
+        """Summed chunk confidences: grows with the vote count, unlike the mean."""
+        return sum(c["confidence"] for c in self.matched_chunks)
 
     @property
     def ranked_voting_score(self) -> float:
@@ -1360,7 +1388,10 @@ class EpisodeMatcher:
         fallback share one transcript cache without colliding (chunks start >= 300s
         with a 30s duration; the full-file pass uses start=0 with the file duration).
         """
-        return (self._source_key(mkv_file), start_time, duration)
+        key = (self._source_key(mkv_file), start_time, duration)
+        # Whisper's text depends on the language it is told; English keeps the 3-tuple.
+        language = current_match_language()
+        return key if language == ENGLISH else (*key, language)
 
     def _remember_transcription(self, key: tuple, text: str) -> None:
         """Store an ASR transcript, bounding the cache.
@@ -1393,7 +1424,7 @@ class EpisodeMatcher:
         loaded_device = getattr(model, "device", None)
         if loaded_device in ("cpu", "cuda"):
             config["device"] = loaded_device
-        return model_output_key(config)
+        return model_output_key(config, current_match_language())
 
     def transcribe_chunk_cached(
         self,
@@ -1445,7 +1476,12 @@ class EpisodeMatcher:
         # make this offset a perpetual miss (the `is None` guards above would
         # re-transcribe it every season). The caller's `len(text) < 10` check
         # still skips genuinely empty audio.
-        text = (model.transcribe(audio_path).get("text") or "").strip()
+        language = current_match_language()
+        if language == ENGLISH:
+            result = model.transcribe(audio_path)
+        else:
+            result = model.transcribe(audio_path, language=whisper_language(language))
+        text = (result.get("text") or "").strip()
         self._remember_transcription(chunk_key, text)
         transcript_store.put(file_key, start_time, chunk_len, model_key, text)
         return text
@@ -1906,6 +1942,10 @@ class EpisodeMatcher:
         ``precomputed`` is ``(ref_matrix, ref_episode_codes, idf_array)`` in
         precomputed mode; otherwise ``reference_files`` is fitted.
         """
+        # The analyzer depends on the language, so another language keys separately.
+        language = current_match_language()
+        if language != ENGLISH:
+            signature = (signature, language)
         cached = self._tfidf_cache.get(signature)
         if cached is not None:
             return cached
@@ -1918,7 +1958,7 @@ class EpisodeMatcher:
             ref_matrix, ref_episode_codes, idf_array = precomputed
             tm.load_precomputed(ref_matrix, ref_episode_codes, idf_array)
         else:
-            tm.prepare(reference_files, self.subtitle_cache)
+            tm.prepare(reference_files, self.subtitle_cache, current_match_language())
         with self._tfidf_cache_lock:
             existing = self._tfidf_cache.get(signature)
             if existing is not None:
@@ -1957,7 +1997,7 @@ class EpisodeMatcher:
         # Use the per-call TF-IDF matcher (read-only match(); safe to share).
         if tfidf_matcher is None or not tfidf_matcher.is_prepared:
             tfidf_matcher = TfidfMatcher()
-            tfidf_matcher.prepare(reference_files, self.subtitle_cache)
+            tfidf_matcher.prepare(reference_files, self.subtitle_cache, current_match_language())
 
         cleaned_transcription = self.clean_text(full_transcription)
         tfidf_results = tfidf_matcher.match(cleaned_transcription)
@@ -2291,10 +2331,11 @@ class EpisodeMatcher:
                                     "episode": f"S{ep_season:02d}E{ep_episode:02d}",
                                     "score": cov.ranked_voting_score,
                                     "vote_count": len(cov.matched_chunks),
+                                    "vote_mass": cov.vote_mass,
                                     "target_votes": len(scan_points),
                                 }
                             )
-                    interim_standings.sort(key=lambda x: x["score"], reverse=True)
+                    interim_standings.sort(key=_vote_mass, reverse=True)
                     progress_callback("matching", scan_percent, interim_standings[:5])
 
             logger.info(
@@ -2305,7 +2346,12 @@ class EpisodeMatcher:
             # Each reference episode accumulates weighted votes from matched chunks.
             # Winner: highest weighted consensus score (not just highest single match).
             best_score = 0
+            best_rank = 0
             best_match = None
+            # One key for picking the winner and for ordering the leaderboard, so
+            # results_summary[0] is always best_match (the legacy test flag ranks
+            # by its own score).
+            rank_key = _vote_mass if self.use_ranked_voting else (lambda r: r["score"])
 
             results_summary = []
 
@@ -2327,10 +2373,15 @@ class EpisodeMatcher:
                     "vote_count": len(cov.matched_chunks),
                     "target_votes": len(scan_points),
                     "total_weight": cov.total_vote_weight,
+                    "vote_mass": cov.vote_mass,
                 }
                 results_summary.append(match_info)
 
-                if score > best_score:
+                # Vote mass, not the mean: one stray vote with a slightly higher
+                # cosine must not outrank a run of votes.
+                rank = rank_key(match_info)
+                if rank > best_rank:
+                    best_rank = rank
                     best_score = score
                     best_match = {
                         "season": season,
@@ -2416,7 +2467,7 @@ class EpisodeMatcher:
                 # conflict resolution. All candidates (incl. the winner) appear in
                 # runner_ups so the UI can show the full leaderboard. See
                 # calibrate_confidence for rationale.
-                results_summary.sort(key=lambda x: x["score"], reverse=True)
+                results_summary.sort(key=rank_key, reverse=True)
                 _attach_calibrated_confidence(best_match, results_summary, video_duration)
 
                 score_gap = best_match["match_details"].get("score_gap", 0.0)
