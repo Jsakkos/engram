@@ -2,7 +2,9 @@
 
 ``decide_job_namespace`` runs once per subtitle download (the one point every
 TV job passes after its show and season are known, and the point matching
-already waits on). It never raises: any TVDB problem leaves the job on TMDB.
+already waits on). A job without a season decides in its all-seasons download,
+over the seasons that download fetches (#876). It never raises: any TVDB
+problem leaves the job on TMDB.
 """
 
 from __future__ import annotations
@@ -54,8 +56,53 @@ def _crosswalk_json(season: int, tmdb_eps: list[dict], tvdb_eps: list[dict]) -> 
     return json.dumps(ns.build_crosswalk(season, tmdb_eps, tvdb_eps))
 
 
-async def decide_job_namespace(job_id: int) -> str:
-    """Set and return the job's namespace; record divergence when on TMDB."""
+async def _season_rosters(
+    tmdb_id: int, seasons: list[int], config, tvdb_id: int | None
+) -> tuple[int | None, dict[int, tuple[list[dict], list[dict]]] | None]:
+    """Both catalogues' rosters for EVERY season in ``seasons``, or None.
+
+    All or nothing: a season either catalogue cannot supply makes the whole
+    comparison unusable, because a TheTVDB job's crosswalk must cover every
+    season it downloads references for. The first season is fetched alone so
+    an outage costs one round trip; the rest are fetched together.
+    """
+    first, *rest = seasons
+    tvdb_id, tmdb_eps, tvdb_eps = await _rosters(tmdb_id, first, config, tvdb_id)
+    if not (tvdb_id and tmdb_eps and tvdb_eps):
+        return tvdb_id, None
+    found = {first: (tmdb_eps, tvdb_eps)}
+    results = await asyncio.gather(*(_rosters(tmdb_id, s, config, tvdb_id) for s in rest))
+    for season, (_, tmdb_eps, tvdb_eps) in zip(rest, results, strict=True):
+        if not (tmdb_eps and tvdb_eps):
+            return tvdb_id, None
+        found[season] = (tmdb_eps, tvdb_eps)
+    return tvdb_id, found
+
+
+def _first_divergence(rosters: dict[int, tuple[list[dict], list[dict]]]) -> ns.Divergence | None:
+    for season in sorted(rosters):
+        div = ns.detect_divergence(season, *rosters[season])
+        if div is not None:
+            return div
+    return None
+
+
+def _multi_season_crosswalk_json(rosters: dict[int, tuple[list[dict], list[dict]]]) -> str:
+    # Codes carry their season, so the per-season crosswalks never collide.
+    merged: dict[str, str] = {}
+    for season in sorted(rosters):
+        merged.update(ns.build_crosswalk(season, *rosters[season]))
+    return json.dumps(merged)
+
+
+async def decide_job_namespace(job_id: int, seasons: list[int] | None = None) -> str:
+    """Set and return the job's namespace; record divergence when on TMDB.
+
+    A job with a known season compares that season. A job without one (#876)
+    compares ``seasons``, the seasons its all-seasons download fetches; without
+    them it has nothing to compare and keeps its namespace. Every season must
+    come back from both catalogues, or nothing changes (see ``_season_rosters``).
+    """
     from app.services.config_service import get_config
 
     try:
@@ -64,9 +111,13 @@ async def decide_job_namespace(job_id: int) -> str:
             if job is None:
                 return ns.NAMESPACE_TMDB
             current = job.episode_namespace or ns.NAMESPACE_TMDB
-            if job.content_type != ContentType.TV or not job.tmdb_id or job.detected_season is None:
+            if job.content_type != ContentType.TV or not job.tmdb_id:
                 return current
-            tmdb_id, season = job.tmdb_id, job.detected_season
+            season = job.detected_season
+            compared = [season] if season is not None else sorted(set(seasons or []))
+            if not compared:
+                return current
+            tmdb_id = job.tmdb_id
             pref = await session.get(ShowOrderingPreference, tmdb_id)
             known_tvdb_id = pref.tvdb_id if pref else None
             if (
@@ -85,7 +136,7 @@ async def decide_job_namespace(job_id: int) -> str:
 
         # No session is open across the TMDB/TheTVDB round-trips.
         config = await get_config()
-        tvdb_id, tmdb_eps, tvdb_eps = await _rosters(tmdb_id, season, config, known_tvdb_id)
+        tvdb_id, rosters = await _season_rosters(tmdb_id, compared, config, known_tvdb_id)
 
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
@@ -102,9 +153,9 @@ async def decide_job_namespace(job_id: int) -> str:
                 pref.tvdb_id = tvdb_id
 
             if pref is not None and pref.ordering == ns.NAMESPACE_TVDB:
-                if tvdb_eps and tmdb_eps:
+                if rosters:
                     job.episode_namespace = ns.NAMESPACE_TVDB
-                    job.episode_crosswalk_json = _crosswalk_json(season, tmdb_eps, tvdb_eps)
+                    job.episode_crosswalk_json = _multi_season_crosswalk_json(rosters)
                     job.episode_namespace_note = None
                 else:
                     # Intended: the user explicitly chose TVDB, so say why it isn't used.
@@ -116,8 +167,8 @@ async def decide_job_namespace(job_id: int) -> str:
                     # Incoherent: the job says tvdb but the show no longer prefers it.
                     job.episode_namespace = ns.NAMESPACE_TMDB
                     job.episode_crosswalk_json = None
-                if tmdb_eps and tvdb_eps:
-                    div = ns.detect_divergence(season, tmdb_eps, tvdb_eps)
+                if rosters:
+                    div = _first_divergence(rosters)
                     job.tvdb_divergence_json = div.to_json() if div else None
             await session.commit()
             return job.episode_namespace or ns.NAMESPACE_TMDB

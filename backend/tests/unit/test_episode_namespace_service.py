@@ -35,13 +35,13 @@ def stubs(monkeypatch):
 async def _job(**kw) -> int:
     # In review by default: a numbering switch is only allowed there.
     kw.setdefault("state", JobState.REVIEW_NEEDED)
+    kw.setdefault("detected_season", 1)
     async with _unit_session_factory() as s:
         job = DiscJob(
             drive_id="E:",
             volume_label="JL",
             content_type=ContentType.TV,
             tmdb_id=1618,
-            detected_season=1,
             **kw,
         )
         s.add(job)
@@ -109,6 +109,134 @@ class TestDecide:
         job_id = await _job()
         assert await svc.decide_job_namespace(job_id) == "tmdb"
         assert (await _get(job_id)).episode_namespace == "tmdb"
+
+
+SEASON_2 = [{"episode_number": i, "name": f"Second {i}", "air_date": ""} for i in range(1, 14)]
+
+
+@pytest.fixture
+def per_season(monkeypatch):
+    """Rosters keyed by season; a season absent from a side reads as a failed lookup."""
+    state = {"tmdb": {1: TMDB, 2: SEASON_2}, "tvdb": {1: TVDB, 2: SEASON_2}, "tvdb_calls": []}
+
+    async def fake_config():
+        return AppConfig(tmdb_api_key="tok", tvdb_api_key="k")
+
+    def fake_tvdb_roster(tvdb_id, season, api_key):
+        state["tvdb_calls"].append(season)
+        return state["tvdb"].get(season)
+
+    monkeypatch.setattr("app.services.config_service.get_config", fake_config)
+    monkeypatch.setattr(svc.tmdb_client, "fetch_tvdb_id", lambda show, key: 76290)
+    monkeypatch.setattr(
+        svc.tmdb_client, "fetch_season_episodes", lambda s, n, k: state["tmdb"].get(n)
+    )
+    monkeypatch.setattr(svc.tvdb_client, "fetch_season_roster", fake_tvdb_roster)
+    return state
+
+
+async def _seasonless_job(**kw) -> int:
+    """A TV job whose season is unknown (flat import, "match across all seasons")."""
+    return await _job(detected_season=None, **kw)
+
+
+async def _prefer_tvdb() -> None:
+    async with _unit_session_factory() as s:
+        s.add(ShowOrderingPreference(tmdb_id=1618, ordering="tvdb", tvdb_id=76290))
+        await s.commit()
+
+
+@pytest.mark.unit
+class TestDecideSeasonless:
+    """#876: the all-seasons download decides over the seasons it downloads."""
+
+    async def test_disagreeing_catalogues_record_the_suggestion(self, per_season):
+        job_id = await _seasonless_job()
+        assert await svc.decide_job_namespace(job_id, [1, 2]) == "tmdb"
+        job = await _get(job_id)
+        # Same shape a single-season job stores, naming the season that diverges.
+        assert json.loads(job.tvdb_divergence_json) == {"season": 1, "tmdb": 24, "tvdb": 26}
+        assert job.episode_namespace in (None, "tmdb")
+
+    async def test_divergence_in_a_later_season_is_found(self, per_season):
+        per_season["tvdb"] = {1: TMDB, 2: SEASON_2[:-1]}
+        job_id = await _seasonless_job()
+        assert await svc.decide_job_namespace(job_id, [1, 2]) == "tmdb"
+        div = json.loads((await _get(job_id)).tvdb_divergence_json)
+        assert div == {"season": 2, "tmdb": 13, "tvdb": 12}
+
+    async def test_agreeing_catalogues_record_nothing(self, per_season):
+        per_season["tvdb"] = {1: TMDB, 2: SEASON_2}
+        job_id = await _seasonless_job(tvdb_divergence_json='{"season": 1}')
+        assert await svc.decide_job_namespace(job_id, [1, 2]) == "tmdb"
+        job = await _get(job_id)
+        assert job.tvdb_divergence_json is None
+        assert job.episode_namespace in (None, "tmdb")
+
+    async def test_tvdb_preference_crosswalks_every_season(self, per_season):
+        await _prefer_tvdb()
+        job_id = await _seasonless_job()
+        assert await svc.decide_job_namespace(job_id, [1, 2]) == "tvdb"
+        job = await _get(job_id)
+        assert job.episode_namespace == "tvdb"
+        crosswalk = json.loads(job.episode_crosswalk_json)
+        assert crosswalk["S01E04"] == "S01E02"
+        assert crosswalk["S02E05"] == "S02E05"
+        assert job.episode_namespace_note is None
+
+    async def test_partial_lookup_never_flips_to_tvdb(self, per_season):
+        """One season missing on TheTVDB: the crosswalk would not cover it, so the
+        job stays on TMDB (with the note) rather than going half-TVDB."""
+        per_season["tvdb"] = {1: TVDB}
+        await _prefer_tvdb()
+        job_id = await _seasonless_job()
+        assert await svc.decide_job_namespace(job_id, [1, 2]) == "tmdb"
+        job = await _get(job_id)
+        assert job.episode_namespace == "tmdb"
+        assert job.episode_crosswalk_json is None
+        assert "TheTVDB unavailable" in job.episode_namespace_note
+
+    async def test_partial_lookup_records_no_suggestion(self, per_season):
+        per_season["tvdb"] = {1: TVDB}
+        job_id = await _seasonless_job()
+        assert await svc.decide_job_namespace(job_id, [1, 2]) == "tmdb"
+        assert (await _get(job_id)).tvdb_divergence_json is None
+
+    async def test_tvdb_outage_stays_tmdb_after_one_round_trip(self, per_season):
+        per_season["tvdb"] = {}
+        job_id = await _seasonless_job()
+        assert await svc.decide_job_namespace(job_id, [1, 2, 3]) == "tmdb"
+        job = await _get(job_id)
+        assert job.tvdb_divergence_json is None
+        assert per_season["tvdb_calls"] == [1], "an outage must not cost a call per season"
+
+    async def test_no_seasons_is_a_no_op(self, per_season):
+        job_id = await _seasonless_job()
+        assert await svc.decide_job_namespace(job_id) == "tmdb"
+        assert await svc.decide_job_namespace(job_id, []) == "tmdb"
+        assert per_season["tvdb_calls"] == []
+
+    async def test_known_season_ignores_the_seasons_argument(self, per_season):
+        job_id = await _job()
+        await svc.decide_job_namespace(job_id, [1, 2])
+        assert per_season["tvdb_calls"] == [1]
+
+    async def test_season_assigned_during_the_fetch_discards_the_result(
+        self, per_season, monkeypatch
+    ):
+        job_id = await _seasonless_job()
+
+        async def assign_then_fetch(tmdb_id, seasons, config, tvdb_id):
+            # The user picks a season while the rosters are in flight.
+            async with _unit_session_factory() as s:
+                job = await s.get(DiscJob, job_id)
+                job.detected_season = 1
+                await s.commit()
+            return 76290, {1: (TMDB, TVDB), 2: (SEASON_2, SEASON_2)}
+
+        monkeypatch.setattr(svc, "_season_rosters", assign_then_fetch)
+        assert await svc.decide_job_namespace(job_id, [1, 2]) == "tmdb"
+        assert (await _get(job_id)).tvdb_divergence_json is None
 
 
 @pytest.mark.unit

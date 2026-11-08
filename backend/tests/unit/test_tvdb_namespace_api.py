@@ -1,6 +1,7 @@
 """Episode-namespace API (spec 2026-10-08)."""
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -358,6 +359,51 @@ class TestRosterNamespace:
         assert [o["ordering"] for o in body["ordering_options"]] == ["aired", "tvdb"]
         assert body["current_ordering"] == "aired"
         assert roster_stubs["namespaces"] == ["tmdb"]
+
+    async def test_seasonless_job_gets_the_suggestion_after_its_download(
+        self, client, roster_stubs, monkeypatch
+    ):
+        """#876: the all-seasons download runs the same decision, so the review
+        page of a job without a season suggests TheTVDB like a single-season one."""
+        from app.models.app_config import AppConfig
+        from app.services import episode_namespace_service as svc
+        from app.services.matching_coordinator import MatchingCoordinator
+
+        tmdb = [{"episode_number": i, "name": f"Ep {i}"} for i in range(1, 25)]
+        tvdb = [{"episode_number": i, "name": f"Ep {i}"} for i in range(1, 27)]
+        same = [{"episode_number": i, "name": f"Two {i}"} for i in range(1, 14)]
+
+        async def fake_config():
+            return AppConfig(tmdb_api_key="tok", tvdb_api_key="k")
+
+        async def _noop(*a, **k):
+            return None
+
+        monkeypatch.setattr("app.services.config_service.get_config", fake_config)
+        monkeypatch.setattr(svc.tmdb_client, "fetch_tvdb_id", lambda show, key: 76290)
+        monkeypatch.setattr(
+            svc.tmdb_client, "fetch_season_episodes", lambda s, n, k: {1: tmdb, 2: same}[n]
+        )
+        monkeypatch.setattr(
+            svc.tvdb_client, "fetch_season_roster", lambda t, n, api_key: {1: tvdb, 2: same}[n]
+        )
+        monkeypatch.setattr(
+            "app.matcher.testing_service.download_subtitles",
+            lambda show, season, **kw: {"episodes": [], "show_name": show},
+        )
+        monkeypatch.setattr(
+            "app.services.matching_coordinator.ws_manager.broadcast_subtitle_event", _noop
+        )
+        monkeypatch.setattr("app.api.routes.get_number_of_seasons", lambda show: 2)
+
+        job_id = await _job(detected_season=None)
+        coord = MatchingCoordinator(MagicMock(), MagicMock())
+        await coord.download_subtitles_all_seasons(job_id, "Justice League", [1, 2], tmdb_id=1618)
+
+        body = (await client.get(f"/api/jobs/{job_id}/season-roster?season=1")).json()
+        assert body["available"] is True
+        assert body["tvdb_suggestion"] == _DIVERGENCE
+        assert "tvdb" in [o["ordering"] for o in body["ordering_options"]]
 
     async def test_dismissed_suggestion_is_not_offered(self, client, roster_stubs):
         await _show_pref(tvdb_suggestion_dismissed=True)
