@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - "Re-match all" now retries a failed reference-subtitle download for a TV disc with no season ("match across all seasons"). Before, only discs with a known season were retried, so the re-match ran against the same missing references and landed back in review. It now cancels the failed download and fetches every season before matching starts (#875).
+- When OpenSubtitles offers several subtitles for an episode, Engram now downloads the most reputable one: files from trusted uploaders and with more downloads first, machine- and AI-translated files only as a last resort. It used to take whichever the search listed first, which for a German show was a machine translation from Hungarian whose wording no longer followed the dialogue, and the episode lost most of its matching votes. (#841, thanks @wintheriscomming!)
 
 ## [0.44.1] - 2026-11-07
 

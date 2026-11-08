@@ -2543,3 +2543,48 @@ class TestLanguageReviewFindings:
         assert _may_fingerprint(plan_audio(dub_default, "en")) is False
         assert _may_fingerprint(plan_audio(english_default, "en")) is True
         assert _may_fingerprint(plan_audio(None, "en")) is True
+
+
+@pytest.mark.unit
+class TestMatchLanguageRefusalHint:
+    """A show matched in its own language names that language in the MakeMKV hint."""
+
+    @staticmethod
+    def _refused(disc_languages, file_languages=("ja",)):
+        from app.matcher.audio_streams import AudioPlan
+        from app.matcher.subtitle_utils import language_refusal_details
+
+        details = language_refusal_details(AudioPlan("foreign", None, list(file_languages)), "de")
+        return DiscTitle(
+            job_id=1,
+            title_index=0,
+            duration_seconds=3300,
+            state=TitleState.MATCHING,
+            match_details=json.dumps(details),
+            audio_languages=json.dumps(disc_languages),
+        )
+
+    def test_disc_had_the_show_language(self):
+        t = self._refused(["ja", "de", "en"])
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        message = json.loads(t.match_details)["message"]
+        assert message.endswith(
+            " The disc also has German audio, but MakeMKV's language settings left it "
+            "out of the rip."
+        )
+        assert "English audio" not in message
+
+    def test_disc_had_only_english(self):
+        t = self._refused(["ja", "en"])
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        assert json.loads(t.match_details)["message"].endswith(
+            " The disc also has English audio, but MakeMKV's language settings left it "
+            "out of the rip."
+        )
+
+    def test_hint_added_once(self):
+        t = self._refused(["ja", "de"])
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        once = json.loads(t.match_details)["message"]
+        _route_unconfirmable_title(t, conjoined_hint=None)
+        assert json.loads(t.match_details)["message"] == once
