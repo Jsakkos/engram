@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - The re-identify dialog no longer forces season 1. TV discs now get an **All seasons** checkbox beside the season number, so a multi-season disc can be matched against every season's references instead of season 1 only. It starts ticked for a disc whose season was never known, and a blank season field also means all seasons. Picking a same-name show from **Did you mean?** keeps the disc's season, or all seasons when it has none. The re-identify and set-name APIs take a new `all_seasons: true` flag to clear a season that was set before; leaving `season` out still keeps it, so older clients behave as they did (#874).
+- When OpenSubtitles offers several subtitles for an episode, Engram now downloads the most reputable one: files from trusted uploaders and with more downloads first, machine- and AI-translated files only as a last resort. It used to take whichever the search listed first, which for a German show was a machine translation from Hungarian whose wording no longer followed the dialogue, and the episode lost most of its matching votes. (#841, thanks @wintheriscomming!)
 
 ## [0.44.1] - 2026-11-07
 
