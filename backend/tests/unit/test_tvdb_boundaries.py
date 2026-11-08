@@ -262,10 +262,14 @@ async def test_all_seasons_download_binds_the_job_namespace(
     coord = _bare_coordinator()
     seen = []
 
+    async def keep_stored(jid, seasons=None):
+        return namespace
+
     def fake_download(show_name, season, **kwargs):
         seen.append((season, current_namespace(), kwargs))
         return {"episodes": [], "show_name": "X"}
 
+    monkeypatch.setattr("app.services.episode_namespace_service.decide_job_namespace", keep_stored)
     monkeypatch.setattr("app.matcher.testing_service.download_subtitles", fake_download)
     monkeypatch.setattr(
         "app.services.matching_coordinator.ws_manager.broadcast_subtitle_event", _noop
@@ -277,6 +281,59 @@ async def test_all_seasons_download_binds_the_job_namespace(
         (1, namespace, {"tmdb_id": 1618, "use_precomputed": use_precomputed}),
         (2, namespace, {"tmdb_id": 1618, "use_precomputed": use_precomputed}),
     ]
+
+
+@pytest.mark.unit
+async def test_all_seasons_download_decides_before_the_loop(monkeypatch):
+    """#876: a seasonless job gets the namespace decision over the seasons it
+    downloads, and every season's download binds what the decision stored."""
+    from app.core.episode_namespace import current_namespace
+
+    async with _unit_session_factory() as s:
+        job = DiscJob(
+            drive_id="E:",
+            volume_label="JL",
+            content_type=ContentType.TV,
+            tmdb_id=1618,
+            detected_season=None,
+        )
+        s.add(job)
+        await s.commit()
+        job_id = job.id
+    coord = _bare_coordinator()
+    coord._subtitle_ready[job_id] = asyncio.Event()
+    events = []
+
+    async def flipping_decide(jid, seasons=None):
+        # The show prefers TheTVDB: the decision stores tvdb.
+        events.append(("decide", jid, list(seasons or [])))
+        async with _unit_session_factory() as s:
+            row = await s.get(DiscJob, jid)
+            row.episode_namespace = "tvdb"
+            await s.commit()
+        return "tvdb"
+
+    def fake_download(show_name, season, **kwargs):
+        events.append(("download", season, current_namespace(), kwargs["use_precomputed"]))
+        return {"episodes": [], "show_name": "X"}
+
+    monkeypatch.setattr(
+        "app.services.episode_namespace_service.decide_job_namespace", flipping_decide
+    )
+    monkeypatch.setattr("app.matcher.testing_service.download_subtitles", fake_download)
+    monkeypatch.setattr(
+        "app.services.matching_coordinator.ws_manager.broadcast_subtitle_event", _noop
+    )
+
+    await coord.download_subtitles_all_seasons(job_id, "X", [1, 2], tmdb_id=1618)
+
+    assert events == [
+        ("decide", job_id, [1, 2]),
+        ("download", 1, "tvdb", False),
+        ("download", 2, "tvdb", False),
+    ]
+    assert coord._subtitle_ready[job_id].is_set()
+    assert current_namespace() == "tmdb"
 
 
 @pytest.mark.unit

@@ -2819,6 +2819,14 @@ class MatchingCoordinator:
         from sqlalchemy import update
 
         try:
+            from app.services.episode_namespace_service import decide_job_namespace
+
+            # Same decision as download_subtitles (#876), over the seasons this
+            # download fetches, and BEFORE the loop: the namespace read below
+            # must be the decided one, since it picks the reference folder and
+            # whether the precomputed pack may be used. Never raises.
+            await decide_job_namespace(job_id, seasons)
+
             async with async_session() as session:
                 await session.execute(
                     update(DiscJob)
@@ -2835,9 +2843,10 @@ class MatchingCoordinator:
 
             from app.matcher.testing_service import download_subtitles
 
-            # Same binding as download_subtitles: the job's stored namespace
-            # picks the reference folder, and TVDB-numbered references must
-            # never be served from the TMDB-numbered precomputed pack.
+            # Same binding as download_subtitles: the STORED namespace (what
+            # matching reads), not decide's return value. It picks the reference
+            # folder, and TVDB-numbered references must never be served from
+            # the TMDB-numbered precomputed pack.
             namespace = await self._job_namespace(job_id)
 
             canonical_name: str | None = None

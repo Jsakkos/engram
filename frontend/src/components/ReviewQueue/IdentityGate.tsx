@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence } from 'motion/react';
-import type { Job } from '../../types';
+import type { Job, SeasonAnswer } from '../../types';
 import { SvActionButton, SvNotice, SvPanel, sv } from '../../app/components/synapse';
 import ReIdentifyModal from '../ReIdentifyModal';
 
@@ -20,7 +20,7 @@ export function IdentityGate({
     trackCount: number;
     /** Set when the identify request failed, so the reviewer is not left guessing. */
     error?: string | null;
-    onIdentify: (title: string, contentType: 'tv' | 'movie', season?: number, tmdbId?: number) => void;
+    onIdentify: (title: string, contentType: 'tv' | 'movie', season?: SeasonAnswer, tmdbId?: number) => void;
 }) {
     const [open, setOpen] = useState(false);
     const hasTwins = !!job.candidates_json && job.candidates_json.includes('tmdb_id');

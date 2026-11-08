@@ -16,6 +16,9 @@ export interface IdentityValue {
     title: string;
     contentType: 'tv' | 'movie';
     season: string; // string so the number input can be transiently empty
+    /** "Match across all seasons" instead of a season number. Only read when
+     * the host passes `allowAllSeasons`. */
+    allSeasons?: boolean;
     tmdbId: number | undefined;
     selectedYear?: string; // first-air year of the selected TMDB result
 }
@@ -27,6 +30,9 @@ interface IdentityFieldsProps {
     /** Fires whenever the TMDB search query changes; lets a host modal gate its
      * own Enter-to-submit handling while the user is mid-search. */
     onSearchQueryChange?: (query: string) => void;
+    /** Offer an "All seasons" choice beside the season input (#874). Off for
+     * hosts with no way to send it, such as arming a drive. */
+    allowAllSeasons?: boolean;
 }
 
 /**
@@ -41,8 +47,10 @@ export default function IdentityFields({
     onChange,
     autoFocus,
     onSearchQueryChange,
+    allowAllSeasons,
 }: IdentityFieldsProps) {
     const { title, contentType, season, tmdbId, selectedYear } = value;
+    const allSeasons = !!allowAllSeasons && !!value.allSeasons;
 
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<TmdbResult[]>([]);
@@ -353,16 +361,56 @@ export default function IdentityFields({
                     >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
                             <SvLabel size={10}>Season</SvLabel>
-                            <input
-                                type="number"
-                                min={1}
-                                max={99}
-                                value={season}
-                                onChange={(e) => onChange({ ...value, season: e.target.value })}
-                                style={{ ...inputStyle(true), width: 128, background: sv.bg0 }}
-                                onFocus={(e) => (e.currentTarget.style.borderColor = sv.cyan)}
-                                onBlur={(e) => (e.currentTarget.style.borderColor = sv.lineHi)}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={99}
+                                    value={season}
+                                    aria-label="Season"
+                                    disabled={allSeasons}
+                                    onChange={(e) => onChange({ ...value, season: e.target.value })}
+                                    style={{
+                                        ...inputStyle(true),
+                                        width: 128,
+                                        background: sv.bg0,
+                                        opacity: allSeasons ? 0.4 : 1,
+                                        cursor: allSeasons ? 'not-allowed' : undefined,
+                                    }}
+                                    onFocus={(e) => (e.currentTarget.style.borderColor = sv.cyan)}
+                                    onBlur={(e) => (e.currentTarget.style.borderColor = sv.lineHi)}
+                                />
+                                {allowAllSeasons && (
+                                    <label
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            fontFamily: sv.mono,
+                                            fontSize: 11,
+                                            letterSpacing: '0.14em',
+                                            textTransform: 'uppercase',
+                                            color: allSeasons ? sv.cyanHi : sv.inkDim,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={allSeasons}
+                                            onChange={(e) =>
+                                                onChange({ ...value, allSeasons: e.target.checked })
+                                            }
+                                            style={{
+                                                width: 14,
+                                                height: 14,
+                                                cursor: 'pointer',
+                                                accentColor: sv.cyan,
+                                            }}
+                                        />
+                                        All seasons
+                                    </label>
+                                )}
+                            </div>
                         </div>
                     </motion.div>
                 )}

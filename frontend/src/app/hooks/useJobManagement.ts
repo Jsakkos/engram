@@ -5,9 +5,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useWebSocket } from '../../hooks/useWebSocket';
-import { apiFetch, apiFetchVoid, skipRipTitle, unskipRipTitle } from '../../api/client';
+import { apiFetch, apiFetchVoid, seasonAnswerBody, skipRipTitle, unskipRipTitle } from '../../api/client';
 import { recoveryErrorMessage, retryFromStaging } from '../../api/recoveryClient';
-import type { Job, DiscTitle, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage, BackupProgressMessage } from '../../types';
+import type { Job, DiscTitle, SeasonAnswer, WebSocketMessage, UpdateStatus, UpdateStatusMessage, ParkedDisc, ParkedDiscsMessage, BackupProgressMessage } from '../../types';
 import type { ArmedIdentity } from '../components/ArmedDriveCard';
 
 // Trailing-debounce window for refetches triggered by a burst of unknown
@@ -385,7 +385,7 @@ export function useJobManagement(devMode: boolean = false) {
         jobId: number,
         title: string,
         contentType: string,
-        season?: number,
+        season?: SeasonAnswer,
         tmdbId?: number,
     ) {
         try {
@@ -395,7 +395,7 @@ export function useJobManagement(devMode: boolean = false) {
                 body: JSON.stringify({
                     title,
                     content_type: contentType,
-                    season: season ?? null,
+                    ...seasonAnswerBody(season),
                     tmdb_id: tmdbId ?? null,
                 }),
             });
