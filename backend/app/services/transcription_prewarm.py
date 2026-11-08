@@ -306,7 +306,7 @@ class TranscriptionPrewarmer:
             wanted.append((0, int(duration)))
 
         # Coverage check WITHOUT loading the model: the config-derived key.
-        config_key = model_output_key(matcher._model_config())
+        config_key = model_output_key(matcher._model_config(), current_match_language())
         missing = await asyncio.to_thread(self._missing_spans, file_key, wanted, config_key)
         if not missing:
             logger.debug(f"Prewarm: {file_path.name} fully cached ({len(wanted)} spans); skipping")

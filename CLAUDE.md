@@ -309,7 +309,12 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   first** (an English stream wins, so a dubbed disc keeps today's path), else the show's language
   (`match` / `untagged` / `unprobed`), else the refusal naming both languages. Only a language in
   `ORIGINAL_FIRST_LANGUAGES` (one with a measured vote margin; empty until one is measured) tries
-  its own stream before English. English jobs are byte-identical: no suffix, key or extra probe. Plan:
+  its own stream before English. Whisper transcribes in the bound language (`language=` only
+  off English, so English keeps `transcribe(audio_path)` and every cache key), and TF-IDF fits
+  word n-grams except for `UNSPACED_LANGUAGES` (ja/zh/th): character n-grams (`char_wb`, 2 to 4)
+  on a cosine scale no real disc has calibrated, so a confident match there is still held for
+  review (`uncalibrated_language` in `match_details`, exempt from re-matching) and skips the LLM
+  fallback when the hold is its only reason. English jobs are byte-identical: no suffix, key or extra probe. Plan:
   `docs/superpowers/plans/2026-10-25-match-in-show-language.md`.
 - **Job visibility invariant**: every job must be reachable from at least one view. `GET /api/jobs` (dashboard) caps *terminal* jobs at `RECENT_TERMINAL_JOB_LIMIT` (10) but exempts non-terminal ones, because `GET /api/jobs/history` defaults to COMPLETED/FAILED only. Without the exemption a `REVIEW_NEEDED` job aged out of the dashboard and appeared nowhere (the row was never deleted; nothing hard-deletes `DiscJob`). History honours an explicit `state` for any state plus `include_all_states=true` as the backstop. Guarded by `TestJobVisibilityInvariant` in `tests/unit/test_api_routes.py`, so re-narrowing either query fails a test.
 - **A job's MakeMKV source is a value, not a drive.** `DiscSource`

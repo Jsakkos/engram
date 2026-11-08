@@ -24,6 +24,11 @@ ENGLISH = "en"
 
 _language_var: ContextVar[str] = ContextVar("match_language", default=ENGLISH)
 
+# Written without spaces between words: a word analyzer would read a whole
+# sentence as one token, so TF-IDF uses character n-grams for these. Matches in
+# them always go to review until real discs calibrate that scale.
+UNSPACED_LANGUAGES = frozenset({"ja", "zh", "th"})
+
 # Languages matched in their own audio first. Every other language is matched
 # English first: a dubbed disc with an English track stays on the English path,
 # and the show's language is used only when the file has no English stream.
