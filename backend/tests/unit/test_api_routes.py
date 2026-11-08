@@ -633,7 +633,7 @@ class TestIdentityAnswerRoutesAcceptRipping:
             )
 
         assert response.status_code == 200
-        mock_set.assert_awaited_once_with(job.id, "Eureka", "tv", 2)
+        mock_set.assert_awaited_once_with(job.id, "Eureka", "tv", 2, all_seasons=False)
 
     async def test_re_identify_accepted_while_ripping(self, client):
         from unittest.mock import AsyncMock, patch
@@ -648,7 +648,51 @@ class TestIdentityAnswerRoutesAcceptRipping:
             )
 
         assert response.status_code == 200
-        mock_re_id.assert_awaited_once_with(job.id, "Frasier", "tv", None, 195241)
+        mock_re_id.assert_awaited_once_with(
+            job.id, "Frasier", "tv", None, 195241, all_seasons=False
+        )
+
+    async def test_re_identify_passes_all_seasons_through(self, client):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.job_manager import job_manager
+
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        with patch.object(job_manager, "re_identify_job", new_callable=AsyncMock) as mock_re_id:
+            response = await client.post(
+                f"/api/jobs/{job.id}/re-identify",
+                json={"title": "Frasier", "content_type": "tv", "all_seasons": True},
+            )
+
+        assert response.status_code == 200
+        mock_re_id.assert_awaited_once_with(job.id, "Frasier", "tv", None, None, all_seasons=True)
+
+    async def test_set_name_passes_all_seasons_through(self, client):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.job_manager import job_manager
+
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        with patch.object(job_manager, "set_name_and_resume", new_callable=AsyncMock) as mock_set:
+            response = await client.post(
+                f"/api/jobs/{job.id}/set-name",
+                json={"name": "Eureka", "content_type": "tv", "all_seasons": True},
+            )
+
+        assert response.status_code == 200
+        mock_set.assert_awaited_once_with(job.id, "Eureka", "tv", None, all_seasons=True)
+
+    async def test_season_with_all_seasons_is_rejected(self, client):
+        job = await _seed_job(state=JobState.REVIEW_NEEDED)
+        for path, body in (
+            ("re-identify", {"title": "Frasier", "content_type": "tv"}),
+            ("set-name", {"name": "Frasier", "content_type": "tv"}),
+        ):
+            response = await client.post(
+                f"/api/jobs/{job.id}/{path}",
+                json={**body, "season": 2, "all_seasons": True},
+            )
+            assert response.status_code == 422, path
 
     async def test_set_name_still_rejected_in_other_states(self, client):
         job = await _seed_job(state=JobState.MATCHING)

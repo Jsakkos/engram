@@ -1074,6 +1074,7 @@ class JobManager:
         name: str,
         content_type_str: str,
         season: int | None = None,
+        all_seasons: bool = False,
     ) -> None:
         """Set a user-provided name for an unlabeled disc and resume the pipeline.
 
@@ -1087,7 +1088,7 @@ class JobManager:
         # the in-flight thread still finishes its current chunk (~60 s).
         self._prewarmer.cancel_for_job(job_id)
         result = await self._identification.set_name_and_resume(
-            job_id, name, content_type_str, season
+            job_id, name, content_type_str, season, all_seasons=all_seasons
         )
         await self._apply_identity_resume_action(job_id, result["resume_action"])
 
@@ -1098,6 +1099,7 @@ class JobManager:
         content_type_str: str,
         season: int | None = None,
         tmdb_id: int | None = None,
+        all_seasons: bool = False,
     ) -> None:
         """Re-identify a job with user-corrected metadata.
 
@@ -1111,7 +1113,7 @@ class JobManager:
         # finishes its current chunk (~60 s).
         self._prewarmer.cancel_for_job(job_id)
         result = await self._identification.re_identify(
-            job_id, title, content_type_str, season, tmdb_id
+            job_id, title, content_type_str, season, tmdb_id, all_seasons=all_seasons
         )
         await self._apply_identity_resume_action(job_id, result["resume_action"])
 

@@ -315,3 +315,10 @@ export interface Config {
     library_tv_path: string;
     tmdb_api_key: string;
 }
+
+/**
+ * A user's season answer when identifying a TV disc: a season number, or
+ * 'all' to clear the season and match across every season (#874). Absent
+ * (undefined) means "not provided", which leaves the job's season unchanged.
+ */
+export type SeasonAnswer = number | 'all';

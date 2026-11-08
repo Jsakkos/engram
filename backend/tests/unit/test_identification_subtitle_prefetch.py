@@ -137,7 +137,7 @@ class TestSetNameAndResumeStartsSubtitles:
 
         monkeypatch.setattr(ws_manager, "broadcast_job_update", _noop)
 
-    async def _seed_review_job(self):
+    async def _seed_review_job(self, detected_season=None):
         async with _unit_session_factory() as session:
             job = DiscJob(
                 drive_id="D:",
@@ -145,6 +145,7 @@ class TestSetNameAndResumeStartsSubtitles:
                 content_type=ContentType.TV,
                 state=JobState.REVIEW_NEEDED,
                 detected_title="Eureka",
+                detected_season=detected_season,
                 tmdb_id=4620,
             )
             session.add(job)
@@ -188,6 +189,30 @@ class TestSetNameAndResumeStartsSubtitles:
 
         # detected_season stays None -> the helper does the all-seasons prefetch.
         assert prefetch_calls == [(job_id, None)]
+
+    async def test_omitted_season_keeps_a_previously_set_season(self):
+        job_id = await self._seed_review_job(detected_season=2)
+        prefetch_calls = []
+        coord = self._resumable_coord(prefetch_calls)
+
+        await coord.set_name_and_resume(job_id, "Eureka", "tv")
+
+        assert prefetch_calls == [(job_id, 2)]
+        async with _unit_session_factory() as session:
+            assert (await session.get(DiscJob, job_id)).detected_season == 2
+
+    async def test_all_seasons_clears_a_previously_set_season(self):
+        # season=None means "leave it"; all_seasons is how a client says "clear
+        # it", so the prefetch falls through to every season (#874).
+        job_id = await self._seed_review_job(detected_season=2)
+        prefetch_calls = []
+        coord = self._resumable_coord(prefetch_calls)
+
+        await coord.set_name_and_resume(job_id, "Eureka", "tv", all_seasons=True)
+
+        assert prefetch_calls == [(job_id, None)]
+        async with _unit_session_factory() as session:
+            assert (await session.get(DiscJob, job_id)).detected_season is None
 
     async def test_movie_resume_does_not_prefetch(self):
         job_id = await self._seed_review_job()

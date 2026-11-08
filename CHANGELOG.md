@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- The re-identify dialog no longer forces season 1. TV discs now get an **All seasons** checkbox beside the season number, so a multi-season disc can be matched against every season's references instead of season 1 only. It starts ticked for a disc whose season was never known, and a blank season field also means all seasons. Picking a same-name show from **Did you mean?** keeps the disc's season, or all seasons when it has none. The re-identify and set-name APIs take a new `all_seasons: true` flag to clear a season that was set before; leaving `season` out still keeps it, so older clients behave as they did (#874).
+
 ## [0.44.1] - 2026-11-07
 
 _Highlights: TheTVDB episode numbering is now reachable for TV discs in review, plus a round of dashboard and setup polish: per-disc activity log lines, separate ripped and matched track counts, and a first-run welcome._

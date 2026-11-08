@@ -207,6 +207,26 @@ def _apply_manual_identity(analysis, manual: ManualIdentity) -> None:
     analysis._discdb_signal = None
 
 
+def _check_season_answer(season: int | None, all_seasons: bool) -> None:
+    """Reject an identity answer that both names a season and clears it."""
+    if all_seasons and season is not None:
+        raise ValueError("Pass either a season or all_seasons, not both")
+
+
+def _apply_season_answer(job, season: int | None, all_seasons: bool) -> None:
+    """Apply a user's season answer to ``job``.
+
+    ``season=None`` means "not provided": the job keeps the season it has, which
+    is what clients that predate ``all_seasons`` rely on. ``all_seasons=True`` is
+    the explicit "clear it", so the TV prefetch falls through to every season
+    (#874). Call ``_check_season_answer`` first, before anything is mutated.
+    """
+    if all_seasons:
+        job.detected_season = None
+    elif season is not None:
+        job.detected_season = season
+
+
 async def _disc_already_ripped(session, job) -> bool:
     """Whether a parked job's disc was already ripped, so resuming must not rip.
 
@@ -1572,6 +1592,7 @@ class IdentificationCoordinator:
         name: str,
         content_type_str: str,
         season: int | None = None,
+        all_seasons: bool = False,
     ) -> IdentityResumeResult:
         """Set a user-provided name for a disc and resume the pipeline.
 
@@ -1592,7 +1613,11 @@ class IdentificationCoordinator:
           QUEUED titles to MATCHED; the running rip's movie tail finishes.
         - ``"resolve_movie"`` — non-TV post-rip answer: route to the movie
           feature-resolution path (never episode matching).
+
+        ``season=None`` keeps the job's current season; ``all_seasons=True``
+        clears it (see ``_apply_season_answer``).
         """
+        _check_season_answer(season, all_seasons)
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job:
@@ -1609,8 +1634,7 @@ class IdentificationCoordinator:
 
             job.detected_title = name
             job.content_type = ContentType(content_type_str)
-            if season is not None:
-                job.detected_season = season
+            _apply_season_answer(job, season, all_seasons)
             # Resolve the TMDB id for the user-provided name now (same tmdb-keyed-cache
             # requirement as imports — #288). Confident single match sets the id;
             # ambiguous same-name twins are left null. Committed atomically with the
@@ -1686,6 +1710,7 @@ class IdentificationCoordinator:
         content_type_str: str,
         season: int | None = None,
         tmdb_id: int | None = None,
+        all_seasons: bool = False,
     ) -> ReIdentifyResumeResult:
         """Re-identify a job with user-corrected metadata.
 
@@ -1700,7 +1725,11 @@ class IdentificationCoordinator:
             ``"rematch_ripped"`` for a mid-rip identity CHANGE (re-match
             already-ripped titles against the corrected show; see
             ``JobManager._rematch_ripped_titles``).
+
+        ``season=None`` keeps the job's current season; ``all_seasons=True``
+        clears it, which sends a TV job down the all-seasons prefetch below.
         """
+        _check_season_answer(season, all_seasons)
         async with async_session() as session:
             job = await session.get(DiscJob, job_id)
             if not job:
@@ -1735,8 +1764,7 @@ class IdentificationCoordinator:
             # Update job metadata with user-corrected values
             job.detected_title = title
             job.content_type = ContentType(content_type_str)
-            if season is not None:
-                job.detected_season = season
+            _apply_season_answer(job, season, all_seasons)
             # The resulting identity is user-asserted regardless of what was
             # guessed first. "manual_correction" distinguishes this from the
             # arm path's "manual" for diagnostics; both render one UI chip.

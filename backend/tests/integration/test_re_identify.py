@@ -70,7 +70,7 @@ async def test_re_identify_changes_content_type(client):
     data = response.json()
     assert data["status"] == "re-identifying"
     assert data["job_id"] == job_id
-    mock_re_id.assert_called_once_with(job_id, "Thunderbirds", "tv", 4, None)
+    mock_re_id.assert_called_once_with(job_id, "Thunderbirds", "tv", 4, None, all_seasons=False)
 
 
 @pytest.mark.asyncio
@@ -90,7 +90,7 @@ async def test_re_identify_with_tmdb_id(client):
         )
 
     assert response.status_code == 200
-    mock_re_id.assert_called_once_with(job_id, "WandaVision", "tv", 1, 85271)
+    mock_re_id.assert_called_once_with(job_id, "WandaVision", "tv", 1, 85271, all_seasons=False)
 
 
 @pytest.mark.asyncio

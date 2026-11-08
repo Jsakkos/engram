@@ -6,6 +6,8 @@
  * receiving an unparsed/error payload. Dependency-free on purpose.
  */
 
+import type { SeasonAnswer } from '../types';
+
 /** Error thrown by {@link apiFetch}/{@link apiFetchVoid} for non-ok responses. */
 export class ApiError extends Error {
   readonly status: number;
@@ -137,6 +139,18 @@ export async function reassignEpisode(
 }
 
 /**
+ * The season fields of an identity answer (re-identify / set-name). The API
+ * reads a null or missing `season` as "leave it unchanged", so clearing the
+ * season for "All seasons" needs its own flag (#874).
+ */
+export function seasonAnswerBody(season?: SeasonAnswer): {
+  season: number | null;
+  all_seasons?: true;
+} {
+  return season === 'all' ? { season: null, all_seasons: true } : { season: season ?? null };
+}
+
+/**
  * Re-identify a disc (confirm which show/movie it is). The backend runs the
  * identification in the background and broadcasts the job update, so callers
  * should refresh the job rather than expect the new identity in the response.
@@ -145,7 +159,7 @@ export async function reIdentifyJob(
   jobId: number,
   title: string,
   contentType: string,
-  season?: number,
+  season?: SeasonAnswer,
   tmdbId?: number,
 ): Promise<void> {
   return apiFetchVoid(`/api/jobs/${jobId}/re-identify`, {
@@ -154,7 +168,7 @@ export async function reIdentifyJob(
     body: JSON.stringify({
       title,
       content_type: contentType,
-      season: season ?? null,
+      ...seasonAnswerBody(season),
       tmdb_id: tmdbId ?? null,
     }),
   });

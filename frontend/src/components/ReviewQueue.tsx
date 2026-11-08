@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { Save, Package, Keyboard } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
-import { Job, DiscTitle } from '../types';
+import { Job, DiscTitle, type SeasonAnswer } from '../types';
 import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, orderingSelectorHeading, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
 import { MovieExtrasOnlyAction } from './ReviewQueue/MovieExtrasOnlyAction';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
@@ -585,7 +585,7 @@ function ReviewQueue() {
     const handleIdentify = async (
         title: string,
         contentType: 'tv' | 'movie',
-        season?: number,
+        season?: SeasonAnswer,
         tmdbId?: number,
     ) => {
         if (!jobId) return;

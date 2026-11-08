@@ -20,7 +20,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -1613,12 +1613,29 @@ async def submit_review_batch(
     return {"status": "reviewed", "job_id": job.id, "count": len(decisions)}
 
 
-class SetNameRequest(BaseModel):
+class _SeasonAnswer(BaseModel):
+    """The season half of an identity answer (#874).
+
+    ``season`` omitted or null leaves the job's season as it is (what clients
+    that predate ``all_seasons`` send). ``all_seasons: true`` clears it so a TV
+    job matches across every season; it cannot be combined with a season.
+    """
+
+    season: int | None = None
+    all_seasons: bool = False
+
+    @model_validator(mode="after")
+    def _season_xor_all_seasons(self):
+        if self.all_seasons and self.season is not None:
+            raise ValueError("Pass either a season or all_seasons, not both")
+        return self
+
+
+class SetNameRequest(_SeasonAnswer):
     """Request model for setting a user-provided name on an unlabeled disc."""
 
     name: str
     content_type: str  # "tv" | "movie" | "unknown"
-    season: int | None = None
 
 
 @router.post("/jobs/{job_id}/set-name")
@@ -1638,7 +1655,9 @@ async def set_job_name(
     from app.services.job_manager import job_manager
 
     try:
-        await job_manager.set_name_and_resume(job.id, req.name, req.content_type, req.season)
+        await job_manager.set_name_and_resume(
+            job.id, req.name, req.content_type, req.season, all_seasons=req.all_seasons
+        )
     except ValueError as e:
         # TOCTOU: the state check above read a snapshot; the coordinator
         # re-validates on a fresh row and raises if the job moved on (e.g.
@@ -1647,12 +1666,11 @@ async def set_job_name(
     return {"status": "ok", "job_id": job.id}
 
 
-class ReIdentifyRequest(BaseModel):
+class ReIdentifyRequest(_SeasonAnswer):
     """Request model for re-identifying a disc with corrected metadata."""
 
     title: str
     content_type: str  # "tv" | "movie"
-    season: int | None = None
     tmdb_id: int | None = None
 
 
@@ -1679,7 +1697,12 @@ async def re_identify_job(
 
     try:
         await job_manager.re_identify_job(
-            job.id, req.title, req.content_type, req.season, req.tmdb_id
+            job.id,
+            req.title,
+            req.content_type,
+            req.season,
+            req.tmdb_id,
+            all_seasons=req.all_seasons,
         )
     except ValueError as e:
         # TOCTOU: the state check above read a snapshot; the coordinator
