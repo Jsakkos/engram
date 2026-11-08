@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- When OpenSubtitles offers several subtitles for an episode, Engram now downloads the most reputable one: files from trusted uploaders and with more downloads first, machine- and AI-translated files only as a last resort. It used to take whichever the search listed first, which for a German show was a machine translation from Hungarian whose wording no longer followed the dialogue, and the episode lost most of its matching votes. (#841, thanks @wintheriscomming!)
+
 ## [0.44.1] - 2026-11-07
 
 _Highlights: TheTVDB episode numbering is now reachable for TV discs in review, plus a round of dashboard and setup polish: per-disc activity log lines, separate ripped and matched track counts, and a first-run welcome._
