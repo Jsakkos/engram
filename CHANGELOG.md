@@ -6,6 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
+- One stray chunk vote no longer drags a correctly matched track's confidence to near zero. Engram picked the episode whose chunk votes had the highest average score, so a single vote for the wrong episode with a slightly higher score tied or beat a run of votes for the right one (19 against 1 calibrated to 0.003) and the track went to review. The winner, its confidence and the runner-ups shown on the review page now come from the summed score of each episode's votes, so agreement across many chunks counts. (#842, thanks @wintheriscomming!)
 - When OpenSubtitles offers several subtitles for an episode, Engram now downloads the most reputable one: files from trusted uploaders and with more downloads first, machine- and AI-translated files only as a last resort. It used to take whichever the search listed first, which for a German show was a machine translation from Hungarian whose wording no longer followed the dialogue, and the episode lost most of its matching votes. (#841, thanks @wintheriscomming!)
 
 ## [0.44.1] - 2026-11-07
