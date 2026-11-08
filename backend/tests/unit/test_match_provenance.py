@@ -7,7 +7,6 @@ import pytest
 import app.matcher.episode_identification as ei
 from app.core.match_language import match_language_context
 from app.matcher.audio_streams import AudioPlan, AudioStream
-from app.matcher.episode_identification import EpisodeMatcher
 
 
 def _matcher(tmp_path, monkeypatch, plan):
@@ -15,7 +14,7 @@ def _matcher(tmp_path, monkeypatch, plan):
     tfidf = SimpleNamespace(
         match=lambda text: [(e01, 0.30), (e02, 0.05)], ref_file_order=[e01, e02]
     )
-    m = EpisodeMatcher(cache_dir=tmp_path, show_name="Show", device="cpu")
+    m = ei.EpisodeMatcher(cache_dir=tmp_path, show_name="Show", device="cpu")
     m._load_precomputed_season = lambda season: None
     m.get_reference_files = lambda season, **kwargs: [e01, e02]
     m._get_tfidf_matcher = lambda *a, **k: tfidf

@@ -324,6 +324,10 @@ def _is_rematchable_review(t) -> bool:
             # and re-matching would undo it and risk re-entering a stuck state.
             if details.get("forced_review"):
                 return False
+            # A confident match held only because its script is uncalibrated: a
+            # deeper scan would find the same episode and still be held.
+            if details.get("uncalibrated_language"):
+                return False
     return True
 
 

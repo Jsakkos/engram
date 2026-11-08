@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.episode_namespace import NAMESPACE_TVDB, current_namespace
-from app.core.match_language import current_match_language, match_language_context
+from app.core.match_language import (
+    UNSPACED_LANGUAGES,
+    current_match_language,
+    match_language_context,
+)
 from app.core.security import sanitize_log_value
 from app.matcher.audio_streams import plan_title_audio
 from app.matcher.llm_episode_matcher import match_episode_via_llm
@@ -535,11 +539,23 @@ class EpisodeCurator:
                     details = dict(details)  # Copy to avoid mutating original
                     details["runner_ups"] = match["runner_ups"]
 
+                # Character n-grams have a cosine scale no real disc has calibrated
+                # yet, so a confident match in an unspaced script still goes to a
+                # person (maintainer decision, spec 2026-10-20).
+                language = current_match_language()
+                held_only_for_script = language in UNSPACED_LANGUAGES and not needs_review
+                if held_only_for_script:
+                    needs_review = True
+                    details = dict(details)
+                    details["uncalibrated_language"] = language
+
                 # LLM episode-matching fallback — only runs when the primary
                 # match needs review, config is enabled, and the season is known.
                 # Reuse the primary matcher's transcript if it took the
-                # full-file fallback path (avoids re-running Whisper).
-                if needs_review and season:
+                # full-file fallback path (avoids re-running Whisper). Skipped for
+                # a confident match held only for its script: the review pre-fills
+                # it, and a full-file pass plus an AI call would second-guess it.
+                if needs_review and season and not held_only_for_script:
                     existing_transcript = match.get("transcript") if match else None
                     enriched = await self._maybe_add_llm_suggestion(
                         file_path=file_path,

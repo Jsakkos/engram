@@ -518,6 +518,88 @@ class TestRerunMatching:
         # Must not raise for an unknown job id.
         await job_manager._rerun_matching(999999)
 
+    async def _seed_failed_subtitles(self, season):
+        job, _ = await _seed(content_type=ContentType.TV)
+        async with _unit_session_factory() as session:
+            row = await session.get(DiscJob, job.id)
+            row.state = JobState.REVIEW_NEEDED
+            row.detected_season = season
+            row.subtitle_status = "failed"
+            await session.commit()
+        return job.id
+
+    async def test_seasonless_failed_subtitles_prefetch_all_seasons_before_dispatch(
+        self, monkeypatch
+    ):
+        """No season + failed references (#875): cancel, then the all-seasons
+        prefetch, and the new ready event exists before matches are dispatched."""
+        job_id = await self._seed_failed_subtitles(season=None)
+        calls: list = []
+        stale = asyncio.Event()
+        stale.set()
+        job_manager._matching._subtitle_ready[job_id] = stale
+
+        async def cancel(jid):
+            calls.append(("cancel", jid))
+
+        async def prefetch(job):
+            calls.append(("prefetch", job.id, job.detected_title, job.detected_season))
+            job_manager._matching._subtitle_ready[job.id] = asyncio.Event()
+
+        async def dispatch(jid, source_preference=None):
+            ready = job_manager._matching._subtitle_ready[jid]
+            calls.append(("dispatch", ready is not stale and not ready.is_set()))
+
+        restart = AsyncMock()
+        monkeypatch.setattr(job_manager._matching, "cancel_subtitle_download", cancel)
+        monkeypatch.setattr(job_manager._identification, "_start_tv_subtitle_prefetch", prefetch)
+        monkeypatch.setattr(job_manager._matching, "restart_subtitle_download", restart)
+        monkeypatch.setattr(job_manager, "_rerun_matching", dispatch)
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        try:
+            await job_manager.rerun_matching(job_id)
+        finally:
+            job_manager._matching._subtitle_ready.pop(job_id, None)
+
+        assert calls == [
+            ("cancel", job_id),
+            ("prefetch", job_id, "Some Show", None),
+            ("dispatch", True),
+        ]
+        restart.assert_not_awaited()
+
+    async def test_known_season_failed_subtitles_keep_the_single_season_retry(self, monkeypatch):
+        job_id = await self._seed_failed_subtitles(season=2)
+        restart = AsyncMock()
+        prefetch = AsyncMock()
+        monkeypatch.setattr(job_manager._matching, "restart_subtitle_download", restart)
+        monkeypatch.setattr(job_manager._identification, "_start_tv_subtitle_prefetch", prefetch)
+        monkeypatch.setattr(job_manager, "_rerun_matching", AsyncMock())
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        await job_manager.rerun_matching(job_id)
+
+        restart.assert_awaited_once_with(job_id, "Some Show", 2)
+        prefetch.assert_not_awaited()
+
+    async def test_seasonless_without_failed_subtitles_starts_no_download(self, monkeypatch):
+        job_id = await self._seed_failed_subtitles(season=None)
+        async with _unit_session_factory() as session:
+            (await session.get(DiscJob, job_id)).subtitle_status = "completed"
+            await session.commit()
+        cancel = AsyncMock()
+        prefetch = AsyncMock()
+        monkeypatch.setattr(job_manager._matching, "cancel_subtitle_download", cancel)
+        monkeypatch.setattr(job_manager._identification, "_start_tv_subtitle_prefetch", prefetch)
+        monkeypatch.setattr(job_manager, "_rerun_matching", AsyncMock())
+        monkeypatch.setattr(ws_manager, "broadcast_job_update", AsyncMock())
+
+        await job_manager.rerun_matching(job_id)
+
+        cancel.assert_not_awaited()
+        prefetch.assert_not_awaited()
+
     async def test_identity_answer_rematch_starts_escalation_over(self, monkeypatch):
         """Re-identify runs _rerun_matching without the public wrapper, so it needs
         the wrapper's reset: a stale escalation note and counters from the old identity."""

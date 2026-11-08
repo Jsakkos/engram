@@ -2791,10 +2791,18 @@ class JobManager:
                 and job.content_type == ContentType.TV
                 and job.subtitle_status == "failed"
                 and job.detected_title
-                and job.detected_season is not None
+            )
+            # Known season: restart that season's download. No season ("match
+            # across all seasons", #370): there is no single season to restart,
+            # so cancel and let the identification coordinator's prefetch fall
+            # back to every season, as the re-identify paths do (#873).
+            seasonless_retry_job = (
+                job if needs_subtitle_retry and job.detected_season is None else None
             )
             retry_args = (
-                (job_id, job.detected_title, job.detected_season) if needs_subtitle_retry else None
+                (job_id, job.detected_title, job.detected_season)
+                if needs_subtitle_retry and job.detected_season is not None
+                else None
             )
 
             # Leave REVIEW_NEEDED for MATCHING so the dashboard's live (WebSocket)
@@ -2816,6 +2824,13 @@ class JobManager:
 
         if retry_args is not None:
             await self._matching.restart_subtitle_download(*retry_args)
+        elif seasonless_retry_job is not None:
+            # Awaited BEFORE _rerun_matching: the prefetch installs the new
+            # subtitle-ready event that matching waits on. Dispatching first
+            # would match against the old, already-set event and the missing
+            # references.
+            await self._matching.cancel_subtitle_download(job_id)
+            await self._identification._start_tv_subtitle_prefetch(seasonless_retry_job)
 
         await self._rerun_matching(job_id, source_preference)
 
