@@ -18,9 +18,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 from app.core.episode_codes import episode_parts
-from app.core.match_language import ENGLISH, current_match_language
+from app.core.match_language import ENGLISH, UNSPACED_LANGUAGES, current_match_language
 from app.matcher import transcript_store
-from app.matcher.asr_models import detect_asr_device, get_cached_model, model_output_key
+from app.matcher.asr_models import (
+    detect_asr_device,
+    get_cached_model,
+    model_output_key,
+    whisper_language,
+)
 from app.matcher.audio_streams import (
     AudioPlan,
     follows_auto_pick,
@@ -1034,7 +1039,7 @@ class TfidfMatcher:
             f"{self.ref_matrix.shape[1]} features"
         )
 
-    def prepare(self, reference_files, subtitle_cache: SubtitleCache):
+    def prepare(self, reference_files, subtitle_cache: SubtitleCache, language: str = ENGLISH):
         """
         Fit TF-IDF vectorizer on all reference episode full texts.
 
@@ -1047,6 +1052,7 @@ class TfidfMatcher:
         Args:
             reference_files: List of paths to reference SRT files
             subtitle_cache: SubtitleCache instance for loading/caching SRT content
+            language: the references' language; unspaced scripts use character n-grams
         """
         self.ref_file_order = []
         corpus = []
@@ -1067,9 +1073,10 @@ class TfidfMatcher:
                 f"{', '.join(dropped)}"
             )
 
+        unspaced = language in UNSPACED_LANGUAGES
         self.vectorizer = TfidfVectorizer(
-            analyzer="word",
-            ngram_range=(1, 2),
+            analyzer="char_wb" if unspaced else "word",
+            ngram_range=(2, 4) if unspaced else (1, 2),
             max_features=10000,
             sublinear_tf=True,
         )
@@ -1360,7 +1367,10 @@ class EpisodeMatcher:
         fallback share one transcript cache without colliding (chunks start >= 300s
         with a 30s duration; the full-file pass uses start=0 with the file duration).
         """
-        return (self._source_key(mkv_file), start_time, duration)
+        key = (self._source_key(mkv_file), start_time, duration)
+        # Whisper's text depends on the language it is told; English keeps the 3-tuple.
+        language = current_match_language()
+        return key if language == ENGLISH else (*key, language)
 
     def _remember_transcription(self, key: tuple, text: str) -> None:
         """Store an ASR transcript, bounding the cache.
@@ -1393,7 +1403,7 @@ class EpisodeMatcher:
         loaded_device = getattr(model, "device", None)
         if loaded_device in ("cpu", "cuda"):
             config["device"] = loaded_device
-        return model_output_key(config)
+        return model_output_key(config, current_match_language())
 
     def transcribe_chunk_cached(
         self,
@@ -1445,7 +1455,12 @@ class EpisodeMatcher:
         # make this offset a perpetual miss (the `is None` guards above would
         # re-transcribe it every season). The caller's `len(text) < 10` check
         # still skips genuinely empty audio.
-        text = (model.transcribe(audio_path).get("text") or "").strip()
+        language = current_match_language()
+        if language == ENGLISH:
+            result = model.transcribe(audio_path)
+        else:
+            result = model.transcribe(audio_path, language=whisper_language(language))
+        text = (result.get("text") or "").strip()
         self._remember_transcription(chunk_key, text)
         transcript_store.put(file_key, start_time, chunk_len, model_key, text)
         return text
@@ -1906,6 +1921,10 @@ class EpisodeMatcher:
         ``precomputed`` is ``(ref_matrix, ref_episode_codes, idf_array)`` in
         precomputed mode; otherwise ``reference_files`` is fitted.
         """
+        # The analyzer depends on the language, so another language keys separately.
+        language = current_match_language()
+        if language != ENGLISH:
+            signature = (signature, language)
         cached = self._tfidf_cache.get(signature)
         if cached is not None:
             return cached
@@ -1918,7 +1937,7 @@ class EpisodeMatcher:
             ref_matrix, ref_episode_codes, idf_array = precomputed
             tm.load_precomputed(ref_matrix, ref_episode_codes, idf_array)
         else:
-            tm.prepare(reference_files, self.subtitle_cache)
+            tm.prepare(reference_files, self.subtitle_cache, current_match_language())
         with self._tfidf_cache_lock:
             existing = self._tfidf_cache.get(signature)
             if existing is not None:
@@ -1957,7 +1976,7 @@ class EpisodeMatcher:
         # Use the per-call TF-IDF matcher (read-only match(); safe to share).
         if tfidf_matcher is None or not tfidf_matcher.is_prepared:
             tfidf_matcher = TfidfMatcher()
-            tfidf_matcher.prepare(reference_files, self.subtitle_cache)
+            tfidf_matcher.prepare(reference_files, self.subtitle_cache, current_match_language())
 
         cleaned_transcription = self.clean_text(full_transcription)
         tfidf_results = tfidf_matcher.match(cleaned_transcription)

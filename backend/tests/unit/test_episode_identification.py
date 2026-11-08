@@ -1311,7 +1311,7 @@ class TestUnreadableReferenceGuard:
         def __init__(self):
             self.calls = 0
 
-        def transcribe(self, audio_path):
+        def transcribe(self, audio_path, language=None):
             self.calls += 1
             return {"text": "dexter get out of my lab " * 5}
 
