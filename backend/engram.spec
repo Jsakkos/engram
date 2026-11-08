@@ -73,8 +73,7 @@ third_party_hidden = [
     "alembic.runtime.migration",
     "mako",
     "mako.template",
-    # Other
-    "chardet",
+    # Other (chardet is collected whole in chardet_hidden below)
     "rapidfuzz",
     "psutil",
     "bs4",
@@ -100,7 +99,17 @@ for _vendored in ("scipy._external.array_api_compat", "scipy._lib.array_api_comp
     if _found:
         scipy_array_api_hidden += [f"{_vendored}.numpy.fft", f"{_vendored}.numpy.linalg"]
 
-all_hidden = app_hidden + third_party_hidden + scipy_array_api_hidden
+# chardet 7.7 ships mypyc-compiled wheels on Windows: each compiled module (e.g.
+# chardet/models/_format.pyd) loads a sibling runtime library (_format__mypyc.pyd)
+# from C, which PyInstaller's static analysis cannot see. Lock maintenance (#856)
+# moved chardet 7.6.0 to 7.7.0 and the v0.44.1 Windows binary died at startup with:
+#   ModuleNotFoundError: No module named 'chardet.models._format__mypyc'
+# The Linux CI frozen-build gate stayed green, so only the release caught it.
+# Collecting every chardet submodule picks up all the *__mypyc helpers, whatever
+# chardet names them next.
+chardet_hidden = collect_submodules("chardet")
+
+all_hidden = app_hidden + third_party_hidden + scipy_array_api_hidden + chardet_hidden
 
 # Data files that must be included
 datas = []
