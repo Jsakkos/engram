@@ -39,6 +39,7 @@ if _backend_dir not in sys.path:
 
 from loguru import logger
 
+from app.core.match_language import is_local_only_corpus_dir
 from app.matcher.subtitle_utils import (
     corpus_dir_name,
     parse_season_episode_numbers,
@@ -255,9 +256,9 @@ def main() -> int:
             return 1
         show_dirs = [target_dir]
     else:
-        # "@tvdb" dirs hold TheTVDB-numbered local references; never part of the corpus.
+        # "@tvdb" and "@<lang>" dirs hold local-only references; never part of the corpus.
         show_dirs = sorted(
-            d for d in data_dir.iterdir() if d.is_dir() and not d.name.endswith("@tvdb")
+            d for d in data_dir.iterdir() if d.is_dir() and not is_local_only_corpus_dir(d.name)
         )
 
     tally = Tally()
