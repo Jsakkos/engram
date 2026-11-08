@@ -62,10 +62,8 @@ describe('ReIdentifyModal quick-pick candidates', () => {
         expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 2, 195241);
     });
 
-    it('falls back to season 1 when the job has no detected_season', async () => {
-        // A null season serializes to `season: null`, the backend skips updating
-        // detected_season, and subtitle re-download is then silently skipped for
-        // the TV disc. Mirror the manual form's `|| 1` fallback.
+    it('sends all seasons, not season 1, when the job has no detected_season', async () => {
+        // #874: the old `?? 1` pinned a seasonless disc to S1 references only.
         const user = userEvent.setup();
         const onSubmit = vi.fn();
         render(
@@ -78,7 +76,7 @@ describe('ReIdentifyModal quick-pick candidates', () => {
 
         await user.click(screen.getByRole('button', { name: /frasier \(2023\)/i }));
 
-        expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 1, 195241);
+        expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 'all', 195241);
     });
 
     it('does not render a quick-pick section when candidates_json is absent', () => {
@@ -187,5 +185,71 @@ describe('ReIdentifyModal selection + current identity', () => {
             />,
         );
         expect(screen.queryByText(/currently:/i)).not.toBeInTheDocument();
+    });
+});
+
+describe('ReIdentifyModal season answer (#874)', () => {
+    it('submits the typed season by default', async () => {
+        const user = userEvent.setup();
+        const onSubmit = vi.fn();
+        render(<ReIdentifyModal job={makeJob({ detected_season: 2 })} onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+        expect(screen.getByRole('checkbox', { name: /all seasons/i })).not.toBeChecked();
+        await user.click(screen.getByTestId('reidentify-submit'));
+
+        expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 2, undefined);
+    });
+
+    it('sends all seasons when the user ticks All seasons, and disables the number', async () => {
+        const user = userEvent.setup();
+        const onSubmit = vi.fn();
+        render(<ReIdentifyModal job={makeJob({ detected_season: 2 })} onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+        await user.click(screen.getByRole('checkbox', { name: /all seasons/i }));
+        expect(screen.getByRole('spinbutton', { name: /season/i })).toBeDisabled();
+        await user.click(screen.getByTestId('reidentify-submit'));
+
+        expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 'all', undefined);
+    });
+
+    it('opens on All seasons for a TV job that has no season yet', async () => {
+        const user = userEvent.setup();
+        const onSubmit = vi.fn();
+        render(
+            <ReIdentifyModal job={makeJob({ detected_season: undefined })} onSubmit={onSubmit} onCancel={vi.fn()} />,
+        );
+
+        expect(screen.getByRole('checkbox', { name: /all seasons/i })).toBeChecked();
+        await user.click(screen.getByTestId('reidentify-submit'));
+
+        expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 'all', undefined);
+    });
+
+    it('treats a blank season as all seasons, not season 1', async () => {
+        const user = userEvent.setup();
+        const onSubmit = vi.fn();
+        render(<ReIdentifyModal job={makeJob({ detected_season: 2 })} onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+        await user.clear(screen.getByRole('spinbutton', { name: /season/i }));
+        await user.click(screen.getByTestId('reidentify-submit'));
+
+        expect(onSubmit).toHaveBeenCalledWith('Frasier', 'tv', 'all', undefined);
+    });
+
+    it('sends no season for a movie', async () => {
+        const user = userEvent.setup();
+        const onSubmit = vi.fn();
+        render(
+            <ReIdentifyModal
+                job={makeJob({ content_type: 'movie', detected_title: 'Inception', detected_season: undefined })}
+                onSubmit={onSubmit}
+                onCancel={vi.fn()}
+            />,
+        );
+
+        expect(screen.queryByRole('checkbox', { name: /all seasons/i })).not.toBeInTheDocument();
+        await user.click(screen.getByTestId('reidentify-submit'));
+
+        expect(onSubmit).toHaveBeenCalledWith('Inception', 'movie', undefined, undefined);
     });
 });

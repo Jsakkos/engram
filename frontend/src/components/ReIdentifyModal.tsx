@@ -1,7 +1,7 @@
 import { useState, useMemo, type KeyboardEvent } from 'react';
 import { motion } from 'motion/react';
 import { IcoDisc, IcoTv, IcoRetry } from '../app/components/icons';
-import type { Job } from '../types';
+import type { Job, SeasonAnswer } from '../types';
 import { SvPanel, SvLabel, sv } from '../app/components/synapse';
 import IdentityFields, { type IdentityValue } from './IdentityFields';
 
@@ -15,7 +15,7 @@ interface Candidate {
 
 interface ReIdentifyModalProps {
     job: Job;
-    onSubmit: (title: string, contentType: 'tv' | 'movie', season?: number, tmdbId?: number) => void;
+    onSubmit: (title: string, contentType: 'tv' | 'movie', season?: SeasonAnswer, tmdbId?: number) => void;
     onCancel: () => void;
 }
 
@@ -24,6 +24,9 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
         title: job.detected_title || '',
         contentType: job.content_type === 'tv' ? 'tv' : 'movie',
         season: String(job.detected_season || 1),
+        // A TV job with no season is already matching across all of them, so
+        // open on that rather than proposing season 1 (#874).
+        allSeasons: job.content_type === 'tv' && job.detected_season == null,
         tmdbId: undefined,
     });
     // Mirrors IdentityFields' internal search-query state so the Enter-to-submit
@@ -54,21 +57,26 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
     const selectCandidate = (c: Candidate) => {
         // Reuse the disc's detected content type (collisions are TV today, but
         // don't hardcode it — a future movie collision must not be forced to TV)
-        // and detected season so the user doesn't re-enter them. The `?? 1`
-        // mirrors the manual form's `|| 1`: a null season serializes to null,
-        // which the backend skips, silently disabling subtitle re-download.
+        // and detected season so the user doesn't re-enter them. A TV disc with
+        // no season keeps matching across all seasons; it is not pinned to S1.
         const type = job.content_type === 'tv' ? 'tv' : 'movie';
-        onSubmit(c.name, type, job.detected_season ?? 1, c.tmdb_id);
+        const season: SeasonAnswer | undefined =
+            type === 'tv' ? (job.detected_season ?? 'all') : undefined;
+        onSubmit(c.name, type, season, c.tmdb_id);
+    };
+
+    /** The manual form's season: the number, or 'all' when "All seasons" is
+     * ticked or the field was left blank (never a silent season 1). */
+    const formSeason = (): SeasonAnswer | undefined => {
+        if (identity.contentType !== 'tv') return undefined;
+        if (identity.allSeasons) return 'all';
+        const n = parseInt(identity.season, 10);
+        return n > 0 ? n : 'all';
     };
 
     const handleSubmit = () => {
         if (!identity.title.trim()) return;
-        onSubmit(
-            identity.title.trim(),
-            identity.contentType,
-            identity.contentType === 'tv' ? (parseInt(identity.season, 10) || 1) : undefined,
-            identity.tmdbId,
-        );
+        onSubmit(identity.title.trim(), identity.contentType, formSeason(), identity.tmdbId);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -292,6 +300,7 @@ export default function ReIdentifyModal({ job, onSubmit, onCancel }: ReIdentifyM
                             onChange={setIdentity}
                             onSearchQueryChange={(query) => setHasSearchQuery(!!query)}
                             autoFocus
+                            allowAllSeasons
                         />
 
                         <div style={{ height: 1, background: sv.line }} />

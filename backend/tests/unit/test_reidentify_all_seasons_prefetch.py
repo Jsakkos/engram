@@ -115,3 +115,53 @@ class TestReIdentifySubtitleRefresh:
         await _coord(calls).re_identify(job_id, "Inception", "movie", tmdb_id=27205)
 
         assert calls == []
+
+
+@pytest.mark.unit
+class TestReIdentifyClearsSeason:
+    """``season=None`` means "leave the season as it is", so a job that already
+    had one could never reach the all-seasons prefetch from the re-identify
+    dialog. ``all_seasons=True`` is the explicit "clear it" (#874)."""
+
+    async def test_all_seasons_clears_a_set_season_and_prefetches_every_season(self, tmp_path):
+        (tmp_path / "title_t00.mkv").write_text("")
+        job_id = await _seed(tmp_path, detected_season=3)
+        calls: list = []
+
+        result = await _coord(calls).re_identify(
+            job_id, "Frasier", "tv", tmdb_id=195241, all_seasons=True
+        )
+
+        assert result["resume_action"] == "rerun_matching"
+        assert calls == [("cancel", job_id), ("prefetch", job_id, "Frasier", None)]
+        async with _unit_session_factory() as session:
+            assert (await session.get(DiscJob, job_id)).detected_season is None
+
+    async def test_all_seasons_mid_rip_prefetches_every_season(self, tmp_path):
+        job_id = await _seed(tmp_path, detected_season=3, state=JobState.RIPPING)
+        calls: list = []
+
+        await _coord(calls).re_identify(job_id, "Wrong Show", "tv", tmdb_id=None, all_seasons=True)
+
+        assert calls == [("cancel", job_id), ("prefetch", job_id, "Wrong Show", None)]
+
+    async def test_omitted_season_leaves_a_set_season_unchanged(self, tmp_path):
+        (tmp_path / "title_t00.mkv").write_text("")
+        job_id = await _seed(tmp_path, detected_season=3)
+        calls: list = []
+
+        await _coord(calls).re_identify(job_id, "Frasier", "tv", tmdb_id=195241)
+
+        # Old clients that omit the season keep today's behavior: the season
+        # stays, and the known-season restart path runs.
+        assert calls == [("restart", job_id, "Frasier", 3, 195241)]
+        async with _unit_session_factory() as session:
+            assert (await session.get(DiscJob, job_id)).detected_season == 3
+
+    async def test_season_and_all_seasons_together_is_rejected(self, tmp_path):
+        job_id = await _seed(tmp_path, detected_season=3)
+
+        with pytest.raises(ValueError, match="all_seasons"):
+            await _coord([]).re_identify(
+                job_id, "Frasier", "tv", season=2, tmdb_id=195241, all_seasons=True
+            )
