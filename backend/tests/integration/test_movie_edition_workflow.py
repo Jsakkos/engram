@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -327,11 +328,8 @@ async def test_movie_edition_prerip_workflow(
 
     # 1. Setup Job (REVIEW_NEEDED)
     job = DiscJob(
-        # A real drive identifier, not a synthetic label: this is the one
-        # test in this file that reaches _run_ripping, which resolves the
-        # job's MakeMKV source and fails the job fast when it cannot be
-        # parsed. Every drive_id the sentinel actually writes ("E:",
-        # "/dev/sr0") parses; an invented one does not.
+        # A real drive identifier, as the sentinel writes ("E:", "/dev/sr0"),
+        # not a synthetic label.
         drive_id="E:",
         volume_label="LOTR_PRERIP",
         content_type=ContentType.MOVIE,
@@ -361,17 +359,20 @@ async def test_movie_edition_prerip_workflow(
     session.add(title2)
     await session.commit()
 
-    # 2. Initialize JobManager and Mock Ripping
-    job_manager = JobManager()
+    # 2. Initialize JobManager with ripping mocked.
+    # Patch the CLASS before constructing: JobManager.__init__ hands the bound
+    # _run_ripping to the finalization coordinator, which is what apply_review
+    # schedules. Patching the instance afterwards left that copy pointing at the
+    # real method, so a real rip ran in the background and raced the fixture's
+    # engine teardown ("Cannot operate on a closed database").
+    with patch.object(JobManager, "_run_ripping", new_callable=AsyncMock) as run_ripping:
+        job_manager = JobManager()
 
-    # We need to mock _run_ripping to avoid actual execution,
-    # but we want to verify it was scheduled.
-    # However, apply_review calls it via asyncio.create_task(self._run_ripping(job_id))
-    # We can patch _run_ripping on the instance.
-
-    with patch.object(job_manager, "_run_ripping", new_callable=AsyncMock):
         # 3. Apply Review
         await job_manager.apply_review(job_id=job.id, title_id=title1.id, edition="Extended")
+        # Let the scheduled rip task start, then check it is the mock.
+        await asyncio.sleep(0)
+        run_ripping.assert_awaited_once_with(job.id)
 
         # 4. Verify State Transition
         await session.refresh(job)
