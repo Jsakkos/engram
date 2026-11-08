@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - A TV disc with no season (a flat import folder, or "match across all seasons") now gets the same TheTVDB numbering check as a disc with one. Engram compares every season it downloads references for, and when TMDB and TheTVDB number one of them differently (Justice League season 1: 24 episodes against 26) the review page suggests TheTVDB order. A show you already moved to TheTVDB order is matched in it for every season. If TheTVDB cannot supply any one of those seasons, the disc stays on TMDB numbering rather than mixing the two (#876).
+- When OpenSubtitles offers several subtitles for an episode, Engram now downloads the most reputable one: files from trusted uploaders and with more downloads first, machine- and AI-translated files only as a last resort. It used to take whichever the search listed first, which for a German show was a machine translation from Hungarian whose wording no longer followed the dialogue, and the episode lost most of its matching votes. (#841, thanks @wintheriscomming!)
 
 ## [0.44.1] - 2026-11-07
 
