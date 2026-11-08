@@ -300,8 +300,10 @@ def test_attach_runner_up_confidence_scaled_below_winner():
 
     runner_ups = best["match_details"]["runner_ups"]
     assert runner_ups[1]["score"] == 0.09
-    # half the winner's raw score -> ~half the winner's calibrated confidence
-    assert runner_ups[1]["confidence"] == pytest.approx(best["confidence"] * 0.5, abs=0.02)
+    # scaled by vote mass, the leaderboard's sort key: 0.09 x 2 against 0.18 x 6
+    assert runner_ups[1]["confidence"] == pytest.approx(
+        best["confidence"] * (0.09 * 2) / (0.18 * 6), abs=0.02
+    )
     assert runner_ups[1]["confidence"] < runner_ups[0]["confidence"]
 
 
