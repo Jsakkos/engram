@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- A TV disc with no season (a flat import folder, or "match across all seasons") now gets the same TheTVDB numbering check as a disc with one. Engram compares every season it downloads references for, and when TMDB and TheTVDB number one of them differently (Justice League season 1: 24 episodes against 26) the review page suggests TheTVDB order. A show you already moved to TheTVDB order is matched in it for every season. If TheTVDB cannot supply any one of those seasons, the disc stays on TMDB numbering rather than mixing the two (#876).
+
 ## [0.44.1] - 2026-11-07
 
 _Highlights: TheTVDB episode numbering is now reachable for TV discs in review, plus a round of dashboard and setup polish: per-disc activity log lines, separate ripped and matched track counts, and a first-run welcome._
