@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- "Re-match all" now retries a failed reference-subtitle download for a TV disc with no season ("match across all seasons"). Before, only discs with a known season were retried, so the re-match ran against the same missing references and landed back in review. It now cancels the failed download and fetches every season before matching starts (#875).
+
 ## [0.44.1] - 2026-11-07
 
 _Highlights: TheTVDB episode numbering is now reachable for TV discs in review, plus a round of dashboard and setup polish: per-disc activity log lines, separate ripped and matched track counts, and a first-run welcome._
