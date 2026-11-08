@@ -23,6 +23,7 @@ from app.core.episode_namespace import (
     season_episode_count,
     season_episodes,
 )
+from app.core.match_language import current_match_language
 from app.matcher.addic7ed_client import Addic7edClient
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.numbering_crosswalk import is_segmented_marker
@@ -615,7 +616,9 @@ def _rank_by_reputation(results: list) -> list:
     return sorted(results, key=key)
 
 
-def _release_matches_episode(release: str | None, expected_title: str, *, season: int) -> bool:
+def _release_matches_episode(
+    release: str | None, expected_title: str, *, season: int, check_title: bool = True
+) -> bool:
     """Return False when an OpenSubtitles ``release`` clearly names a DIFFERENT
     episode than the one requested; True when it's consistent or uninformative.
 
@@ -629,12 +632,18 @@ def _release_matches_episode(release: str | None, expected_title: str, *, season
     1. An explicit ``SxxEyy`` whose season differs from ``season``.
     2. An explicit title after an episode marker ("Episode N - Title", "SxxEyy: Title",
        "NxNN - Title") that shares no word — and is no substring — with ``expected_title``.
+
+    ``check_title=False`` keeps only (1): a release in another language names its
+    episode in that language, and TMDB's titles are English, so a title mismatch is
+    no evidence of a mislabel there.
     """
-    if not release or not expected_title:
+    if not release or (check_title and not expected_title):
         return True
     sxx = re.search(r"s(\d{1,2})e\d{1,3}", release, re.IGNORECASE)
     if sxx and int(sxx.group(1)) != season:
         return False
+    if not check_title:
+        return True
     marker = re.search(
         r"(?:episode\s+\d+|s\d{1,2}e\d{1,3}|\d{1,2}x\d{1,3})\s*[-–:]\s*(.+)$",
         release,
@@ -714,6 +723,15 @@ def _season_episode_titles(show_id: str, season: int, tmdb_api_key: str) -> dict
     else:
         episodes = fetch_season_episodes(show_id, season, tmdb_api_key)
     return {e["episode_number"]: e["name"] for e in episodes if e.get("episode_number") is not None}
+
+
+# OpenSubtitles splits these by region; one search asks for every variant.
+_OPENSUBTITLES_REGIONS = {"pt": "pt-pt,pt-br", "zh": "zh-cn,zh-tw"}
+
+
+def opensubtitles_languages(language: str) -> str:
+    """The OpenSubtitles ``languages`` parameter for a normalized code."""
+    return _OPENSUBTITLES_REGIONS.get(language, language)
 
 
 def _os_search_client(config):
@@ -875,6 +893,12 @@ def download_subtitles(
     # human inspection still work inside the id-keyed dir.
     safe_show_name = sanitize_filename(canonical_show_name)
     series_cache_dir = cache_path / "data" / corpus_dir_name(tmdb_id, canonical_show_name)
+    # The bound match language (app/core/match_language.py): the folder above is
+    # already the language's own, and every provider is asked for that language.
+    language = current_match_language()
+    providers = ["addic7ed", "tvsubtitles"]
+    if not TVSubtitlesClient.supports_language(language):
+        providers.remove("tvsubtitles")
     series_cache_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Downloading subtitles for '{canonical_show_name}' to: {series_cache_dir}")
@@ -940,7 +964,7 @@ def download_subtitles(
                     _os_client.search,
                     parent_tmdb_id=show_id,
                     season_number=season,
-                    languages="en",
+                    languages=opensubtitles_languages(language),
                     type="episode",
                     max_attempts=4,
                     base_delay=1.0,
@@ -970,10 +994,13 @@ def download_subtitles(
                             f"season {season} (mislabeled); skipping"
                         )
                         continue
+                    # TMDB's titles are English: off English only the release's
+                    # season is checked.
                     if not _release_matches_episode(
                         getattr(subtitle, "release", None),
                         episode_titles.get(ep_num, ""),
                         season=season,
+                        check_title=language == "en",
                     ):
                         logger.warning(
                             f"OpenSubtitles S{season:02d}E{ep_num:02d} release "
@@ -1118,7 +1145,8 @@ def download_subtitles(
                 episode=episode,
                 episode_code=episode_code,
                 srt_target=srt_path,
-                pending_providers=deque(["addic7ed", "tvsubtitles"]),
+                pending_providers=deque(providers),
+                language=language,
             )
         )
 
