@@ -261,6 +261,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // Settings mode can deep-link to a section; onboarding always starts at step 1.
     const [step, setStep] = useState(() => (!isOnboarding ? resolveSection(initialSection)?.step : undefined) ?? 1);
     const [isLoading, setIsLoading] = useState(true);
+    const wizardBodyRef = useRef<HTMLDivElement | null>(null);
     // Bumped after a settings import (#731) to re-run the config load below.
     const [configReloadKey, setConfigReloadKey] = useState(0);
     const [showOnboardingImport, setShowOnboardingImport] = useState(false);
@@ -572,6 +573,15 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
         }, 400);
         return () => window.clearTimeout(timer);
     }, [config.discordTemplateCompleted, config.discordTemplateFailed, config.discordTemplateReview, config.discordTemplateRipped]);
+
+    // Each step/section is a different page of content in the same scroll pane, so
+    // start it at the top. Skipped while a deep link is pending: the anchor effect
+    // below consumes that ref and scrolls to the control instead. Assigning
+    // scrollTop (not scrollTo) works in browsers and jsdom alike.
+    useEffect(() => {
+        if (pendingScrollAnchor.current) return;
+        if (wizardBodyRef.current) wizardBodyRef.current.scrollTop = 0;
+    }, [step]);
 
     // Detect tools when entering step 2
     useEffect(() => {
@@ -2691,7 +2701,7 @@ function ConfigWizard({ onClose, onComplete, isOnboarding = true, initialSection
     // Shared scrollable content pane — same in both modes, only the surrounding
     // chrome (stepper vs. section nav) differs.
     const wizardBody = (
-        <div className="wizard-body">
+        <div className="wizard-body" ref={wizardBodyRef}>
             {isLoading ? (
                 <div className="wizard-loading">
                     <div className="spinner-mini"></div>

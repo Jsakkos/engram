@@ -7,10 +7,21 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - One stray chunk vote no longer drags a correctly matched track's confidence to near zero. Engram picked the episode whose chunk votes had the highest average score, so a single vote for the wrong episode with a slightly higher score tied or beat a run of votes for the right one (19 against 1 calibrated to 0.003) and the track went to review. The winner, its confidence and the runner-ups shown on the review page now come from the summed score of each episode's votes, so agreement across many chunks counts. (#842, thanks @wintheriscomming!)
+
+## [0.44.1] - 2026-11-07
+
+_Highlights: TheTVDB episode numbering is now reachable for TV discs in review, plus a round of dashboard and setup polish: per-disc activity log lines, separate ripped and matched track counts, and a first-run welcome._
+
+### Fixed
+
+- TheTVDB episode numbering can now be reached for a TV disc in review. Correcting a disc's identity by typing a show name (without picking a search result) could bind the TV disc to a same-named movie (Justice League the 2001 series lost to the 2017 film on popularity), so Engram never linked the show to TheTVDB and never suggested its numbering. The lookup now searches the type you chose, a correction to a different show or season starts that show's numbering decision fresh, and while a TheTVDB key is configured the review page's **Episode ordering** selector offers **TheTVDB** for any disc in review, not only when the two catalogues were detected to differ. The Settings text now says what the key does: on its own it changes nothing (#862).
+- A TV re-identify sent to the API with no season now downloads reference subtitles for every season of the corrected show, as naming an unreadable disc and answering mid-rip already did. Before, it started no download at all. The re-identify dialog still sends season 1 when the field is blank; offering "All seasons" there is tracked in #874 (#873).
+- The setup wizard and Settings open each step or section scrolled to the top, checkbox descriptions read as normal sentence text instead of tracked capitals, and the inline action buttons (Test Token, Enable GPU acceleration) now have proper button styling with a visible keyboard focus ring (#725, #739, thanks @sinaiko0212!).
+- The dashboard card shows ripped and matched track counts separately during a rip, so matched tracks no longer make the old TRACKS counter look further along than the rip is (#717, #740, thanks @sinaiko0212!).
+- The dashboard activity log now names the disc on every track event (for example `OFFICE_S2D3 · T07`), so two discs ripping at once no longer interleave anonymous `T03` / `T07` lines. Long labels are shortened, and a disc with no label falls back to `JOB <id>` (#719).
 - A brand-new install no longer greets you with "All operations complete". With no job history, the dashboard now welcomes you and offers both ways in: insert a disc, or **Import** rips and disc backups you already have, plus a Getting started link. The old empty-state text returns as soon as any job exists (#721).
 - In Settings, a library or staging folder that doesn't exist yet is no longer shown as a red error. It now reads "Will be created on first use" in a neutral tone, and the server only says so when it can keep the promise: the nearest existing parent folder must be writable. A missing folder under an unwritable parent, or beneath a file, is still an error (#724).
 - One OpenSubtitles result whose file the server no longer serves ("Invalid file_id") no longer stops the subtitle download for the whole season. Engram skips that upload, tries the next one for the episode, and does not retry the dead one (#857).
-- TheTVDB episode numbering can now be reached for a TV disc in review. Correcting a disc's identity by typing a show name (without picking a search result) could bind the TV disc to a same-named movie (Justice League the 2001 series lost to the 2017 film on popularity), so Engram never linked the show to TheTVDB and never suggested its numbering. The lookup now searches the type you chose, a correction to a different show or season starts that show's numbering decision fresh, and while a TheTVDB key is configured the review page's **Episode ordering** selector offers **TheTVDB** for any disc in review, not only when the two catalogues were detected to differ. The Settings text now says what the key does: on its own it changes nothing. (#862)
 
 ## [0.44.0] - 2026-10-25
 

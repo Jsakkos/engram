@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type Mock } from 'vitest';
 import { toast } from 'sonner';
 import ConfigWizard from './ConfigWizard';
 
@@ -601,6 +601,82 @@ describe('ConfigWizard: disc backup before ripping', () => {
         const body = JSON.parse(putCall?.[1]?.body as string);
         expect(body.backup_before_rip).toBe(true);
         expect(body.backup_path).toBe('/mnt/backups');
+    });
+});
+
+describe('ConfigWizard — scroll reset on step change (#725)', () => {
+    const getBody = (container: HTMLElement) => container.querySelector('.wizard-body') as HTMLElement;
+
+    it('settings: switching section via the sidebar scrolls the body back to the top', async () => {
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        const body = getBody(container);
+
+        body.scrollTop = 300;
+        fireEvent.click(within(nav).getByRole('button', { name: 'Preferences' }));
+
+        expect(await screen.findByText('Max Concurrent Matches')).toBeInTheDocument();
+        expect(body.scrollTop).toBe(0);
+    });
+
+    it('settings: every section switch resets the scroll position, not just the first', async () => {
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={false} />);
+        const nav = await screen.findByRole('navigation', { name: /settings sections/i });
+        const body = getBody(container);
+
+        for (const name of ['Tools & License', 'Data Sharing', 'Library Paths']) {
+            body.scrollTop = 250;
+            fireEvent.click(within(nav).getByRole('button', { name }));
+            await waitFor(() => expect(body.scrollTop).toBe(0));
+        }
+    });
+
+    it('onboarding: Next and Back both open the step at the top', async () => {
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={true} />);
+        await screen.findByRole('heading', { level: 2, name: 'Setup Wizard' });
+        const body = getBody(container);
+
+        body.scrollTop = 302;
+        fireEvent.click(screen.getByRole('button', { name: /next/i }));
+        await waitFor(() => expect(screen.getByLabelText(/^Step 2: Tools \(current\)/)).toBeInTheDocument());
+        expect(body.scrollTop).toBe(0);
+
+        body.scrollTop = 180;
+        fireEvent.click(screen.getByRole('button', { name: /back/i }));
+        await waitFor(() => expect(screen.getByLabelText(/^Step 1: Paths \(current\)/)).toBeInTheDocument());
+        expect(body.scrollTop).toBe(0);
+    });
+
+    it('does not move the scroll position when the step has not changed', async () => {
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={false} />);
+        await screen.findByRole('navigation', { name: /settings sections/i });
+        const body = getBody(container);
+
+        body.scrollTop = 120;
+        fireEvent.change(await screen.findByLabelText('Movies Library'), { target: { value: '/other' } });
+        expect(body.scrollTop).toBe(120);
+    });
+
+    it('a deep link lands on its anchor and is not reset to the top', async () => {
+        const scrollIntoView = vi.fn(function (this: Element) {
+            // Stand in for the browser: scrolling the anchor into view moves the pane.
+            (this.closest('.wizard-body') as HTMLElement).scrollTop = 240;
+        });
+        const originalScrollIntoView = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = scrollIntoView;
+        onTestFinished(() => {
+            Element.prototype.scrollIntoView = originalScrollIntoView;
+        });
+        const { container } = render(<ConfigWizard {...noop} isOnboarding={false} initialSection="gpu" />);
+        await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+        const anchor = document.getElementById('setting-gpu-acceleration');
+        expect(scrollIntoView.mock.contexts[0]).toBe(anchor);
+        expect(getBody(container).scrollTop).toBe(240);
+
+        // The anchor is consumed once: a later section switch resets to the top again.
+        const nav = screen.getByRole('navigation', { name: /settings sections/i });
+        fireEvent.click(within(nav).getByRole('button', { name: 'Library Paths' }));
+        await waitFor(() => expect(getBody(container).scrollTop).toBe(0));
     });
 });
 
