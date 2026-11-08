@@ -99,7 +99,7 @@ test.describe('Visual Verification - UI Correctness', () => {
   test('Empty state displays correctly', async ({ page }) => {
     // Should show empty state on active filter (no discs since reset ran in beforeEach)
     await page.locator(SELECTORS.filterActive).click();
-    await expect(page.getByRole('heading', { name: /NO ACTIVE OPERATIONS/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('sv-empty-heading')).toBeVisible({ timeout: 5000 });
   });
 
   test('State indicators use correct colors', async ({ page }) => {

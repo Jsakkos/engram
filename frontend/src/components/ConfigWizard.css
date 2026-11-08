@@ -476,6 +476,27 @@
     transition: all 0.3s ease;
 }
 
+/* #725: `.form-group label` uppercases and tracks every label, which also hit the
+   description text inside checkbox rows. Neutralise that on the row itself; the
+   title (<strong>) re-applies the label style, the hint stays normal-case body text. */
+.form-group label.checkbox-label {
+    display: flex;
+    margin-bottom: 0;
+    color: inherit;
+    font-weight: 400;
+    font-size: 0.9rem;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.checkbox-text > strong {
+    color: var(--color-sv-ink-dim);
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+}
+
 .checkbox-label:hover {
     background: rgba(255, 61, 127, 0.1);
     border-color: rgba(255, 61, 127, 0.4);
@@ -516,7 +537,11 @@
 
 .checkbox-hint {
     font-size: 0.875rem;
+    line-height: 1.5;
     color: #8893a8;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 /* LAN Address Panel */
@@ -890,6 +915,54 @@
 
 .tool-rescan-btn:disabled {
     opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* #725: inline action buttons (Test Token, Enable GPU acceleration, ...) used to be
+   styled only inside .wizard-actions, so elsewhere they rendered as bare text.
+   Base button chrome lives here; the footer rules below only add layout tweaks. */
+.wizard-body .btn-primary,
+.wizard-body .btn-secondary {
+    padding: 0.45rem 1rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-weight: 700;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    border: 1px solid;
+    background: var(--color-sv-bg0);
+    cursor: pointer;
+    transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.wizard-body .btn-secondary {
+    color: var(--color-sv-ink-dim);
+    border-color: var(--color-sv-line);
+}
+
+.wizard-body .btn-secondary:not(:disabled):hover {
+    color: var(--color-sv-cyan);
+    border-color: var(--color-sv-cyan);
+}
+
+.wizard-body .btn-primary {
+    color: var(--color-sv-magenta);
+    border-color: var(--color-sv-magenta);
+}
+
+.wizard-body .btn-primary:not(:disabled):hover {
+    background: rgba(255, 61, 127, 0.10);
+}
+
+.wizard-body .btn-primary:focus-visible,
+.wizard-body .btn-secondary:focus-visible {
+    outline: 2px solid var(--color-sv-cyan);
+    outline-offset: 2px;
+}
+
+.wizard-body .btn-primary:disabled,
+.wizard-body .btn-secondary:disabled {
+    opacity: 0.3;
     cursor: not-allowed;
 }
 
