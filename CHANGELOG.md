@@ -6,7 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ## [0.45.0] - 2026-11-08
 
-_Highlights: shows in other languages can now be matched in their own language, and TV discs with no known season get an All seasons choice when re-identifying, the TheTVDB numbering check, and subtitle retries on Re-match all._
+_Highlights: shows in other languages are now matched in their own language; the re-identify dialog offers All seasons; TV discs with no known season get the TheTVDB numbering check and subtitle retries on Re-match all; and two ranking fixes sharpen German-show matches._
 
 ### Added
 
