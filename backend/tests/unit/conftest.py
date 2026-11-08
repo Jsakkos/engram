@@ -142,6 +142,51 @@ _unit_sync_engine = create_engine(
 )
 
 
+# Per-job (or per-drive) containers on the ``job_manager`` singleton and the objects
+# it owns. Job ids restart at 1 with every fresh in-memory DB, so anything left in
+# these by an earlier test aliases an unrelated job in a later one.
+_JOB_MANAGER_STATE = (
+    "_active_jobs",
+    "_drive_locks",
+    "_staging_locks",
+    "_last_job_created_at",
+    "_parked_discs",
+    "_last_activity",
+    "_stall_sent",
+)
+_FINALIZATION_STATE = (
+    "_file_as_extras_locks",
+    "_conflict_passes",
+    "_review_passes",
+    "_season_retries",
+    "_left_as_filed",
+)
+_MATCHING_STATE = (
+    "_discdb_mappings",
+    "_episode_runtimes",
+    "_episode_runtimes_locks",
+    "_subtitle_ready",
+    "_subtitle_tasks",
+)
+_PREWARMER_STATE = ("_tasks", "_kickoffs")
+
+
+def _clear_per_job_singleton_state(jm) -> None:
+    """Empty every per-job map on the job_manager singleton and its coordinators."""
+    for owner, names in (
+        (jm, _JOB_MANAGER_STATE),
+        (jm._finalization, _FINALIZATION_STATE),
+        (jm._matching, _MATCHING_STATE),
+        (jm._prewarmer, _PREWARMER_STATE),
+    ):
+        for name in names:
+            # An attribute a test replaced with a Mock (or one a refactor removed)
+            # is not ours to clear; skip anything without a real ``clear``.
+            container = getattr(owner, name, None)
+            if isinstance(container, dict | set):
+                container.clear()
+
+
 @pytest.fixture(autouse=True)
 async def isolate_database(monkeypatch):
     """Patch async_session + sync engine so no unit test touches engram.db."""
@@ -238,6 +283,17 @@ async def isolate_database(monkeypatch):
     # Same for the live-match registry (#776): a count leaked by a task cancelled
     # before its first step would make a later test's title id look live.
     _jm_inst._matching._live_matches.clear()
+
+    # And the rest of the per-job singleton state (#877). The maps above were each
+    # added after a specific leak bit someone; this sweeps every other dict/set the
+    # singleton and its coordinators key by job id (or drive) so the next one cannot.
+    # The concrete case: a finished task for job 1 stranded in ``_active_jobs`` by an
+    # earlier test (integration/test_walk_away_workflow.py never reaches shutdown),
+    # which a later test's fresh in-memory DB, handing out id 1 again, then read as
+    # "a task is already registered". Clear in place: ``_active_jobs`` is shared by
+    # reference with the finalization coordinator. Dropping the references (rather
+    # than cancelling) is deliberate; leaked tasks may be bound to a closed loop.
+    _clear_per_job_singleton_state(_jm_inst)
 
     yield
 
