@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatToolVersion } from './formatting';
+import { formatToolVersion, formatDurationCoarse } from './formatting';
 
 describe('formatToolVersion', () => {
     it('reduces the raw ffmpeg banner to product + version token', () => {
@@ -36,5 +36,11 @@ describe('formatToolVersion', () => {
         const out = formatToolVersion(long);
         expect(out.length).toBeLessThanOrEqual(60);
         expect(out.endsWith('…')).toBe(true);
+    });
+});
+
+describe('formatDurationCoarse', () => {
+    it('carries rounded minutes into the next hour', () => {
+        expect(formatDurationCoarse(7199)).toBe('2h 0m');
     });
 });
