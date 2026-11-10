@@ -2,11 +2,13 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
+from app.api import routes
 from app.api.routes import require_localhost_or_lan
 from app.database import async_session, init_db
 from app.main import app
@@ -65,6 +67,24 @@ async def test_browse_empty_path_returns_roots(client):
     res = await client.get("/api/import/browse", params={"path": ""})
     assert res.status_code == 200
     assert isinstance(res.json()["roots"], list)
+
+
+async def test_browse_windows_skips_drive_with_probe_error(client, monkeypatch):
+    def drive_path(path: str) -> SimpleNamespace:
+        def exists() -> bool:
+            if path == "F:\\":
+                raise OSError(22, "The parameter is incorrect", path, 87)
+            return path in {"C:\\", "G:\\"}
+
+        return SimpleNamespace(exists=exists)
+
+    monkeypatch.setattr(routes, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(routes, "Path", drive_path)
+
+    res = await client.get("/api/import/browse", params={"path": ""})
+
+    assert res.status_code == 200
+    assert res.json()["roots"] == ["C:\\", "G:\\"]
 
 
 async def test_browse_bad_path_400(client, tmp_path: Path):
