@@ -17,7 +17,7 @@
     },
     "dependencies": {
         "@radix-ui/react-select": "2.4.1",
-        "@radix-ui/react-tooltip": "1.2.12",
+        "@radix-ui/react-tooltip": "1.4.1",
         "clsx": "2.1.1",
         "lucide-react": "1.65.0",
         "motion": "14.9.0",
