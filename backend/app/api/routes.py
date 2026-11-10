@@ -3291,9 +3291,18 @@ async def import_browse(path: str = "") -> dict:
         if os.name == "nt":
             # Probing 26 drive letters can each block for seconds on a stale
             # network/UNC mapping, so run it off the event loop thread.
-            roots = await asyncio.to_thread(
-                lambda: [f"{d}:\\" for d in string.ascii_uppercase if Path(f"{d}:\\").exists()]
-            )
+            def list_drive_roots() -> list[str]:
+                drive_roots = []
+                for letter in string.ascii_uppercase:
+                    root = f"{letter}:\\"
+                    try:
+                        if Path(root).exists():
+                            drive_roots.append(root)
+                    except OSError:
+                        continue
+                return drive_roots
+
+            roots = await asyncio.to_thread(list_drive_roots)
         else:
             roots = ["/", str(Path.home())]
         return {"cwd": None, "parent": None, "roots": roots, "entries": []}
