@@ -67,6 +67,43 @@ async def test_browse_empty_path_returns_roots(client):
     assert isinstance(res.json()["roots"], list)
 
 
+def _raise_probe_error_for(monkeypatch, target: Path) -> None:
+    """Make Path.exists raise WinError 87 for one path, as a stale Windows drive does.
+
+    pathlib only swallows a few errnos (ENOENT, WinError 21/123/1921); 87 propagates.
+    """
+    real_exists = Path.exists
+    target = target.resolve()
+
+    def exists(self, *args, **kwargs):
+        if self == target:
+            raise OSError(22, "The parameter is incorrect", str(self), 87)
+        return real_exists(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "exists", exists)
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "key"),
+    [
+        ("GET", "/api/import/browse", "params"),
+        ("POST", "/api/import/preview", "json"),
+        ("POST", "/api/import/start", "json"),
+    ],
+)
+async def test_unreadable_path_is_400_not_500(
+    client, tmp_path: Path, monkeypatch, method, url, key
+):
+    _raise_probe_error_for(monkeypatch, tmp_path)
+    payload = {"path": str(tmp_path)}
+    if url.endswith("/start"):
+        payload["destination_mode"] = "library"
+
+    res = await client.request(method, url, **{key: payload})
+
+    assert res.status_code == 400
+
+
 async def test_browse_bad_path_400(client, tmp_path: Path):
     res = await client.get("/api/import/browse", params={"path": str(tmp_path / "nope")})
     assert res.status_code == 400

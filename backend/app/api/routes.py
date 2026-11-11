@@ -3267,6 +3267,19 @@ class ImportStartResponse(BaseModel):
     blocked: list[BlockedImportUnit]
 
 
+def _probe(check, p: Path) -> bool:
+    """Run a filesystem predicate, treating an OSError as "no".
+
+    ``Path.exists``/``is_dir`` only swallow a few errnos. A stale or
+    unreadable Windows drive raises others (WinError 87, "The parameter is
+    incorrect"), which would turn a bad user-picked path into a 500.
+    """
+    try:
+        return check(p)
+    except OSError:
+        return False
+
+
 @router.get("/import/browse", dependencies=[Depends(require_localhost_or_lan)])
 async def import_browse(path: str = "") -> dict:
     """Read-only directory listing for the manual-import picker.
@@ -3302,7 +3315,7 @@ async def import_browse(path: str = "") -> dict:
         p = Path(path).expanduser().resolve()
     except OSError as exc:
         raise HTTPException(status_code=400, detail="Invalid path") from exc
-    if not p.exists() or not p.is_dir():
+    if not _probe(Path.exists, p) or not _probe(Path.is_dir, p):
         raise HTTPException(status_code=400, detail=f"Not a directory: {path}")
 
     entries: list[dict] = []
@@ -3354,7 +3367,7 @@ async def import_preview(req: ImportPathRequest) -> dict:
     # resolve() collapses .. and symlinks before the path reaches the scanner
     # (mirrors import_browse), so a caller can't pick a traversal/symlink root.
     p = Path(req.path).expanduser().resolve()
-    if not p.exists():
+    if not _probe(Path.exists, p):
         raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
 
     scan = await asyncio.to_thread(import_scanner.scan, p)
@@ -3405,7 +3418,7 @@ async def import_start(req: ImportStartRequest) -> ImportStartResponse:
     # resolve() collapses .. and symlinks before the path reaches the scanner
     # (mirrors import_browse), so a caller can't pick a traversal/symlink root.
     p = Path(req.path).expanduser().resolve()
-    if not p.exists():
+    if not _probe(Path.exists, p):
         raise HTTPException(status_code=400, detail=f"Path does not exist: {req.path}")
 
     scan = await asyncio.to_thread(import_scanner.scan, p)
