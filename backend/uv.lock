@@ -590,7 +590,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7.0" },
     { name = "scikit-learn", specifier = ">=1.4.0" },
     { name = "soundfile", specifier = ">=0.12.1" },
-    { name = "sqlalchemy", specifier = ">=2.0,<2.1" },
+    { name = "sqlalchemy", specifier = ">=2.0,<2.2" },
     { name = "sqlmodel", specifier = ">=0.0.14" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
     { name = "websockets", specifier = ">=12.0" },
@@ -600,7 +600,7 @@ provides-extras = ["gpu", "dev", "docs"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "hypothesis", specifier = ">=6.168.5" },
+    { name = "hypothesis", specifier = ">=6.170.15" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-asyncio", specifier = ">=1.4.1.post1" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
@@ -1684,6 +1684,7 @@ dependencies = [
     { name = "nvidia-cublas-cu12" },
 ]
 wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/a2/22732bccd338398ced3d02cdee97c351f0ff62f2717d677fce519479ee0c/nvidia_cudnn_cu12-9.28.1.4-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:ef24078b4d2f45e80b5ce425f9e4a190bc48806e8c9ea1467496f85ed9b0a1fe", size = 723285364, upload-time = "2026-11-09T07:59:55.695Z" },
     { url = "https://files.pythonhosted.org/packages/2a/16/be895437624ae0400bda2b4bb69336cdb43346545e54edb15389d193a3b3/nvidia_cudnn_cu12-9.28.1.4-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:cbcf6f33c77fef3aa61d3fec36f2e89b07eb27d65b9f369c1adf3cfee08c2c21", size = 716579350, upload-time = "2026-11-06T21:51:22.24Z" },
     { url = "https://files.pythonhosted.org/packages/c7/bd/1d6709d2223e99f04079f16005f8ae6e11a14ee16b5eab6833686cf72fe1/nvidia_cudnn_cu12-9.28.1.4-py3-none-win_amd64.whl", hash = "sha256:3467aafa9b260e6adf5fbbfc0e21d180133305b42032aa1160be2d3142bb8b09", size = 696300805, upload-time = "2026-11-06T21:54:48.887Z" },
 ]
