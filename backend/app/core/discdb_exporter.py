@@ -7,7 +7,9 @@ organized by content hash.
 
 import json
 import logging
+import re
 import shutil
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,7 +22,9 @@ from app.models.disc_job import ContentType, DiscJob, DiscTitle, JobState
 
 logger = logging.getLogger(__name__)
 
-EXPORT_SCHEMA_VERSION = "1.1"
+# 1.2: ``disc.content_type`` carries the disc FORMAT (what TheDiscDB reads it as);
+# the TV/movie kind moved to ``disc.media_type``. Ambiguous segment maps are null.
+EXPORT_SCHEMA_VERSION = "1.2"
 
 
 def get_export_directory(config: AppConfig) -> Path:
@@ -36,6 +40,67 @@ def get_export_directory(config: AppConfig) -> Path:
 def get_makemkv_log_dir(job_id: int) -> Path:
     """Return the MakeMKV log directory for a job."""
     return Path.home() / ".engram" / "logs" / "makemkv" / str(job_id)
+
+
+def _read_scan_log(job_id: int | None) -> str | None:
+    """The job's MakeMKV scan log text: the same file submitted to TheDiscDB."""
+    if not job_id:
+        return None
+    scan_log = get_makemkv_log_dir(job_id) / "scan.log"
+    try:
+        return scan_log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+_DISC_TYPE_RE = re.compile(r'^CINFO:1,\d+,"([^"]*)"', re.MULTILINE)
+_VIDEO_SIZE_RE = re.compile(r'^SINFO:\d+,\d+,19,\d+,"(\d+)x(\d+)', re.MULTILINE)
+_SEGMENT_MAP_RE = re.compile(r'^TINFO:(\d+),26,\d+,"([^"]*)"', re.MULTILINE)
+
+
+def disc_format_from_scan_log(scan_log: str | None) -> str | None:
+    """The disc format TheDiscDB expects in ``disc.content_type``.
+
+    ``"dvd"`` | ``"blu-ray"`` | ``"4k"``, or None when the scan does not say. TheDiscDB
+    turns anything it does not recognise (including Engram's old ``"tv"``/``"movie"``)
+    into Blu-ray, which is how every DVD contribution was recorded as Blu-ray (#903).
+    MakeMKV reports a UHD disc as "Blu-ray disc"; the 2160-line video stream tells it apart.
+    """
+    if not scan_log:
+        return None
+    match = _DISC_TYPE_RE.search(scan_log)
+    if not match:
+        return None
+    kind = match.group(1).strip().lower()
+    if kind.startswith("dvd"):
+        return "dvd"
+    if kind.startswith("blu-ray") or kind.startswith("bluray"):
+        if any(int(height) >= 2000 for _w, height in _VIDEO_SIZE_RE.findall(scan_log)):
+            return "4k"
+        return "blu-ray"
+    return None
+
+
+def _ambiguous_segment_maps(scan_log: str | None, titles: list[DiscTitle]) -> set[str]:
+    """Segment maps that more than one title on the disc carries.
+
+    TheDiscDB pairs each title in the scan log with an Engram title by segment map
+    first (assuming it is unique per disc) and by title index only when no map
+    matches. On a DVD the map lists cells inside each title's own program chain, so
+    "1,2" can be every episode on the disc, and TheDiscDB then gives all of them the
+    first such title's episode (#903). Withholding a shared map makes it fall back to
+    the index, which is exact. Counted over the scan log when there is one, since that
+    is what TheDiscDB matches against (it includes titles Engram does not export).
+    Without a scan log only the exported titles are counted, which can miss a map an
+    unexported title shares; TheDiscDB then has no log to pair against either. A
+    Blu-ray map repeated by seamless-branching playlists is withheld too, and those
+    titles pair by index the same way.
+    """
+    if scan_log:
+        maps = [m for _idx, m in _SEGMENT_MAP_RE.findall(scan_log) if m]
+    else:
+        maps = [t.segment_map for t in titles if t.segment_map]
+    return {m for m, n in Counter(maps).items() if n > 1}
 
 
 def _tvdb_safe_code(job: DiscJob, code: str | None) -> str | None:
@@ -105,6 +170,9 @@ def generate_export(
         except json.JSONDecodeError:
             logger.warning(f"Job {job.id}: Malformed discdb_mappings_json, skipping mappings")
 
+    scan_log = _read_scan_log(job.id)
+    ambiguous_maps = _ambiguous_segment_maps(scan_log, titles)
+
     # Build title entries and track match sources for skip logic
     title_entries = []
     match_sources = []
@@ -133,7 +201,7 @@ def generate_export(
                 "size_bytes": title.file_size_bytes,
                 "chapter_count": title.chapter_count,
                 "segment_count": title.segment_count,
-                "segment_map": title.segment_map,
+                "segment_map": (None if title.segment_map in ambiguous_maps else title.segment_map),
                 "title_type": _derive_title_type(
                     title, job.content_type, discdb_mappings, export_code
                 ),
@@ -160,7 +228,9 @@ def generate_export(
         "disc": {
             "content_hash": job.content_hash,
             "volume_label": job.volume_label,
-            "content_type": job.content_type,
+            # TheDiscDB reads this key as the disc format, not the TV/movie kind.
+            "content_type": disc_format_from_scan_log(scan_log),
+            "media_type": job.content_type,
             "disc_number": job.disc_number,
             "release_id": getattr(job, "release_group_id", None),
         },

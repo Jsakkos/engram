@@ -153,7 +153,7 @@ async def test_manual_export(client, completed_job, tmp_path):
     export_dir = tmp_path / "D7CAB58DAC87C58C46FDA35A33759839"
     assert export_dir.exists()
     data = json.loads((export_dir / "disc_data.json").read_text())
-    assert data["export_version"] == "1.1"
+    assert data["export_version"] == "1.2"
     assert data["disc"]["content_hash"] == "D7CAB58DAC87C58C46FDA35A33759839"
     assert len(data["titles"]) == 1
 

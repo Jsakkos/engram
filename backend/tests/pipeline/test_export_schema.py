@@ -1,4 +1,4 @@
-"""Pipeline tests for TheDiscDB export JSON schema validation (v1.1)."""
+"""Pipeline tests for TheDiscDB export JSON schema validation (v1.2)."""
 
 import json
 
@@ -27,6 +27,7 @@ REQUIRED_DISC_KEYS = {
     "content_hash",
     "volume_label",
     "content_type",
+    "media_type",
     "disc_number",
     "release_id",
 }
@@ -55,6 +56,15 @@ REQUIRED_TITLE_KEYS = {
     "edition",
     "extra_description",
 }
+
+
+@pytest.fixture(autouse=True)
+def _no_real_scan_logs(tmp_path, monkeypatch):
+    """Keep the exporter away from the real ~/.engram MakeMKV logs."""
+    monkeypatch.setattr(
+        "app.core.discdb_exporter.get_makemkv_log_dir",
+        lambda job_id: tmp_path / "logs" / str(job_id),
+    )
 
 
 @pytest.fixture
@@ -230,7 +240,7 @@ class TestMovieExportSchema:
         data = json.loads((result / "disc_data.json").read_text())
 
         assert set(data.keys()) == REQUIRED_TOP_LEVEL_KEYS
-        assert data["disc"]["content_type"] == "movie"
+        assert data["disc"]["media_type"] == "movie"
         assert data["identification"]["detected_season"] is None
 
         # Title types
