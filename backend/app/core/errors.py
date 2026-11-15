@@ -52,6 +52,15 @@ class MakeMKVLicenseError(MakeMKVError):
     """
 
 
+class MakeMKVScanCrashError(MakeMKVError):
+    """makemkvcon crashed (an access violation or a fatal signal) while scanning.
+
+    Distinct from a scan that ran and found nothing: the source may be fine and
+    MakeMKV itself at fault (#901). The message is user-facing: it is stored
+    verbatim as the job's error.
+    """
+
+
 class MatchingError(EngramError):
     """Episode matching failed.
 
