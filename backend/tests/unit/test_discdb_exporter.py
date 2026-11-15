@@ -180,7 +180,7 @@ class TestGenerateExport:
         assert result is not None
         data = json.loads((result / "disc_data.json").read_text())
 
-        assert data["export_version"] == "1.1"
+        assert data["export_version"] == "1.2"
 
         t0 = data["titles"][0]
         assert t0["season"] == 1
@@ -206,7 +206,7 @@ class TestGenerateExport:
 
         # Disc section
         assert data["disc"]["content_hash"] == "D7CAB58DAC87C58C46FDA35A33759839"
-        assert data["disc"]["content_type"] == "tv"
+        assert data["disc"]["media_type"] == "tv"
         assert data["disc"]["volume_label"] == "BAND_OF_BROTHERS_S1D1"
         assert data["disc"]["disc_number"] == 1
 
@@ -233,7 +233,7 @@ class TestGenerateExport:
         assert result is not None
         data = json.loads((result / "disc_data.json").read_text())
 
-        assert data["disc"]["content_type"] == "movie"
+        assert data["disc"]["media_type"] == "movie"
         assert data["identification"]["detected_season"] is None
 
         # Main movie title — no episode info
@@ -479,3 +479,166 @@ class TestGetPendingExports:
             pending = await get_pending_exports(session)
             assert len(pending) == 1
             assert pending[0].volume_label == "DISC1"
+
+
+# --- #903: what TheDiscDB actually reads from the payload ---------------------------
+#
+# TheDiscDB's ingestion (TheDiscDb/web, EngramEndpoints.cs + EngramDetails.razor.cs)
+# maps ``disc.content_type`` to the disc FORMAT ("blu-ray" | "dvd" | "4k", anything
+# else -> Blu-ray), and pairs each scan-log title with an Engram title by
+# ``segment_map`` first, then by ``index``. These tests pin the payload to that
+# contract.
+
+DVD_TV_SCAN_LOG = "\n".join(
+    [
+        'CINFO:1,6206,"DVD disc"',
+        'CINFO:2,0,"ROSEANNE_S1_D3"',
+        # Seven episodes; DVD segment maps are cell lists inside each title's own
+        # PGC, so they repeat across titles (only titles 2 and 6 are unique here).
+        'TINFO:0,26,0,"1,2"',
+        'TINFO:1,26,0,"1,2"',
+        'TINFO:2,26,0,"1-3"',
+        'TINFO:3,26,0,"1,2"',
+        'TINFO:4,26,0,"1,2"',
+        'TINFO:5,26,0,"1,2,3"',
+        'TINFO:6,26,0,"4,5,6"',
+        'TINFO:7,26,0,"1,2,3"',
+        'SINFO:0,0,19,0,"720x480"',
+    ]
+)
+
+
+@pytest.fixture(autouse=True)
+def scan_log_dir(tmp_path, monkeypatch):
+    """Point the exporter's MakeMKV log lookup at a temp dir (never the real ~/.engram)."""
+    root = tmp_path / "makemkv-logs"
+
+    def _log_dir(job_id: int) -> Path:
+        return root / str(job_id)
+
+    monkeypatch.setattr("app.core.discdb_exporter.get_makemkv_log_dir", _log_dir)
+
+    def _write(job_id: int, text: str) -> None:
+        (root / str(job_id)).mkdir(parents=True, exist_ok=True)
+        (root / str(job_id) / "scan.log").write_text(text, encoding="utf-8")
+
+    return _write
+
+
+class TestDiscFormat:
+    @pytest.mark.parametrize(
+        ("log", "expected"),
+        [
+            ('CINFO:1,6206,"DVD disc"', "dvd"),
+            ('CINFO:1,6209,"Blu-ray disc"\nSINFO:0,0,19,0,"1920x1080"', "blu-ray"),
+            ('CINFO:1,6209,"Blu-ray disc"\nSINFO:0,0,19,0,"3840x2160"', "4k"),
+            ('CINFO:2,0,"NO TYPE LINE"', None),
+            ("", None),
+        ],
+    )
+    def test_format_from_scan_log(self, log, expected):
+        from app.core.discdb_exporter import disc_format_from_scan_log
+
+        assert disc_format_from_scan_log(log) == expected
+
+    def test_dvd_disc_is_exported_as_dvd_not_tv(
+        self, tv_job, tv_titles, config, tmp_path, scan_log_dir
+    ):
+        config.discdb_export_path = str(tmp_path / "out")
+        scan_log_dir(tv_job.id, DVD_TV_SCAN_LOG)
+
+        data = json.loads(
+            (generate_export(tv_job, tv_titles, config) / "disc_data.json").read_text()
+        )
+
+        assert data["disc"]["content_type"] == "dvd"
+        # The TV/movie distinction still travels, under its own key.
+        assert data["disc"]["media_type"] == "tv"
+
+    def test_unknown_format_is_omitted_rather_than_guessed(
+        self, tv_job, tv_titles, config, tmp_path, scan_log_dir
+    ):
+        config.discdb_export_path = str(tmp_path / "out")
+
+        data = json.loads(
+            (generate_export(tv_job, tv_titles, config) / "disc_data.json").read_text()
+        )
+
+        assert data["disc"]["content_type"] is None
+        assert data["disc"]["media_type"] == "tv"
+
+
+class TestAmbiguousSegmentMaps:
+    def _roseanne_titles(self):
+        episodes = ["S01E15", "S01E17", "S01E16", "S01E18", "S01E19", "S01E20", "S01E21"]
+        maps = ["1,2", "1,2", "1-3", "1,2", "1,2", "1,2,3", "4,5,6"]
+        return [
+            DiscTitle(
+                id=100 + i,
+                job_id=1,
+                title_index=i,
+                duration_seconds=1310,
+                file_size_bytes=900_000_000,
+                chapter_count=2,
+                segment_count=len(m.split(",")),
+                segment_map=m,
+                matched_episode=ep,
+                match_confidence=0.85,
+                match_details=json.dumps({"source": "engram"}),
+            )
+            for i, (ep, m) in enumerate(zip(episodes, maps, strict=True))
+        ]
+
+    def test_shared_segment_maps_are_dropped_so_index_decides(
+        self, tv_job, config, tmp_path, scan_log_dir
+    ):
+        config.discdb_export_path = str(tmp_path / "out")
+        scan_log_dir(tv_job.id, DVD_TV_SCAN_LOG)
+
+        data = json.loads(
+            (
+                generate_export(tv_job, self._roseanne_titles(), config) / "disc_data.json"
+            ).read_text()
+        )
+
+        by_index = {t["index"]: t for t in data["titles"]}
+        # "1,2" is shared by titles 0,1,3,4 and "1,2,3" by 5 and the unexported
+        # title 7: TheDiscDB would hand every one of them the FIRST hint carrying
+        # the map. Without a map it falls back to the title index, which is exact.
+        for idx in (0, 1, 3, 4, 5):
+            assert by_index[idx]["segment_map"] is None, idx
+        # A map unique on the disc still identifies its title.
+        assert by_index[2]["segment_map"] == "1-3"
+        assert by_index[6]["segment_map"] == "4,5,6"
+        # And every title keeps its own episode.
+        assert [by_index[i]["episode"] for i in range(7)] == [15, 17, 16, 18, 19, 20, 21]
+
+    def test_without_a_scan_log_duplicates_among_titles_are_still_dropped(
+        self, tv_job, config, tmp_path, scan_log_dir
+    ):
+        config.discdb_export_path = str(tmp_path / "out")
+
+        data = json.loads(
+            (
+                generate_export(tv_job, self._roseanne_titles(), config) / "disc_data.json"
+            ).read_text()
+        )
+
+        by_index = {t["index"]: t for t in data["titles"]}
+        assert by_index[0]["segment_map"] is None
+        # Unique among the exported titles when the scan log is unavailable.
+        assert by_index[5]["segment_map"] == "1,2,3"
+
+    def test_blu_ray_unique_maps_are_kept(self, tv_job, tv_titles, config, tmp_path, scan_log_dir):
+        config.discdb_export_path = str(tmp_path / "out")
+        scan_log_dir(
+            tv_job.id,
+            'CINFO:1,6209,"Blu-ray disc"\nTINFO:0,26,0,"1"\nTINFO:1,26,0,"2"',
+        )
+
+        data = json.loads(
+            (generate_export(tv_job, tv_titles, config) / "disc_data.json").read_text()
+        )
+
+        assert [t["segment_map"] for t in data["titles"]] == ["1", "2"]
+        assert data["disc"]["content_type"] == "blu-ray"
