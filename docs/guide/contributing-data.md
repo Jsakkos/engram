@@ -40,9 +40,9 @@ on.
 A contribution describes the disc, not you or your machine:
 
 - **The disc content hash.** An MD5 of the Int64 file sizes of the disc's
-  `BDMV/STREAM/*.m2ts` files (Blu-ray) or `VIDEO_TS/*` files (DVD), sorted by filename. It is computed from sizes, not contents,
-  and it identifies a factory pressing. Every copy of the same pressing hashes identically,
-  so it says nothing about who did the ripping.
+  `BDMV/STREAM/*.m2ts` files (Blu-ray) or `VIDEO_TS/*` files (DVD), sorted by filename. It
+  is computed from sizes, not contents, and it identifies a factory pressing. Every copy of
+  the same pressing hashes identically, so it says nothing about who did the ripping.
 - **The disc format** (DVD, Blu-ray or 4K), read from MakeMKV's scan of the disc.
 - **The title to episode mapping.** Which track on the disc is which episode, plus track
   durations and sizes.

@@ -91,6 +91,10 @@ def _ambiguous_segment_maps(scan_log: str | None, titles: list[DiscTitle]) -> se
     first such title's episode (#903). Withholding a shared map makes it fall back to
     the index, which is exact. Counted over the scan log when there is one, since that
     is what TheDiscDB matches against (it includes titles Engram does not export).
+    Without a scan log only the exported titles are counted, which can miss a map an
+    unexported title shares; TheDiscDB then has no log to pair against either. A
+    Blu-ray map repeated by seamless-branching playlists is withheld too, and those
+    titles pair by index the same way.
     """
     if scan_log:
         maps = [m for _idx, m in _SEGMENT_MAP_RE.findall(scan_log) if m]
