@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - **DVD contributions to TheDiscDB now arrive with the right format and episodes.** TheDiscDB recorded every disc Engram submitted as Blu-ray, because Engram never sent the disc format; it now sends DVD, Blu-ray or 4K, read from MakeMKV's scan. On DVDs, TheDiscDB could also give several tracks the same episode (a Roseanne disc showed 15, 15, 16, 15, ...), because it pairs titles by a MakeMKV segment map that DVDs repeat from title to title; Engram now leaves out any segment map that is not unique on the disc, so TheDiscDB pairs those titles by title number and each keeps the episode Engram matched. The Contributing Data guide now explains which columns on TheDiscDB's page come from Engram and which (Name, Comment) come from the MakeMKV scan log. Discs submitted before this fix keep their old format and episodes on TheDiscDB until they are resubmitted or edited there (#903).
+- A disc scan that crashes MakeMKV now says so. When makemkvcon crashed while opening an imported disc backup, the job failed with "No titles found on disc" and the log showed only an exit code. The job's error now names the source and the crash (for example "access violation, 0xC0000005"), and when the crash comes from MakeMKV 2.0.0 opening a backup or ISO, which is a known MakeMKV 2.0.0 bug, it says that MakeMKV 1.18.4 opens them. The raw MakeMKV output of a failed scan is now saved as `scan.log` in the diagnostics bundle; before, it was kept only when the scan succeeded (#901).
 
 ## [0.45.0] - 2026-11-08
 
