@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-import app.core.extractor as extractor_mod
 import app.services.identification_coordinator as idc
 from app.core.disc_source import DiscSource
 from app.core.errors import MakeMKVError, MakeMKVScanCrashError
@@ -198,7 +197,7 @@ class TestScanCrash:
 
     def test_failure_log_line_carries_stdout(self, caplog):
         # stderr is empty in robot mode; the old line ended at a bare colon.
-        with caplog.at_level("ERROR", logger=extractor_mod.logger.name):
+        with caplog.at_level("ERROR", logger="app.core.extractor"):
             _scan(ORDINARY_FAILURE, 1, "E:")
         assert any("Failed to open disc" in r.getMessage() for r in caplog.records)
 
