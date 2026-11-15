@@ -21,7 +21,7 @@ from pathlib import Path
 
 from app.core.analyst import TitleInfo
 from app.core.disc_source import NOSCAN, DiscSource, SourceKind
-from app.core.errors import MakeMKVLicenseError
+from app.core.errors import MakeMKVLicenseError, MakeMKVScanCrashError
 from app.core.languages import normalize_language
 from app.core.security import sanitize_log_value
 
@@ -328,6 +328,99 @@ def _parse_backup_progress(line: str) -> float | None:
     if maximum <= 0:
         return None
     return min(100.0, total / maximum * 100.0)
+
+
+# Windows reports a process killed by an unhandled exception through its exit
+# code, as the NTSTATUS value (0xC0000005 arrives as 3221225477). Only the
+# system-facility error range counts: exit(-1) arrives as 0xFFFFFFFF, which also
+# has the top bits set but is an ordinary error exit.
+_NTSTATUS_CRASH_RANGE = range(0xC0000000, 0xC1000000)
+# STATUS_CONTROL_C_EXIT: the process was interrupted, it did not crash.
+_NTSTATUS_NOT_CRASHES = frozenset({0xC000013A})
+# POSIX signals that mean the process faulted. SIGTERM/SIGKILL/SIGINT are a stop
+# (Engram's own cancel, the OOM killer, a user), not a MakeMKV bug. Names are
+# looked up so platforms lacking one (Windows has no SIGBUS) simply skip it.
+_CRASH_SIGNAL_NAMES = ("SIGSEGV", "SIGABRT", "SIGBUS", "SIGILL", "SIGFPE")
+_NTSTATUS_NAMES = {
+    0xC0000005: "access violation",
+    0xC000001D: "illegal instruction",
+    0xC00000FD: "stack overflow",
+    0xC0000374: "heap corruption",
+}
+
+# MSG:1005 is makemkvcon's start line: "MakeMKV v2.0.0 win(x64-release) started".
+_VERSION_RE = re.compile(r'^MSG:1005,[^"]*"MakeMKV v(\d+(?:\.\d+)+)', re.MULTILINE)
+
+# makemkvcon 2.0.0 crashes opening backup folders and ISOs, in the GUI and on the
+# command line, on Windows, macOS and Linux, while 1.18.4 opens the same backups
+# (MakeMKV forum, "MakeMKV fatal error when opening a BD backup it created",
+# Nov 2026; no fixed release yet). The hint is limited to exactly that version
+# because it is the only one with evidence behind it: a later 2.0.x may fix it.
+_BACKUP_CRASH_VERSIONS = frozenset({"2.0.0"})
+
+
+def _crash_signal_name(signum: int) -> str | None:
+    import signal
+
+    for name in _CRASH_SIGNAL_NAMES:
+        if getattr(signal, name, None) == signum:
+            return name
+    return None
+
+
+def describe_crash_exit(returncode: int) -> str | None:
+    """Name an exit code that means the process crashed, or None for an ordinary exit.
+
+    Handles the Windows NTSTATUS form (unsigned, or the signed int32 some APIs
+    surface), the POSIX death-by-signal form subprocess reports as ``-signum``,
+    and the ``128 + signum`` form a wrapper script re-exits with. Only faults
+    count: an interrupt or a kill is a stop, not a crash.
+    """
+    code = returncode + 2**32 if -(2**31) <= returncode < -255 else returncode
+    if code in _NTSTATUS_CRASH_RANGE and code not in _NTSTATUS_NOT_CRASHES:
+        name = _NTSTATUS_NAMES.get(code)
+        hex_code = f"0x{code:08X}"
+        return f"{name}, {hex_code}" if name else f"Windows exception {hex_code}"
+    if code < 0:
+        signum = -code
+    elif 128 < code < 160:
+        signum = code - 128
+    else:
+        return None
+    name = _crash_signal_name(signum)
+    return f"killed by signal {signum} ({name})" if name else None
+
+
+def makemkv_version_from_output(output: str) -> str | None:
+    """The MakeMKV version from a robot-mode start line, e.g. ``"2.0.0"``."""
+    match = _VERSION_RE.search(output or "")
+    return match.group(1) if match else None
+
+
+def _scan_crash_message(source: DiscSource, crash: str, version: str | None) -> str:
+    """A user-facing error for a makemkvcon crash during a scan."""
+    message = f"MakeMKV crashed while scanning {source.spec} ({crash})."
+    if not source.is_physical and version in _BACKUP_CRASH_VERSIONS:
+        message += (
+            f" MakeMKV {version} has been reported to crash when opening disc backups"
+            " and ISOs, while MakeMKV 1.18.4 opens them. Install 1.18.4 and retry"
+            " the import."
+        )
+    else:
+        message += " The raw MakeMKV output is in this job's diagnostics bundle (scan.log)."
+    return message
+
+
+def _format_scan_log(cmd: list[str], returncode: int, stdout: str, stderr: str) -> str:
+    """The scan.log body for a scan that failed: the argv, exit code, then the output."""
+    header = [f"# argv: {' '.join(cmd)}", f"# exit code: {returncode}"]
+    crash = describe_crash_exit(returncode)
+    if crash:
+        header.append(f"# crash: {crash}")
+    parts = ["\n".join(header), stdout or ""]
+    if stderr:
+        parts.append("# stderr:\n" + stderr)
+    return "\n".join(parts)
 
 
 def detect_license_failure(*outputs: str) -> str | None:
@@ -970,16 +1063,40 @@ class MakeMKVExtractor:
             if result.stderr:
                 logger.debug(f"MakeMKV stderr: {result.stderr[:500]}")
 
+            if result.returncode != 0 and log_dir:
+                # Written before any raise below: a failed scan is exactly when
+                # the raw output is needed, and the diagnostics bundle picks
+                # scan.log up from here (#901).
+                _save_makemkv_log(
+                    log_dir / "scan.log",
+                    _format_scan_log(cmd, result.returncode, result.stdout, result.stderr),
+                )
+
             license_error = detect_license_failure(result.stdout or "", result.stderr or "")
             if license_error:
                 logger.error(f"MakeMKV scan refused by licence check: {license_error}")
                 raise MakeMKVLicenseError(license_error)
 
             if result.returncode != 0:
+                # Robot mode writes everything to stdout and leaves stderr empty,
+                # so the tail of stdout is what explains the failure.
+                tail = "\n".join((result.stdout or "").splitlines()[-10:])
                 logger.error(
                     f"MakeMKV scan failed after {elapsed:.1f}s "
-                    f"(exit code {result.returncode}): {result.stderr}"
+                    f"(exit code {result.returncode}) on {source_spec}:\n"
+                    f"{tail}" + (f"\nstderr: {result.stderr}" if result.stderr else "")
                 )
+                crash = describe_crash_exit(result.returncode)
+                # A scan Engram stopped itself is a cancel, whatever code the
+                # platform reports for it.
+                if crash and job_id not in self._cancelled_jobs:
+                    raise MakeMKVScanCrashError(
+                        _scan_crash_message(
+                            _as_source(source),
+                            crash,
+                            makemkv_version_from_output(result.stdout or ""),
+                        )
+                    )
                 return [], ""
 
             titles, disc_name = self._parse_disc_info(result.stdout or "")
@@ -994,7 +1111,7 @@ class MakeMKVExtractor:
 
             return titles, disc_name
 
-        except MakeMKVLicenseError:
+        except (MakeMKVLicenseError, MakeMKVScanCrashError):
             raise
         except FileNotFoundError:
             logger.error(f"MakeMKV not found at: {self.makemkv_path}")

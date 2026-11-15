@@ -18,7 +18,7 @@ from app.api.websocket import manager as ws_manager
 from app.core.analyst import DiscAnalyst
 from app.core.disc_source import DiscSource
 from app.core.episode_runtime import find_short_titles
-from app.core.errors import MakeMKVLicenseError
+from app.core.errors import MakeMKVLicenseError, MakeMKVScanCrashError
 from app.core.extractor import MakeMKVExtractor, ScanTimeoutError, title_index_from_filename
 from app.core.fingerprint_disc_classifier import (
     identify_disc_via_network,
@@ -632,9 +632,10 @@ class IdentificationCoordinator:
                         job, session, f"Cannot scan this job: {e}"
                     )
                     return
-                except MakeMKVLicenseError as e:
-                    # Named, actionable message (expired key / old beta build)
-                    # rather than the generic "No titles found on disc".
+                except (MakeMKVLicenseError, MakeMKVScanCrashError) as e:
+                    # Named, actionable message (expired key / old beta build /
+                    # makemkvcon crashed, #901) rather than the generic
+                    # "No titles found on disc".
                     await self._state_machine.transition_to_failed(job, session, str(e))
                     return
                 except ScanTimeoutError:
