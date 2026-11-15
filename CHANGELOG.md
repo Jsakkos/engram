@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **DVD contributions to TheDiscDB now arrive with the right format and episodes.** TheDiscDB recorded every disc Engram submitted as Blu-ray, because Engram never sent the disc format; it now sends DVD, Blu-ray or 4K, read from MakeMKV's scan. On DVDs, TheDiscDB could also give several tracks the same episode (a Roseanne disc showed 15, 15, 16, 15, ...), because it pairs titles by a MakeMKV segment map that DVDs repeat from title to title; Engram now leaves out any segment map that is not unique on the disc, so TheDiscDB pairs those titles by title number and each keeps the episode Engram matched. The Contributing Data guide now explains which columns on TheDiscDB's page come from Engram and which (Name, Comment) come from the MakeMKV scan log (#903).
+
 ## [0.45.0] - 2026-11-08
 
 _Highlights: shows in other languages are now matched in their own language; the re-identify dialog offers All seasons; TV discs with no known season get the TheTVDB numbering check and subtitle retries on Re-match all; and two ranking fixes sharpen German-show matches._

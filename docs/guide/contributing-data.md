@@ -40,9 +40,10 @@ on.
 A contribution describes the disc, not you or your machine:
 
 - **The disc content hash.** An MD5 of the Int64 file sizes of the disc's
-  `BDMV/STREAM/*.m2ts` files, sorted by filename. It is computed from sizes, not contents,
+  `BDMV/STREAM/*.m2ts` files (Blu-ray) or `VIDEO_TS/*` files (DVD), sorted by filename. It is computed from sizes, not contents,
   and it identifies a factory pressing. Every copy of the same pressing hashes identically,
   so it says nothing about who did the ripping.
+- **The disc format** (DVD, Blu-ray or 4K), read from MakeMKV's scan of the disc.
 - **The title to episode mapping.** Which track on the disc is which episode, plus track
   durations and sizes.
 - **The MakeMKV scan log** for the disc, which is what lets TheDiscDB reconstruct the full
@@ -93,6 +94,27 @@ showing how many discs are waiting. Each completed job moves through four steps:
 
 Nothing is submitted automatically. Export happens in the background, but the submit step is
 always a button you press.
+
+### What you see on TheDiscDB
+
+When you follow **Continue on TheDiscDB**, the site builds the release from two things: the
+disc data Engram sent and the MakeMKV scan log. Some columns on that page come from the scan
+log rather than from Engram, so it helps to know which is which:
+
+- **Format** is the disc format Engram detected (DVD, Blu-ray or 4K). Engram 0.45.0 and
+  earlier did not send it, and TheDiscDB recorded every such disc as Blu-ray. Correct it on the
+  site if an older submission shows the wrong format.
+- **Season** and **Episode** are Engram's matches. TheDiscDB pairs each title in the scan log
+  with Engram's title by its MakeMKV title number. On a DVD from Engram 0.45.0 or earlier, the
+  pairing could land on the wrong title, so several tracks showed the same episode; check those
+  rows against the job's track list before you finish the contribution.
+- **Name** is filled in by TheDiscDB. On a Blu-ray it is the playlist file (for example
+  `00800.mpls`); a DVD has no playlist files, so the site shows the DVD's own title number
+  instead. Engram has no field to send an episode title in, so type the episode names on the
+  site if you want them.
+- **Comment** is MakeMKV's own label for the title, copied from the scan log (for example `A2`
+  or `C1`). On a DVD the letter and number describe where the title sits in the disc's
+  structure. It is not something Engram writes, and you can leave it as it is.
 
 ## The Engram fingerprint network: sharing episode fingerprints
 
