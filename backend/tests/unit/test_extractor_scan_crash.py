@@ -69,8 +69,27 @@ class TestDescribeCrashExit:
         # subprocess reports death-by-signal as -signum; SIGSEGV is 11.
         assert describe_crash_exit(-11) == "killed by signal 11 (SIGSEGV)"
 
-    @pytest.mark.parametrize("code", [0, 1, 2, 255])
-    def test_ordinary_exit_codes_are_not_crashes(self, code):
+    def test_shell_style_signal_exit(self):
+        # A wrapper (e.g. a Flatpak launcher script) re-exits with 128 + signum.
+        assert describe_crash_exit(139) == "killed by signal 11 (SIGSEGV)"
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            0,
+            1,
+            2,
+            255,
+            0xFFFFFFFF,  # exit(-1) on Windows: an ordinary error exit
+            -1,
+            0xC000013A,  # STATUS_CONTROL_C_EXIT: interrupted, not crashed
+            -15,  # SIGTERM: Engram's own cancel, or a user kill
+            -9,  # SIGKILL
+            -2,  # SIGINT
+            137,  # 128 + SIGKILL
+        ],
+    )
+    def test_ordinary_exits_and_kills_are_not_crashes(self, code):
         assert describe_crash_exit(code) is None
 
 
@@ -131,6 +150,33 @@ class TestScanCrash:
         message = str(exc.value)
         assert "MakeMKV 2.0.0" in message
         assert "1.18" in message
+
+    def test_other_versions_get_no_upstream_hint(self):
+        later = V2_START_THEN_CRASH.replace("v2.0.0", "v2.0.1")
+        with pytest.raises(MakeMKVScanCrashError) as exc:
+            _scan(later, ACCESS_VIOLATION, DiscSource.for_backup(BACKUP))
+        assert "1.18" not in str(exc.value)
+
+    def test_crash_before_start_line_gets_the_generic_message(self):
+        # An immediate crash may print nothing, so no version is known.
+        with pytest.raises(MakeMKVScanCrashError) as exc:
+            _scan("", ACCESS_VIOLATION, DiscSource.for_backup(BACKUP))
+        assert "1.18" not in str(exc.value)
+        assert "scan.log" in str(exc.value)
+
+    def test_cancelled_scan_is_not_reported_as_a_crash(self):
+        # Even if the platform reports the stop as an exception code, a scan
+        # Engram itself stopped must not be called a MakeMKV crash.
+        ext = MakeMKVExtractor(Path("makemkvcon64.exe"), min_title_length=120)
+
+        def communicate(*a, **k):
+            ext._cancelled_jobs.add(7)
+            return (V2_START_THEN_CRASH, "")
+
+        with patch("app.core.extractor.subprocess.Popen") as popen:
+            popen.return_value.communicate.side_effect = communicate
+            popen.return_value.returncode = ACCESS_VIOLATION
+            assert asyncio.run(ext.scan_disc("E:", job_id=7)) == ([], "")
 
     def test_drive_crash_gets_no_backup_hint(self):
         with pytest.raises(MakeMKVScanCrashError) as exc:
