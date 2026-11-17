@@ -62,7 +62,8 @@ class TestMatchEpisodeViaLLM:
 
         def complete(request):
             body = json.loads(request.content)
-            finished = body["max_tokens"] >= completion_tokens
+            # Greedy decoding can loop indefinitely in a local reasoning model.
+            finished = "temperature" not in body and body["max_tokens"] >= completion_tokens
             return Response(
                 200,
                 json={

@@ -497,6 +497,7 @@ async def complete_json(
                 timeout,
                 json_schema_mode=(provider == "lmstudio"),
                 warn_on_model_substitution=True,
+                temperature=None,
             )
     else:
         logger.warning("Unsupported AI provider: %s", sanitize_log_value(provider))
@@ -709,13 +710,17 @@ async def _call_openai_compatible(
     timeout: float,
     json_schema_mode: bool = False,
     warn_on_model_substitution: bool = False,
+    temperature: float | None = 0,
 ) -> dict | None:
     body: dict = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
-        "temperature": 0,
     }
+    # Respect local server/model sampling defaults. Forcing greedy decoding can
+    # trap reasoning models in repetition before they reach the JSON response.
+    if temperature is not None:
+        body["temperature"] = temperature
     if schema is not None:
         if json_schema_mode:
             # LM Studio rejects {"type": "json_object"} outright with
