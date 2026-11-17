@@ -53,6 +53,53 @@ function renderPage() {
     );
 }
 
+describe('ReviewQueue AI provider availability', () => {
+    beforeEach(() => vi.unstubAllGlobals());
+    afterEach(() => vi.unstubAllGlobals());
+
+    it.each(['lmstudio', 'ollama'])('allows %s without an API key', async (provider) => {
+        mockBackend(
+            { tmdb_id: 3452 },
+            { ai_episode_matching_enabled: true, ai_provider: provider, ai_api_key: '' },
+        );
+        renderPage();
+
+        const button = await screen.findByRole('button', { name: /try ai match/i });
+        await waitFor(() => expect(button).toBeEnabled());
+        expect(button).toHaveAttribute('title', 'Run AI episode matching');
+
+        fireEvent.click(button);
+
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            '/api/jobs/1/titles/1/llm-match',
+            { method: 'POST' },
+        ));
+    });
+
+    it('requires a key for a hosted provider', async () => {
+        mockBackend(
+            { tmdb_id: 3452 },
+            { ai_episode_matching_enabled: true, ai_provider: 'openai', ai_api_key: '' },
+        );
+        renderPage();
+
+        const button = await screen.findByRole('button', { name: /try ai match/i });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', expect.stringMatching(/no ai api key/i));
+    });
+
+    it('allows a hosted provider with a stored key', async () => {
+        mockBackend(
+            { tmdb_id: 3452 },
+            { ai_episode_matching_enabled: true, ai_provider: 'openai', ai_api_key: '***' },
+        );
+        renderPage();
+
+        const button = await screen.findByRole('button', { name: /try ai match/i });
+        await waitFor(() => expect(button).toBeEnabled());
+    });
+});
+
 describe('ReviewQueue identity step (#715)', () => {
     beforeEach(() => vi.unstubAllGlobals());
     afterEach(() => vi.unstubAllGlobals());

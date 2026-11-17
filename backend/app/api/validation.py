@@ -959,7 +959,8 @@ async def validate_ai(
             api_key=api_key,
             model=model or None,
             base_url=base_url,
-            max_tokens=16,
+            # Local reasoning models consume output tokens before emitting the JSON.
+            max_tokens=1024 if provider in LOCAL_PROVIDERS else 16,
             raise_on_error=True,
             # A dead key must fail in one request rather than paying the backoff
             # ladder, and a user waiting on a button should not sit for 30s. Local
