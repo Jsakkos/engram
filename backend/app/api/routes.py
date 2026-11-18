@@ -5007,7 +5007,16 @@ async def set_job_episode_namespace(
             raise HTTPException(status_code=400, detail=str(e)) from None
 
         job_manager.forget_episode_runtimes(job_id)
-        await job_manager._matching.restart_subtitle_download(job_id, show_name, season, tmdb_id)
+        if season is not None:
+            await job_manager._matching.restart_subtitle_download(
+                job_id, show_name, season, tmdb_id
+            )
+        else:
+            # No season (#886): re-download every season, as the job's own
+            # download did. `job` is detached but its fields were loaded above,
+            # and the switch changes none of them.
+            await job_manager._matching.cancel_subtitle_download(job_id)
+            await job_manager._identification._start_tv_subtitle_prefetch(job)
         await job_manager.rerun_matching(job_id)
     finally:
         _namespace_switches_in_flight.discard(job_id)

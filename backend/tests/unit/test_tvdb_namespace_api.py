@@ -124,6 +124,56 @@ class TestSwitchEndpoint:
             ("rerun",),
         ]
 
+    async def test_seasonless_switch_restarts_the_all_seasons_download(self, client, monkeypatch):
+        """#886: a job with no season re-downloads every season, never one season."""
+        job_id = await _job(detected_season=None, tvdb_divergence_json=json.dumps(_DIVERGENCE))
+        calls = []
+
+        async def fake_switch(jid, namespace):
+            calls.append(("switch", namespace))
+
+        async def fake_cancel(jid):
+            calls.append(("cancel", jid))
+
+        async def must_not_restart_one_season(*a, **k):
+            raise AssertionError("a seasonless job must not restart a single-season download")
+
+        async def fake_seasons(title, tmdb_id=None):
+            return [1, 2]
+
+        def fake_all_seasons(jid, show, seasons, tmdb_id=None):
+            calls.append(("all_seasons", show, seasons, tmdb_id))
+
+        async def fake_rerun(jid, source_preference=None):
+            calls.append(("rerun",))
+
+        monkeypatch.setattr(
+            "app.services.episode_namespace_service.switch_job_namespace", fake_switch
+        )
+        from app.services.job_manager import job_manager
+
+        ident = job_manager._identification
+        monkeypatch.setattr(job_manager._matching, "cancel_subtitle_download", fake_cancel)
+        monkeypatch.setattr(
+            job_manager._matching, "restart_subtitle_download", must_not_restart_one_season
+        )
+        monkeypatch.setattr(ident, "_resolve_all_season_numbers", fake_seasons)
+        monkeypatch.setattr(ident, "_start_subtitle_download_all_seasons", fake_all_seasons)
+        monkeypatch.setattr(job_manager, "forget_episode_runtimes", lambda jid: None)
+        monkeypatch.setattr(job_manager, "rerun_matching", fake_rerun)
+
+        resp = await client.post(
+            f"/api/jobs/{job_id}/episode-namespace", json={"namespace": "tvdb"}
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert calls == [
+            ("switch", "tvdb"),
+            ("cancel", job_id),
+            ("all_seasons", "Justice League", [1, 2], 1618),
+            ("rerun",),
+        ]
+
     async def test_tvdb_unavailable_is_503_and_nothing_runs(self, client, monkeypatch):
         from app.services import episode_namespace_service as svc
         from app.services.job_manager import job_manager

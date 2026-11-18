@@ -180,17 +180,35 @@ async def decide_job_namespace(job_id: int, seasons: list[int] | None = None) ->
 def _validate_tv_job(job: DiscJob | None) -> DiscJob:
     if job is None or job.content_type != ContentType.TV or not job.tmdb_id:
         raise ValueError("not an identified TV job")
-    if job.detected_season is None:
-        raise ValueError("the job's season is not known yet")
     return job
+
+
+async def _all_season_numbers(tmdb_id: int) -> list[int]:
+    """1..N, the seasons a seasonless job's all-seasons download fetches.
+
+    Same source as ``IdentificationCoordinator._resolve_all_season_numbers``
+    (TMDB's season count for the job's own id), so the crosswalk covers exactly
+    the seasons references are downloaded for. Empty when TMDB cannot say.
+    """
+    try:
+        count = await asyncio.to_thread(tmdb_client.get_number_of_seasons, str(tmdb_id))
+    except Exception as e:  # noqa: BLE001 - the caller refuses the switch instead
+        logger.warning(f"Could not resolve the season count for TMDB {tmdb_id}: {e}")
+        return []
+    return list(range(1, count + 1)) if count and count > 0 else []
 
 
 async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
     """Move a job (and its show's preference) to ``namespace``.
 
-    Raises ``TvdbUnavailableError`` when switching to TVDB without a roster,
-    ``ValueError`` for an unknown namespace or a job that is not an identified
-    TV job. Re-downloading and re-matching are the caller's job (the route).
+    A job with a known season compares that season. A job without one (#886)
+    compares every season its all-seasons download fetches, all or nothing
+    (see ``_season_rosters``), so the crosswalk covers each of them.
+
+    Raises ``TvdbUnavailableError`` when switching to TVDB without a usable
+    comparison, ``ValueError`` for an unknown namespace or a job that is not an
+    identified TV job. Re-downloading and re-matching are the caller's job (the
+    route).
     """
     from app.services.config_service import get_config
 
@@ -202,13 +220,23 @@ async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
         pref = await session.get(ShowOrderingPreference, tmdb_id)
         known_tvdb_id = pref.tvdb_id if pref else None
 
-    tvdb_id = tmdb_eps = tvdb_eps = None
+    tvdb_id = crosswalk_json = None
     if namespace == ns.NAMESPACE_TVDB:
         # No session is open here, and nothing is written if TheTVDB is down.
         config = await get_config()
-        tvdb_id, tmdb_eps, tvdb_eps = await _rosters(tmdb_id, season, config, known_tvdb_id)
-        if not (tvdb_id and tmdb_eps and tvdb_eps):
-            raise TvdbUnavailableError("TheTVDB did not return this season")
+        if season is not None:
+            tvdb_id, tmdb_eps, tvdb_eps = await _rosters(tmdb_id, season, config, known_tvdb_id)
+            if not (tvdb_id and tmdb_eps and tvdb_eps):
+                raise TvdbUnavailableError("TheTVDB did not return this season")
+            crosswalk_json = _crosswalk_json(season, tmdb_eps, tvdb_eps)
+        else:
+            seasons = await _all_season_numbers(tmdb_id)
+            if not seasons:
+                raise TvdbUnavailableError("the show's seasons could not be listed")
+            tvdb_id, rosters = await _season_rosters(tmdb_id, seasons, config, known_tvdb_id)
+            if not (tvdb_id and rosters):
+                raise TvdbUnavailableError("TheTVDB did not return every season")
+            crosswalk_json = _multi_season_crosswalk_json(rosters)
 
     async with async_session() as session:
         job = _validate_tv_job(await session.get(DiscJob, job_id))
@@ -230,7 +258,7 @@ async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
             pref.ordering = ns.NAMESPACE_TVDB
             pref.episode_group_id = None
             job.episode_namespace = ns.NAMESPACE_TVDB
-            job.episode_crosswalk_json = _crosswalk_json(season, tmdb_eps, tvdb_eps)
+            job.episode_crosswalk_json = crosswalk_json
             job.tvdb_divergence_json = None  # the suggestion is accepted
         else:
             if pref.ordering == ns.NAMESPACE_TVDB:

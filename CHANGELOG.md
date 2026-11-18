@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Accepting the TheTVDB numbering suggestion on a TV disc with no known season now works. It used to fail with "the job's season is not known yet". The switch now compares every season of the show, re-downloads references for all of them in TheTVDB numbering, and re-matches. If TheTVDB cannot return every season, nothing changes and the review page says TheTVDB is unavailable (#886).
+
 ## [0.45.1] - 2026-11-15
 
 _Highlights: DVD contributions to TheDiscDB now carry the right format and episodes; a MakeMKV crash while scanning a disc backup is named instead of reported as "No titles found"; and two smaller fixes for History durations and unreadable import paths._

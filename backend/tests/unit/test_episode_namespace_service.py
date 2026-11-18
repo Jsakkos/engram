@@ -497,16 +497,74 @@ class TestSwitchEdges:
         with pytest.raises(ValueError):
             await svc.switch_job_namespace(job_id, "tvdb")
 
-    async def test_no_season(self, stubs):
+
+@pytest.mark.unit
+class TestSwitchSeasonless:
+    """#886: a job with no season switches over every season its download fetches."""
+
+    @pytest.fixture
+    def seasons(self, per_season, monkeypatch):
+        state = {"count": 2}
+        monkeypatch.setattr(svc.tmdb_client, "get_number_of_seasons", lambda show: state["count"])
+        return state
+
+    async def test_switch_to_tvdb_crosswalks_every_season(self, per_season, seasons):
+        job_id = await _seasonless_job(tvdb_divergence_json='{"season": 1}')
+        await svc.switch_job_namespace(job_id, "tvdb")
+        job = await _get(job_id)
+        assert job.episode_namespace == "tvdb"
+        assert job.detected_season is None
+        crosswalk = json.loads(job.episode_crosswalk_json)
+        assert crosswalk["S01E04"] == "S01E02"
+        assert crosswalk["S02E05"] == "S02E05"
+        assert job.tvdb_divergence_json is None
+        assert sorted(per_season["tvdb_calls"]) == [1, 2]
         async with _unit_session_factory() as s:
-            job = DiscJob(
-                drive_id="E:", volume_label="T", content_type=ContentType.TV, tmdb_id=1618
-            )
-            s.add(job)
-            await s.commit()
-            job_id = job.id
-        with pytest.raises(ValueError):
+            pref = await s.get(ShowOrderingPreference, 1618)
+        assert pref.ordering == "tvdb" and pref.tvdb_id == 76290
+
+    async def test_partial_lookup_is_refused_and_changes_nothing(self, per_season, seasons):
+        per_season["tvdb"] = {1: TVDB}
+        job_id = await _seasonless_job()
+        with pytest.raises(svc.TvdbUnavailableError):
             await svc.switch_job_namespace(job_id, "tvdb")
+        job = await _get(job_id)
+        assert job.episode_namespace == "tmdb" and job.episode_crosswalk_json is None
+        async with _unit_session_factory() as s:
+            assert await s.get(ShowOrderingPreference, 1618) is None
+
+    async def test_unknown_season_count_is_refused(self, per_season, seasons):
+        seasons["count"] = 0
+        job_id = await _seasonless_job()
+        with pytest.raises(svc.TvdbUnavailableError):
+            await svc.switch_job_namespace(job_id, "tvdb")
+        assert per_season["tvdb_calls"] == []
+
+    async def test_season_assigned_during_the_fetch_is_refused(
+        self, per_season, seasons, monkeypatch
+    ):
+        job_id = await _seasonless_job()
+        real = svc._season_rosters
+
+        async def assign_then_fetch(*args):
+            async with _unit_session_factory() as s:
+                job = await s.get(DiscJob, job_id)
+                job.detected_season = 1
+                await s.commit()
+            return await real(*args)
+
+        monkeypatch.setattr(svc, "_season_rosters", assign_then_fetch)
+        with pytest.raises(ValueError, match="identity changed"):
+            await svc.switch_job_namespace(job_id, "tvdb")
+        assert (await _get(job_id)).episode_namespace == "tmdb"
+
+    async def test_revert_to_tmdb_needs_no_rosters(self, per_season, seasons):
+        await _prefer_tvdb()
+        job_id = await _seasonless_job(episode_namespace="tvdb", episode_crosswalk_json="{}")
+        await svc.switch_job_namespace(job_id, "tmdb")
+        job = await _get(job_id)
+        assert job.episode_namespace == "tmdb" and job.episode_crosswalk_json is None
+        assert per_season["tvdb_calls"] == []
 
 
 @pytest.mark.unit
