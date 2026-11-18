@@ -22,6 +22,15 @@ from app.services.job_state_machine import JobStateMachine
 from app.services.matching_coordinator import FileWaitResult, MatchingCoordinator
 from tests.unit.conftest import _unit_session_factory
 
+# The real probe, captured before the autouse stub below replaces it.
+_real_probe = mc._probe_timestamp_near
+
+
+@pytest.fixture(autouse=True)
+def _no_duration_probe(monkeypatch):
+    """Default: ffprobe has no answer, so the size heuristics decide alone."""
+    monkeypatch.setattr(mc, "_probe_timestamp_near", lambda _path, _seek: None)
+
 
 def _make_coord() -> MatchingCoordinator:
     broadcaster = MagicMock()
@@ -93,6 +102,102 @@ async def test_truncated_when_stable_far_below_expected(tmp_path, monkeypatch):
     coord = _make_coord()
     result = await coord._wait_for_file_ready(f, title_id, job_id=1, timeout=5.0)
     assert result == FileWaitResult.TRUNCATED
+
+
+@pytest.mark.asyncio
+async def test_full_length_file_far_below_scan_size_is_ready_without_grace(tmp_path, monkeypatch):
+    """#912: a Blu-ray title's scan size is its m2ts, padding and all.
+
+    Bluey's 440s episodes scan at ~1.84 GB and remux to ~880 MB, so every
+    complete rip sat at ~48% of "expected", waited out the 90s grace, and was
+    routed to review as an incomplete rip without ever being matched. A file
+    that plays its scanned length is complete whatever its size.
+    """
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    # Keep the production grace: the verdict must not wait it out.
+    assert mc.TRUNCATED_STABLE_GRACE_SECONDS >= 60
+    _patch_config(monkeypatch)
+    title_id = await _seed_title(expected_bytes=1_000)  # scanned 2819s
+    f = tmp_path / "t01.mkv"
+    f.write_bytes(b"x" * 480)  # 48% of the scan size
+    probed: list[tuple[Path, float]] = []
+
+    def _probe(path, seek):
+        probed.append((path, seek))
+        return 2600.0  # media found near the end
+
+    monkeypatch.setattr(mc, "_probe_timestamp_near", _probe)
+    coord = _make_coord()
+    result = await asyncio.wait_for(
+        coord._wait_for_file_ready(f, title_id, job_id=1, timeout=30.0), timeout=5.0
+    )
+    assert result == FileWaitResult.READY
+    assert len(probed) == 1
+    assert probed[0][0] == f
+    assert probed[0][1] == pytest.approx(2819 * mc.PROBE_SEEK_RATIO)
+
+
+@pytest.mark.asyncio
+async def test_short_file_far_below_scan_size_is_still_truncated(tmp_path, monkeypatch):
+    """The #366 abort: the file stops early, so the seek lands far short."""
+    monkeypatch.setattr(ws_manager, "broadcast_title_update", AsyncMock())
+    monkeypatch.setattr(mc, "TRUNCATED_STABLE_GRACE_SECONDS", 0.05)
+    _patch_config(monkeypatch)
+    title_id = await _seed_title(expected_bytes=1_000)  # scanned 2819s
+    f = tmp_path / "t02.mkv"
+    f.write_bytes(b"x" * 120)
+    monkeypatch.setattr(mc, "_probe_timestamp_near", lambda _path, _seek: 340.0)
+    coord = _make_coord()
+    result = await coord._wait_for_file_ready(f, title_id, job_id=1, timeout=5.0)
+    assert result == FileWaitResult.TRUNCATED
+
+
+def _ffmpeg_or_skip() -> str:
+    import shutil
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg or not shutil.which("ffprobe"):
+        pytest.skip("ffmpeg/ffprobe not installed")
+    return ffmpeg
+
+
+def test_probe_reads_packets_not_the_header_duration(tmp_path):
+    """A file cut off part-way still claims its full length in the header.
+
+    ffprobe's format=duration reports 60s for both files below; only reading
+    real packets near the end tells the complete one from the cut one.
+    """
+    import subprocess
+
+    ffmpeg = _ffmpeg_or_skip()
+    full = tmp_path / "full.mkv"
+    subprocess.run(
+        [
+            ffmpeg, "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc=duration=60:size=160x120:rate=24",
+            "-f", "lavfi", "-i", "sine=duration=60",
+            "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-g", "24",
+            "-c:a", "aac", str(full),
+        ],
+        check=True,
+        timeout=120,
+    )  # fmt: skip
+    data = full.read_bytes()
+    cut = tmp_path / "cut.mkv"
+    cut.write_bytes(data[: len(data) * 4 // 10])
+
+    seek = 60 * mc.PROBE_SEEK_RATIO
+    reached_full = _real_probe(full, seek)
+    reached_cut = _real_probe(cut, seek)
+    assert reached_full is not None and reached_full >= 60 * mc.COMPLETE_DURATION_RATIO
+    assert reached_cut is None or reached_cut < 60 * mc.COMPLETE_DURATION_RATIO
+
+
+def test_probe_has_no_answer_for_a_non_media_file(tmp_path):
+    _ffmpeg_or_skip()
+    junk = tmp_path / "junk.mkv"
+    junk.write_bytes(b"x" * 1000)
+    assert _real_probe(junk, 10.0) is None
 
 
 @pytest.mark.asyncio

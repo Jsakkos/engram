@@ -7,6 +7,8 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - **AI matching works with LM Studio and Ollama.** The review page's **Try AI match** button stayed disabled for a local provider because it looked for an API key, which a local server does not need; it is now enabled whenever AI matching is on and the provider is local or has a key. Reasoning models running locally also get room to think before they answer: **Test Connection** allows them 1,024 output tokens instead of 16, episode matching 4,096 instead of 512, and Engram now uses the local server's own sampling settings instead of forcing temperature 0, which could make a thinking model repeat itself until it ran out of tokens. A response that is still cut off fails as before. Hosted providers are unchanged (#913, thanks @BrendanoElTaco!).
+- A disc identified by TheDiscDB now gets each episode on the right track when your MakeMKV minimum title length differs from the contributor's. TheDiscDB numbers titles the way its contributor's MakeMKV did, so a skipped short title shifted every later one: Bluey Season 2 had episodes assigned two tracks off and a short extra filed as an episode. Titles are now paired by their source file, length and size, and a title with no clear partner is matched by audio instead (#912).
+- Complete Blu-ray rips are no longer sent to review as "Incomplete rip". A Blu-ray title's scan size counts the disc's stream padding, so a low-bitrate show (Bluey: 1.8 GB scanned, 880 MB ripped) looked truncated, waited 90 seconds per track, and skipped matching. Engram now checks that the ripped file actually reaches the end of the title before calling it incomplete (#912).
 
 ## [0.45.1] - 2026-11-15
 

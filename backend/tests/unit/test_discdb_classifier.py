@@ -8,6 +8,7 @@ import pytest
 from app.core.analyst import TitleInfo
 from app.core.discdb_classifier import (
     HASH_LOOKUP_QUERY,
+    NAME_SEARCH_QUERY,
     DiscDbSignal,
     DiscDbTitleMapping,
     _find_best_disc_by_durations,
@@ -15,6 +16,7 @@ from app.core.discdb_classifier import (
     _parse_discdb_episodes,
     _parse_duration,
     _parse_name_from_label,
+    bind_mappings_to_scan,
     classify_from_discdb,
 )
 from app.models.disc_job import ContentType
@@ -371,3 +373,167 @@ class TestCombinedEpisodeMappings:
         legacy = DiscDbTitleMapping(index=0, title_type="Episode", season=1, episode=4)
         assert legacy.episodes == []
         assert legacy.episode == 4
+
+
+def _discdb_title(index, duration, size, source_file, item=None, segment_map=None):
+    return {
+        "index": index,
+        "duration": duration,
+        "size": size,
+        "sourceFile": source_file,
+        "segmentMap": segment_map,
+        "item": item,
+    }
+
+
+def _episode(season, episode, title):
+    return {"title": title, "type": "Episode", "season": season, "episode": episode}
+
+
+# Bluey "Season 2 First Half" Blu-ray, abridged from TheDiscDB (#912). TheDiscDB's
+# scan kept the 11s and 104s titles; a MakeMKV with a 120s minimum drops them,
+# so every later title is renumbered on the user's scan.
+BLUEY_DISCDB_TITLES = [
+    _discdb_title(0, "0:02:45", 551331840, "00002.mpls", segment_map="33,10"),
+    _discdb_title(1, "0:00:11", 3938304, "00001.mpls", segment_map="0,5"),
+    _discdb_title(2, "0:01:44", 45840384, "00035.m2ts", {"title": "Archaeology", "type": "Extra"}),
+    _discdb_title(3, "0:07:20", 1936594944, "00029.m2ts", _episode(2, 25, "Helicopter")),
+    _discdb_title(4, "0:07:20", 1936367616, "00028.m2ts", _episode(2, 24, "Flat Pack")),
+    _discdb_title(5, "0:07:20", 1924632576, "00003.m2ts", _episode(2, 2, "Hammerbarn")),
+    _discdb_title(6, "0:07:20", 1928011776, "00002.m2ts", _episode(2, 1, "Dance Mode")),
+    _discdb_title(
+        7, "0:02:35", 134301696, "00034.m2ts", {"title": "Green Bottles", "type": "Extra"}
+    ),
+]
+
+# The same disc as a MakeMKV with minlength=120 numbers it.
+BLUEY_SCAN = [
+    TitleInfo(0, 165, 551331840, 0, source_filename="00002.mpls", segment_map="33,10"),
+    TitleInfo(1, 440, 1936594944, 0, source_filename="00029.m2ts", segment_map="29"),
+    TitleInfo(2, 440, 1936367616, 0, source_filename="00028.m2ts", segment_map="28"),
+    TitleInfo(3, 440, 1924632576, 0, source_filename="00003.m2ts", segment_map="3"),
+    TitleInfo(4, 440, 1928011776, 0, source_filename="00002.m2ts", segment_map="2"),
+    TitleInfo(5, 155, 134301696, 0, source_filename="00034.m2ts", segment_map="34"),
+]
+
+
+def _bluey_response():
+    return {
+        "mediaItems": {
+            "nodes": [
+                {
+                    "title": "Bluey",
+                    "type": "Series",
+                    "year": 2018,
+                    "slug": "bluey-2018",
+                    "externalids": {"tmdb": "82728", "imdb": None},
+                    "releases": [
+                        {
+                            "slug": "2024-seasons-1-3-blu-ray",
+                            "discs": [
+                                {
+                                    "contentHash": "D63B7179566956A498976D95E7271C1A",
+                                    "slug": "season-2-first-half",
+                                    "titles": BLUEY_DISCDB_TITLES,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+
+
+def _ep_mapping(index, episode, duration, size=0):
+    return DiscDbTitleMapping(
+        index=index,
+        title_type="Episode",
+        season=1,
+        episode=episode,
+        episodes=[episode],
+        duration_seconds=duration,
+        size_bytes=size,
+    )
+
+
+@pytest.mark.unit
+class TestMappingsBindToScannedTitles:
+    """TheDiscDB's title index is ITS scan's index, not ours (#912).
+
+    MakeMKV numbers titles after its minimum-length filter, so a user whose
+    minimum drops a short title TheDiscDB kept sees every later title shifted.
+    Pairing by raw index handed the Bluey disc's episodes to the wrong tracks
+    and called a 155s extra S02E02. Mappings must be re-bound to the scanned
+    title they actually describe, and dropped when nothing on the disc fits.
+    """
+
+    @patch("app.core.discdb_classifier._graphql_request")
+    def test_hash_match_rebinds_shifted_indices(self, mock_request):
+        mock_request.return_value = _bluey_response()
+        signal = classify_from_discdb(
+            "Bluey S2 First Half",
+            BLUEY_SCAN,
+            content_hash="D63B7179566956A498976D95E7271C1A",
+        )
+
+        assert signal is not None
+        by_index = {m.index: m for m in signal.title_mappings}
+        assert by_index[1].episodes == [25]
+        assert by_index[1].episode_title == "Helicopter"
+        assert by_index[2].episodes == [24]
+        assert by_index[3].episodes == [2]
+        assert by_index[4].episodes == [1]
+        # The 155s extra is Green Bottles, not the episode at TheDiscDB index 5.
+        assert by_index[5].title_type == "Extra"
+        assert by_index[5].episode is None
+        assert by_index[0].title_type == ""
+        # Titles our scan never produced (11s, 104s) have nothing to bind to.
+        assert len(signal.title_mappings) == len(BLUEY_SCAN)
+
+    def test_a_title_that_fits_nothing_is_dropped(self):
+        scan = [TitleInfo(0, 2600, 5_000_000_000, 0)]
+        assert bind_mappings_to_scan([_ep_mapping(0, 1, 1300)], scan) == []
+
+    def test_aligned_disc_without_source_files_keeps_its_index(self):
+        # A staging import carries no source file and its sizes are the MKV's,
+        # not TheDiscDB's: identical durations then fall back to the index.
+        mappings = [_ep_mapping(i, i + 1, 1320, 9_000_000_000) for i in range(3)]
+        scan = [TitleInfo(i, 1320, 700_000_000, 0) for i in range(3)]
+        bound = bind_mappings_to_scan(mappings, scan)
+        assert [(m.index, m.episode) for m in bound] == [(0, 1), (1, 2), (2, 3)]
+
+    def test_exact_size_separates_equal_durations(self):
+        scan = [TitleInfo(0, 1320, 2_222_222_222, 0), TitleInfo(1, 1320, 1_111_111_111, 0)]
+        bound = bind_mappings_to_scan([_ep_mapping(5, 9, 1320, 1_111_111_111)], scan)
+        assert [(m.index, m.episode) for m in bound] == [(1, 9)]
+
+    def test_ambiguous_title_is_dropped_not_guessed(self):
+        scan = [TitleInfo(0, 1320, 1, 0), TitleInfo(1, 1320, 2, 0)]
+        assert bind_mappings_to_scan([_ep_mapping(7, 3, 1320)], scan) == []
+
+    def test_a_scanned_title_is_claimed_once(self):
+        scan = [TitleInfo(0, 600, 1, 0)]
+        bound = bind_mappings_to_scan([_ep_mapping(0, 1, 600), _ep_mapping(1, 2, 600)], scan)
+        assert [(m.index, m.episode) for m in bound] == [(0, 1)]
+
+    def test_persisted_mapping_without_source_fields_still_loads(self):
+        legacy = {
+            "index": 2,
+            "title_type": "Episode",
+            "episode_title": "x",
+            "season": 1,
+            "episode": 2,
+            "episodes": [2],
+            "duration_seconds": 1300,
+            "size_bytes": 0,
+            "source": "discdb",
+        }
+        m = DiscDbTitleMapping(**legacy)
+        assert m.source_file == ""
+        assert m.segment_map == ""
+
+    def test_queries_ask_for_source_file_and_segment_map(self):
+        for query in (HASH_LOOKUP_QUERY, NAME_SEARCH_QUERY):
+            assert "sourceFile" in query
+            assert "segmentMap" in query

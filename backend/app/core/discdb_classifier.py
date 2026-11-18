@@ -47,6 +47,8 @@ query LookupByHash($hash: String!) {
             index
             duration
             size
+            sourceFile
+            segmentMap
             item {
               title
               type
@@ -83,6 +85,8 @@ query SearchByName($name: String!) {
             index
             duration
             size
+            sourceFile
+            segmentMap
             item {
               title
               type
@@ -96,6 +100,10 @@ query SearchByName($name: String!) {
   }
 }
 """
+
+# A scanned title and a TheDiscDB title describe the same playlist only when
+# their durations agree this closely (both are MakeMKV whole-second readings).
+_BIND_DURATION_TOLERANCE_SECONDS = 2
 
 
 @dataclass
@@ -125,6 +133,12 @@ class DiscDbTitleMapping:
     # so it round-trips through asdict() for new rows. Stamped onto the matched
     # title's match_source in try_discdb_assignment.
     source: str = "discdb"
+    # MakeMKV's source playlist/clip (TINFO 16, e.g. "00029.m2ts") and segment
+    # map (TINFO 26) as TheDiscDB recorded them. They identify the title on the
+    # disc independently of its index, which shifts with MakeMKV's minimum
+    # title length (#912). Defaulted so older persisted JSON still loads.
+    source_file: str = ""
+    segment_map: str = ""
 
 
 @dataclass
@@ -270,8 +284,10 @@ def _build_signal_from_match(
                 season=_safe_int(item.get("season")),
                 episode=episodes[0] if episodes else None,
                 episodes=episodes,
-                duration_seconds=_parse_duration(title.get("duration", "0:00:00")),
-                size_bytes=title.get("size", 0),
+                duration_seconds=_parse_duration(title.get("duration") or "0:00:00"),
+                size_bytes=title.get("size") or 0,
+                source_file=title.get("sourceFile") or "",
+                segment_map=title.get("segmentMap") or "",
             )
         )
 
@@ -292,6 +308,91 @@ def _build_signal_from_match(
         disc_slug=matched_disc.get("slug"),
         tmdb_id=tmdb_id,
     )
+
+
+def _narrow(candidates: list[TitleInfo], keep) -> list[TitleInfo]:
+    """Apply a tie-break only when it leaves someone standing."""
+    kept = [c for c in candidates if keep(c)]
+    return kept or candidates
+
+
+def bind_mappings_to_scan(
+    mappings: list[DiscDbTitleMapping],
+    scanned_titles: list[TitleInfo],
+) -> list[DiscDbTitleMapping]:
+    """Re-key TheDiscDB mappings onto the titles this scan actually produced.
+
+    TheDiscDB's ``index`` is the title number in the contributor's MakeMKV
+    scan. MakeMKV numbers titles after its minimum-length filter, so whenever
+    the contributor's minimum differs from the user's, every title after a
+    dropped (or extra) short one is renumbered. Bluey S2 "First Half" (#912):
+    TheDiscDB kept an 11s and a 104s title that a 120s minimum drops, so a raw
+    index lookup gave each episode the code two titles further on and called a
+    155s extra S02E02.
+
+    Each mapping is bound to the one unclaimed scanned title it describes:
+
+    1. durations must agree within ``_BIND_DURATION_TOLERANCE_SECONDS``;
+    2. a source playlist/clip recorded on both sides must be the same file;
+    3. remaining ties narrow by segment map, then exact byte size (both
+       MakeMKV's own readings), then the original index (an aligned disc, or a
+       staging import that has no source file and MKV-sized files).
+
+    A mapping still ambiguous after that, or with nothing to bind to, is
+    dropped: an unmapped title is matched by audio, a mis-mapped one is filed
+    under the wrong episode. The returned mappings carry the scanned index.
+    """
+    bound: list[DiscDbTitleMapping] = []
+    claimed: set[int] = set()
+
+    for mapping in mappings:
+        candidates = [
+            t
+            for t in scanned_titles
+            if t.index not in claimed
+            and abs(t.duration_seconds - mapping.duration_seconds)
+            <= _BIND_DURATION_TOLERANCE_SECONDS
+        ]
+        source = mapping.source_file.strip().lower()
+        if source:
+            # A different source file is a different title, so this filter is
+            # strict; a scanned title with no recorded source stays eligible.
+            candidates = [
+                t
+                for t in candidates
+                if not t.source_filename or t.source_filename.strip().lower() == source
+            ]
+        seg, size, index = mapping.segment_map.strip(), mapping.size_bytes, mapping.index
+        if len(candidates) > 1 and seg:
+            candidates = _narrow(candidates, lambda t, s=seg: (t.segment_map or "").strip() == s)
+        if len(candidates) > 1 and size:
+            candidates = _narrow(candidates, lambda t, b=size: t.size_bytes == b)
+        if len(candidates) > 1:
+            candidates = _narrow(candidates, lambda t, i=index: t.index == i)
+
+        if len(candidates) != 1:
+            logger.info(
+                "TheDiscDB: title %s (%ss, %s) %s on this scan; leaving it unmapped",
+                mapping.index,
+                mapping.duration_seconds,
+                mapping.source_file or "no source file",
+                "has no counterpart" if not candidates else "is ambiguous",
+            )
+            continue
+
+        match = candidates[0]
+        claimed.add(match.index)
+        if match.index != mapping.index:
+            logger.info(
+                "TheDiscDB: title %s is title %s on this scan (%s)",
+                mapping.index,
+                match.index,
+                mapping.source_file or f"{mapping.duration_seconds}s",
+            )
+        mapping.index = match.index
+        bound.append(mapping)
+
+    return bound
 
 
 def _find_matching_disc(
@@ -375,8 +476,21 @@ def classify_from_discdb(
         timeout: Network timeout per request
 
     Returns:
-        DiscDbSignal if a match is found, None otherwise
+        DiscDbSignal if a match is found, None otherwise. Its title mappings are
+        keyed by THIS scan's title indices (see ``bind_mappings_to_scan``).
     """
+    signal = _classify_from_discdb(volume_label, titles, content_hash, timeout)
+    if signal is not None and titles:
+        signal.title_mappings = bind_mappings_to_scan(signal.title_mappings, titles)
+    return signal
+
+
+def _classify_from_discdb(
+    volume_label: str,
+    titles: list[TitleInfo],
+    content_hash: str | None,
+    timeout: float,
+) -> DiscDbSignal | None:
     # Strategy 1: ContentHash lookup (highest confidence)
     if content_hash:
         logger.info(f"TheDiscDB: looking up ContentHash {content_hash}")
