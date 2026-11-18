@@ -12,12 +12,14 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.matcher.episode_identification as ei
 from app.matcher.episode_identification import (
+    CONFIDENCE_ACCEPT_FLOOR,
     EpisodeMatcher,
     MatchCoverage,
     _attach_calibrated_confidence,
 )
+
+_EI = "app.matcher.episode_identification"
 
 
 def _attach(rows):
@@ -41,7 +43,7 @@ class TestVoteMassRanking:
     def test_a_stray_vote_does_not_read_as_a_tie(self):
         md = _attach([("S1E3", 0.1604, 19), ("S1E2", 0.1598, 1)])
         assert md["separation"] > 0.9
-        assert md["confidence"] >= ei.CONFIDENCE_ACCEPT_FLOOR
+        assert md["confidence"] >= CONFIDENCE_ACCEPT_FLOOR
 
     def test_a_one_vote_runner_up_with_a_higher_mean_shows_below_the_winner(self):
         # Sorted by mass, the runner-up's mean (0.17) is above the winner's (0.16);
@@ -74,7 +76,7 @@ class TestVoteMassRanking:
         m._get_tfidf_matcher = lambda *a, **k: tfidf
         m.transcribe_chunk_cached = lambda video, start, *a, **k: f"transcript at {start}"
         m._match_full_file = lambda *a, **k: None
-        monkeypatch.setattr(ei, "get_video_duration", lambda *a, **k: 1800.0)
+        monkeypatch.setattr(_EI + ".get_video_duration", lambda *a, **k: 1800.0)
 
         result = m.identify_episode(tmp_path / "disc_t00.mkv", tmp_path, season_number=1)
         assert result["episode"] == 3
@@ -98,7 +100,7 @@ class TestMatchLanguageMargin:
         m._get_tfidf_matcher = lambda *a, **k: tfidf
         m.transcribe_chunk_cached = lambda video, start, *a, **k: f"transcript at {start}"
         m._match_full_file = lambda *a, **k: None
-        monkeypatch.setattr(ei, "get_video_duration", lambda *a, **k: 1800.0)
+        monkeypatch.setattr(_EI + ".get_video_duration", lambda *a, **k: 1800.0)
         with match_language_context(language):
             return m.identify_episode(tmp_path / "disc_t00.mkv", tmp_path, season_number=1)
 
