@@ -53,7 +53,7 @@ export function Inspector({
     titleIndexById,
     isRematching,
     aiEpisodeMatchingEnabled,
-    aiKeyConfigured,
+    aiProviderConfigured,
     llmFeedback,
     isLlmMatching,
     onAssign,
@@ -77,7 +77,7 @@ export function Inspector({
     titleIndexById: Record<number, number>;
     isRematching: boolean;
     aiEpisodeMatchingEnabled: boolean;
-    aiKeyConfigured: boolean;
+    aiProviderConfigured: boolean;
     llmFeedback: LLMFeedback | null;
     isLlmMatching: boolean;
     onAssign: (code: string) => void;
@@ -513,9 +513,9 @@ export function Inspector({
                                 tone="cyan"
                                 size="sm"
                                 onClick={() => onTryLLMMatch(title.id)}
-                                disabled={isLlmMatching || !aiKeyConfigured}
+                                disabled={isLlmMatching || !aiProviderConfigured}
                                 title={
-                                    aiKeyConfigured
+                                    aiProviderConfigured
                                         ? 'Run AI episode matching'
                                         : 'No AI API key is set. Add one in Settings, then use Test Connection.'
                                 }

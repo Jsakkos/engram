@@ -32,6 +32,7 @@ import { ReviewReasonNotice } from './ReviewQueue/ReviewReasonNotice';
 import { MovieConflictNotice, type ConflictResolution } from './ReviewQueue/MovieConflictNotice';
 import { PlayerControls } from './ReviewQueue/PlayerControls';
 import { SubtitleUploadModal } from './ReviewQueue/SubtitleUploadModal';
+import { isLocalProvider } from '../utils/localModels';
 
 /** Heading notice of the movie review, by `movieReviewNotice`. */
 const MOVIE_REVIEW_NOTICE_TEXT: Record<MovieReviewNotice, string> = {
@@ -204,7 +205,7 @@ function ReviewQueue() {
     const [llmMatchingId, setLlmMatchingId] = useState<number | null>(null);
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
-    const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
+    const [aiProviderConfigured, setAiProviderConfigured] = useState(false);
     // null until /api/config answers; treated as configured so the identity
     // step is never skipped on a slow or failed config fetch.
     const [tmdbConfigured, setTmdbConfigured] = useState<boolean | null>(null);
@@ -335,20 +336,19 @@ function ReviewQueue() {
         });
     }, [jobId, addMessageListener]);
 
-    // Fetch config once on mount to know whether AI matching is usable. Both
-    // flags gate the "Try AI match" button: enabling the feature without a key
-    // makes every click burn a full transcription before failing a guard.
+    // Fetch config once on mount to know whether AI matching is usable.
+    // Local providers do not require a key, matching the backend's ai_is_configured.
     useEffect(() => {
         fetch('/api/config')
             .then((r) => r.ok ? r.json() : null)
             .then((data) => {
-                if (data) setTmdbConfigured(data.tmdb_configured ?? !!data.tmdb_api_key);
-                if (data?.ai_episode_matching_enabled) {
-                    setAiEpisodeMatchingEnabled(true);
-                }
-                // "***" is the redacted stand-in for a stored key; "" means unset.
-                if (data?.ai_api_key === '***') {
-                    setAiKeyConfigured(true);
+                if (data) {
+                    setTmdbConfigured(data.tmdb_configured ?? !!data.tmdb_api_key);
+                    setAiEpisodeMatchingEnabled(!!data.ai_episode_matching_enabled);
+                    // "***" is the redacted stand-in for a stored hosted-provider key.
+                    setAiProviderConfigured(
+                        isLocalProvider(data.ai_provider ?? '') || data.ai_api_key === '***',
+                    );
                 }
             })
             .catch(() => {/* non-critical */});
@@ -1487,7 +1487,7 @@ function ReviewQueue() {
                                 titleIndexById={titleIndexById}
                                 isRematching={isRematching}
                                 aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
-                                aiKeyConfigured={aiKeyConfigured}
+                                aiProviderConfigured={aiProviderConfigured}
                                 llmFeedback={llmFeedback[selectedTitle.id] ?? null}
                                 isLlmMatching={llmMatchingId === selectedTitle.id}
                                 onAssign={(code) => handleEpisodeChange(selectedTitle.id, code)}

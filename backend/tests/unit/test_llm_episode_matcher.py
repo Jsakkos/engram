@@ -1,8 +1,10 @@
 """Tests for the LLM episode matcher."""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from httpx import AsyncClient, MockTransport, Response
 
 
 class TestMatchEpisodeViaLLM:
@@ -30,7 +32,7 @@ class TestMatchEpisodeViaLLM:
             patch(
                 "app.matcher.llm_episode_matcher.complete_json",
                 new=AsyncMock(return_value=ai_response),
-            ),
+            ) as mock_ai,
         ):
             result = await match_episode_via_llm(
                 transcript="they boarded the freighter and unloaded the cargo " * 50,
@@ -49,6 +51,60 @@ class TestMatchEpisodeViaLLM:
         assert result.confidence == 0.91
         assert result.runner_up == RunnerUp(episode=1, confidence=0.04)
         assert result.model == "gemini-2.5-flash-lite"
+        assert mock_ai.await_args.kwargs["max_tokens"] == 512
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("provider", ["lmstudio", "ollama"])
+    @pytest.mark.parametrize("completion_tokens", [1024, 8192])
+    async def test_local_reasoning_output_budget(self, provider, completion_tokens):
+        from app.core.errors import AIProviderError
+        from app.matcher.llm_episode_matcher import match_episode_via_llm
+
+        def complete(request):
+            body = json.loads(request.content)
+            # Greedy decoding can loop indefinitely in a local reasoning model.
+            finished = "temperature" not in body and body["max_tokens"] >= completion_tokens
+            return Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "stop" if finished else "length",
+                            "message": {
+                                "content": '{"episode": 2, "confidence": 0.9}' if finished else ""
+                            },
+                        }
+                    ]
+                },
+            )
+
+        provider_client = AsyncClient(transport=MockTransport(complete))
+        with (
+            patch(
+                "app.matcher.llm_episode_matcher.season_episodes",
+                return_value=[{"episode_number": 2, "name": "Cargo", "overview": "A heist."}],
+            ),
+            patch("app.core.ai_client.httpx.AsyncClient", return_value=provider_client),
+        ):
+            match = match_episode_via_llm(
+                transcript="they unloaded the cargo from the freighter " * 30,
+                show_name="The Expanse",
+                season=1,
+                tmdb_show_id="12345",
+                ai_provider=provider,
+                ai_api_key="",
+                tmdb_api_key="t",
+                ai_model="qwen3-4b-thinking",
+                raise_on_error=True,
+            )
+            if completion_tokens > 4096:
+                with pytest.raises(AIProviderError) as exc_info:
+                    await match
+                assert exc_info.value.code == "response_truncated"
+            else:
+                result = await match
+                assert result is not None
+                assert result.episode == 2
 
     @pytest.mark.asyncio
     async def test_confidence_zero_returns_none(self):
