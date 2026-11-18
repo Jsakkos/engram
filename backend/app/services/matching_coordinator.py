@@ -2749,11 +2749,19 @@ class MatchingCoordinator:
                     and await _plays_full_length(current_size) is True
                 ):
                     if await asyncio.to_thread(_readable):
+                        # title_id/job_id can arrive from a route path param (the
+                        # re-match endpoints), so sanitize like the rest of the
+                        # module does (py/log-injection).
                         logger.info(
-                            f"[MATCH] Title {title_id} (Job {job_id}): file ready at "
-                            f"{current_size / 1024 / 1024:.0f} MB ({size_ratio * 100:.1f}% of "
-                            f"the scan size) and has media at {probed_duration:.0f}s of "
-                            f"{expected_duration}s: {file_path.name}"
+                            "[MATCH] Title %s (Job %s): file ready at %.0f MB (%.1f%% of the "
+                            "scan size) and has media at %.0fs of %ss: %s",
+                            sanitize_log_value(title_id),
+                            sanitize_log_value(job_id),
+                            current_size / 1024 / 1024,
+                            size_ratio * 100,
+                            probed_duration,
+                            expected_duration,
+                            sanitize_log_value(file_path.name),
                         )
                         return FileWaitResult.READY
                     stable_count = 0
@@ -2764,19 +2772,23 @@ class MatchingCoordinator:
                 elif elapsed_idle >= TRUNCATED_STABLE_GRACE_SECONDS:
                     if await asyncio.to_thread(_readable):
                         if expected_size > 0 and size_ratio < TRUNCATED_SIZE_RATIO:
+                            media_end = (
+                                f", media ends near {probed_duration:.0f}s of {expected_duration}s"
+                                if probed_duration is not None
+                                else ""
+                            )
                             logger.warning(
-                                f"[MATCH] Title {title_id} (Job {job_id}): file stopped at "
-                                f"{current_size / 1024 / 1024:.0f} MB "
-                                f"({size_ratio * 100:.1f}% of expected "
-                                f"{expected_size / 1024 / 1024:.0f} MB), {elapsed_idle:.0f}s "
-                                f"since last write"
-                                + (
-                                    f", media ends near {probed_duration:.0f}s of "
-                                    f"{expected_duration}s"
-                                    if probed_duration is not None
-                                    else ""
-                                )
-                                + f" — treating as a truncated/incomplete rip: {file_path.name}"
+                                "[MATCH] Title %s (Job %s): file stopped at %.0f MB "
+                                "(%.1f%% of expected %.0f MB), %.0fs since last write%s"
+                                " — treating as a truncated/incomplete rip: %s",
+                                sanitize_log_value(title_id),
+                                sanitize_log_value(job_id),
+                                current_size / 1024 / 1024,
+                                size_ratio * 100,
+                                expected_size / 1024 / 1024,
+                                elapsed_idle,
+                                media_end,
+                                sanitize_log_value(file_path.name),
                             )
                             return FileWaitResult.TRUNCATED
                         logger.warning(
