@@ -12,7 +12,12 @@ through the review queue, never auto-organize.
 import logging
 from dataclasses import dataclass
 
-from app.core.ai_client import DEFAULT_MODELS, LOCAL_PROVIDERS, complete_json
+from app.core.ai_client import (
+    DEFAULT_MODELS,
+    LOCAL_COMPLETION_MAX_TOKENS,
+    LOCAL_PROVIDERS,
+    complete_json,
+)
 from app.core.episode_namespace import season_episodes
 from app.core.security import sanitize_log_value
 from app.matcher.episode_identification import _clean_subtitle_text
@@ -75,6 +80,22 @@ class LLMEpisodeMatch:
     reasoning: str
     runner_up: RunnerUp | None
     model: str
+
+
+def _valid_candidate(raw: object, episode_numbers: set[int]) -> bool:
+    """Validate provider output even when structured generation is unavailable."""
+    if not isinstance(raw, dict):
+        return False
+    episode = raw.get("episode")
+    confidence = raw.get("confidence")
+    return (
+        type(episode) is int
+        and episode in episode_numbers
+        and isinstance(confidence, int | float)
+        and not isinstance(confidence, bool)
+        # This also rejects NaN and infinities without coercing strings or bools.
+        and 0 <= confidence <= 1
+    )
 
 
 async def match_episode_via_llm(
@@ -145,19 +166,19 @@ async def match_episode_via_llm(
         api_key=ai_api_key,
         model=ai_model or None,
         # Local reasoning models need output tokens for thinking before the final JSON.
-        max_tokens=4096 if ai_provider in LOCAL_PROVIDERS else 512,
+        max_tokens=LOCAL_COMPLETION_MAX_TOKENS if ai_provider in LOCAL_PROVIDERS else 512,
         base_url=ai_local_base_url,
         raise_on_error=raise_on_error,
     )
     if not raw:
         return None
 
-    try:
-        episode = int(raw["episode"])
-        confidence = float(raw["confidence"])
-    except (KeyError, TypeError, ValueError) as e:
-        logger.warning("LLM matcher: malformed response: %s (raw=%s)", e, raw)
+    episode_numbers = {ep["episode_number"] for ep in episodes}
+    if not _valid_candidate(raw, episode_numbers):
+        logger.warning("LLM matcher: response has an invalid episode or confidence")
         return None
+    episode = raw["episode"]
+    confidence = float(raw["confidence"])
 
     if confidence <= 0.0:
         logger.info(
@@ -169,14 +190,11 @@ async def match_episode_via_llm(
 
     runner_up_raw = raw.get("runner_up")
     runner_up: RunnerUp | None = None
-    if isinstance(runner_up_raw, dict):
-        try:
-            runner_up = RunnerUp(
-                episode=int(runner_up_raw["episode"]),
-                confidence=float(runner_up_raw["confidence"]),
-            )
-        except (KeyError, TypeError, ValueError):
-            runner_up = None  # malformed runner_up is non-fatal; drop it
+    if _valid_candidate(runner_up_raw, episode_numbers) and runner_up_raw["episode"] != episode:
+        runner_up = RunnerUp(
+            episode=runner_up_raw["episode"],
+            confidence=float(runner_up_raw["confidence"]),
+        )
 
     return LLMEpisodeMatch(
         episode=episode,

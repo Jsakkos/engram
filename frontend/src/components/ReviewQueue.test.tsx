@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ReviewQueue from './ReviewQueue';
@@ -56,6 +56,58 @@ function renderPage() {
 describe('ReviewQueue AI provider availability', () => {
     beforeEach(() => vi.unstubAllGlobals());
     afterEach(() => vi.unstubAllGlobals());
+
+    it('tracks each pending title when navigating between concurrent AI matches', async () => {
+        mockBackend(
+            { tmdb_id: 3452 },
+            { ai_episode_matching_enabled: true, ai_provider: 'lmstudio', ai_api_key: '' },
+        );
+        const backendFetch = fetch;
+        const pending = new Map<string, () => void>();
+        vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+            if (url.includes('/llm-match')) {
+                return new Promise<Response>((resolve) => pending.set(url, () => resolve({
+                    ok: true, status: 200, json: async () => ({ suggestion: null, reason: 'no_match' }),
+                } as Response)));
+            }
+            return backendFetch(url, init);
+        }));
+        renderPage();
+        try {
+            const first = await screen.findByRole('button', { name: /try ai match/i });
+            await waitFor(() => expect(first).toBeEnabled());
+            fireEvent.click(first);
+            await waitFor(() => expect(pending.has('/api/jobs/1/titles/1/llm-match')).toBe(true));
+            fireEvent.keyDown(window, { key: 'j' });
+            fireEvent.click(screen.getByRole('button', { name: /try ai match/i }));
+            await waitFor(() => expect(pending.has('/api/jobs/1/titles/2/llm-match')).toBe(true));
+            fireEvent.keyDown(window, { key: 'k' });
+            expect(screen.getByRole('button', { name: /matching/i })).toBeDisabled();
+            await act(async () => pending.get('/api/jobs/1/titles/1/llm-match')!());
+            await waitFor(() => expect(screen.getByRole('button', { name: /try ai match/i })).toBeEnabled());
+            fireEvent.keyDown(window, { key: 'j' });
+            expect(screen.getByRole('button', { name: /matching/i })).toBeDisabled();
+        } finally {
+            await act(async () => { for (const finish of pending.values()) finish(); });
+        }
+    });
+
+    it('requests fresh inference when retrying an existing suggestion', async () => {
+        mockBackend(
+            { tmdb_id: 3452 },
+            { ai_episode_matching_enabled: true, ai_provider: 'lmstudio', ai_api_key: '' },
+            [title(1, { match_details: JSON.stringify({ llm_suggestion: {
+                episode: 3, confidence: 0.9, reasoning: 'Cargo.', runner_up: null, model: 'old-model',
+            } }) })],
+        );
+        renderPage();
+        const button = await screen.findByRole('button', { name: /try ai again/i });
+        await waitFor(() => expect(button).toBeEnabled());
+        fireEvent.click(button);
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            '/api/jobs/1/titles/1/llm-match?force=true', { method: 'POST' },
+        ));
+    });
 
     it.each(['lmstudio', 'ollama'])('allows %s without an API key', async (provider) => {
         mockBackend(

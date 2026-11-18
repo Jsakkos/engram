@@ -106,10 +106,16 @@ export interface LLMMatchResult {
  * Run the LLM episode matcher for a single title.
  * The result is also persisted into `match_details.llm_suggestion` on the
  * backend, so refreshing the job via GET will surface it in the Inspector.
+ * Set `force` to rerun using the current settings instead of returning the saved
+ * suggestion. An unsuccessful retry leaves the saved suggestion intact.
  */
-export async function runLLMMatch(jobId: number, titleId: number): Promise<LLMMatchResult> {
+export async function runLLMMatch(
+  jobId: number,
+  titleId: number,
+  options: { force?: boolean } = {},
+): Promise<LLMMatchResult> {
   return apiFetch<LLMMatchResult>(
-    `/api/jobs/${jobId}/titles/${titleId}/llm-match`,
+    `/api/jobs/${jobId}/titles/${titleId}/llm-match${options.force ? '?force=true' : ''}`,
     { method: 'POST' },
   );
 }

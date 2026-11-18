@@ -7,7 +7,12 @@ response-shape validation.
 
 import logging
 
-from app.core.ai_client import _parse_json_text, complete_json
+from app.core.ai_client import (
+    LOCAL_COMPLETION_MAX_TOKENS,
+    LOCAL_PROVIDERS,
+    _parse_json_text,
+    complete_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +56,7 @@ async def identify_from_label(
         provider=provider,
         api_key=api_key,
         model=model,
-        max_tokens=200,
+        max_tokens=LOCAL_COMPLETION_MAX_TOKENS if provider in LOCAL_PROVIDERS else 200,
         base_url=base_url,
     )
     return _validate(raw, volume_label)

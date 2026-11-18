@@ -4,6 +4,16 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Review Queue AI suggestions now show their model and offer **Try AI again** to rerun with the current AI settings. An unsuccessful retry keeps the previous suggestion and displays the retry feedback.
+
+### Fixed
+
+- Local AI disc identification now allows reasoning before the JSON answer, using the same bounded output budget as episode matching.
+- AI episode suggestions now reject episode numbers outside the season roster, fractional episode numbers, and invalid confidence scores. Invalid runner-ups no longer appear alongside an otherwise valid suggestion.
+- Overlapping AI match requests for the same title share one attempt. Navigating away from one request no longer cancels the shared attempt, and updates made to the title during inference are preserved.
+
 ## [0.45.2] - 2026-11-18
 
 _Highlights: discs identified by TheDiscDB get each episode on the right track again, complete Blu-ray rips are no longer mistaken for truncated ones, AI matching works with LM Studio and Ollama, German shows matched in German go to review far less often, and the TheTVDB numbering suggestion can be accepted on a disc with no known season._

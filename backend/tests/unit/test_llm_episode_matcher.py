@@ -7,6 +7,87 @@ import pytest
 from httpx import AsyncClient, MockTransport, Response
 
 
+@pytest.fixture
+def match_response(monkeypatch):
+    from app.matcher import llm_episode_matcher as matcher
+
+    monkeypatch.setattr(
+        matcher,
+        "season_episodes",
+        lambda *args: [
+            {"episode_number": 1, "name": "Pilot"},
+            {"episode_number": 3, "name": "Cargo"},
+        ],
+    )
+
+    async def match(raw):
+        monkeypatch.setattr(matcher, "complete_json", AsyncMock(return_value=raw))
+        return await matcher.match_episode_via_llm(
+            transcript="they boarded the freighter and unloaded the cargo " * 30,
+            show_name="The Expanse",
+            season=1,
+            tmdb_show_id="123",
+            ai_provider="lmstudio",
+            ai_api_key="",
+            tmdb_api_key="test",
+            ai_model="qwen3-4b",
+        )
+
+    return match
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("episode", [0, 2, 99, -1, 1.9, 1.0, True, "1", None])
+async def test_rejects_episodes_outside_the_roster_and_nonintegers(match_response, episode):
+    assert await match_response({"episode": episode, "confidence": 0.9}) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "confidence", [-0.1, 1.7, float("nan"), float("inf"), float("-inf"), True, "0.9", None]
+)
+async def test_rejects_invalid_confidence(match_response, confidence):
+    assert await match_response({"episode": 1, "confidence": confidence}) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "runner_up",
+    [
+        {"episode": 2, "confidence": 0.5},
+        {"episode": 1, "confidence": 0.5},
+        {"episode": 3.9, "confidence": 0.5},
+        {"episode": True, "confidence": 0.5},
+        {"episode": 3, "confidence": 1.7},
+        {"episode": 3, "confidence": float("nan")},
+        {"episode": 3, "confidence": True},
+        {"episode": 3},
+        "invalid",
+    ],
+)
+async def test_drops_invalid_runner_up_without_losing_primary(match_response, runner_up):
+    result = await match_response({"episode": 1, "confidence": 0.9, "runner_up": runner_up})
+    assert result is not None
+    assert result.episode == 1
+    assert result.runner_up is None
+
+
+@pytest.mark.asyncio
+async def test_accepts_confidence_boundaries_and_valid_runner_up(match_response):
+    from app.matcher.llm_episode_matcher import RunnerUp
+
+    result = await match_response(
+        {
+            "episode": 1,
+            "confidence": 1,
+            "runner_up": {"episode": 3, "confidence": 0},
+        }
+    )
+    assert result.confidence == 1.0
+    assert result.runner_up == RunnerUp(episode=3, confidence=0.0)
+    assert await match_response({"episode": 1, "confidence": 0}) is None
+
+
 class TestMatchEpisodeViaLLM:
     @pytest.mark.asyncio
     async def test_happy_path_returns_llm_episode_match(self):

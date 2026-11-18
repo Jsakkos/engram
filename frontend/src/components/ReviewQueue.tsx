@@ -202,7 +202,7 @@ function ReviewQueue() {
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
     const [rematchNotice, setRematchNotice] = useState<string | null>(null);
     const [llmFeedback, setLlmFeedback] = useState<Record<number, LLMFeedback | null>>({});
-    const [llmMatchingId, setLlmMatchingId] = useState<number | null>(null);
+    const [llmMatchingIds, setLlmMatchingIds] = useState<Set<number>>(() => new Set());
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);
     const [aiProviderConfigured, setAiProviderConfigured] = useState(false);
@@ -509,13 +509,13 @@ function ReviewQueue() {
     // with a discriminating `reason` (mapped by llmResultToFeedback), or a
     // thrown ApiError for the 503 retryable failures and 500. Pending + feedback
     // are keyed by title id so they follow the selected title.
-    const handleTryLLMMatch = async (titleId: number) => {
+    const handleTryLLMMatch = async (titleId: number, force = false) => {
         if (!jobId) return;
         setError(null);
         setLlmFeedback((prev) => ({ ...prev, [titleId]: null }));
-        setLlmMatchingId(titleId);
+        setLlmMatchingIds((current) => new Set(current).add(titleId));
         try {
-            const result = await runLLMMatch(parseInt(jobId), titleId);
+            const result = await runLLMMatch(parseInt(jobId), titleId, { force });
             await fetchJobDetails();
             const feedback = llmResultToFeedback(result);
             if (feedback) {
@@ -525,9 +525,11 @@ function ReviewQueue() {
             console.error('LLM match failed', err);
             setLlmFeedback((prev) => ({ ...prev, [titleId]: llmErrorToFeedback(err) }));
         } finally {
-            // Only clear if this title is still the in-flight one (a fast click on
-            // another title must not clear the wrong spinner).
-            setLlmMatchingId((cur) => (cur === titleId ? null : cur));
+            setLlmMatchingIds((current) => {
+                const remaining = new Set(current);
+                remaining.delete(titleId);
+                return remaining;
+            });
         }
     };
 
@@ -1489,7 +1491,7 @@ function ReviewQueue() {
                                 aiEpisodeMatchingEnabled={aiEpisodeMatchingEnabled}
                                 aiProviderConfigured={aiProviderConfigured}
                                 llmFeedback={llmFeedback[selectedTitle.id] ?? null}
-                                isLlmMatching={llmMatchingId === selectedTitle.id}
+                                isLlmMatching={llmMatchingIds.has(selectedTitle.id)}
                                 onAssign={(code) => handleEpisodeChange(selectedTitle.id, code)}
                                 onAction={(a) => handleTitleAction(selectedTitle.id, a)}
                                 onRematch={handleRematch}
