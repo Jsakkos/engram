@@ -6,7 +6,7 @@ All notable changes to Engram will be documented in this file.
 
 ## [0.45.2] - 2026-11-18
 
-_Highlights: discs identified by TheDiscDB get each episode on the right track again, complete Blu-ray rips are no longer mistaken for truncated ones, AI matching works with LM Studio and Ollama, and the TheTVDB numbering suggestion can be accepted on a disc with no known season._
+_Highlights: discs identified by TheDiscDB get each episode on the right track again, complete Blu-ray rips are no longer mistaken for truncated ones, AI matching works with LM Studio and Ollama, German shows matched in German go to review far less often, and the TheTVDB numbering suggestion can be accepted on a disc with no known season._
 
 ### Fixed
 
