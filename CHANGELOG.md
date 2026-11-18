@@ -4,6 +4,10 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **AI matching works with LM Studio and Ollama.** The review page's **Try AI match** button stayed disabled for a local provider because it looked for an API key, which a local server does not need; it is now enabled whenever AI matching is on and the provider is local or has a key. Reasoning models running locally also get room to think before they answer: **Test Connection** allows them 1,024 output tokens instead of 16, episode matching 4,096 instead of 512, and Engram now uses the local server's own sampling settings instead of forcing temperature 0, which could make a thinking model repeat itself until it ran out of tokens. A response that is still cut off fails as before. Hosted providers are unchanged (#913, thanks @BrendanoElTaco!).
+
 ## [0.45.1] - 2026-11-15
 
 _Highlights: DVD contributions to TheDiscDB now carry the right format and episodes; a MakeMKV crash while scanning a disc backup is named instead of reported as "No titles found"; and two smaller fixes for History durations and unreadable import paths._
