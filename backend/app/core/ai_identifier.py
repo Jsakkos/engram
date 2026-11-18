@@ -56,6 +56,8 @@ async def identify_from_label(
         provider=provider,
         api_key=api_key,
         model=model,
+        # The short title JSON still needs room for a local model's reasoning;
+        # use the shared episode-matching budget to avoid silent identification misses.
         max_tokens=LOCAL_COMPLETION_MAX_TOKENS if provider in LOCAL_PROVIDERS else 200,
         base_url=base_url,
     )

@@ -88,6 +88,8 @@ def _valid_candidate(raw: object, episode_numbers: set[int]) -> bool:
         return False
     episode = raw.get("episode")
     confidence = raw.get("confidence")
+    # Coercion would hide invalid output: int(True) and int(1.9) both become 1.
+    # Require an actual integer before checking it against the season roster.
     return (
         type(episode) is int
         and episode in episode_numbers
@@ -173,6 +175,7 @@ async def match_episode_via_llm(
     if not raw:
         return None
 
+    # A roster can have gaps, so numeric bounds alone cannot validate an episode.
     episode_numbers = {ep["episode_number"] for ep in episodes}
     if not _valid_candidate(raw, episode_numbers):
         logger.warning("LLM matcher: response has an invalid episode or confidence")
@@ -190,6 +193,8 @@ async def match_episode_via_llm(
 
     runner_up_raw = raw.get("runner_up")
     runner_up: RunnerUp | None = None
+    # A bad alternative must not discard a valid primary suggestion. The primary
+    # episode itself is not an alternative, even when its confidence is valid.
     if _valid_candidate(runner_up_raw, episode_numbers) and runner_up_raw["episode"] != episode:
         runner_up = RunnerUp(
             episode=runner_up_raw["episode"],

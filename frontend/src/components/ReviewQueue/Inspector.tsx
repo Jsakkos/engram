@@ -100,6 +100,8 @@ export function Inspector({
     // exception text that is not meant for display.
     const reviewNotice =
         details.message && REVIEW_NOTICE_CODES.has(details.error ?? '') ? details.message : null;
+    // Keep the saved suggestion visible during a retry, but disable its Accept
+    // button until the attempt finishes so an older result is not accepted mid-run.
     const llmSuggestion: LLMSuggestion | null = details.llm_suggestion ?? null;
     // A show matched in its own language says so; English is the unremarked default.
     const matchLanguage =

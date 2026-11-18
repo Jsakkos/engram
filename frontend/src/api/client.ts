@@ -108,6 +108,8 @@ export interface LLMMatchResult {
  * backend, so refreshing the job via GET will surface it in the Inspector.
  * Set `force` to rerun using the current settings instead of returning the saved
  * suggestion. An unsuccessful retry leaves the saved suggestion intact.
+ * Cache bypass stays opt-in so existing callers do not unexpectedly start another
+ * expensive transcription and inference after a suggestion has already been saved.
  */
 export async function runLLMMatch(
   jobId: number,

@@ -202,6 +202,8 @@ function ReviewQueue() {
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
     const [rematchNotice, setRematchNotice] = useState<string | null>(null);
     const [llmFeedback, setLlmFeedback] = useState<Record<number, LLMFeedback | null>>({});
+    // Changing the selected title does not finish its request. Track each pending
+    // title so returning to it cannot re-enable its controls while inference runs.
     const [llmMatchingIds, setLlmMatchingIds] = useState<Set<number>>(() => new Set());
     const [orderingError, setOrderingError] = useState<string | null>(null);
     const [aiEpisodeMatchingEnabled, setAiEpisodeMatchingEnabled] = useState(false);

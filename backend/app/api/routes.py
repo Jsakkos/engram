@@ -5179,6 +5179,8 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     )
 
 
+# Share pending work within this server process. Finished attempts are removed
+# so a later request can retry a failure or run with newly selected AI settings.
 _llm_match_tasks: dict[tuple[int, int], asyncio.Task[dict | JSONResponse]] = {}
 
 
@@ -5198,6 +5200,8 @@ async def _match_and_persist_llm_suggestion(
         if cached and not force:
             return {"suggestion": cached, "reason": "cached"}
 
+    # Local inference can take minutes; release the read session before waiting
+    # rather than holding a database connection for the entire model call.
     try:
         outcome = await _run_llm_match_for_title(title=title, job=job)
     except Exception:
@@ -5236,6 +5240,7 @@ async def _match_and_persist_llm_suggestion(
 
 
 def _finish_llm_match_task(key: tuple[int, int], task: asyncio.Task) -> None:
+    # Cleanup from an older attempt must not remove a newer task for this title.
     if _llm_match_tasks.get(key) is task:
         del _llm_match_tasks[key]
     # Retrieve failures even if every HTTP caller disconnected before completion.
@@ -5261,6 +5266,8 @@ async def llm_match_title(
 
     key = (job.id, title_id)
     while True:
+        # Keep lookup and registration free of awaits: another request on this
+        # event loop must see the registered task before it can start duplicate work.
         task = _llm_match_tasks.get(key)
         if task is None:
             task = asyncio.create_task(
