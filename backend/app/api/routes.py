@@ -4991,8 +4991,22 @@ async def set_job_episode_namespace(
         )
     _namespace_switches_in_flight.add(job_id)
     try:
+        # No season (#886): list the seasons ONCE, before anything is written,
+        # and use that list for both the crosswalk and the re-download, so the
+        # two cannot disagree and a failed lookup leaves the job untouched.
+        seasons: list[int] | None = None
+        if season is None:
+            seasons = await svc.all_season_numbers(tmdb_id)
+            if not seasons:
+                raise HTTPException(
+                    status_code=503,
+                    detail="The show's seasons could not be listed; numbering was not changed.",
+                )
         try:
-            await svc.switch_job_namespace(job_id, request.namespace)
+            if seasons is None:
+                await svc.switch_job_namespace(job_id, request.namespace)
+            else:
+                await svc.switch_job_namespace(job_id, request.namespace, seasons=seasons)
         except svc.TvdbUnavailableError:
             raise HTTPException(
                 status_code=503,
@@ -5007,7 +5021,17 @@ async def set_job_episode_namespace(
             raise HTTPException(status_code=400, detail=str(e)) from None
 
         job_manager.forget_episode_runtimes(job_id)
-        await job_manager._matching.restart_subtitle_download(job_id, show_name, season, tmdb_id)
+        if seasons is None:
+            await job_manager._matching.restart_subtitle_download(
+                job_id, show_name, season, tmdb_id
+            )
+        else:
+            # Re-download every season the crosswalk covers, as the job's own
+            # all-seasons download did.
+            await job_manager._matching.cancel_subtitle_download(job_id)
+            job_manager._matching.start_subtitle_download_all_seasons(
+                job_id, show_name, seasons, tmdb_id=tmdb_id
+            )
         await job_manager.rerun_matching(job_id)
     finally:
         _namespace_switches_in_flight.discard(job_id)
