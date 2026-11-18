@@ -183,7 +183,7 @@ def _validate_tv_job(job: DiscJob | None) -> DiscJob:
     return job
 
 
-async def _all_season_numbers(tmdb_id: int) -> list[int]:
+async def all_season_numbers(tmdb_id: int) -> list[int]:
     """1..N, the seasons a seasonless job's all-seasons download fetches.
 
     Same source as ``IdentificationCoordinator._resolve_all_season_numbers``
@@ -198,12 +198,17 @@ async def _all_season_numbers(tmdb_id: int) -> list[int]:
     return list(range(1, count + 1)) if count and count > 0 else []
 
 
-async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
+async def switch_job_namespace(
+    job_id: int, namespace: str, seasons: list[int] | None = None
+) -> DiscJob:
     """Move a job (and its show's preference) to ``namespace``.
 
     A job with a known season compares that season. A job without one (#886)
     compares every season its all-seasons download fetches, all or nothing
-    (see ``_season_rosters``), so the crosswalk covers each of them.
+    (see ``_season_rosters``), so the crosswalk covers each of them. The route
+    passes ``seasons`` (from ``all_season_numbers``) so the re-download fetches
+    exactly the seasons the crosswalk was built over; without it they are
+    looked up here.
 
     Raises ``TvdbUnavailableError`` when switching to TVDB without a usable
     comparison, ``ValueError`` for an unknown namespace or a job that is not an
@@ -230,7 +235,7 @@ async def switch_job_namespace(job_id: int, namespace: str) -> DiscJob:
                 raise TvdbUnavailableError("TheTVDB did not return this season")
             crosswalk_json = _crosswalk_json(season, tmdb_eps, tvdb_eps)
         else:
-            seasons = await _all_season_numbers(tmdb_id)
+            seasons = seasons or await all_season_numbers(tmdb_id)
             if not seasons:
                 raise TvdbUnavailableError("the show's seasons could not be listed")
             tvdb_id, rosters = await _season_rosters(tmdb_id, seasons, config, known_tvdb_id)
