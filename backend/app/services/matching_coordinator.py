@@ -8,6 +8,7 @@ import inspect
 import json
 import logging
 import re
+import subprocess
 import time
 import weakref
 from collections import defaultdict
@@ -253,6 +254,59 @@ READY_SIZE_RATIO = 0.85
 # truncated/aborted rip (e.g. an uncorrectable disc read error) rather than a
 # legitimately small title.
 TRUNCATED_SIZE_RATIO = 0.5
+
+# The size ratios above compare against MakeMKV's scan size, which on a Blu-ray
+# is the source m2ts: a transport stream muxed at a fixed rate and padded with
+# null packets that the MKV remux drops. A low-bitrate title (animation) can
+# remux to half its scan size or less (Bluey S2: 440s titles scan at ~1.84 GB
+# and rip to ~880 MB, #912), so size alone cannot tell a complete rip from an
+# aborted one. Instead the file is asked for media near the end of the scanned
+# duration: a stable file with packets past COMPLETE_DURATION_RATIO of it is
+# complete, whatever its size.
+#
+# The header's Duration is no evidence (ffprobe's format=duration reports the
+# full length for a file cut off at 40%), so the probe seeks to
+# PROBE_SEEK_RATIO of the scanned duration and reads real packet timestamps. A
+# truncated file cannot seek there and lands where its data ends instead.
+PROBE_SEEK_RATIO = 0.9
+COMPLETE_DURATION_RATIO = 0.8
+
+
+def _probe_timestamp_near(path: Path, seek_seconds: float) -> float | None:
+    """Furthest packet timestamp ffprobe reads after seeking to ``seek_seconds``.
+
+    Returns None when ffprobe is missing, fails, or yields no timestamps.
+    Never raises: the caller then falls back to the size heuristics.
+    """
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-read_intervals",
+        f"{max(seek_seconds, 0.0):.3f}%+#50",
+        "-show_entries",
+        "packet=pts_time",
+        "-of",
+        "csv=p=0",
+        str(path),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug(f"[MATCH] ffprobe could not read packets of {path.name}: {e}")
+        return None
+    if result.returncode != 0:
+        return None
+    furthest: float | None = None
+    for line in result.stdout.splitlines():
+        try:
+            pts = float(line.strip().strip(","))
+        except ValueError:
+            continue  # "N/A" or an empty line
+        if furthest is None or pts > furthest:
+            furthest = pts
+    return furthest
+
 
 INCOMPLETE_RIP_MESSAGE = (
     "Incomplete rip: the ripped file is far smaller than the disc-scan size "
@@ -2567,12 +2621,34 @@ class MatchingCoordinator:
         check_interval = config.ripping_file_poll_interval
         required_stable = config.ripping_stability_checks
 
-        # Expected (disc-scan estimate) size from the DB.
+        # Expected (disc-scan estimate) size and duration from the DB.
         expected_size = 0
+        expected_duration = 0
         async with async_session() as session:
             title = await session.get(DiscTitle, title_id)
             if title and title.file_size_bytes:
                 expected_size = title.file_size_bytes
+            if title and title.duration_seconds:
+                expected_duration = title.duration_seconds
+
+        # How far into the file ffprobe could read, for the size it was measured
+        # at; re-probed only if the file changes size afterwards.
+        probed_at_size = -1
+        probed_duration: float | None = None
+
+        async def _plays_full_length(size: int) -> bool | None:
+            """True/False once ffprobe has read the file's tail, None if it cannot."""
+            nonlocal probed_at_size, probed_duration
+            if expected_duration <= 0:
+                return None
+            if probed_at_size != size:
+                probed_duration = await asyncio.to_thread(
+                    _probe_timestamp_near, file_path, expected_duration * PROBE_SEEK_RATIO
+                )
+                probed_at_size = size
+            if probed_duration is None:
+                return None
+            return probed_duration >= expected_duration * COMPLETE_DURATION_RATIO
 
         if timeout is None:
             if expected_size > 0:
@@ -2664,6 +2740,24 @@ class MatchingCoordinator:
                         return FileWaitResult.READY
                     stable_count = 0
 
+                # Duration path (#912): smaller than the scan size, but it plays
+                # the scanned length, so the scan size overstated the output
+                # (padded Blu-ray transport stream) rather than the rip stopping
+                # early. Accept it now instead of waiting out the grace window.
+                elif (
+                    stable_count >= required_stable
+                    and await _plays_full_length(current_size) is True
+                ):
+                    if await asyncio.to_thread(_readable):
+                        logger.info(
+                            f"[MATCH] Title {title_id} (Job {job_id}): file ready at "
+                            f"{current_size / 1024 / 1024:.0f} MB ({size_ratio * 100:.1f}% of "
+                            f"the scan size) and has media at {probed_duration:.0f}s of "
+                            f"{expected_duration}s: {file_path.name}"
+                        )
+                        return FileWaitResult.READY
+                    stable_count = 0
+
                 # Slow path: file hasn't grown for TRUNCATED_STABLE_GRACE_SECONDS.
                 # Uses elapsed_idle (time since last write) so intermittent slow
                 # writes by MakeMKV don't restart the 90-second window from scratch.
@@ -2675,8 +2769,14 @@ class MatchingCoordinator:
                                 f"{current_size / 1024 / 1024:.0f} MB "
                                 f"({size_ratio * 100:.1f}% of expected "
                                 f"{expected_size / 1024 / 1024:.0f} MB), {elapsed_idle:.0f}s "
-                                f"since last write — treating as a truncated/incomplete rip: "
-                                f"{file_path.name}"
+                                f"since last write"
+                                + (
+                                    f", media ends near {probed_duration:.0f}s of "
+                                    f"{expected_duration}s"
+                                    if probed_duration is not None
+                                    else ""
+                                )
+                                + f" — treating as a truncated/incomplete rip: {file_path.name}"
                             )
                             return FileWaitResult.TRUNCATED
                         logger.warning(
