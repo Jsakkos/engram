@@ -273,18 +273,22 @@ async def test_cancelled_caller_does_not_cancel_shared_inference(review_title, m
     run = AsyncMock(side_effect=infer)
     monkeypatch.setattr(routes, "_run_llm_match_for_title", run)
     first = asyncio.create_task(request(job, title))
+    tasks = [first]
     second = None
     try:
         await asyncio.wait_for(started.wait(), timeout=5)
         second = asyncio.create_task(request(job, title, joined=joined))
+        tasks.append(second)
         await asyncio.wait_for(joined.wait(), timeout=5)
         first.cancel()
         with pytest.raises(asyncio.CancelledError):
             await first
     finally:
         release.set()
-        if second is not None:
-            result = await second
+        # Drain every caller even if setup fails before the second one is started.
+        await asyncio.gather(*tasks, return_exceptions=True)
+    assert second is not None
+    result = await second
     assert result == {"suggestion": SUGGESTION, "reason": None}
     run.assert_awaited_once()
     assert (await saved_details(title.id))["llm_suggestion"] == SUGGESTION
