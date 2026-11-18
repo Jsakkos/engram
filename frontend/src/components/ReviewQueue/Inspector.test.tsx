@@ -32,7 +32,7 @@ function renderInspector(props: {
     llmFeedback?: LLMFeedback | null;
     isLlmMatching?: boolean;
     aiEpisodeMatchingEnabled?: boolean;
-    aiKeyConfigured?: boolean;
+    aiProviderConfigured?: boolean;
     season?: number;
     selection?: string;
     episodes?: RosterEpisode[];
@@ -53,7 +53,7 @@ function renderInspector(props: {
             titleIndexById={{ 1: 1, 2: 2 }}
             isRematching={false}
             aiEpisodeMatchingEnabled={props.aiEpisodeMatchingEnabled ?? true}
-            aiKeyConfigured={props.aiKeyConfigured ?? true}
+            aiProviderConfigured={props.aiProviderConfigured ?? true}
             llmFeedback={props.llmFeedback ?? null}
             isLlmMatching={props.isLlmMatching ?? false}
             onAssign={props.onAssign ?? vi.fn()}
@@ -89,14 +89,14 @@ describe('Inspector — AI match feedback', () => {
     });
 
     it('disables the button when no AI key is configured', () => {
-        renderInspector({ aiKeyConfigured: false });
+        renderInspector({ aiProviderConfigured: false });
         const btn = screen.getByRole('button', { name: /try ai match/i });
         expect(btn).toBeDisabled();
         expect(btn).toHaveAttribute('title', expect.stringMatching(/no ai api key/i));
     });
 
     it('enables the button when matching is on and a key is set', () => {
-        renderInspector({ aiKeyConfigured: true, isLlmMatching: false });
+        renderInspector({ aiProviderConfigured: true, isLlmMatching: false });
         expect(screen.getByRole('button', { name: /try ai match/i })).toBeEnabled();
     });
 

@@ -1169,6 +1169,7 @@ class TestLocalDispatch:
         call = mock.post.await_args
         assert call.args[0] == "http://localhost:11434/v1/chat/completions"
         assert call.kwargs["json"]["model"] == "llama3.1:8b"
+        assert "temperature" not in call.kwargs["json"]
 
     @pytest.mark.asyncio
     async def test_lmstudio_uses_its_own_default_port(self):
@@ -1185,6 +1186,7 @@ class TestLocalDispatch:
             )
 
         assert mock.post.await_args.args[0] == "http://localhost:1234/v1/chat/completions"
+        assert "temperature" not in mock.post.await_args.kwargs["json"]
 
     @pytest.mark.asyncio
     async def test_configured_base_url_overrides_the_default(self):

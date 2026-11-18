@@ -1,10 +1,11 @@
 """Tests for the AI provider connection-test endpoint."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, MockTransport, Response
 
 from app.api.routes import require_localhost_or_lan
 from app.core.errors import AIProviderError
@@ -80,6 +81,7 @@ class TestValidateAI:
             await client.post("/api/validate/ai", json={"provider": "openai", "api_key": "sk-x"})
         assert spy.await_args.kwargs["retries"] == 0
         assert spy.await_args.kwargs["timeout"] == 10.0
+        assert spy.await_args.kwargs["max_tokens"] == 16
 
     @pytest.mark.asyncio
     async def test_config_read_failure_does_not_500(self, client):
@@ -104,6 +106,57 @@ class TestValidateAI:
 
 
 class TestValidateAiLocalProviders:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("provider", ["lmstudio", "ollama"])
+    @pytest.mark.parametrize(
+        "completion_tokens, expected_valid",
+        [(190, True), (2048, False)],
+        ids=["reasoning-before-json", "still-truncated"],
+    )
+    async def test_reasoning_model_validation(
+        self, client, provider, completion_tokens, expected_valid
+    ):
+        """Exercise the real AI client against a model that reasons before emitting JSON."""
+        model = "qwen3-4b-thinking-2507"
+        stored = SimpleNamespace(
+            ai_api_key="", ai_model=model, ai_local_base_url="http://localhost:1234/v1"
+        )
+
+        def complete(request):
+            body = json.loads(request.content)
+            finished = body["max_tokens"] >= completion_tokens
+            return Response(
+                200,
+                json={
+                    "model": model,
+                    "choices": [
+                        {
+                            "finish_reason": "stop" if finished else "length",
+                            "message": {"content": '{"ok": true}' if finished else ""},
+                        }
+                    ],
+                    "usage": {"completion_tokens": min(body["max_tokens"], completion_tokens)},
+                },
+            )
+
+        provider_client = AsyncClient(transport=MockTransport(complete))
+        with (
+            patch("app.services.config_service.get_config", new=AsyncMock(return_value=stored)),
+            patch(
+                "app.api.validation._fetch_local_model_ids",
+                new=AsyncMock(return_value=([model], None)),
+            ),
+            patch("app.core.ai_client.httpx.AsyncClient", return_value=provider_client),
+        ):
+            resp = await client.post("/api/validate/ai", json={"provider": provider})
+
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is expected_valid
+        if expected_valid:
+            assert resp.json()["version"] == model
+        else:
+            assert "cut the response off" in resp.json()["error"]
+
     @pytest.mark.asyncio
     async def test_local_provider_is_accepted_without_a_key(self, client):
         from unittest.mock import AsyncMock, patch

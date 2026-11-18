@@ -7,6 +7,7 @@ All notable changes to Engram will be documented in this file.
 ### Fixed
 
 - Accepting the TheTVDB numbering suggestion on a TV disc with no known season now works. It used to fail with "the job's season is not known yet". The switch now compares every season of the show, re-downloads references for all of them in TheTVDB numbering, and re-matches. If TheTVDB cannot return every season, nothing changes and the review page says TheTVDB is unavailable (#886).
+- **AI matching works with LM Studio and Ollama.** The review page's **Try AI match** button stayed disabled for a local provider because it looked for an API key, which a local server does not need; it is now enabled whenever AI matching is on and the provider is local or has a key. Reasoning models running locally also get room to think before they answer: **Test Connection** allows them 1,024 output tokens instead of 16, episode matching 4,096 instead of 512, and Engram now uses the local server's own sampling settings instead of forcing temperature 0, which could make a thinking model repeat itself until it ran out of tokens. A response that is still cut off fails as before. Hosted providers are unchanged (#913, thanks @BrendanoElTaco!).
 
 ## [0.45.1] - 2026-11-15
 

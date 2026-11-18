@@ -12,7 +12,7 @@ through the review queue, never auto-organize.
 import logging
 from dataclasses import dataclass
 
-from app.core.ai_client import DEFAULT_MODELS, complete_json
+from app.core.ai_client import DEFAULT_MODELS, LOCAL_PROVIDERS, complete_json
 from app.core.episode_namespace import season_episodes
 from app.core.security import sanitize_log_value
 from app.matcher.episode_identification import _clean_subtitle_text
@@ -144,7 +144,8 @@ async def match_episode_via_llm(
         provider=ai_provider,
         api_key=ai_api_key,
         model=ai_model or None,
-        max_tokens=512,
+        # Local reasoning models need output tokens for thinking before the final JSON.
+        max_tokens=4096 if ai_provider in LOCAL_PROVIDERS else 512,
         base_url=ai_local_base_url,
         raise_on_error=raise_on_error,
     )
