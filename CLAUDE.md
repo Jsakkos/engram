@@ -313,7 +313,11 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   first** (an English stream wins, so a dubbed disc keeps today's path), else the show's language
   (`match` / `untagged` / `unprobed`), else the refusal naming both languages. Only a language in
   `ORIGINAL_FIRST_LANGUAGES` (one with a measured vote margin; empty until one is measured) tries
-  its own stream before English. Whisper transcribes in the bound language (`language=` only
+  its own stream before English. The chunk-vote margin is per language too: `identify_episode`
+  reads `MATCH_LANGUAGE_VOTE_MARGIN_RATIOS` for the bound language (German 1.3, measured on one
+  disc, #846; every other language, English included, keeps `CHUNK_VOTE_MARGIN_RATIO` 1.8), so
+  an English-audio track in a German job, rebound to English by the curator, keeps 1.8.
+  Whisper transcribes in the bound language (`language=` only
   off English, so English keeps `transcribe(audio_path)` and every cache key), and TF-IDF fits
   word n-grams except for `UNSPACED_LANGUAGES` (ja/zh/th): character n-grams (`char_wb`, 2 to 4)
   on a cosine scale no real disc has calibrated, so a confident match there is still held for
