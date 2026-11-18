@@ -12,12 +12,14 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.matcher.episode_identification as ei
 from app.matcher.episode_identification import (
+    CONFIDENCE_ACCEPT_FLOOR,
     EpisodeMatcher,
     MatchCoverage,
     _attach_calibrated_confidence,
 )
+
+_EI = "app.matcher.episode_identification"
 
 
 def _attach(rows):
@@ -41,7 +43,7 @@ class TestVoteMassRanking:
     def test_a_stray_vote_does_not_read_as_a_tie(self):
         md = _attach([("S1E3", 0.1604, 19), ("S1E2", 0.1598, 1)])
         assert md["separation"] > 0.9
-        assert md["confidence"] >= ei.CONFIDENCE_ACCEPT_FLOOR
+        assert md["confidence"] >= CONFIDENCE_ACCEPT_FLOOR
 
     def test_a_one_vote_runner_up_with_a_higher_mean_shows_below_the_winner(self):
         # Sorted by mass, the runner-up's mean (0.17) is above the winner's (0.16);
@@ -74,7 +76,40 @@ class TestVoteMassRanking:
         m._get_tfidf_matcher = lambda *a, **k: tfidf
         m.transcribe_chunk_cached = lambda video, start, *a, **k: f"transcript at {start}"
         m._match_full_file = lambda *a, **k: None
-        monkeypatch.setattr(ei, "get_video_duration", lambda *a, **k: 1800.0)
+        monkeypatch.setattr(_EI + ".get_video_duration", lambda *a, **k: 1800.0)
 
         result = m.identify_episode(tmp_path / "disc_t00.mkv", tmp_path, season_number=1)
         assert result["episode"] == 3
+
+
+@pytest.mark.unit
+class TestMatchLanguageMargin:
+    """A measured match language votes on a closer lead; the rest keep 1.8 (#241)."""
+
+    def _identify(self, tmp_path, monkeypatch, language):
+        from app.core.match_language import match_language_context
+
+        e01, e02 = (str(tmp_path / f"Show - S01E0{i}.srt") for i in (1, 2))
+        # A 1.5x lead: a typical correct German chunk.
+        tfidf = SimpleNamespace(
+            match=lambda text: [(e01, 0.15), (e02, 0.10)], ref_file_order=[e01, e02]
+        )
+        m = EpisodeMatcher(cache_dir=tmp_path, show_name="Show", device="cpu")
+        m._load_precomputed_season = lambda season: None
+        m.get_reference_files = lambda season, **kwargs: [e01, e02]
+        m._get_tfidf_matcher = lambda *a, **k: tfidf
+        m.transcribe_chunk_cached = lambda video, start, *a, **k: f"transcript at {start}"
+        m._match_full_file = lambda *a, **k: None
+        monkeypatch.setattr(_EI + ".get_video_duration", lambda *a, **k: 1800.0)
+        with match_language_context(language):
+            return m.identify_episode(tmp_path / "disc_t00.mkv", tmp_path, season_number=1)
+
+    def test_german_votes_on_a_1_5x_lead(self, tmp_path, monkeypatch):
+        result = self._identify(tmp_path, monkeypatch, "de")
+        assert result["episode"] == 1
+        assert result["match_details"]["vote_count"] > 0
+
+    @pytest.mark.parametrize("language", ["en", "fr"])
+    def test_unmeasured_languages_keep_the_1_8_gate(self, tmp_path, monkeypatch, language):
+        result = self._identify(tmp_path, monkeypatch, language)
+        assert result["episode"] is None

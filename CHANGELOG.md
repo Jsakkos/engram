@@ -11,6 +11,10 @@ All notable changes to Engram will be documented in this file.
 - A disc identified by TheDiscDB now gets each episode on the right track when your MakeMKV minimum title length differs from the contributor's. TheDiscDB numbers titles the way its contributor's MakeMKV did, so a skipped short title shifted every later one: Bluey Season 2 had episodes assigned two tracks off and a short extra filed as an episode. Titles are now paired by their source file, length and size, and a title with no clear partner is matched by audio instead (#912).
 - Complete Blu-ray rips are no longer sent to review as "Incomplete rip". A Blu-ray title's scan size counts the disc's stream padding, so a low-bitrate show (Bluey: 1.8 GB scanned, 880 MB ripped) looked truncated, waited 90 seconds per track, and skipped matching. Engram now checks that the ripped file actually reaches the end of the title before calling it incomplete (#912).
 
+### Changed
+
+- German shows matched in German now file themselves when the match is clear, instead of most tracks going to review. A chunk of dialogue only votes for an episode when that episode clearly leads the next best one, and the lead that is clear for English (1.8 times) turned out too strict for German, where right answers led by 1.5 to 1.9 times and wrong ones by under 1.2. German now votes from a 1.3 lead; other languages keep the English rule until they are measured (#846, thanks @wintheriscomming!).
+
 ## [0.45.1] - 2026-11-15
 
 _Highlights: DVD contributions to TheDiscDB now carry the right format and episodes; a MakeMKV crash while scanning a disc backup is named instead of reported as "No titles found"; and two smaller fixes for History durations and unreadable import paths._
