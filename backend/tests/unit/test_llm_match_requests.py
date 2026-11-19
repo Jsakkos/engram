@@ -414,46 +414,74 @@ async def test_does_not_persist_after_the_file_or_review_decision_changes(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("change", ["metadata", "identity"])
-async def test_a_change_at_the_write_boundary_cannot_be_overwritten(
+@pytest.mark.parametrize(
+    ("changes", "saved"),
+    [
+        pytest.param(("metadata",), True, id="merge-unrelated-metadata"),
+        pytest.param(("identity",), False, id="keep-original-job-context"),
+        pytest.param(("metadata", "metadata"), False, id="stop-after-two-collisions"),
+        pytest.param(("metadata", "identity"), False, id="identity-changes-during-retry"),
+        pytest.param(("metadata", "decision"), False, id="decision-changes-during-retry"),
+        pytest.param(("metadata", "file"), False, id="file-changes-during-retry"),
+    ],
+)
+async def test_a_write_boundary_collision_preserves_newer_edits(
     client,
     review_title,
     monkeypatch,
-    change,
+    changes,
+    saved,
 ):
     job, title = review_title
-    monkeypatch.setattr(
-        routes,
-        "_run_llm_match_for_title",
-        AsyncMock(return_value=routes.LLMMatchOutcome.ok(SUGGESTION)),
-    )
+    infer = AsyncMock(return_value=routes.LLMMatchOutcome.ok(SUGGESTION))
+    monkeypatch.setattr(routes, "_run_llm_match_for_title", infer)
     execute = AsyncSession.execute
-    injected = False
+    writes = 0
 
     async def execute_after_change(session, statement, *args, **kwargs):
-        nonlocal injected
-        if isinstance(statement, Update) and statement.table.name == "disc_titles" and not injected:
-            injected = True
+        nonlocal writes
+        if isinstance(statement, Update) and statement.table.name == "disc_titles":
+            writes += 1
+        if (
+            isinstance(statement, Update)
+            and statement.table.name == "disc_titles"
+            and writes <= len(changes)
+        ):
+            change = changes[writes - 1]
+            # Inject immediately before the guarded write, including on its retry.
             async with _unit_session_factory() as writer:
                 if change == "metadata":
                     current = await writer.get(DiscTitle, title.id)
-                    current.match_details = json.dumps(
-                        {"llm_suggestion": PREVIOUS, "review_note": "newer edit"}
-                    )
-                else:
+                    details = json.loads(current.match_details)
+                    details["review_note"] = f"newer edit {writes}"
+                    current.match_details = json.dumps(details)
+                elif change == "identity":
                     current = await writer.get(DiscJob, job.id)
                     current.detected_season = 2
+                elif change == "decision":
+                    current = await writer.get(DiscTitle, title.id)
+                    current.matched_episode = "S01E02"
+                else:
+                    current = await writer.get(DiscTitle, title.id)
+                    current.output_filename = "/new-rip.mkv"
                 await writer.commit()
         return await execute(session, statement, *args, **kwargs)
 
     monkeypatch.setattr(AsyncSession, "execute", execute_after_change)
     response = await client.post(f"/api/jobs/{job.id}/titles/{title.id}/llm-match?force=true")
-    assert injected
-    assert response.json() == {"suggestion": None, "reason": "context_changed"}
+    assert response.status_code == 200
+    assert response.json() == {
+        "suggestion": SUGGESTION if saved else None,
+        "reason": None if saved else "context_changed",
+    }
+    assert writes == 2
+    infer.assert_awaited_once()
     details = await saved_details(title.id)
-    assert details["llm_suggestion"] == PREVIOUS
-    if change == "metadata":
-        assert details["review_note"] == "newer edit"
+    assert details["llm_suggestion"] == (SUGGESTION if saved else PREVIOUS)
+    assert details["score"] == 0.7
+    if "metadata" in changes:
+        last_edit = max(index + 1 for index, change in enumerate(changes) if change == "metadata")
+        assert details["review_note"] == f"newer edit {last_edit}"
 
 
 @pytest.mark.asyncio

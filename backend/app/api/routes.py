@@ -5183,6 +5183,7 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
 
 # Share pending work within this server process. Finished attempts are removed
 # so a later request can retry a failure or run with newly selected AI settings.
+# Multiple server workers would need a shared guard to deduplicate across processes.
 _llm_match_tasks: dict[tuple[int, int], asyncio.Task[dict | JSONResponse]] = {}
 
 _LLM_JOB_CONTEXT_FIELDS = (
@@ -5225,6 +5226,8 @@ async def _match_and_persist_llm_suggestion(
 
     # Local inference can take minutes; release the read session before waiting
     # rather than holding a database connection for the entire model call.
+    # job/title are detached models with loaded scalar columns; inference must
+    # not access lazy-loaded relationships after this session has closed.
     try:
         outcome = await _run_llm_match_for_title(title=title, job=job)
     except Exception:
@@ -5248,37 +5251,43 @@ async def _match_and_persist_llm_suggestion(
         return {"suggestion": None, "reason": outcome.reason}
 
     # Re-read after inference so updates made while the model was running survive.
-    # A failed retry leaves the previous suggestion intact.
-    async with async_session() as session:
-        title = await session.get(DiscTitle, title_id)
-        if not title or title.job_id != job_id:
-            raise HTTPException(status_code=404, detail="Title not found")
-        previous_details = title.match_details
-        existing = json.loads(previous_details or "{}")
-        existing["llm_suggestion"] = outcome.suggestion
-        # Check context and metadata in the write itself. A separate check could
-        # race a re-identification, re-rip or manual decision before the commit.
-        result = await session.execute(
-            update(DiscTitle)
-            .where(
-                DiscTitle.id == title_id,
-                DiscTitle.job_id.in_(
-                    select(DiscJob.id).where(
-                        DiscJob.id == job_id,
-                        *(getattr(DiscJob, field) == value for field, value in job_context.items()),
-                    )
-                ),
-                *(getattr(DiscTitle, field) == value for field, value in title_context.items()),
-                DiscTitle.match_details == previous_details,
+    # If metadata changes at the write boundary, retry its merge once in a fresh
+    # session without repeating inference. Both writes keep the original context
+    # guards, so a changed identity, file or manual decision cannot accept a stale result.
+    for _ in range(2):
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                raise HTTPException(status_code=404, detail="Title not found")
+            previous_details = title.match_details
+            existing = json.loads(previous_details or "{}")
+            existing["llm_suggestion"] = outcome.suggestion
+            # Check context and metadata in the write itself. A separate check could
+            # race a re-identification, re-rip or manual decision before the commit.
+            result = await session.execute(
+                update(DiscTitle)
+                .where(
+                    DiscTitle.id == title_id,
+                    DiscTitle.job_id.in_(
+                        select(DiscJob.id).where(
+                            DiscJob.id == job_id,
+                            *(
+                                getattr(DiscJob, field) == value
+                                for field, value in job_context.items()
+                            ),
+                        )
+                    ),
+                    *(getattr(DiscTitle, field) == value for field, value in title_context.items()),
+                    DiscTitle.match_details == previous_details,
+                )
+                .values(match_details=json.dumps(existing))
+                .execution_options(synchronize_session=False)
             )
-            .values(match_details=json.dumps(existing))
-            .execution_options(synchronize_session=False)
-        )
-        if result.rowcount != 1:
-            return {"suggestion": None, "reason": "context_changed"}
-        await session.commit()
+            if result.rowcount == 1:
+                await session.commit()
+                return {"suggestion": outcome.suggestion, "reason": None}
 
-    return {"suggestion": outcome.suggestion, "reason": None}
+    return {"suggestion": None, "reason": "context_changed"}
 
 
 def _finish_llm_match_task(key: tuple[int, int], task: asyncio.Task) -> None:

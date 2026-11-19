@@ -14,6 +14,7 @@ All notable changes to Engram will be documented in this file.
 - AI episode suggestions now reject episode numbers outside the season roster, fractional episode numbers, and invalid confidence scores. Invalid runner-ups no longer appear alongside an otherwise valid suggestion.
 - Overlapping AI match requests for the same title share one attempt. Navigating away from one request no longer cancels the shared attempt, and updates made to the title during inference are preserved.
 - AI matching keeps a disc's confirmed TMDB identity when a different show has the same name. Results from an attempt started before the disc identity, source file or manual assignment changed are discarded.
+- An unrelated metadata update racing an AI suggestion's save gets one fresh merge attempt without repeating inference. Both attempts still reject stale matching context (`context_changed`), and a failed save preserves the existing suggestion and metadata.
 - Completing an AI match preserves unsaved review choices. Late responses no longer replace the details of a different job, or newer details after returning to the same job.
 
 ## [0.45.2] - 2026-11-18
