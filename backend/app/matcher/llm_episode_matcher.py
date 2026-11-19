@@ -88,10 +88,12 @@ def _valid_candidate(raw: object, episode_numbers: set[int]) -> bool:
         return False
     episode = raw.get("episode")
     confidence = raw.get("confidence")
-    # Coercion would hide invalid output: int(True) and int(1.9) both become 1.
-    # Require an actual integer before checking it against the season roster.
+    # Check exact roster membership before converting. JSON Schema considers
+    # 1 and 1.0 the same integer; booleans and fractional values must not round
+    # into a valid episode (https://json-schema.org/understanding-json-schema/reference/numeric).
     return (
-        type(episode) is int
+        isinstance(episode, int | float)
+        and not isinstance(episode, bool)
         and episode in episode_numbers
         and isinstance(confidence, int | float)
         and not isinstance(confidence, bool)
@@ -116,8 +118,8 @@ async def match_episode_via_llm(
     """Run LLM episode matching. Returns None on no-confident-match or empty response.
 
     ``ai_model`` is the user's optional override (AppConfig.ai_model); None means
-    the provider default. It is recorded on the returned match so per-track
-    provenance names the model that actually answered.
+    the provider default. The returned match records the requested model;
+    the shared client logs any local-server model substitution separately.
 
     ``ai_local_base_url`` is the user's local-server endpoint
     (AppConfig.ai_local_base_url). It applies only to the local providers; blank
@@ -180,7 +182,7 @@ async def match_episode_via_llm(
     if not _valid_candidate(raw, episode_numbers):
         logger.warning("LLM matcher: response has an invalid episode or confidence")
         return None
-    episode = raw["episode"]
+    episode = int(raw["episode"])
     confidence = float(raw["confidence"])
 
     if confidence <= 0.0:
@@ -197,7 +199,7 @@ async def match_episode_via_llm(
     # episode itself is not an alternative, even when its confidence is valid.
     if _valid_candidate(runner_up_raw, episode_numbers) and runner_up_raw["episode"] != episode:
         runner_up = RunnerUp(
-            episode=runner_up_raw["episode"],
+            episode=int(runner_up_raw["episode"]),
             confidence=float(runner_up_raw["confidence"]),
         )
 

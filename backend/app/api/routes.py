@@ -21,7 +21,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -5112,11 +5112,13 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     # Make sure the matcher is initialized for the show (so transcribe_full works).
     # 503/retryable fits the "still initializing" case; a permanent init failure
     # (missing model weights / corrupt index) keeps returning this on retry.
-    episode_curator._ensure_initialized(job.detected_title)
+    episode_curator._ensure_initialized(job.detected_title, tmdb_id=job.tmdb_id)
     if not episode_curator._matcher:
         return LLMMatchOutcome.failed("matcher_unavailable")
 
-    tmdb_show_id = await asyncio.to_thread(fetch_show_id, job.detected_title)
+    # Re-resolving a confirmed title by name can select a different same-name
+    # series (for example the two Frasier shows), producing the wrong roster.
+    tmdb_show_id = job.tmdb_id or await asyncio.to_thread(fetch_show_id, job.detected_title)
     if not tmdb_show_id:
         return LLMMatchOutcome.failed("show_not_found")
 
@@ -5183,6 +5185,25 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
 # so a later request can retry a failure or run with newly selected AI settings.
 _llm_match_tasks: dict[tuple[int, int], asyncio.Task[dict | JSONResponse]] = {}
 
+_LLM_JOB_CONTEXT_FIELDS = (
+    "detected_title",
+    "detected_season",
+    "tmdb_id",
+    "content_type",
+    "episode_namespace",
+    "match_language",
+    "staging_path",
+)
+_LLM_TITLE_CONTEXT_FIELDS = (
+    "title_index",
+    "output_index",
+    "source_filename",
+    "output_filename",
+    "organized_to",
+    "state",
+    "matched_episode",
+)
+
 
 async def _match_and_persist_llm_suggestion(
     job_id: int, title_id: int, *, force: bool
@@ -5199,6 +5220,8 @@ async def _match_and_persist_llm_suggestion(
         cached = existing.get("llm_suggestion")
         if cached and not force:
             return {"suggestion": cached, "reason": "cached"}
+        job_context = {field: getattr(job, field) for field in _LLM_JOB_CONTEXT_FIELDS}
+        title_context = {field: getattr(title, field) for field in _LLM_TITLE_CONTEXT_FIELDS}
 
     # Local inference can take minutes; release the read session before waiting
     # rather than holding a database connection for the entire model call.
@@ -5230,10 +5253,29 @@ async def _match_and_persist_llm_suggestion(
         title = await session.get(DiscTitle, title_id)
         if not title or title.job_id != job_id:
             raise HTTPException(status_code=404, detail="Title not found")
-        existing = json.loads(title.match_details or "{}")
+        previous_details = title.match_details
+        existing = json.loads(previous_details or "{}")
         existing["llm_suggestion"] = outcome.suggestion
-        title.match_details = json.dumps(existing)
-        session.add(title)
+        # Check context and metadata in the write itself. A separate check could
+        # race a re-identification, re-rip or manual decision before the commit.
+        result = await session.execute(
+            update(DiscTitle)
+            .where(
+                DiscTitle.id == title_id,
+                DiscTitle.job_id.in_(
+                    select(DiscJob.id).where(
+                        DiscJob.id == job_id,
+                        *(getattr(DiscJob, field) == value for field, value in job_context.items()),
+                    )
+                ),
+                *(getattr(DiscTitle, field) == value for field, value in title_context.items()),
+                DiscTitle.match_details == previous_details,
+            )
+            .values(match_details=json.dumps(existing))
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount != 1:
+            return {"suggestion": None, "reason": "context_changed"}
         await session.commit()
 
     return {"suggestion": outcome.suggestion, "reason": None}

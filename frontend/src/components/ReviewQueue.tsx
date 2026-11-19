@@ -5,7 +5,7 @@ import { Save, Package, Keyboard } from 'lucide-react';
 import { IcoDisc, IcoPlay, IcoRetry, IcoError } from '../app/components/icons';
 import type { CSSProperties, FocusEvent, ReactNode } from 'react';
 import { Job, DiscTitle, type SeasonAnswer } from '../types';
-import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, parseMatchDetails, effectiveOrdering, orderingSelectorHeading, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
+import { formatDuration, formatSize, titleDisplayName, buildInitialSelections, mergeEditedValues, parseMatchDetails, effectiveOrdering, orderingSelectorHeading, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, type MovieReviewNotice, type TitleAction } from './ReviewQueue/utils';
 import { MovieExtrasOnlyAction } from './ReviewQueue/MovieExtrasOnlyAction';
 import { EPISODE_CONFIG, MATCHING_CONFIG } from '../config/constants';
 import { SvActionButton, SvAtmosphere, SvBadge, SvLabel, SvNotice, SvPageHeader, SvPanel, sv } from '../app/components/synapse';
@@ -186,6 +186,12 @@ function HeaderButton({
 
 function ReviewQueue() {
     const { jobId } = useParams<{ jobId: string }>();
+    const currentJobIdRef = useRef(jobId);
+    const jobFetchVersionRef = useRef(0);
+    useEffect(() => {
+        currentJobIdRef.current = jobId;
+        return () => { currentJobIdRef.current = undefined; };
+    }, [jobId]);
     const navigate = useNavigate();
     const [job, setJob] = useState<Job | null>(null);
     const [titles, setTitles] = useState<DiscTitle[]>([]);
@@ -199,6 +205,7 @@ function ReviewQueue() {
     const [selectedEpisodes, setSelectedEpisodes] = useState<Record<number, string>>({});
     const [selectedEditions, setSelectedEditions] = useState<Record<number, string>>({});
     const [titleActions, setTitleActions] = useState<Record<number, TitleAction>>({});
+    const editedReviewIdsRef = useRef(new Set<number>());
     const [selectedTitleId, setSelectedTitleId] = useState<number | null>(null);
     const [rematchNotice, setRematchNotice] = useState<string | null>(null);
     const [llmFeedback, setLlmFeedback] = useState<Record<number, LLMFeedback | null>>({});
@@ -356,33 +363,50 @@ function ReviewQueue() {
             .catch(() => {/* non-critical */});
     }, []);
 
-    const fetchJobDetails = async () => {
+    const fetchJobDetails = async ({ preserveEdits = false } = {}) => {
+        if (!jobId || currentJobIdRef.current !== jobId) return;
+        const version = ++jobFetchVersionRef.current;
+        const isCurrent = () => currentJobIdRef.current === jobId && jobFetchVersionRef.current === version;
         try {
             const [jobResponse, titlesResponse] = await Promise.all([
                 fetch(`/api/jobs/${jobId}`),
                 fetch(`/api/jobs/${jobId}/titles`),
             ]);
 
-            if (jobResponse.ok) {
-                setJob(await jobResponse.json());
-            }
+            const [jobData, titlesData] = await Promise.all([
+                jobResponse.ok ? jobResponse.json() : null,
+                titlesResponse.ok ? titlesResponse.json() : null,
+            ]);
+            // A long AI call or a slow fetch may finish after navigation. Its
+            // old job must never replace the review page that is now visible.
+            if (!isCurrent()) return;
+            if (jobData) setJob(jobData);
 
-            if (titlesResponse.ok) {
-                const titlesData = await titlesResponse.json();
+            if (titlesData) {
                 setTitles(titlesData);
 
                 // Pre-fill selections from existing match results. A deferred
                 // extra (matched_episode === "extra") pre-fills as the "extra"
                 // action so it shows selected as an extra and is reassignable.
                 const { episodes, actions } = buildInitialSelections(titlesData);
-                setSelectedEpisodes(episodes);
-                setTitleActions(actions);
+                // Unsaved choices belong to this show and season, not a new
+                // identity that another request may have selected in the meantime.
+                const keepEdits = preserveEdits && !!job && !!jobData && job.id === jobData.id &&
+                    (['content_type', 'detected_title', 'detected_season', 'tmdb_id', 'episode_namespace'] as const)
+                        .every((field) => job[field] === jobData[field]);
+                const editedIds = keepEdits
+                    ? new Set<number>(titlesData.filter((title: DiscTitle) => editedReviewIdsRef.current.has(title.id)).map((title: DiscTitle) => title.id))
+                    : new Set<number>();
+                setSelectedEpisodes((current) => mergeEditedValues(episodes, current, editedIds));
+                setTitleActions((current) => mergeEditedValues(actions, current, editedIds));
+                if (!keepEdits) editedReviewIdsRef.current.clear();
             }
         } catch (err) {
+            if (!isCurrent()) return;
             console.error('Failed to fetch job:', err);
             setError('Failed to load job details');
         } finally {
-            setIsLoading(false);
+            if (isCurrent()) setIsLoading(false);
         }
     };
 
@@ -400,6 +424,7 @@ function ReviewQueue() {
     }, [titles, selectedTitleId]);
 
     const handleEpisodeChange = (titleId: number, episodeCode: string) => {
+        editedReviewIdsRef.current.add(titleId);
         setSelectedEpisodes(prev => ({ ...prev, [titleId]: normalizeEpisodeCode(episodeCode) }));
         setTitleActions(prev => ({ ...prev, [titleId]: 'episode' }));
     };
@@ -409,6 +434,7 @@ function ReviewQueue() {
     };
 
     const handleTitleAction = (titleId: number, action: TitleAction) => {
+        editedReviewIdsRef.current.add(titleId);
         setTitleActions(prev => ({ ...prev, [titleId]: action }));
         if (action === 'extra') {
             setSelectedEpisodes(prev => ({ ...prev, [titleId]: 'extra' }));
@@ -518,12 +544,19 @@ function ReviewQueue() {
         setLlmMatchingIds((current) => new Set(current).add(titleId));
         try {
             const result = await runLLMMatch(parseInt(jobId), titleId, { force });
-            await fetchJobDetails();
+            if (currentJobIdRef.current !== jobId) return;
+            if (result.reason === 'context_changed') {
+                setSeasonOverride(null);
+                reloadRoster();
+            }
+            await fetchJobDetails({ preserveEdits: result.reason !== 'context_changed' });
+            if (currentJobIdRef.current !== jobId) return;
             const feedback = llmResultToFeedback(result);
             if (feedback) {
                 setLlmFeedback((prev) => ({ ...prev, [titleId]: feedback }));
             }
         } catch (err) {
+            if (currentJobIdRef.current !== jobId) return;
             console.error('LLM match failed', err);
             setLlmFeedback((prev) => ({ ...prev, [titleId]: llmErrorToFeedback(err) }));
         } finally {

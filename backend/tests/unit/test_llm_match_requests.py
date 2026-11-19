@@ -2,10 +2,14 @@
 
 import asyncio
 import json
-from unittest.mock import AsyncMock
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.dml import Update
 
 from app.api import routes
 from app.database import get_session
@@ -82,6 +86,53 @@ async def saved_details(title_id):
     async with _unit_session_factory() as session:
         title = await session.get(DiscTitle, title_id)
         return json.loads(title.match_details)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("known_id", [195241, None])
+async def test_on_demand_matching_uses_the_confirmed_show_identity(
+    review_title, monkeypatch, known_id
+):
+    from app.core.curator import curator
+    from app.matcher import llm_episode_matcher, tmdb_client
+    from app.services import config_service, ripping_helpers
+
+    job, title = review_title
+    job.detected_title = "Frasier"
+    job.tmdb_id = known_id
+    monkeypatch.setattr(
+        config_service,
+        "get_config",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                ai_episode_matching_enabled=True,
+                ai_provider="lmstudio",
+                ai_api_key="",
+                ai_model="test-model",
+                ai_local_base_url="http://localhost:1234/v1",
+                tmdb_api_key="test",
+            )
+        ),
+    )
+    initialize = Mock(return_value=True)
+    monkeypatch.setattr(curator, "_ensure_initialized", initialize)
+    monkeypatch.setattr(
+        curator, "_matcher", SimpleNamespace(transcribe_full=lambda path: "cargo dialogue " * 100)
+    )
+    resolve = Mock(return_value=987)
+    monkeypatch.setattr(tmdb_client, "fetch_show_id", resolve)
+    monkeypatch.setattr(ripping_helpers, "find_staging_file", lambda *args: Path("test.mkv"))
+    match = AsyncMock(return_value=SimpleNamespace(**SUGGESTION))
+    monkeypatch.setattr(llm_episode_matcher, "match_episode_via_llm", match)
+
+    outcome = await routes._run_llm_match_for_title(title=title, job=job)
+    assert outcome.suggestion == SUGGESTION
+    assert match.await_args.kwargs["tmdb_show_id"] == str(known_id or 987)
+    initialize.assert_called_once_with("Frasier", tmdb_id=known_id)
+    if known_id:
+        resolve.assert_not_called()
+    else:
+        resolve.assert_called_once_with("Frasier")
 
 
 @pytest.mark.asyncio
@@ -282,7 +333,7 @@ async def test_cancelled_caller_does_not_cancel_shared_inference(review_title, m
         await asyncio.wait_for(joined.wait(), timeout=5)
         first.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await first
+            await asyncio.wait_for(first, timeout=5)
     finally:
         release.set()
         # Drain every caller even if setup fails before the second one is started.
@@ -293,6 +344,192 @@ async def test_cancelled_caller_does_not_cancel_shared_inference(review_title, m
     run.assert_awaited_once()
     assert (await saved_details(title.id))["llm_suggestion"] == SUGGESTION
     assert (job.id, title.id) not in routes._llm_match_tasks
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("detected_title", "Different show"),
+        ("detected_season", 2),
+        ("tmdb_id", 999),
+        ("episode_namespace", "tvdb"),
+        ("match_language", "de"),
+    ],
+)
+async def test_does_not_persist_a_suggestion_after_job_identity_changes(
+    client,
+    review_title,
+    monkeypatch,
+    field,
+    value,
+):
+    job, title = review_title
+
+    async def infer(**kwargs):
+        async with _unit_session_factory() as session:
+            current_job = await session.get(DiscJob, job.id)
+            setattr(current_job, field, value)
+            current_title = await session.get(DiscTitle, title.id)
+            current_title.match_details = json.dumps({"identity_updated": True})
+            await session.commit()
+        return routes.LLMMatchOutcome.ok(SUGGESTION)
+
+    monkeypatch.setattr(routes, "_run_llm_match_for_title", infer)
+    response = await client.post(f"/api/jobs/{job.id}/titles/{title.id}/llm-match?force=true")
+    assert response.status_code == 200
+    assert response.json() == {"suggestion": None, "reason": "context_changed"}
+    assert await saved_details(title.id) == {"identity_updated": True}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("output_filename", "/new-rip.mkv"),
+        ("matched_episode", "S01E02"),
+        ("state", TitleState.COMPLETED),
+    ],
+)
+async def test_does_not_persist_after_the_file_or_review_decision_changes(
+    client,
+    review_title,
+    monkeypatch,
+    field,
+    value,
+):
+    job, title = review_title
+
+    async def infer(**kwargs):
+        async with _unit_session_factory() as session:
+            current = await session.get(DiscTitle, title.id)
+            setattr(current, field, value)
+            await session.commit()
+        return routes.LLMMatchOutcome.ok(SUGGESTION)
+
+    monkeypatch.setattr(routes, "_run_llm_match_for_title", infer)
+    response = await client.post(f"/api/jobs/{job.id}/titles/{title.id}/llm-match?force=true")
+    assert response.json() == {"suggestion": None, "reason": "context_changed"}
+    assert (await saved_details(title.id))["llm_suggestion"] == PREVIOUS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["metadata", "identity"])
+async def test_a_change_at_the_write_boundary_cannot_be_overwritten(
+    client,
+    review_title,
+    monkeypatch,
+    change,
+):
+    job, title = review_title
+    monkeypatch.setattr(
+        routes,
+        "_run_llm_match_for_title",
+        AsyncMock(return_value=routes.LLMMatchOutcome.ok(SUGGESTION)),
+    )
+    execute = AsyncSession.execute
+    injected = False
+
+    async def execute_after_change(session, statement, *args, **kwargs):
+        nonlocal injected
+        if isinstance(statement, Update) and statement.table.name == "disc_titles" and not injected:
+            injected = True
+            async with _unit_session_factory() as writer:
+                if change == "metadata":
+                    current = await writer.get(DiscTitle, title.id)
+                    current.match_details = json.dumps(
+                        {"llm_suggestion": PREVIOUS, "review_note": "newer edit"}
+                    )
+                else:
+                    current = await writer.get(DiscJob, job.id)
+                    current.detected_season = 2
+                await writer.commit()
+        return await execute(session, statement, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "execute", execute_after_change)
+    response = await client.post(f"/api/jobs/{job.id}/titles/{title.id}/llm-match?force=true")
+    assert injected
+    assert response.json() == {"suggestion": None, "reason": "context_changed"}
+    details = await saved_details(title.id)
+    assert details["llm_suggestion"] == PREVIOUS
+    if change == "metadata":
+        assert details["review_note"] == "newer edit"
+
+
+@pytest.mark.asyncio
+async def test_shared_inference_finishes_when_its_only_caller_disconnects(
+    review_title, monkeypatch
+):
+    job, title = review_title
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def infer(**kwargs):
+        started.set()
+        await release.wait()
+        return routes.LLMMatchOutcome.ok(SUGGESTION)
+
+    monkeypatch.setattr(routes, "_run_llm_match_for_title", infer)
+    caller = asyncio.create_task(request(job, title))
+    worker = None
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        worker = routes._llm_match_tasks[(job.id, title.id)]
+        caller.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(caller, timeout=5)
+    finally:
+        release.set()
+        await asyncio.gather(caller, return_exceptions=True)
+    assert worker is not None
+    result = await asyncio.wait_for(asyncio.shield(worker), timeout=5)
+    assert result["suggestion"] == SUGGESTION
+    assert (await saved_details(title.id))["llm_suggestion"] == SUGGESTION
+    assert (job.id, title.id) not in routes._llm_match_tasks
+
+
+@pytest.mark.asyncio
+async def test_a_hundred_overlapping_callers_share_work_even_when_some_cancel(
+    review_title, monkeypatch
+):
+    job, title = review_title
+    joined, release = asyncio.Event(), asyncio.Event()
+    callers_started = 0
+
+    class RequestSession:
+        async def get(self, *args):
+            nonlocal callers_started
+            callers_started += 1
+            if callers_started == 100:
+                joined.set()
+            return title
+
+    async def infer(**kwargs):
+        await release.wait()
+        return routes.LLMMatchOutcome.ok(SUGGESTION)
+
+    run = AsyncMock(side_effect=infer)
+    monkeypatch.setattr(routes, "_run_llm_match_for_title", run)
+    callers = [
+        asyncio.create_task(
+            routes.llm_match_title(title.id, force=True, job=job, session=RequestSession())
+        )
+        for _ in range(100)
+    ]
+    try:
+        await asyncio.wait_for(joined.wait(), timeout=5)
+        for caller in callers[::3]:
+            caller.cancel()
+        await asyncio.gather(*callers[::3], return_exceptions=True)
+    finally:
+        release.set()
+        results = await asyncio.gather(*callers, return_exceptions=True)
+    assert sum(isinstance(value, asyncio.CancelledError) for value in results) == 34
+    assert (
+        sum(isinstance(value, dict) and value["suggestion"] == SUGGESTION for value in results)
+        == 66
+    )
+    run.assert_awaited_once()
+    assert not routes._llm_match_tasks
 
 
 @pytest.mark.asyncio

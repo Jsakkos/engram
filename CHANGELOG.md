@@ -6,13 +6,15 @@ All notable changes to Engram will be documented in this file.
 
 ### Added
 
-- Review Queue AI suggestions now show their model and offer **Try AI again** to rerun with the current AI settings. An unsuccessful retry keeps the previous suggestion and displays the retry feedback.
+- Review Queue AI suggestions now show the requested model and offer **Try AI again** to rerun with the current AI settings. An unsuccessful retry keeps the previous suggestion and displays the retry feedback.
 
 ### Fixed
 
 - Local AI disc identification now allows reasoning before the JSON answer, using the same bounded output budget as episode matching.
 - AI episode suggestions now reject episode numbers outside the season roster, fractional episode numbers, and invalid confidence scores. Invalid runner-ups no longer appear alongside an otherwise valid suggestion.
 - Overlapping AI match requests for the same title share one attempt. Navigating away from one request no longer cancels the shared attempt, and updates made to the title during inference are preserved.
+- AI matching keeps a disc's confirmed TMDB identity when a different show has the same name. Results from an attempt started before the disc identity, source file or manual assignment changed are discarded.
+- Completing an AI match preserves unsaved review choices. Late responses no longer replace the details of a different job, or newer details after returning to the same job.
 
 ## [0.45.2] - 2026-11-18
 

@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ReviewQueue from './ReviewQueue';
 
@@ -53,9 +53,150 @@ function renderPage() {
     );
 }
 
+function NavigableReview() {
+    const navigate = useNavigate();
+    return <><button onClick={() => navigate('/review/1')}>Open first job</button><button onClick={() => navigate('/review/2')}>Open second job</button><ReviewQueue /></>;
+}
+
 describe('ReviewQueue AI provider availability', () => {
     beforeEach(() => vi.unstubAllGlobals());
     afterEach(() => vi.unstubAllGlobals());
+
+    it('ignores a stale detail response even after navigating away and back to the same job', async () => {
+        let finishOld: (() => void) | undefined;
+        let firstTitles = true;
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+            if (url.startsWith('/api/config')) return { ok: true, json: async () => ({ tmdb_configured: true }) };
+            if (url.includes('/season-roster')) return { ok: true, json: async () => ({ available: false, episodes: [] }) };
+            const id = url.startsWith('/api/jobs/2') ? 2 : 1;
+            if (url === '/api/jobs/1/titles' && firstTitles) {
+                firstTitles = false;
+                return { ok: true, json: () => new Promise((resolve) => {
+                    finishOld = () => resolve([title(100)]);
+                }) };
+            }
+            return { ok: true, json: async () => url.endsWith('/titles')
+                ? [title(id * 100, { job_id: id, matched_episode: 'S01E05' })]
+                : { id, state: 'review_needed', content_type: 'tv', detected_title: `Show ${id}`, detected_season: 1, tmdb_id: 3452 },
+            };
+        }));
+        render(<MemoryRouter initialEntries={['/review/1']}><Routes><Route path="/review/:jobId" element={<NavigableReview />} /></Routes></MemoryRouter>);
+        await waitFor(() => expect(finishOld).toBeDefined());
+        fireEvent.click(screen.getByRole('button', { name: 'Open second job' }));
+        await screen.findByLabelText(/manual episode for title 200/i);
+        fireEvent.click(screen.getByRole('button', { name: 'Open first job' }));
+        await waitFor(() => expect(screen.getByLabelText(/manual episode for title 100/i)).toHaveValue('S01E05'));
+        await act(async () => finishOld!());
+        expect(screen.getByLabelText(/manual episode for title 100/i)).toHaveValue('S01E05');
+    });
+
+    it('keeps an unsaved manual assignment when a pending AI request refreshes the page', async () => {
+        mockBackend(
+            { tmdb_id: 3452 },
+            { ai_episode_matching_enabled: true, ai_provider: 'lmstudio', ai_api_key: '' },
+        );
+        const backendFetch = fetch;
+        let finish: (() => void) | undefined;
+        vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+            if (url.includes('/llm-match')) return new Promise<Response>((resolve) => {
+                finish = () => resolve({ ok: true, status: 200, json: async () => ({ suggestion: null, reason: 'no_match' }) } as Response);
+            });
+            return backendFetch(url, init);
+        }));
+        renderPage();
+        const button = await screen.findByRole('button', { name: /try ai match/i });
+        await waitFor(() => expect(button).toBeEnabled());
+        fireEvent.click(button);
+        await waitFor(() => expect(finish).toBeDefined());
+        fireEvent.change(screen.getByLabelText(/manual episode for title 1/i), { target: { value: 'S01E07' } });
+        expect(screen.getByLabelText(/manual episode for title 1/i)).toHaveValue('S01E07');
+        await act(async () => finish!());
+        expect(screen.getByLabelText(/manual episode for title 1/i)).toHaveValue('S01E07');
+    });
+
+    it('discards old-season choices when a pending request reports a changed identity', async () => {
+        const job = { tmdb_id: 3452, detected_season: 1 };
+        mockBackend(job, { ai_episode_matching_enabled: true, ai_provider: 'lmstudio', ai_api_key: '' });
+        const backendFetch = fetch;
+        let finish: (() => void) | undefined;
+        vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+            if (url.includes('/llm-match')) return new Promise<Response>((resolve) => {
+                finish = () => {
+                    job.detected_season = 2;
+                    resolve({ ok: true, status: 200, json: async () => ({ suggestion: null, reason: 'context_changed' }) } as Response);
+                };
+            });
+            return backendFetch(url, init);
+        }));
+        renderPage();
+        const button = await screen.findByRole('button', { name: /try ai match/i });
+        await waitFor(() => expect(button).toBeEnabled());
+        fireEvent.click(button);
+        await waitFor(() => expect(finish).toBeDefined());
+        fireEvent.change(screen.getByLabelText(/manual episode for title 1/i), { target: { value: 'S01E07' } });
+        await act(async () => finish!());
+        expect(screen.getByLabelText(/manual episode for title 1/i)).toHaveValue('');
+        expect(screen.getByText(/Matching details changed while AI was running/)).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'S02E07' })).toBeInTheDocument();
+    });
+
+    it('clears unsaved episode numbers if numbering changes before the AI refresh', async () => {
+        const job = { tmdb_id: 3452, episode_namespace: 'tmdb' };
+        mockBackend(job, { ai_episode_matching_enabled: true, ai_provider: 'lmstudio', ai_api_key: '' });
+        const backendFetch = fetch;
+        vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+            if (url.includes('/llm-match')) {
+                // The numbering can change after inference but before the page
+                // refreshes, even when the result carries no context_changed flag.
+                job.episode_namespace = 'tvdb';
+                return Promise.resolve({ ok: true, status: 200, json: async () => ({ suggestion: null, reason: 'no_match' }) } as Response);
+            }
+            return backendFetch(url, init);
+        }));
+        renderPage();
+        const button = await screen.findByRole('button', { name: /try ai match/i });
+        await waitFor(() => expect(button).toBeEnabled());
+        fireEvent.change(screen.getByLabelText(/manual episode for title 1/i), { target: { value: 'S01E07' } });
+        fireEvent.click(button);
+        await waitFor(() => expect(screen.getByLabelText(/manual episode for title 1/i)).toHaveValue(''));
+    });
+
+    it.each(['success', 'error'])('ignores an old job’s pending AI %s after navigation', async (outcome) => {
+        let complete: (() => void) | undefined;
+        const fetchMock = vi.fn(async (url: string) => {
+            if (url.includes('/llm-match')) {
+                return new Promise<Response>((resolve) => {
+                    complete = () => resolve({
+                        ok: outcome === 'success', status: outcome === 'success' ? 200 : 503,
+                        json: async () => ({ suggestion: null, reason: 'no_match' }),
+                        text: async () => JSON.stringify({ reason: 'llm_error', message: 'Old job error' }),
+                    } as Response);
+                });
+            }
+            if (url.startsWith('/api/config')) return { ok: true, json: async () => ({
+                tmdb_configured: true, ai_episode_matching_enabled: true, ai_provider: 'lmstudio', ai_api_key: '',
+            }) };
+            if (url.includes('/season-roster')) return { ok: true, json: async () => ({ available: false, episodes: [] }) };
+            const id = url.startsWith('/api/jobs/2') ? 2 : 1;
+            return { ok: true, json: async () => url.endsWith('/titles')
+                ? [title(id * 100, { job_id: id })]
+                : { id, state: 'review_needed', content_type: 'tv', detected_title: `Show ${id}`, detected_season: 1, tmdb_id: 3452 },
+            };
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        render(<MemoryRouter initialEntries={['/review/1']}><Routes><Route path="/review/:jobId" element={<NavigableReview />} /></Routes></MemoryRouter>);
+        const match = await screen.findByRole('button', { name: /try ai match/i });
+        await waitFor(() => expect(match).toBeEnabled());
+        fireEvent.click(match);
+        await waitFor(() => expect(complete).toBeDefined());
+        fireEvent.click(screen.getByRole('button', { name: 'Open second job' }));
+        await screen.findByLabelText(/manual episode for title 200/i);
+        const oldRequests = fetchMock.mock.calls.filter(([url]) => /^\/api\/jobs\/1(?:\/titles)?$/.test(url)).length;
+        await act(async () => complete!());
+        expect(fetchMock.mock.calls.filter(([url]) => /^\/api\/jobs\/1(?:\/titles)?$/.test(url))).toHaveLength(oldRequests);
+        expect(screen.getByLabelText(/manual episode for title 200/i)).toBeInTheDocument();
+        expect(screen.queryByText('Old job error')).not.toBeInTheDocument();
+    });
 
     it('tracks each pending title when navigating between concurrent AI matches', async () => {
         mockBackend(

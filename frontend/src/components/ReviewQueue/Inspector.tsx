@@ -284,7 +284,7 @@ export function Inspector({
                                 </div>
                                 {llmSuggestion.model && (
                                     <div style={{ ...monoFaint, marginTop: 4, overflowWrap: 'anywhere' }}>
-                                        Model: {llmSuggestion.model}
+                                        Requested model: {llmSuggestion.model}
                                     </div>
                                 )}
                             </div>

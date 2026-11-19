@@ -31,6 +31,8 @@ export interface Job {
     error_message: string | null;
     detected_title?: string;
     detected_season?: number;
+    /** Job details identify which catalogue owns the stored episode numbers. */
+    episode_namespace?: 'tmdb' | 'tvdb';
     subtitle_status?: SubtitleStatus;
     subtitle_error_message?: string | null;
     subtitles_downloaded?: number;

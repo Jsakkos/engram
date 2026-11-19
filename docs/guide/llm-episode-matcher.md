@@ -15,9 +15,15 @@ An opt-in fallback for TV episode identification. When Engram's primary audio-fi
 
 After a suggestion is saved, the button changes to **Try AI again**. Use it after
 changing your provider or model in Settings to request a fresh suggestion. The
-card shows which model produced the saved suggestion. If the new attempt fails
+card shows the model requested for the saved suggestion. If the new attempt fails
 or finds no confident match, Engram keeps the previous suggestion and displays
 the new attempt's feedback. You still choose whether to accept a suggestion.
+
+An AI result refresh preserves your unsaved episode, extra and skip choices.
+If the disc identity, source file or assignment changes while matching runs,
+Engram discards that attempt's result and asks you to try again. Manual matching
+uses the disc's confirmed TMDB ID when one is available, so a same-named show
+cannot replace the confirmed identity through a name search.
 
 When the season can't be determined from the disc, the LLM matcher is skipped — accuracy collapses without season narrowing.
 

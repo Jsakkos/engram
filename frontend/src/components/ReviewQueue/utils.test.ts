@@ -1,7 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import type { DiscTitle } from '../../types';
-import { buildInitialSelections, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, orderingSelectorHeading } from './utils';
+import { buildInitialSelections, mergeEditedValues, isHeldMovieExtra, movieExtrasOnlyTitles, movieReviewNotice, movieReviewTitles, orderingSelectorHeading } from './utils';
 import type { OrderingOption } from './types';
+
+describe('mergeEditedValues', () => {
+    it('keeps manual changes while taking new defaults for untouched titles', () => {
+        const server = { 1: 'S01E01', 2: 'S01E03' };
+        const local = { 1: 'S01E07', 2: 'S01E02' };
+        expect(mergeEditedValues(server, local, new Set([1]))).toEqual({ 1: 'S01E07', 2: 'S01E03' });
+        expect(server).toEqual({ 1: 'S01E01', 2: 'S01E03' });
+        expect(local).toEqual({ 1: 'S01E07', 2: 'S01E02' });
+    });
+
+    it('preserves an explicitly cleared selection instead of restoring its default', () => {
+        expect(mergeEditedValues({ 1: 'S01E01', 2: 'S01E02' }, {}, new Set([1])))
+            .toEqual({ 2: 'S01E02' });
+    });
+});
 
 const option = (ordering: string, diverges = false): OrderingOption => ({
     ordering,

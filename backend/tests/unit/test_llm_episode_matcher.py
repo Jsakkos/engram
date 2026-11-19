@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient, MockTransport, Response
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 @pytest.fixture
@@ -37,7 +39,9 @@ def match_response(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("episode", [0, 2, 99, -1, 1.9, 1.0, True, "1", None])
+@pytest.mark.parametrize(
+    "episode", [0, 2, 99, -1, 1.9, float("nan"), float("inf"), True, "1", None]
+)
 async def test_rejects_episodes_outside_the_roster_and_nonintegers(match_response, episode):
     assert await match_response({"episode": episode, "confidence": 0.9}) is None
 
@@ -86,6 +90,41 @@ async def test_accepts_confidence_boundaries_and_valid_runner_up(match_response)
     assert result.confidence == 1.0
     assert result.runner_up == RunnerUp(episode=3, confidence=0.0)
     assert await match_response({"episode": 1, "confidence": 0}) is None
+
+
+@pytest.mark.asyncio
+async def test_accepts_and_normalizes_integral_json_numbers(match_response):
+    result = await match_response(
+        {"episode": 1.0, "confidence": 0.9, "runner_up": {"episode": 3.0, "confidence": 0.1}}
+    )
+    assert type(result.episode) is int and result.episode == 1
+    assert type(result.runner_up.episode) is int and result.runner_up.episode == 3
+
+
+_json_values = st.recursive(
+    st.none() | st.booleans() | st.integers() | st.floats() | st.text(max_size=16),
+    lambda children: (
+        st.lists(children, max_size=4) | st.dictionaries(st.text(max_size=12), children, max_size=4)
+    ),
+    max_leaves=12,
+)
+
+
+@settings(max_examples=750, deadline=None)
+@given(
+    raw=_json_values | st.fixed_dictionaries({"episode": _json_values, "confidence": _json_values}),
+    roster=st.sets(st.integers(min_value=0, max_value=50), max_size=12),
+)
+def test_untrusted_json_cannot_crash_validation_or_produce_nonfinite_saved_scores(raw, roster):
+    from app.matcher.llm_episode_matcher import _valid_candidate
+
+    accepted = _valid_candidate(raw, roster)
+    assert isinstance(accepted, bool)
+    if accepted:
+        normalized = {"episode": int(raw["episode"]), "confidence": float(raw["confidence"])}
+        # Accepted fields must survive strict JSON serialization used by the API.
+        assert json.loads(json.dumps(normalized, allow_nan=False)) == normalized
+        assert normalized["episode"] in roster
 
 
 class TestMatchEpisodeViaLLM:

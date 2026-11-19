@@ -123,7 +123,7 @@ describe('Inspector — AI match feedback', () => {
             } }) }),
             onTryLLMMatch,
         });
-        expect(screen.getByText('Model: previous-model')).toBeInTheDocument();
+        expect(screen.getByText('Requested model: previous-model')).toBeInTheDocument();
         const button = screen.getByRole('button', { name: /try ai again/i });
         expect(button).toHaveAttribute('title', 'Run again using the current AI settings');
         fireEvent.click(button);
