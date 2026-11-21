@@ -41,6 +41,7 @@ npm install          # Install dependencies
 npm run dev          # Start Vite dev server (port 5173)
 npm run build        # TypeScript check + production build
 npm run lint         # ESLint
+npm run test:unit    # Vitest + Testing Library unit tests (colocated *.test.tsx)
 npm run test:e2e     # Run Playwright E2E tests
 npm run test:e2e:ui  # Run E2E tests with interactive UI
 npm run brand:export # Regenerate favicons + .ico/.icns from SVG sources
@@ -138,18 +139,18 @@ curl -X POST localhost:8000/api/simulate/insert-disc-from-staging
 
 Each module maps to a stage in the disc processing pipeline:
 
-1. **Sentinel** (`sentinel.py`) — Drive monitor (`DriveMonitor` class). Polls optical drives on Windows using ctypes/kernel32. Fires async callbacks on disc insert/remove events.
+1. **Sentinel** (`sentinel.py`) — Drive monitor (`DriveMonitor` class). Polls optical drives (Windows via ctypes/kernel32; Linux via `/sys/block/sr*` + `ioctl(CDROM_DRIVE_STATUS)`). Fires async callbacks on disc insert/remove events.
 2. **Analyst** (`analyst.py`) — Disc classification. Heuristic-based TV vs Movie detection (cluster analysis of title durations). Outputs `DiscAnalysisResult` with content type, confidence score, and whether review is needed.
 3. **Extractor** (`extractor.py`) — MakeMKV CLI wrapper. Async subprocess management for `makemkvcon` scanning and ripping. Emits `RipProgress` callbacks.
 4. **Curator** (`curator.py`) — Episode matching via audio fingerprinting. Classifies matches into high-confidence (auto-organize) and needs-review buckets.
 5. **Organizer** (`organizer.py`) — File organization. Moves from staging to library with naming conventions: `Movies/Name (Year)/Name (Year).mkv` and `TV/Show/Season XX/Show - SXXEXX.mkv`.
 6. **TMDB Classifier** (`tmdb_classifier.py`) — TMDB-based content type classification. Provides strong signals for TV vs Movie detection beyond the heuristic-based Analyst.
 7. **Errors** (`errors.py`) — Custom exception hierarchy (`EngramError` base, with `MakeMKVError`, `MatchingError`, `ConfigurationError`, `OrganizationError`, `SubtitleError`, `DatabaseError`). Includes `@handle_errors` decorator for standardized error handling.
-8. **Logging** (`logging.py`) — Centralized logging configuration. Lines carry a `job=<id>` tag (`job=-` when outside a job). Per-job coroutines run inside `logger.contextualize(job_id=...)` via `app/core/log_context.py` (`with_job_log_context` wraps top-level task spawns in `job_manager.py`/`simulation_service.py`; `match_single_file` self-tags); nested `create_task`s inherit the tag. The diagnostics bundle greps the `job=<id>` token. **Caveat:** only jobs that ran *after* this change have tagged lines — older jobs fall back to the global ERROR/CRITICAL tail. Long-lived `provider_scheduler` worker threads log `job=-` (accepted gap).
+8. **Logging** (`logging.py`) — Centralized logging configuration. Lines carry a `job=<id>` tag (`job=-` when outside a job). Per-job coroutines run inside `logger.contextualize(job_id=...)` via `app/core/log_context.py` (`with_job_log_context` wraps top-level task spawns in `job_manager.py`/`simulation_service.py`; `match_single_file` self-tags); nested `create_task`s inherit the tag. The diagnostics bundle greps the `job=<id>` token. **Caveat:** jobs logged before job tagging existed have no tagged lines, so their bundle falls back to the global ERROR/CRITICAL tail. Long-lived `provider_scheduler` worker threads log `job=-` (accepted gap).
 
 ### Orchestration (`backend/app/services/`)
 
-- **JobManager** (`job_manager.py`) — Thin orchestrator (~1,166 lines). Wires coordinators together, manages job lifecycle, handles drive events, and coordinates ripping.
+- **JobManager** (`job_manager.py`) — Orchestrator. Wires coordinators together, manages job lifecycle, handles drive events, and coordinates ripping.
 - **IdentificationCoordinator** (`identification_coordinator.py`) — Disc scanning, DiscDB/TMDB/AI lookup, classification pipeline.
 - **MatchingCoordinator** (`matching_coordinator.py`) — Episode matching, subtitle download, file readiness, DiscDB assignment, extras handling. Owns per-job caches.
 - **FinalizationCoordinator** (`finalization_coordinator.py`) — Conflict resolution, file organization, review workflow, job completion.
@@ -191,8 +192,8 @@ React 19 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at lo
 
 - **Dashboard** (`app/App.tsx`) — Filterable job card list (Active, Done, All) with `DiscCard` components showing content type badges, progress bars, speed/ETA, track counts, subtitle indicators, expandable track lists, and cancel buttons. Built on the **Synapse v2 brand system** (`docs/design_handoff_brand/`) — three-arc mark + horizontal read-line, cyan + magenta accents, JetBrains Mono telemetry, sharp 90° panels with corner ticks. Brand primitives live under `frontend/src/app/components/synapse/` (`SvMark`, `Wordmark`, `Lockup*`, `AppIcon`, `Splash`, `SvPanel`) and the 30 custom icons under `frontend/src/app/components/icons/` (`Ico*`). Developer reference: `docs/development/brand.md`.
 - **DiscCard** (`app/components/DiscCard.tsx`) — Main job display component with subcomponents: `DiscCard/MediaTypeBadge`, `DiscCard/DiscMetadata`, `DiscCard/ActionButtons`, `DiscCard/hooks/usePosterImage`
-- **Supporting components**: `StateIndicator`, `CyberpunkProgressBar`, `TrackGrid`, `MatchingVisualizer`
-- **ReviewQueue** (`components/ReviewQueue.tsx`) — Human-in-the-Loop UI with subcomponents: `TVTitleCard`, `MovieTitleCard`, `EpisodeSelector`, `EditionInput`, `hooks/useReviewState`
+- **Supporting components**: `StateIndicator`, `TrackGrid`, `MatchingVisualizer`; Synapse primitives such as `SvProgressBar` live in `app/components/synapse/`
+- **ReviewQueue** (`components/ReviewQueue.tsx`) — Human-in-the-Loop UI; its parts live in `components/ReviewQueue/` (track list, inspector, identity gate, season roster, ordering selector, external-player controls)
 - **ConfigWizard** (`components/ConfigWizard.tsx`) — First-run setup and settings modal for library paths, MakeMKV license, TMDB Read Access Token, preferences
 - **HistoryPage** (`components/HistoryPage.tsx`) — All completed/failed jobs with stats dashboard, filterable table, and slide-out detail panel showing error messages, processing timeline, classification details, TheDiscDB metadata, and per-track breakdown. Deep-linkable via `/history/:jobId`
 - **NamePromptModal** (`components/NamePromptModal.tsx`) — Modal for unreadable disc labels
@@ -200,7 +201,7 @@ React 19 + TypeScript + Vite SPA. Vite proxies `/api` and `/ws` to backend at lo
 
 ### E2E Tests (`frontend/e2e/`)
 
-Playwright-based E2E tests (10 spec files) that use simulation endpoints to test the full UI workflow without physical discs. Test scenarios include disc flow, progress display, review flow, error recovery, visual verification, realistic disc scenarios, and screenshot capture.
+Playwright-based E2E tests that use simulation endpoints to test the full UI workflow without physical discs. Test scenarios include disc flow, progress display, review flow, error recovery, visual verification, realistic disc scenarios, and screenshot capture.
 
 ### Discord support bot (`bot/`)
 
@@ -344,7 +345,7 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
   one episode. A pick inside `BDMV`/`VIDEO_TS` (e.g. a `STREAM/*.m2ts` clip) is redirected to the
   enclosing backup by `import_scanner.enclosing_disc_backup`. `.vob` is deliberately unsupported.
 - **Import path ownership**: a staging path is owned by an *in-flight* job (hard block, not overridable) and merely recorded by a *completed* one (soft block, overridable via `force_keys`). `FAILED` never blocks. Rules live in `app/services/import_guard.py`; `POST /api/import/start` returns `{job_ids, blocked[]}` and never 409s.
-- **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.
+- **ASR GPU runtime**: faster-whisper→CTranslate2 supports **NVIDIA CUDA only** (no Metal/ROCm), needing cuDNN 9 + cuBLAS (~1.2 GB). Those libs are NOT bundled — `app/matcher/cuda_runtime.py` downloads them on demand (opt-in) into `~/.engram/cuda/` and registers them (Windows `add_dll_directory`; Linux ordered `ctypes.CDLL` preload) before the first model load. The **effective** device is resolved ONCE at `job_manager.start()` via `set_asr_device()`; every call site reads it through `detect_asr_device()`, so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree. `gpu_detected()` is the raw hardware probe; `cuda_compute_type()` picks float16/int8_float16/float32 per `get_supported_compute_types` so Pascal GPUs don't fail. Endpoints: `POST /api/asr/gpu/enable|disable`. Dev: `uv sync -E gpu` installs the pip `nvidia.*` packages, which `register_cuda_runtime()` falls back to.
 - **Review playback is a handoff, never a transcode.** The media endpoint serves
   the raw MKV untouched and the `.m3u` hands it to a native player. **Do not
   "fix" this by adding ffmpeg.** MakeMKV remuxes losslessly, so a rip holds
@@ -384,33 +385,8 @@ The TMDB setting (`tmdb_api_key` in config) accepts a **TMDB Read Access Token**
 - **Logging**: Always log exceptions with `exc_info=True` for full stack traces
 - **Recovery**: Distinguish between recoverable errors (log warning, continue) and fatal errors (log error, raise)
 - **State consistency**: Failed operations should leave jobs in a valid state (e.g., `FAILED` state with error message in `error` field)
-- **Decorator**: Use `@handle_errors` for standardized error handling in service methods
-
-**Common patterns**:
-```python
-# Subprocess errors (MakeMKV)
-try:
-    result = await makemkv_operation()
-except subprocess.SubprocessError as e:
-    logger.error(f"MakeMKV operation failed: {e}", exc_info=True)
-    job.state = JobState.FAILED
-    job.error = str(e)
-
-# Database errors
-try:
-    await session.commit()
-except SQLAlchemyError as e:
-    await session.rollback()
-    logger.error(f"Database commit failed: {e}", exc_info=True)
-    raise
-
-# External API errors (TMDB)
-try:
-    response = await tmdb_client.fetch()
-except (HTTPError, RequestException) as e:
-    logger.warning(f"TMDB API failed, using fallback: {e}")
-    # Continue with degraded functionality
-```
+- **Failing a job**: move it to `FAILED` through `JobStateMachine.transition` (which fires terminal callbacks such as Discord notifications), not by assigning `job.state`
+- **Decorator**: `@handle_errors` (`app/core/errors.py`) is available; services currently handle errors inline
 
 ### Frontend Error Handling
 
@@ -420,28 +396,26 @@ except (HTTPError, RequestException) as e:
 
 ## WebSocket Message Types
 
-All WebSocket messages follow the format: `{"type": "...", "data": {...}}`
+Messages are flat JSON objects: `type` plus the fields below at the top level. `gpu_status` is the
+one exception (its payload sits under `data`). Optional fields are omitted when unset, so the
+frontend merges updates (`{...job, ...message}`) without blanking existing values.
 
 ### Server → Client Messages
 
-| Type | Data Fields | Description |
-|------|-------------|-------------|
-| `job_update` | `DiscJob` object | Full job state update (sent on any job change) |
-| `job_created` | `DiscJob` object | New job created from disc insertion |
-| `job_cancelled` | `{"job_id": int}` | Job was cancelled by user |
-| `job_cleared` | `{"job_id": int}` | Completed job was cleared from UI |
-| `drive_event` | `{"drive_id": str, "event": "inserted"\|"removed"}` | Physical disc inserted/removed |
-| `subtitle_progress` | `{"job_id": int, "downloaded": int, "total": int, "failed": int}` | Subtitle download progress |
-| `title_discovered` | `{"job_id": int, "title": DiscTitle}` | New title found during ripping |
-| `rip_progress` | `{"job_id": int, "current_bytes": int, "total_bytes": int, "speed": str, "eta": int}` | Ripping progress update |
-| `backup_progress` | `job_id`, `current_bytes`, `total_bytes`, `speed`, `eta` (flat, not nested under `data`) | Full-disc backup copy progress |
-| `title_ripping_started` | `{"job_id": int, "title_id": int}` | Title ripping started |
-| `title_ripping_progress` | `{"job_id": int, "title_id": int, ...}` | Per-track ripping progress |
-| `title_matching_started` | `{"job_id": int, "title_id": int}` | Title matching started |
-| `title_matched` | `{"job_id": int, "title_id": int, ...}` | Successful title match |
-| `title_state_changed` | `{"job_id": int, "title_id": int, "state": str}` | Generic title state change |
-| `title_failed` | `{"job_id": int, "title_id": int, "error": str}` | Title processing failed |
-| `gpu_status` | `{"state": "idle"\|"downloading"\|"installing"\|"error", "downloaded": int, "total": int, "error": str\|null}` | CUDA-runtime download progress for GPU ASR (see `broadcast_gpu_status`) |
+| Type | Fields | Description |
+|------|--------|-------------|
+| `job_update` | `job_id`, plus any of `state`, `progress`, `speed`, `eta`, `current_title`, `total_titles`, `error`, `content_type`, `detected_title`, `detected_season`, `review_reason`, ... | Job change; `state` omitted means unchanged (progress-only update) |
+| `title_update` | `job_id`, `title_id`, `state`, plus any of `matched_episode`, `match_confidence`, `match_stage`, `match_progress`, size fields, `match_details`, `organized_to`, `is_extra`, ... | Any per-track change (rip, match, organize, failure) |
+| `titles_discovered` | `job_id`, `titles`, `content_type`, `detected_title`, `detected_season` | Scan results |
+| `subtitle_event` | `job_id`, `status`, `downloaded`, `total`, `failed_count` | Subtitle download progress |
+| `backup_progress` | `job_id`, `current_bytes`, `total_bytes`, `speed`, `eta` | Full-disc backup copy progress |
+| `drive_event` | `drive_id`, `event` (`"inserted"`\|`"removed"`), `volume_label` | Physical disc inserted/removed |
+| `drive_armed` | `drive_id`, `identity` (`null` = disarmed) | Manual identity armed on a drive |
+| `parked_discs` | `discs` | Discs parked awaiting action |
+| `fingerprint_disclosure_required` | `pending_count`, `pseudonym`, `server_url` | Fingerprint-contribution disclosure prompt |
+| `update_status` | `state`, `current_version`, `is_frozen`, ... | App self-update status |
+| `gpu_status` | `data`: `{"state": "idle"\|"downloading"\|"installing"\|"error", "downloaded", "total", "error"}` | CUDA-runtime download progress (`broadcast_gpu_status`) |
+| `ping` | none | Heartbeat |
 
 ### Client → Server Messages
 
@@ -468,7 +442,7 @@ No client messages currently supported (WebSocket is server-push only).
 - **Configuration updates**: `PUT /api/config` accepts new values but never returns them in response
 - **Debug endpoints**: Simulation endpoints (`/api/simulate/*`) only available when `DEBUG=true` (env var or `.env`)
 - **Path traversal**: All file paths validated to prevent directory traversal attacks
-- **CORS**: Configured for `localhost:5173` (Vite dev server) only
+- **CORS**: Defaults to `localhost:5173` / `127.0.0.1:5173` (Vite dev server); the `cors_origins` setting (comma-separated) replaces the default list
 
 ### Configuration Storage
 
@@ -586,8 +560,6 @@ async def setup_db():
 - Use simulation endpoints (`POST /api/simulate/insert-disc`)
 - Poll job state with asyncio.sleep() for async workflows
 - Accept simulation auto-start behavior in test expectations
-- Integration tests have caught 2 production bugs (WebSocket parameter mismatches)
-
 **Running tests**:
 ```bash
 cd backend
@@ -600,8 +572,10 @@ uv run pytest --cov=app          # With coverage
 
 ### Frontend Testing
 
+**Unit tests**: Vitest + React Testing Library, colocated as `*.test.ts(x)` beside the component; run with `npm run test:unit`.
+
 **E2E tests** (`frontend/e2e/`):
-- Full UI workflow testing using Playwright (10 spec files)
+- Full UI workflow testing using Playwright
 - Requires backend running with `DEBUG=true`
 - Uses simulation endpoints to fake disc insertion/ripping
 - Tests user interactions (clicking, form submission, WebSocket updates)
