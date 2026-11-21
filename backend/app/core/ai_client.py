@@ -83,6 +83,9 @@ _TIMEOUT_SECONDS = 30.0
 # emitting a token, and CPU-only generation runs into the minutes. The remote
 # 30s value would make local support look broken on first use.
 LOCAL_TIMEOUT_SECONDS = 300.0
+# Disc identification and episode matching both need room for local reasoning
+# before the model emits its small JSON result.
+LOCAL_COMPLETION_MAX_TOKENS = 4096
 # The Test Connection button: still generous enough to survive a cold load, but
 # bounded so a user is not left staring at a spinner for five minutes.
 LOCAL_VALIDATE_TIMEOUT_SECONDS = 120.0

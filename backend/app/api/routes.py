@@ -21,7 +21,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -5112,11 +5112,13 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     # Make sure the matcher is initialized for the show (so transcribe_full works).
     # 503/retryable fits the "still initializing" case; a permanent init failure
     # (missing model weights / corrupt index) keeps returning this on retry.
-    episode_curator._ensure_initialized(job.detected_title)
+    episode_curator._ensure_initialized(job.detected_title, tmdb_id=job.tmdb_id)
     if not episode_curator._matcher:
         return LLMMatchOutcome.failed("matcher_unavailable")
 
-    tmdb_show_id = await asyncio.to_thread(fetch_show_id, job.detected_title)
+    # Re-resolving a confirmed title by name can select a different same-name
+    # series (for example the two Frasier shows), producing the wrong roster.
+    tmdb_show_id = job.tmdb_id or await asyncio.to_thread(fetch_show_id, job.detected_title)
     if not tmdb_show_id:
         return LLMMatchOutcome.failed("show_not_found")
 
@@ -5179,29 +5181,53 @@ async def _run_llm_match_for_title(*, title: "DiscTitle", job: "DiscJob") -> LLM
     )
 
 
-@router.post("/jobs/{job_id}/titles/{title_id}/llm-match")
-async def llm_match_title(
-    title_id: int,
-    job: DiscJob = Depends(get_job_or_404),
-    session: AsyncSession = Depends(get_session),
-):
-    """Run the LLM episode matcher on a single title and persist the suggestion.
+# Share pending work within this server process. Finished attempts are removed
+# so a later request can retry a failure or run with newly selected AI settings.
+# Multiple server workers would need a shared guard to deduplicate across processes.
+_llm_match_tasks: dict[tuple[int, int], asyncio.Task[dict | JSONResponse]] = {}
 
-    Idempotent under double-clicks: if `match_details.llm_suggestion` is
-    already populated, returns it immediately (`reason: "cached"`) without
-    kicking off another 1–3 minute Whisper transcription. Re-running
-    intentionally is out of scope for v1.
-    """
-    title = await session.get(DiscTitle, title_id)
-    if not title or title.job_id != job.id:
-        raise HTTPException(status_code=404, detail="Title not found")
+_LLM_JOB_CONTEXT_FIELDS = (
+    "detected_title",
+    "detected_season",
+    "tmdb_id",
+    "content_type",
+    "episode_namespace",
+    "match_language",
+    "staging_path",
+)
+_LLM_TITLE_CONTEXT_FIELDS = (
+    "title_index",
+    "output_index",
+    "source_filename",
+    "output_filename",
+    "organized_to",
+    "state",
+    "matched_episode",
+)
 
-    # Cache-hit dedup: avoid duplicate expensive transcription on double-click.
-    existing = json.loads(title.match_details or "{}") if title.match_details else {}
-    cached = existing.get("llm_suggestion")
-    if cached:
-        return {"suggestion": cached, "reason": "cached"}
 
+async def _match_and_persist_llm_suggestion(
+    job_id: int, title_id: int, *, force: bool
+) -> dict | JSONResponse:
+    """Own the DB sessions so inference can outlive a disconnected HTTP caller."""
+    from app.database import async_session
+
+    async with async_session() as session:
+        job = await session.get(DiscJob, job_id)
+        title = await session.get(DiscTitle, title_id)
+        if not job or not title or title.job_id != job_id:
+            raise HTTPException(status_code=404, detail="Title not found")
+        existing = json.loads(title.match_details or "{}")
+        cached = existing.get("llm_suggestion")
+        if cached and not force:
+            return {"suggestion": cached, "reason": "cached"}
+        job_context = {field: getattr(job, field) for field in _LLM_JOB_CONTEXT_FIELDS}
+        title_context = {field: getattr(title, field) for field in _LLM_TITLE_CONTEXT_FIELDS}
+
+    # Local inference can take minutes; release the read session before waiting
+    # rather than holding a database connection for the entire model call.
+    # job/title are detached models with loaded scalar columns; inference must
+    # not access lazy-loaded relationships after this session has closed.
     try:
         outcome = await _run_llm_match_for_title(title=title, job=job)
     except Exception:
@@ -5224,13 +5250,89 @@ async def llm_match_title(
     if outcome.suggestion is None:
         return {"suggestion": None, "reason": outcome.reason}
 
-    # Persist into match_details for refresh durability
-    existing["llm_suggestion"] = outcome.suggestion
-    title.match_details = json.dumps(existing)
-    session.add(title)
-    await session.commit()
+    # Re-read after inference so updates made while the model was running survive.
+    # If metadata changes at the write boundary, retry its merge once in a fresh
+    # session without repeating inference. Both writes keep the original context
+    # guards, so a changed identity, file or manual decision cannot accept a stale result.
+    for _ in range(2):
+        async with async_session() as session:
+            title = await session.get(DiscTitle, title_id)
+            if not title or title.job_id != job_id:
+                raise HTTPException(status_code=404, detail="Title not found")
+            previous_details = title.match_details
+            existing = json.loads(previous_details or "{}")
+            existing["llm_suggestion"] = outcome.suggestion
+            # Check context and metadata in the write itself. A separate check could
+            # race a re-identification, re-rip or manual decision before the commit.
+            result = await session.execute(
+                update(DiscTitle)
+                .where(
+                    DiscTitle.id == title_id,
+                    DiscTitle.job_id.in_(
+                        select(DiscJob.id).where(
+                            DiscJob.id == job_id,
+                            *(
+                                getattr(DiscJob, field) == value
+                                for field, value in job_context.items()
+                            ),
+                        )
+                    ),
+                    *(getattr(DiscTitle, field) == value for field, value in title_context.items()),
+                    DiscTitle.match_details == previous_details,
+                )
+                .values(match_details=json.dumps(existing))
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount == 1:
+                await session.commit()
+                return {"suggestion": outcome.suggestion, "reason": None}
 
-    return {"suggestion": outcome.suggestion, "reason": None}
+    return {"suggestion": None, "reason": "context_changed"}
+
+
+def _finish_llm_match_task(key: tuple[int, int], task: asyncio.Task) -> None:
+    # Cleanup from an older attempt must not remove a newer task for this title.
+    if _llm_match_tasks.get(key) is task:
+        del _llm_match_tasks[key]
+    # Retrieve failures even if every HTTP caller disconnected before completion.
+    if not task.cancelled() and (error := task.exception()) is not None:
+        logger.error("LLM match request failed for title %s", key[1], exc_info=error)
+
+
+@router.post("/jobs/{job_id}/titles/{title_id}/llm-match")
+async def llm_match_title(
+    title_id: int,
+    force: bool = Query(False),
+    job: DiscJob = Depends(get_job_or_404),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return the saved suggestion, or run matching with the current AI settings.
+
+    ``force=true`` replaces a saved suggestion on success. Overlapping requests
+    for the same title share one attempt, including forced retries and failures.
+    """
+    title = await session.get(DiscTitle, title_id)
+    if not title or title.job_id != job.id:
+        raise HTTPException(status_code=404, detail="Title not found")
+
+    key = (job.id, title_id)
+    while True:
+        # Keep lookup and registration free of awaits: another request on this
+        # event loop must see the registered task before it can start duplicate work.
+        task = _llm_match_tasks.get(key)
+        if task is None:
+            task = asyncio.create_task(
+                _match_and_persist_llm_suggestion(job.id, title_id, force=force),
+                name=f"llm-match-{job.id}-{title_id}",
+            )
+            _llm_match_tasks[key] = task
+            task.add_done_callback(lambda done: _finish_llm_match_task(key, done))
+        # One caller navigating away must not cancel inference for the other callers.
+        result = await asyncio.shield(task)
+        if not (force and isinstance(result, dict) and result.get("reason") == "cached"):
+            return result
+        # A forced retry may have joined a normal request that only read the cache.
+        # Start (or join) actual inference rather than returning that cached result.
 
 
 @router.post("/contributions/{job_id}/submit", dependencies=[Depends(require_localhost)])

@@ -174,6 +174,7 @@ class TestLocalBaseUrlIsThreadedToTheRequest:
             id=1,
             detected_title="The Expanse",
             detected_season=1,
+            tmdb_id=None,
             episode_namespace="tmdb",
             match_language=None,
         )

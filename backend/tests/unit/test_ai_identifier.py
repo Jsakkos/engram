@@ -1,10 +1,46 @@
 """Tests for AI-powered disc title resolution."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from httpx import AsyncClient, MockTransport, Response
 
 from app.core.ai_identifier import _parse_response, identify_from_label
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["lmstudio", "ollama"])
+@pytest.mark.parametrize("completion_tokens", [1024, 8192])
+async def test_local_identification_allows_reasoning_before_json(provider, completion_tokens):
+    def complete(request):
+        body = json.loads(request.content)
+        assert "temperature" not in body
+        finished = body["max_tokens"] >= completion_tokens
+        return Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop" if finished else "length",
+                        "message": {
+                            "content": '{"title":"Inception","year":2010,"type":"movie"}'
+                            if finished
+                            else ""
+                        },
+                    }
+                ],
+            },
+        )
+
+    client = AsyncClient(transport=MockTransport(complete))
+    with patch("app.core.ai_client.httpx.AsyncClient", return_value=client):
+        result = await identify_from_label("INCEPTION_2010", provider, "", model="qwen3-4b")
+
+    if completion_tokens == 1024:
+        assert result == {"title": "Inception", "year": 2010, "type": "movie"}
+    else:
+        assert result is None
 
 
 class TestParseResponse:

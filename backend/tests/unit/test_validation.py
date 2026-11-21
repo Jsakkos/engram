@@ -762,6 +762,8 @@ class TestToolDetection:
         with (
             patch.object(validation.shutil, "which", return_value=None),
             patch.object(validation, "_get_ffmpeg_search_paths", return_value=[]),
+            # Installed winget packages are another search source on Windows.
+            patch.object(validation, "_iter_winget_ffmpeg_paths", return_value=[]),
         ):
             result = validation.detect_ffmpeg()
         assert result.found is False

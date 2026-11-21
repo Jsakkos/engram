@@ -13,10 +13,9 @@ export interface LLMFeedback {
  *  for what is the same outcome to the user. */
 const GENERIC_FAILURE = 'AI match failed. Check the server log.';
 
-/** Reason to user-facing message. Only `no_match` means the model actually ran
- *  and was not confident; every other reason is a guard that fired first, so
- *  reporting them all as "no confident match" tells the user the AI ran when it
- *  did not. */
+/** Explain rejected or inconclusive attempts. Only `no_match` reports model
+ *  uncertainty; `context_changed` discards a completed attempt whose inputs
+ *  became stale. The other reasons explain why matching could not run. */
 const REASON_MESSAGES: Record<string, string> = {
     ai_disabled: 'AI episode matching is turned off. Enable it in Settings.',
     not_configured: 'No AI API key is set. Add one in Settings, then use Test Connection.',
@@ -24,6 +23,7 @@ const REASON_MESSAGES: Record<string, string> = {
     no_season: 'This job has no detected season, so there is nothing to match against.',
     show_not_found: 'The show could not be found on TMDB.',
     no_match: 'No confident AI match found.',
+    context_changed: 'Matching details changed while AI was running. Try again.',
 };
 
 /**

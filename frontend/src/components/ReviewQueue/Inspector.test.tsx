@@ -38,6 +38,7 @@ function renderInspector(props: {
     episodes?: RosterEpisode[];
     holders?: Map<string, number[]>;
     onAssign?: (code: string) => void;
+    onTryLLMMatch?: (titleId: number, force?: boolean) => void;
 } = {}) {
     return render(
         <Inspector
@@ -60,7 +61,7 @@ function renderInspector(props: {
             onAction={vi.fn()}
             onRematch={vi.fn()}
             onDeepRematch={vi.fn()}
-            onTryLLMMatch={vi.fn()}
+            onTryLLMMatch={props.onTryLLMMatch ?? vi.fn()}
             onAcceptLLMSuggestion={vi.fn()}
         />,
     );
@@ -100,7 +101,7 @@ describe('Inspector — AI match feedback', () => {
         expect(screen.getByRole('button', { name: /try ai match/i })).toBeEnabled();
     });
 
-    it('hides the feedback notice when a suggestion is present', () => {
+    it('keeps the previous suggestion visible alongside retry feedback', () => {
         const title = makeTitle({
             match_details: JSON.stringify({
                 llm_suggestion: { episode: 3, confidence: 0.9, reasoning: 'ok', runner_up: null },
@@ -110,9 +111,34 @@ describe('Inspector — AI match feedback', () => {
             title,
             llmFeedback: { tone: 'warn', text: 'No confident AI match found.' },
         });
-        // The suggestion card renders instead of the feedback notice.
         expect(screen.getByText(/Suggested:/)).toBeInTheDocument();
-        expect(screen.queryByText(/No confident AI match found\./)).not.toBeInTheDocument();
+        expect(screen.getByText(/No confident AI match found\./)).toBeInTheDocument();
+    });
+
+    it('offers a fresh attempt when a suggestion already exists', () => {
+        const onTryLLMMatch = vi.fn();
+        renderInspector({
+            title: makeTitle({ match_details: JSON.stringify({ llm_suggestion: {
+                episode: 3, confidence: 0.9, reasoning: 'Cargo.', runner_up: null, model: 'previous-model',
+            } }) }),
+            onTryLLMMatch,
+        });
+        expect(screen.getByText('Requested model: previous-model')).toBeInTheDocument();
+        const button = screen.getByRole('button', { name: /try ai again/i });
+        expect(button).toHaveAttribute('title', 'Run again using the current AI settings');
+        fireEvent.click(button);
+        expect(onTryLLMMatch).toHaveBeenCalledWith(1, true);
+    });
+
+    it('disables acceptance of the previous suggestion during a retry', () => {
+        renderInspector({
+            title: makeTitle({ match_details: JSON.stringify({ llm_suggestion: {
+                episode: 3, confidence: 0.9, reasoning: 'Cargo.', runner_up: null,
+            } }) }),
+            isLlmMatching: true,
+        });
+        expect(screen.getByRole('button', { name: /accept ai suggestion/i })).toBeDisabled();
+        expect(screen.getByRole('button', { name: /matching/i })).toBeDisabled();
     });
 });
 
