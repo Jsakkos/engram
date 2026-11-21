@@ -114,7 +114,18 @@ log rather than from Engram, so it helps to know which is which:
   site if you want them.
 - **Comment** is MakeMKV's own label for the title, copied from the scan log (for example `A2`
   or `C1`). On a DVD the letter and number describe where the title sits in the disc's
-  structure. It is not something Engram writes, and you can leave it as it is.
+  structure. It is not something Engram writes, and you can leave it as it is. Several titles
+  on one DVD can carry the same label.
+- **Source File** also comes from the scan log. On a DVD it is MakeMKV's title number for the
+  track, because a DVD has no source file name like a Blu-ray's `.mpls` or `.m2ts`.
+- **UPC** from the Enhance step is pre-filled on the site's form, taken from the
+  lowest-numbered disc in the set only. Enhance a set's first disc, or the site will not find
+  the UPC.
+- **Cover art** from the Enhance step is uploaded with the submission, and the site attaches
+  it to the contribution once you press create there. Before that, the form shows TMDB's
+  poster when it has one, and **Front cover: ✓** in the summary confirms the upload arrived.
+- **ASIN, release date and extras names** are sent by Engram but TheDiscDB does not read
+  them yet, so they are not pre-filled. Enter them on the site's form.
 
 ## The Engram fingerprint network: sharing episode fingerprints
 
