@@ -171,10 +171,12 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
     }
   };
 
-  const handleFetchCover = async () => {
-    if (!selectedImage) return;
+  /** Download the picked cover into the export folder. Returns the error, or null. */
+  const handleFetchCover = async (): Promise<string | null> => {
+    if (!selectedImage) return null;
     setCoverSaving(true);
     setCoverError(null);
+    let error: string | null = null;
     try {
       const res = await fetch(`/api/contributions/${job.id}/fetch-cover`, {
         method: "POST",
@@ -185,19 +187,28 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
         setCoverSaved(true);
       } else {
         const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        setCoverError(body.detail ?? "Cover fetch failed");
+        error = body.detail ?? "Cover fetch failed";
       }
     } catch (e) {
-      setCoverError(e instanceof Error ? e.message : "Cover fetch failed");
+      error = e instanceof Error ? e.message : "Cover fetch failed";
     } finally {
       setCoverSaving(false);
     }
+    setCoverError(error);
+    return error;
   };
 
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
     try {
+      // A cover that was picked but never fetched used to be dropped without a
+      // word (#923): only the separate "Fetch cover" button downloaded it, and
+      // the submission uploads whatever cover file is in the export folder.
+      if (selectedImage && !coverSaved) {
+        const coverErr = await handleFetchCover();
+        if (coverErr) throw new Error(`Cover not saved: ${coverErr}`);
+      }
       const body: Record<string, unknown> = {
         upc_code: upc.trim() || null,
         asin: selectedAsin || null,
@@ -448,7 +459,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                 })}
               </div>
               {selectedImage && (
-                <SvActionButton tone="cyan" onClick={handleFetchCover} disabled={coverSaving || coverSaved}>
+                <SvActionButton tone="cyan" onClick={() => void handleFetchCover()} disabled={coverSaving || coverSaved}>
                   {coverSaving ? (
                     <Loader2 size={12} className="animate-spin" />
                   ) : coverSaved ? (
@@ -538,6 +549,9 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                   {upc.trim() && <p style={{ margin: 0 }}>UPC: {upc.trim()}</p>}
                   {selectedAsin && <p style={{ margin: 0 }}>ASIN: {selectedAsin}</p>}
                   {coverSaved && <p style={{ margin: 0 }}>Cover art saved</p>}
+                  {selectedImage && !coverSaved && (
+                    <p style={{ margin: 0 }}>Cover art will be saved</p>
+                  )}
                   {annotatedExtrasCount > 0 && (
                     <p style={{ margin: 0 }}>
                       {annotatedExtrasCount} extra(s) annotated
@@ -545,7 +559,7 @@ export default function EnhanceWizard({ job, titles, onSave, onCancel }: Enhance
                   )}
                   {!upc.trim() &&
                     !selectedAsin &&
-                    !coverSaved &&
+                    !selectedImage &&
                     annotatedExtrasCount === 0 && (
                       <p style={{ margin: 0, color: sv.inkDim }}>No enhancements to save</p>
                     )}

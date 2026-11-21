@@ -4,6 +4,14 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- A cover picked in the Contribute tab's Enhance step is now saved when you press **Save
+  enhancement**. Before, it was saved only if you also pressed **Fetch cover**, so a picked
+  cover could be left out of the submission without any warning. The contributing guide now
+  explains which Enhance details TheDiscDB pre-fills, and where its Source File and Comment
+  columns come from (#923).
+
 ## [0.45.2] - 2026-11-18
 
 _Highlights: discs identified by TheDiscDB get each episode on the right track again, complete Blu-ray rips are no longer mistaken for truncated ones, AI matching works with LM Studio and Ollama, German shows matched in German go to review far less often, and the TheTVDB numbering suggestion can be accepted on a disc with no known season._
