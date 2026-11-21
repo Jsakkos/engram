@@ -1,0 +1,7 @@
+# Docs toolchain for .github/workflows/docs.yml and local `mkdocs serve`.
+# Pinned so a theme or plugin release cannot change the published site
+# unannounced; Renovate bumps these. Versions match backend/uv.lock's docs extra.
+mkdocs==1.6.1
+mkdocs-material==9.8.1
+mkdocstrings[python]==1.0.8
+mkdocstrings-python==2.0.10

@@ -1,0 +1,7 @@
+# actionlint configuration (the Workflow Lint job in ci.yml).
+paths:
+  .github/workflows/publish.yml:
+    ignore:
+      # PyPI publishing is switched off on purpose with `if: false` until it is
+      # ready; the constant condition is the switch, not a mistake.
+      - 'constant expression "false" in condition'

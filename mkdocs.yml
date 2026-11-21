@@ -4,6 +4,10 @@ site_url: https://jsakkos.github.io/engram/
 repo_url: https://github.com/Jsakkos/engram
 repo_name: Jsakkos/engram
 
+# The docs toolchain pins, not a page.
+exclude_docs: |
+  /requirements.txt
+
 theme:
   name: material
   palette:

@@ -28,8 +28,16 @@ export default defineConfig({
     fullyParallel: false,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 2 : 0,
+    // When the app is broken outright every test fails and is retried twice:
+    // a React bump once ran 156 failures x 3 attempts for 1.5 hours. Ten real
+    // failures already say "broken"; stop there.
+    maxFailures: process.env.CI ? 10 : 0,
     workers: 1,
-    reporter: 'html',
+    // CI: `dot` keeps the log short, `github` puts each failure on the PR diff
+    // as an annotation, `html` is the report uploaded on failure.
+    reporter: process.env.CI
+        ? [['dot'], ['github'], ['html', { open: 'never' }]]
+        : 'html',
     use: {
         baseURL: E2E_VITE_URL,
         trace: 'on-first-retry',

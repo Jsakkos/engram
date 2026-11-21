@@ -219,7 +219,15 @@ Separate `uv` project (never imports `backend/`), deployed with Docker from `dep
 - **Tailwind v4**: Uses `@theme inline` blocks in CSS for custom colors (including custom `magenta` palette), not `tailwind.config.js`. No PostCSS config — uses `@tailwindcss/vite` plugin directly.
 - **Database migration**: Alembic with async SQLModel metadata. `render_as_batch=True` for SQLite. Existing databases auto-stamped at head on first startup. `app_config` always preserves data via backup/restore (independent of Alembic).
 - **DiscDB mapping persistence**: `discdb_mappings_json` column on `DiscJob` stores serialized `DiscDbTitleMapping` list. Persisted during identification, restored from DB on server startup via `_restore_discdb_mappings()`. A mapping's `index` is THIS scan's title index: `classify_from_discdb` re-binds TheDiscDB's titles through `bind_mappings_to_scan` (source file, duration, exact size), because TheDiscDB's index is its contributor's MakeMKV numbering and shifts with the minimum title length (#912). Unbindable titles are dropped, never guessed.
-- **CI caching**: Playwright browsers cached by version, uv packages cached by lockfile hash, apt packages cached via `cache-apt-pkgs-action`.
+- **CI setup** (`ci.yml`): backend jobs share `.github/actions/setup-backend` (uv, Python, apt
+  via `cache-apt-pkgs-action`, `uv sync`); uv is pinned by each workflow's `UV_VERSION` env,
+  which Renovate bumps through its `# renovate:` comment. E2E runs in the
+  `mcr.microsoft.com/playwright:vX.Y.Z-noble` container, whose tag must equal `@playwright/test`
+  (pinned exactly in `frontend/package.json`; Renovate moves both in the `frontend-testing`
+  group, and a CI step fails clearly if they drift). The dependency-resolution matrix and the
+  frozen build are path-filtered by `detect-release`; a weekly scheduled run turns every filter
+  off. Every job has a `timeout-minutes`, and the Workflow Lint job runs actionlint + shellcheck
+  over all workflows (config: `.github/actionlint.yaml`). Renovate is the only dependency bot.
 - **All-extras TV discs are held, not filed**: `check_job_completion` routes a TV disc whose
   every track was classified as an extra to REVIEW_NEEDED rather than filing the lot into
   `Extras/` and reporting success. "Nothing here is an episode" is far more often a failed

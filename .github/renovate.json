@@ -3,7 +3,8 @@
   "extends": [
     "config:recommended",
     ":dependencyDashboard",
-    ":semanticCommits"
+    ":semanticCommits",
+    "customManagers:githubActionsVersions"
   ],
   "schedule": ["before 6am on monday"],
   "timezone": "America/Chicago",
@@ -11,20 +12,32 @@
   "rangeStrategy": "bump",
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
+  "automergeType": "pr",
+  "platformAutomerge": true,
   "packageRules": [
     {
-      "description": "Auto-merge patch and pin updates across all managers",
+      "description": "Auto-merge patch and pin updates across all managers. Automerge goes through a PR (GitHub auto-merge), not a branch push: CI only runs for PRs into main, and protected main rejects bot pushes.",
       "matchUpdateTypes": ["patch", "pin", "digest"],
-      "automerge": true,
-      "automergeType": "branch"
+      "automerge": true
     },
     {
       "description": "Auto-merge minor updates for npm (excluding 0.x packages)",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor"],
       "matchCurrentVersion": "!/^0\\./",
-      "automerge": true,
-      "automergeType": "branch"
+      "automerge": true
+    },
+    {
+      "description": "Vite majors move with the React plugin in one PR; a vite-only major fails `npm ci` with ERESOLVE.",
+      "matchPackageNames": ["vite", "@vitejs/plugin-react"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "vite major"
+    },
+    {
+      "description": "Playwright image tags look like v1.64.1-noble; the suffix is the Ubuntu base, held fixed.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["mcr.microsoft.com/playwright"],
+      "versioning": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<compatibility>.+)$"
     },
     {
       "description": "Group Radix UI packages together",
@@ -34,9 +47,10 @@
       ]
     },
     {
-      "description": "Group all Playwright + testing-library updates",
+      "description": "Group all Playwright + testing-library updates. The E2E job's container image (ci.yml) must equal @playwright/test (pinned exactly in package.json), so both move in this one PR.",
       "matchPackageNames": [
         "@playwright/test",
+        "mcr.microsoft.com/playwright",
         "@testing-library/jest-dom",
         "@testing-library/react",
         "@testing-library/user-event"

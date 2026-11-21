@@ -21,6 +21,9 @@ permissions:
 # See ci.yml for context on the Node 24 opt-in.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  # Pinned so a uv release cannot change behaviour unannounced; Renovate bumps it.
+  # renovate: datasource=github-releases depName=astral-sh/uv
+  UV_VERSION: "0.13.9"
 
 jobs:
   build-windows:
@@ -50,7 +53,7 @@ jobs:
       # Build backend executable
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -200,7 +203,7 @@ jobs:
       # Build backend executable
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -298,7 +301,7 @@ jobs:
       # Build backend executable
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -389,7 +392,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -473,7 +476,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -565,7 +568,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "latest"
+          version: ${{ env.UV_VERSION }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"

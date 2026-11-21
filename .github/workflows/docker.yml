@@ -88,7 +88,7 @@ jobs:
           # only need the web server to come up and answer /health.
           docker run -d --name engram-ci -e MAKEMKV_SKIP_INSTALL=1 -p 8000:8000 engram:ci
           ready=0
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS --max-time 2 http://127.0.0.1:8000/health > /dev/null; then
               ready=1
               break
