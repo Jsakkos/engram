@@ -4,13 +4,6 @@ All notable changes to Engram will be documented in this file.
 
 ## [Unreleased]
 
-### Fixed
-
-- A cover picked in the Contribute tab's Enhance step is now saved when you press **Save
-  enhancement**. Before, it was saved only if you also pressed **Fetch cover**, so a picked
-  cover could be left out of the submission without any warning. The contributing guide now
-  explains which Enhance details TheDiscDB pre-fills, and where its Source File and Comment
-  columns come from (#923).
 ### Added
 
 - Review Queue AI suggestions now show the requested model and offer **Try AI again** to rerun with the current AI settings. An unsuccessful retry keeps the previous suggestion and displays the retry feedback.
@@ -23,6 +16,11 @@ All notable changes to Engram will be documented in this file.
 - AI matching keeps a disc's confirmed TMDB identity when a different show has the same name. Results from an attempt started before the disc identity, source file or manual assignment changed are discarded.
 - An unrelated metadata update racing an AI suggestion's save gets one fresh merge attempt without repeating inference. Both attempts still reject stale matching context (`context_changed`), and a failed save preserves the existing suggestion and metadata.
 - Completing an AI match preserves unsaved review choices. Late responses no longer replace the details of a different job, or newer details after returning to the same job.
+- A cover picked in the Contribute tab's Enhance step is now saved when you press **Save
+  enhancement**. Before, it was saved only if you also pressed **Fetch cover**, so a picked
+  cover could be left out of the submission without any warning. The contributing guide now
+  explains which Enhance details TheDiscDB pre-fills, and where its Source File and Comment
+  columns come from (#923).
 
 ## [0.45.2] - 2026-11-18
 
