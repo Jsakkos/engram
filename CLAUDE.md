@@ -139,7 +139,7 @@ curl -X POST localhost:8000/api/simulate/insert-disc-from-staging
 
 Each module maps to a stage in the disc processing pipeline:
 
-1. **Sentinel** (`sentinel.py`) — Drive monitor (`DriveMonitor` class). Polls optical drives (Windows via ctypes/kernel32; Linux via `/sys/block/sr*` + `ioctl(CDROM_DRIVE_STATUS)`). Fires async callbacks on disc insert/remove events.
+1. **Sentinel** (`sentinel.py`) — Drive monitor (`DriveMonitor` class). Polls optical drives (Windows via ctypes/kernel32; Linux via sysfs + ioctl). Fires async callbacks on disc insert/remove events.
 2. **Analyst** (`analyst.py`) — Disc classification. Heuristic-based TV vs Movie detection (cluster analysis of title durations). Outputs `DiscAnalysisResult` with content type, confidence score, and whether review is needed.
 3. **Extractor** (`extractor.py`) — MakeMKV CLI wrapper. Async subprocess management for `makemkvcon` scanning and ripping. Emits `RipProgress` callbacks.
 4. **Curator** (`curator.py`) — Episode matching via audio fingerprinting. Classifies matches into high-confidence (auto-organize) and needs-review buckets.
@@ -384,8 +384,7 @@ The TMDB setting (`tmdb_api_key` in config) accepts a **TMDB Read Access Token**
 - **Principle**: Use specific exception types from `app/core/errors.py`, never bare `except` clauses
 - **Logging**: Always log exceptions with `exc_info=True` for full stack traces
 - **Recovery**: Distinguish between recoverable errors (log warning, continue) and fatal errors (log error, raise)
-- **State consistency**: Failed operations should leave jobs in a valid state (e.g., `FAILED` state with error message in `error` field)
-- **Failing a job**: move it to `FAILED` through `JobStateMachine.transition` (which fires terminal callbacks such as Discord notifications), not by assigning `job.state`
+- **State consistency**: Failed operations should leave jobs in a valid state: move the job to `FAILED` through `JobStateMachine.transition` (which fires terminal callbacks such as Discord notifications), not by assigning `job.state`, and record the message in its `error` field
 - **Decorator**: `@handle_errors` (`app/core/errors.py`) is available; services currently handle errors inline
 
 ### Frontend Error Handling
@@ -560,6 +559,7 @@ async def setup_db():
 - Use simulation endpoints (`POST /api/simulate/insert-disc`)
 - Poll job state with asyncio.sleep() for async workflows
 - Accept simulation auto-start behavior in test expectations
+
 **Running tests**:
 ```bash
 cd backend
