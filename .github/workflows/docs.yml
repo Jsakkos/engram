@@ -4,20 +4,67 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Build (never deploy) on PRs that can break the site: the pages, the config,
+  # the root files transcluded through pymdownx.snippets (check_paths: true
+  # fails the build on a missing one), and backend modules that mkdocstrings
+  # renders under docs/api/.
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "README.md"
+      - "backend/app/**/*.py"
+      - ".github/workflows/docs.yml"
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  # renovate: datasource=github-releases depName=astral-sh/uv
+  UV_VERSION: "0.13.9"
 
 jobs:
-  deploy:
-    name: Deploy Documentation
+  build:
+    name: Build Documentation
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: docs-build-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
-      - name: Install docs dependencies
-        run: pip install mkdocs-material "mkdocstrings[python]"
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      # Not --strict: the site builds with a known set of warnings today.
+      - name: Build docs
+        run: uv run --no-project --python 3.11 --with-requirements docs/requirements.txt mkdocs build
+
+  deploy:
+    name: Deploy Documentation
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # gh-deploy pushes the gh-pages branch
+    # Third-party actions in this write-token job are pinned to a commit SHA;
+    # Renovate's digest updates (auto-merged) keep the pin current.
+    # Two quick pushes to main would otherwise race each other's force-push to
+    # gh-pages. Queue instead of cancelling a deploy mid-push; a newer pending
+    # run replaces an older pending one, so the latest main still wins.
+    concurrency:
+      group: docs-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: ${{ env.UV_VERSION }}
       - name: Build and deploy docs
-        run: mkdocs gh-deploy --force
+        run: uv run --no-project --python 3.11 --with-requirements docs/requirements.txt mkdocs gh-deploy --force

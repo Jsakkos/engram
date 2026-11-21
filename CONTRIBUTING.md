@@ -253,11 +253,10 @@ Only update baselines when an intentional UI change requires it.
 
 ## Building the docs
 
-Documentation is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) and auto-deploys to GitHub Pages on push to `main`.
+Documentation is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) and auto-deploys to GitHub Pages on push to `main`. PRs that touch the docs (or the files they pull in) get a build check first. The toolchain is pinned in `docs/requirements.txt`; from the repo root:
 
 ```bash
-pip install mkdocs-material "mkdocstrings[python]"
-mkdocs serve
+uv run --no-project --with-requirements docs/requirements.txt mkdocs serve
 ```
 
 Edit files under `docs/`; they are picked up automatically. The root `CHANGELOG.md` and `CONTRIBUTING.md` are transcluded into the site, so edit those at the repo root rather than under `docs/`.

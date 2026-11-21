@@ -1,0 +1,58 @@
+name: Set up backend
+description: >-
+  uv (pinned by the caller's UV_VERSION env), optional Python, optional apt
+  packages, and a `uv sync` in backend/. One place for the setup block that
+  ci.yml used to repeat in every backend job, so the jobs cannot drift apart.
+
+inputs:
+  python-version:
+    description: Python for actions/setup-python. Empty skips it (uv then provisions UV_PYTHON or a managed interpreter itself).
+    default: "3.11"
+  apt-packages:
+    description: Space-separated apt packages, installed through the apt cache action. Linux only; empty skips.
+    default: ""
+  sync-args:
+    description: Arguments for `uv sync` in backend/. The literal "none" skips the sync.
+    default: "--no-install-project"
+
+runs:
+  using: composite
+  steps:
+    # The version lives in each workflow's env so Renovate's
+    # customManagers:githubActionsVersions preset can bump it. An empty value
+    # would make setup-uv silently install "latest" again, so refuse it.
+    - name: Require a pinned uv version
+      shell: bash
+      run: |
+        if [ -z "${UV_VERSION:-}" ]; then
+          echo "::error::UV_VERSION is not set in the calling workflow's env; setup-backend needs a pinned uv."
+          exit 1
+        fi
+
+    - uses: astral-sh/setup-uv@v7
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        cache-dependency-glob: "backend/uv.lock"
+
+    - if: inputs.python-version != ''
+      uses: actions/setup-python@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - if: inputs.apt-packages != '' && runner.os == 'Linux'
+      uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+      with:
+        packages: ${{ inputs.apt-packages }}
+        version: 1.0
+
+    - if: inputs.sync-args != 'none'
+      name: uv sync
+      shell: bash
+      working-directory: backend
+      env:
+        SYNC_ARGS: ${{ inputs.sync-args }}
+      run: |
+        # Word splitting of SYNC_ARGS is intended: it carries several flags.
+        # shellcheck disable=SC2086
+        uv sync $SYNC_ARGS
