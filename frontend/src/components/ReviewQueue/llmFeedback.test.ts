@@ -27,6 +27,7 @@ describe('llmResultToFeedback', () => {
         ['no_season', 'This job has no detected season, so there is nothing to match against.'],
         ['show_not_found', 'The show could not be found on TMDB.'],
         ['no_match', 'No confident AI match found.'],
+        ['context_changed', 'Matching details changed while AI was running. Try again.'],
     ])('maps reason %s to its own message', (reason, text) => {
         expect(llmResultToFeedback({ suggestion: null, reason })).toEqual({
             tone: 'warn',

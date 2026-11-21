@@ -102,6 +102,9 @@ def _no_episode_groups(monkeypatch):
         "app.core.episode_ordering.tmdb_client.fetch_episode_groups",
         lambda show_id, api_key: [],
     )
+    # A developer's built-in key also offers TheTVDB ordering even when no TMDB
+    # episode groups exist. Exercise that path only in tests that configure it.
+    monkeypatch.delenv("TVDB_API_KEY", raising=False)
 
 
 @pytest.mark.unit

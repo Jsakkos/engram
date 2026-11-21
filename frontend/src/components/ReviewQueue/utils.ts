@@ -161,6 +161,21 @@ export function generateEpisodeOptions(season: number, maxEpisodes: number): str
 /** A staged review decision for a single title. */
 export type TitleAction = 'episode' | 'extra' | 'discard' | 'skip';
 
+/** Keep unsaved review choices when an advisory AI result refreshes server data. */
+export function mergeEditedValues<T>(
+    server: Record<number, T>,
+    local: Record<number, T>,
+    editedIds: ReadonlySet<number>,
+): Record<number, T> {
+    const merged = { ...server };
+    for (const id of editedIds) {
+        // A removed local value is intentional too (for example, Skip for now).
+        if (id in local) merged[id] = local[id];
+        else delete merged[id];
+    }
+    return merged;
+}
+
 /**
  * Build the initial staged selections/actions from persisted match results.
  *

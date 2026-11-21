@@ -8,19 +8,31 @@ An opt-in fallback for TV episode identification. When Engram's primary audio-fi
 
 - TV-content matching is needed,
 - The primary audio-fingerprint matcher returns confidence < 0.7 (or no match),
-- `ai_episode_matching_enabled` is on and you've configured an API key,
+- `ai_episode_matching_enabled` is on and you've configured an AI provider,
 - The season is known from the disc volume label.
 
 **On demand**, via the **Try AI match** button on any title in the review queue.
+
+After a suggestion is saved, the button changes to **Try AI again**. Use it after
+changing your provider or model in Settings to request a fresh suggestion. The
+card shows the model requested for the saved suggestion. If the new attempt fails
+or finds no confident match, Engram keeps the previous suggestion and displays
+the new attempt's feedback. You still choose whether to accept a suggestion.
+
+An AI result refresh preserves your unsaved episode, extra and skip choices.
+If the disc identity, source file or assignment changes while matching runs,
+Engram discards that attempt's result and asks you to try again. Manual matching
+uses the disc's confirmed TMDB ID when one is available, so a same-named show
+cannot replace the confirmed identity through a name search.
 
 When the season can't be determined from the disc, the LLM matcher is skipped — accuracy collapses without season narrowing.
 
 ## Enabling it
 
 1. Open **Settings** → **Preferences**.
-2. Pick an **AI Provider** and paste your **API key**. The same provider/key is shared with AI-Powered Title Resolution (if you've enabled that).
+2. Pick an **AI Provider**. For a hosted provider, paste your **API key**. For **LM Studio** or **Ollama**, set the local server URL and select an installed model; no API key is needed. These settings are shared with AI-Powered Title Resolution (if you've enabled that).
 3. Check **AI-Powered Episode Matching (TV)**.
-4. Optionally set **Model**. Leave it blank to use Engram's default for the provider.
+4. For hosted providers, optionally set **Model** or leave it blank to use Engram's default. Local providers require a model selection.
 
 Use **Test Connection** after step 2 — it runs a real completion against the
 provider, so it catches a key that cannot reach the model before a disc does.

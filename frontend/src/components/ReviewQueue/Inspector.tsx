@@ -84,7 +84,7 @@ export function Inspector({
     onAction: (action: TitleAction) => void;
     onRematch: (titleId: number, source: string, deep?: boolean) => void;
     onDeepRematch: (episodeCode: string) => void;
-    onTryLLMMatch: (titleId: number) => void;
+    onTryLLMMatch: (titleId: number, force?: boolean) => void;
     onAcceptLLMSuggestion: (titleId: number, episodeNumber: number) => void;
 }) {
     const details = parseMatchDetails(title);
@@ -100,6 +100,8 @@ export function Inspector({
     // exception text that is not meant for display.
     const reviewNotice =
         details.message && REVIEW_NOTICE_CODES.has(details.error ?? '') ? details.message : null;
+    // Keep the saved suggestion visible during a retry, but disable its Accept
+    // button until the attempt finishes so an older result is not accepted mid-run.
     const llmSuggestion: LLMSuggestion | null = details.llm_suggestion ?? null;
     // A show matched in its own language says so; English is the unremarked default.
     const matchLanguage =
@@ -280,11 +282,17 @@ export function Inspector({
                                 <div style={{ fontFamily: sv.mono, fontSize: 10.5, color: sv.inkDim, lineHeight: 1.5 }}>
                                     {llmSuggestion.reasoning}
                                 </div>
+                                {llmSuggestion.model && (
+                                    <div style={{ ...monoFaint, marginTop: 4, overflowWrap: 'anywhere' }}>
+                                        Requested model: {llmSuggestion.model}
+                                    </div>
+                                )}
                             </div>
                             <SvActionButton
                                 tone="cyan"
                                 size="sm"
                                 onClick={() => onAcceptLLMSuggestion(title.id, llmSuggestion.episode)}
+                                disabled={isLlmMatching}
                             >
                                 Accept AI suggestion
                             </SvActionButton>
@@ -292,9 +300,8 @@ export function Inspector({
                     </div>
                 )}
 
-                {/* AI match feedback — silent outcomes (no confident match / error).
-                    Shares the suggestion slot; only shown when there is no suggestion. */}
-                {!llmSuggestion && llmFeedback && (
+                {/* Failed retries remain visible alongside the previous suggestion. */}
+                {llmFeedback && (
                     <div style={{ marginBottom: 14 }}>
                         <SvNotice tone={llmFeedback.tone}>› {llmFeedback.text}</SvNotice>
                     </div>
@@ -512,11 +519,13 @@ export function Inspector({
                             <SvActionButton
                                 tone="cyan"
                                 size="sm"
-                                onClick={() => onTryLLMMatch(title.id)}
+                                onClick={() => onTryLLMMatch(title.id, Boolean(llmSuggestion))}
                                 disabled={isLlmMatching || !aiProviderConfigured}
                                 title={
                                     aiProviderConfigured
-                                        ? 'Run AI episode matching'
+                                        ? llmSuggestion
+                                            ? 'Run again using the current AI settings'
+                                            : 'Run AI episode matching'
                                         : 'No AI API key is set. Add one in Settings, then use Test Connection.'
                                 }
                             >
@@ -525,7 +534,7 @@ export function Inspector({
                                         <IcoRetry size={11} className="animate-spin" /> Matching…
                                     </>
                                 ) : (
-                                    'Try AI match'
+                                    llmSuggestion ? 'Try AI again' : 'Try AI match'
                                 )}
                             </SvActionButton>
                         )}
