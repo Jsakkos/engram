@@ -1222,6 +1222,13 @@ function ReviewQueue() {
                 )}
                 {job.error_message && <SvNotice tone="warn">› {job.error_message}</SvNotice>}
                 <ReviewReasonNotice reason={job.review_reason} />
+                {/* Nothing staged yet: say so, or the review reads like one
+                    over finished files and the disc gets removed (#927). */}
+                {titles.length > 0 && canStartRip(job, titles) && (
+                    <SvNotice tone="info" testid="pre-rip-notice">
+                        › NOTHING RIPPED YET. LEAVE THE DISC IN THE DRIVE, CONFIRM THE TITLE, THEN PRESS START RIP.
+                    </SvNotice>
+                )}
                 {hasConflicts && (
                     <SvNotice tone="warn">
                         › {collisions.size} EPISODE CONFLICT{collisions.size > 1 ? 'S' : ''} — TWO TITLES SHARE AN EPISODE. RESOLVE BEFORE SAVING.

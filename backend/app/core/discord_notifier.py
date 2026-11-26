@@ -12,7 +12,13 @@ from loguru import logger
 from app import __version__
 from app.core.episode_codes import parse_episode_code
 from app.core.security import is_safe_dashboard_url
-from app.models.disc_job import ContentType, DiscJob, JobState, TitleState
+from app.models.disc_job import (
+    ContentType,
+    DiscJob,
+    JobState,
+    TitleState,
+    start_rip_refusal,
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +47,20 @@ EVENTS: dict[JobState, NotificationEvent] = {
 # to park in REVIEW_NEEDED. Delivered from JobManager._release_drive rather than
 # from a state-machine callback.
 RIPPED_EVENT = NotificationEvent("ripped", "Disc Ripped", "💿", 0x3B82F6)
+
+# REVIEW_NEEDED also covers a disc parked BEFORE its rip (uncertain title, name
+# prompt): nothing is staged and the disc must stay in the drive until the user
+# presses Start rip. Same "review" key, so the user's review toggle and template
+# still apply; only the headline differs, so it cannot be read as "rip done"
+# (#927).
+REVIEW_BEFORE_RIP_TITLE = "⏸️ Confirm to Start Rip"
+
+RIP_STATUS_NOT_STARTED = (
+    "Nothing has been ripped yet. Leave the disc in the drive: the rip starts once "
+    "you confirm the title on the review page."
+)
+RIP_STATUS_RIPPED = "Already ripped. The disc is no longer read unless you re-rip a track."
+RIP_STATUS_BACKED_UP = "Already copied to a backup. The disc is no longer needed."
 
 # The three ways Engram finishes with a drive, rendered into {{rip_outcome}} and
 # the Status field. Constants rather than literals because Task 5 produces them
@@ -290,6 +310,41 @@ def count_titles_on_disk(titles: list) -> int:
     return sum(1 for t in titles if t.state in _ON_DISK_TITLE_STATES)
 
 
+# Jobs with no physical disc: manual imports and staging re-runs.
+_NO_DISC_DRIVE_IDS = frozenset({"import", "staging"})
+
+
+def review_awaits_rip(job: DiscJob, titles: list) -> bool:
+    """Whether a REVIEW_NEEDED job is parked before its rip.
+
+    Defers to ``start_rip_refusal``, the one place that tells a pre-rip review
+    from a post-rip one, so the notification can never ask for Start rip on a
+    job whose button would refuse it. A job with no titles proves nothing
+    either way (a pre-rip review has its scanned titles), so it is not
+    announced as one. Nor is an import (``drive_id`` "import" or "staging"):
+    there is no disc to keep in a drive, matching the dashboard card.
+    """
+    if job.drive_id in _NO_DISC_DRIVE_IDS:
+        return False
+    return bool(titles) and start_rip_refusal(job, titles) is None
+
+
+def review_rip_status(job: DiscJob, titles: list) -> str:
+    """One sentence saying whether this review's disc has been read yet.
+
+    Empty when the job has no titles, which drops the field.
+    """
+    if not titles or job.drive_id in _NO_DISC_DRIVE_IDS:
+        return ""
+    if review_awaits_rip(job, titles):
+        return RIP_STATUS_NOT_STARTED
+    if job.backup_status == "completed" and not any(
+        t.state not in (TitleState.PENDING, TitleState.SKIPPED) for t in titles
+    ):
+        return RIP_STATUS_BACKED_UP
+    return RIP_STATUS_RIPPED
+
+
 def build_embed_fields(
     job: DiscJob | None, titles: list, event: NotificationEvent, *, rip_outcome: str = ""
 ) -> list[dict]:
@@ -315,6 +370,9 @@ def build_embed_fields(
 
     candidates = [
         _field("Status", rip_outcome if event.key == "ripped" else ""),
+        _field(
+            "Rip", review_rip_status(job, titles) if event.key == "review" else "", inline=False
+        ),
         _field("Disc", format_disc_identity(job)),
         _field(
             "Season",
@@ -385,8 +443,11 @@ def build_embed(
     The user template renders into `description`; everything else is structured
     so disc identity shows up without anyone editing a template.
     """
+    title = f"{event.emoji} {event.label}"
+    if event.key == "review" and job is not None and review_awaits_rip(job, titles):
+        title = REVIEW_BEFORE_RIP_TITLE
     embed: dict = {
-        "title": f"{event.emoji} {event.label}",
+        "title": title,
         "description": _truncate(description, _MAX_DESCRIPTION),
         "color": event.color,
         "timestamp": datetime.now(UTC).isoformat(),

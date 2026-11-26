@@ -5,6 +5,7 @@ import { getRerippableStateFromTitle } from '../components/ReviewQueue/rerip';
 import { parseEpisodeCode } from '../components/ReviewQueue/coverage';
 import { classifyPromptJob } from '../app/promptSelection';
 import { isIdentityUnresolved } from '../components/ReviewQueue/identity';
+import { canStartRip } from '../components/ReviewQueue/startRip';
 
 /**
  * Adapter layer to transform backend API types into UI component types
@@ -121,6 +122,15 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
   // "Name this disc" / "Select season" / "Confirm title" CTA (P13).
   const promptKind = classifyPromptJob(job);
 
+  // Before vs after the rip, for a review only. canStartRip is the same rule
+  // the review page's Start rip button and POST /start apply, so the card never
+  // says "nothing ripped" on a job whose button would refuse. No titles proves
+  // nothing either way, and an import never had a rip to wait for (#927).
+  const ripPhase: DiscData['ripPhase'] =
+    job.state !== 'review_needed' || titles.length === 0 || job.drive_id === 'import' || job.drive_id === 'staging'
+      ? undefined
+      : canStartRip(job, titles) ? 'before_rip' : 'after_rip';
+
   // For enriched states, replace the raw disc-label subtitle with human-readable
   // metadata: episode range for TV, release year for movies. Falls back to the
   // disc label when that data isn't available (e.g. an unmatched or import job).
@@ -164,6 +174,7 @@ export function transformJobToDiscData(job: Job, titles: DiscTitle[]): DiscData 
     looksStuck: job.looks_stuck ?? false,
     stalledForSeconds: job.stalled_for_seconds ?? null,
     identityReview,
+    ripPhase,
     identitySource: job.classification_source,
     tmdbId: job.tmdb_id ?? null,
     tmdbName: job.tmdb_name ?? null,

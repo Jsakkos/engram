@@ -659,3 +659,37 @@ describe('Force advance placement (#718)', () => {
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
   });
 });
+
+describe('DiscCard: review before vs after the rip (#927)', () => {
+  it('a pre-rip review says nothing is ripped and the disc must stay in the drive', () => {
+    render(<DiscCard disc={makeDisc({ ripPhase: 'before_rip' })} onReview={vi.fn()} />);
+    const status = screen.getByTestId('review-rip-status');
+    expect(status).toHaveTextContent(/nothing ripped yet/i);
+    expect(status).toHaveTextContent(/leave the disc in the drive/i);
+    expect(screen.getByRole('button', { name: /confirm the title and start the rip/i })).toHaveTextContent(/confirm & rip/i);
+    expect(
+      screen.queryByRole('button', { name: /review needed — open review queue/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a post-rip review says the disc was already ripped and keeps the review button', () => {
+    render(<DiscCard disc={makeDisc({ ripPhase: 'after_rip' })} onReview={vi.fn()} />);
+    expect(screen.getByTestId('review-rip-status')).toHaveTextContent(/already ripped/i);
+    expect(
+      screen.getByRole('button', { name: /review needed — open review queue/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('a pre-rip movie keeps the plain review label: its review page has no Start rip', () => {
+    render(<DiscCard disc={makeDisc({ ripPhase: 'before_rip', mediaType: 'movie' })} onReview={vi.fn()} />);
+    expect(screen.getByTestId('review-rip-status')).toHaveTextContent(/nothing ripped yet/i);
+    expect(
+      screen.getByRole('button', { name: /review needed — open review queue/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no rip status when the phase is unknown', () => {
+    render(<DiscCard disc={makeDisc()} onReview={vi.fn()} />);
+    expect(screen.queryByTestId('review-rip-status')).not.toBeInTheDocument();
+  });
+});

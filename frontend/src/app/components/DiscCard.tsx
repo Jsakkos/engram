@@ -99,6 +99,12 @@ export interface DiscData {
    *  banner + "Wrong title?" emphasis and suppresses the dead-end review-queue
    *  button. See transformJobToDiscData. */
   identityReview?: boolean;
+  /** For a disc in review: has MakeMKV read it yet? REVIEW_NEEDED covers both
+   *  a pre-rip pause (uncertain title, nothing staged, disc must stay in the
+   *  drive) and a post-rip review, and the card must not let the first read
+   *  like the second (#927). Undefined when it can't be told (no titles yet,
+   *  an import, or not in review). See transformJobToDiscData. */
+  ripPhase?: 'before_rip' | 'after_rip';
   /** Resolved TMDB identity (null/absent until confirmed). */
   tmdbId?: number | null;
   tmdbName?: string | null;
@@ -535,6 +541,7 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     onRetryFromStaging={recovery?.can_retry ? onRetryFromStaging : undefined}
                     looksStuck={disc.looksStuck}
                     stalledForSeconds={disc.stalledForSeconds}
+                    awaitingRip={disc.ripPhase === 'before_rip' && disc.mediaType !== 'movie'}
                   />
                 </div>
               </div>
@@ -604,6 +611,39 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                     {disc.reviewReason ||
                       "This disc's identity isn't confirmed yet."}{" "}
                     Use "Wrong title?" to pick the correct show.
+                  </span>
+                </div>
+              )}
+
+              {/* Has the disc been read yet? A review parked before the rip
+                  looked identical to one with files staged, so a user removed
+                  the disc thinking the rip was done (#927). */}
+              {disc.state === 'review_needed' && disc.tracksLoaded && disc.ripPhase && (
+                <div
+                  data-testid="review-rip-status"
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    marginBottom: 16,
+                    padding: "10px 12px",
+                    border: `1px solid ${disc.ripPhase === 'before_rip' ? `${sv.cyan}99` : sv.line}`,
+                    borderLeft: `3px solid ${disc.ripPhase === 'before_rip' ? sv.cyan : sv.inkDim}`,
+                    background: disc.ripPhase === 'before_rip' ? `${sv.cyan}14` : "transparent",
+                    fontFamily: sv.mono,
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    letterSpacing: "0.02em",
+                    color: disc.ripPhase === 'before_rip' ? sv.cyanHi : sv.inkDim,
+                  }}
+                >
+                  <span aria-hidden style={{ flexShrink: 0 }}>
+                    {disc.ripPhase === 'before_rip' ? "⏸" : "✓"}
+                  </span>
+                  <span>
+                    {disc.ripPhase === 'before_rip'
+                      ? "Nothing ripped yet. Leave the disc in the drive: the rip starts once you confirm the title."
+                      : "Already ripped. The disc is no longer read unless you re-rip a track."}
                   </span>
                 </div>
               )}
