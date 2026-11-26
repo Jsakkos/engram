@@ -620,7 +620,6 @@ const DiscCardComponent = React.forwardRef<HTMLDivElement, DiscCardProps>(
                   the disc thinking the rip was done (#927). */}
               {disc.state === 'review_needed' && disc.tracksLoaded && disc.ripPhase && (
                 <div
-                  role="status"
                   data-testid="review-rip-status"
                   style={{
                     display: "flex",

@@ -89,6 +89,8 @@ export function CompactList({
           // list, so without it the button could flash before data settles.
           const identityReview =
             disc.needsReview && !!disc.identityReview && !!disc.tracksLoaded;
+          // Movies excluded: their review page has no Start rip button.
+          const confirmsRip = disc.ripPhase === "before_rip" && disc.mediaType !== "movie";
           return (
             <motion.div
               key={disc.id}
@@ -224,7 +226,7 @@ export function CompactList({
                   <CompactRowButton color={sv.yellow} onClick={() => onReview(disc.id)}>
                     {/* Before the rip nothing is staged: the review is the
                         confirmation that starts it (#927). */}
-                    {disc.ripPhase === 'before_rip' && disc.mediaType !== 'movie' ? "Confirm & rip" : "Review"}
+                    {confirmsRip ? "Confirm & rip" : "Review"}
                   </CompactRowButton>
                 )}
                 {identityReview && (

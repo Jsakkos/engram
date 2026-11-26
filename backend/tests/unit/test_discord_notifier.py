@@ -1696,6 +1696,20 @@ def test_review_after_completed_backup_is_not_pre_rip():
     assert "backup" in rip["value"]
 
 
+def test_import_review_makes_no_rip_claim():
+    """An import has no disc to leave in a drive; the card says nothing either."""
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import DiscTitle, JobState, TitleState
+
+    titles = [DiscTitle(job_id=1, title_index=0, state=TitleState.PENDING)]
+    for drive_id in ("import", "staging"):
+        job = _review_job()
+        job.drive_id = drive_id
+        embed = build_embed(job, titles, EVENTS[JobState.REVIEW_NEEDED], "x")
+        assert embed["title"] == "🔍 Review Needed"
+        assert "Rip" not in {f["name"] for f in embed["fields"]}
+
+
 def test_rip_field_only_on_review_events():
     from app.core.discord_notifier import EVENTS, build_embed_fields
     from app.models.disc_job import DiscTitle, JobState, TitleState

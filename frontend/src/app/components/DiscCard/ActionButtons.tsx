@@ -351,6 +351,9 @@ function OverflowMenu({ onForceAdvance }: { onForceAdvance: () => void }) {
 export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onEject, isImport = false, emphasizeReIdentify = false, manualIdentity = false, onRetryFromStaging, looksStuck = false, stalledForSeconds, awaitingRip = false }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
+    const reviewHint = awaitingRip
+        ? "Nothing ripped yet: confirm the title and start the rip"
+        : "Review needed — open review queue";
     const canAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
     // Force is the manual counterpart of the stale-job watchdog: a primary control
     // only once the job looks stuck, otherwise tucked in the overflow menu (#718).
@@ -508,8 +511,8 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                 <ToneButton
                     tone={YELLOW}
                     onClick={onReview!}
-                    title={awaitingRip ? "Nothing ripped yet: confirm the title and start the rip" : "Review needed — open review queue"}
-                    ariaLabel={awaitingRip ? "Nothing ripped yet: confirm the title and start the rip" : "Review needed — open review queue"}
+                    title={reviewHint}
+                    ariaLabel={reviewHint}
                     paddingX={12}
                 >
                     {awaitingRip ? <IcoPlay size={14} /> : <IcoError size={14} />}

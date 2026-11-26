@@ -310,6 +310,10 @@ def count_titles_on_disk(titles: list) -> int:
     return sum(1 for t in titles if t.state in _ON_DISK_TITLE_STATES)
 
 
+# Jobs with no physical disc: manual imports and staging re-runs.
+_NO_DISC_DRIVE_IDS = frozenset({"import", "staging"})
+
+
 def review_awaits_rip(job: DiscJob, titles: list) -> bool:
     """Whether a REVIEW_NEEDED job is parked before its rip.
 
@@ -317,8 +321,11 @@ def review_awaits_rip(job: DiscJob, titles: list) -> bool:
     from a post-rip one, so the notification can never ask for Start rip on a
     job whose button would refuse it. A job with no titles proves nothing
     either way (a pre-rip review has its scanned titles), so it is not
-    announced as one.
+    announced as one. Nor is an import (``drive_id`` "import" or "staging"):
+    there is no disc to keep in a drive, matching the dashboard card.
     """
+    if job.drive_id in _NO_DISC_DRIVE_IDS:
+        return False
     return bool(titles) and start_rip_refusal(job, titles) is None
 
 
@@ -327,7 +334,7 @@ def review_rip_status(job: DiscJob, titles: list) -> str:
 
     Empty when the job has no titles, which drops the field.
     """
-    if not titles:
+    if not titles or job.drive_id in _NO_DISC_DRIVE_IDS:
         return ""
     if review_awaits_rip(job, titles):
         return RIP_STATUS_NOT_STARTED
