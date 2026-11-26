@@ -17,6 +17,7 @@ from app.core.media_formats import (
     glob_media,
     is_hidden_file,
     is_importable_video,
+    is_macos_metadata_file,
     list_video_files,
     rglob_media,
 )
@@ -33,6 +34,12 @@ class TestHiddenFiles:
         assert is_hidden_file(SIDECAR)
         assert is_hidden_file(".DS_Store")
         assert not is_hidden_file(REAL)
+
+    def test_only_macos_litter_is_deletable(self):
+        assert is_macos_metadata_file(SIDECAR)
+        assert is_macos_metadata_file(".DS_Store")
+        assert not is_macos_metadata_file(".plexmatch")
+        assert not is_macos_metadata_file(REAL)
 
     def test_sidecar_is_not_importable(self):
         assert not is_importable_video(SIDECAR)
@@ -79,6 +86,11 @@ class TestStagingCleanupIgnoresSidecars:
             result = organize_movie(staging, "Hairspray", 2007, library, already_clean=True)
         assert result["success"] is True
         return staging
+
+    def test_staging_with_a_users_dot_file_left_is_kept_untouched(self, tmp_path):
+        """An imported folder is the user's: their own dot-files are not deleted."""
+        staging = self._organize(tmp_path, ".plexmatch")
+        assert sorted(p.name for p in staging.iterdir()) == ["._t00.mkv", ".plexmatch"]
 
     def test_staging_with_only_sidecars_left_is_removed(self, tmp_path):
         assert not self._organize(tmp_path, ".DS_Store").exists()

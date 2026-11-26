@@ -54,6 +54,17 @@ def is_hidden_file(name: str | Path) -> bool:
     return Path(name).name.startswith(".")
 
 
+def is_macos_metadata_file(name: str | Path) -> bool:
+    """Whether *name* is a file macOS itself litters: ``._<name>`` or ``.DS_Store``.
+
+    Narrower than ``is_hidden_file`` on purpose. That one decides what to
+    *ignore*; this one decides what may be *deleted*, and a user's own dot-file
+    (``.plexmatch``, ``.stignore``) in an imported folder is not ours to remove.
+    """
+    base = Path(name).name
+    return base.startswith("._") or base == ".DS_Store"
+
+
 def glob_media(directory: Path, pattern: str) -> list[Path]:
     """``directory.glob(pattern)`` without hidden dot-files (see above)."""
     return [p for p in directory.glob(pattern) if not is_hidden_file(p.name)]

@@ -21,7 +21,7 @@ from pathlib import Path
 
 from app.core.media_formats import (
     IMPORTABLE_VIDEO_EXTENSIONS,
-    is_hidden_file,
+    is_macos_metadata_file,
     library_suffix,
     list_video_files,
 )
@@ -822,8 +822,10 @@ def organize_movie(
         try:
             entries = list(staging_dir.iterdir())
             # macOS leaves a ``._`` sidecar behind for every file moved off an
-            # exFAT/SMB volume; with only those left the directory is empty.
-            leftovers = [p for p in entries if p.is_file() and is_hidden_file(p)]
+            # exFAT/SMB volume; with only those (and ``.DS_Store``) left the
+            # directory is empty. Any other dot-file is the user's and keeps
+            # the directory, as a visible file would.
+            leftovers = [p for p in entries if p.is_file() and is_macos_metadata_file(p)]
             if len(leftovers) == len(entries):
                 for p in leftovers:
                     p.unlink()
