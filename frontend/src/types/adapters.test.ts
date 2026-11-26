@@ -351,3 +351,30 @@ describe('withoutIdentityReview — heuristic-only mode', () => {
     expect(withoutIdentityReview(input)[0]).toBe(plain);
   });
 });
+
+describe('transformJobToDiscData: rip phase of a review (#927)', () => {
+  it('a review before any track is ripped is awaiting the rip', () => {
+    const d = transformJobToDiscData(makeJob(), [makeTitle('pending', 1), makeTitle('skipped', 2)]);
+    expect(d.ripPhase).toBe('before_rip');
+  });
+
+  it('a review with a ripped track is past the rip', () => {
+    const d = transformJobToDiscData(makeJob(), [makeTitle('review', 1), makeTitle('pending', 2)]);
+    expect(d.ripPhase).toBe('after_rip');
+  });
+
+  it('a completed backup released the drive, so it is past the rip', () => {
+    const d = transformJobToDiscData(makeJob({ backup_status: 'completed' }), [makeTitle('pending', 1)]);
+    expect(d.ripPhase).toBe('after_rip');
+  });
+
+  it('says nothing when it cannot tell: no titles, an import, or not in review', () => {
+    expect(transformJobToDiscData(makeJob(), []).ripPhase).toBeUndefined();
+    expect(
+      transformJobToDiscData(makeJob({ drive_id: 'import' }), [makeTitle('pending', 1)]).ripPhase,
+    ).toBeUndefined();
+    expect(
+      transformJobToDiscData(makeJob({ state: 'ripping' }), [makeTitle('pending', 1)]).ripPhase,
+    ).toBeUndefined();
+  });
+});

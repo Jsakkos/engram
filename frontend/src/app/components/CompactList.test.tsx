@@ -101,3 +101,16 @@ describe('CompactList', () => {
         expect(screen.queryByRole('button', { name: /name this disc|select season|confirm title/i })).not.toBeInTheDocument();
     });
 });
+
+describe('CompactList: review before the rip (#927)', () => {
+    it('labels the review action as a confirmation to rip', () => {
+        renderList([makeDisc({ ripPhase: 'before_rip' })]);
+        expect(screen.getByRole('button', { name: /confirm & rip/i })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^review$/i })).not.toBeInTheDocument();
+    });
+
+    it('keeps the plain Review label after the rip', () => {
+        renderList([makeDisc({ ripPhase: 'after_rip' })]);
+        expect(screen.getByRole('button', { name: /^review$/i })).toBeInTheDocument();
+    });
+});

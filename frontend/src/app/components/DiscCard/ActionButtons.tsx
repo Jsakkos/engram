@@ -141,6 +141,10 @@ interface ActionButtonsProps {
     looksStuck?: boolean;
     /** Seconds of inactivity, shown in the Force tooltip. */
     stalledForSeconds?: number | null;
+    /** Review parked before the rip: nothing is staged yet, so the review
+     *  button reads as the confirmation that starts the rip (#927). Not passed
+     *  for movies: the movie review page has no Start rip button. */
+    awaitingRip?: boolean;
 }
 
 /** "6m 40s" / "45s" / "1h 5m": compact inactivity duration for tooltips. */
@@ -344,7 +348,7 @@ function OverflowMenu({ onForceAdvance }: { onForceAdvance: () => void }) {
     );
 }
 
-export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onEject, isImport = false, emphasizeReIdentify = false, manualIdentity = false, onRetryFromStaging, looksStuck = false, stalledForSeconds }: ActionButtonsProps) {
+export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdentify, onAdvance, onEject, isImport = false, emphasizeReIdentify = false, manualIdentity = false, onRetryFromStaging, looksStuck = false, stalledForSeconds, awaitingRip = false }: ActionButtonsProps) {
     const showCancel = !!onCancel && (isHovered || CANCELABLE_STATES.includes(state));
     const showReview = !!onReview && state === "review_needed";
     const canAdvance = !!onAdvance && ACTIVE_STATES.includes(state);
@@ -504,12 +508,12 @@ export function ActionButtons({ state, isHovered, onCancel, onReview, onReIdenti
                 <ToneButton
                     tone={YELLOW}
                     onClick={onReview!}
-                    title="Review needed — open review queue"
-                    ariaLabel="Review needed — open review queue"
+                    title={awaitingRip ? "Nothing ripped yet: confirm the title and start the rip" : "Review needed — open review queue"}
+                    ariaLabel={awaitingRip ? "Nothing ripped yet: confirm the title and start the rip" : "Review needed — open review queue"}
                     paddingX={12}
                 >
-                    <IcoError size={14} />
-                    <span style={{ fontSize: 11 }}>Review needed</span>
+                    {awaitingRip ? <IcoPlay size={14} /> : <IcoError size={14} />}
+                    <span style={{ fontSize: 11 }}>{awaitingRip ? "Confirm & rip" : "Review needed"}</span>
                 </ToneButton>
             )}
 

@@ -222,7 +222,9 @@ export function CompactList({
                 )}
                 {matchReview && (
                   <CompactRowButton color={sv.yellow} onClick={() => onReview(disc.id)}>
-                    Review
+                    {/* Before the rip nothing is staged: the review is the
+                        confirmation that starts it (#927). */}
+                    {disc.ripPhase === 'before_rip' && disc.mediaType !== 'movie' ? "Confirm & rip" : "Review"}
                   </CompactRowButton>
                 )}
                 {identityReview && (

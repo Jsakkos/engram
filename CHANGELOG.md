@@ -21,6 +21,11 @@ All notable changes to Engram will be documented in this file.
   cover could be left out of the submission without any warning. The contributing guide now
   explains which Enhance details TheDiscDB pre-fills, and where its Source File and Comment
   columns come from (#923).
+- A disc that pauses for review before it is ripped no longer looks like one with files waiting.
+  The dashboard card and review page say **Nothing ripped yet** and ask you to leave the disc in
+  the drive until the rip starts, and the review button reads **Confirm & rip**. A disc in review
+  after its rip says it was already ripped. The Discord notification makes the same distinction,
+  with a **Confirm to Start Rip** headline and a **Rip** field (#927).
 
 ## [0.45.2] - 2026-11-18
 

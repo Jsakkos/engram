@@ -1629,3 +1629,78 @@ def test_review_state_does_not_count_as_copied():
         DiscTitle(job_id=1, title_index=2, state=TitleState.COMPLETED),
     ]
     assert count_titles_on_disk(titles) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Review before vs after the rip (#927)
+# --------------------------------------------------------------------------- #
+
+
+def _review_job(**kwargs):
+    return DiscJob(
+        drive_id="E:",
+        content_type=ContentType.TV,
+        detected_title="Arrested Development",
+        volume_label="ARRESTED_DEVELOPMENT_S1D1",
+        review_reason="Title uncertain",
+        **kwargs,
+    )
+
+
+def test_pre_rip_review_says_nothing_was_ripped():
+    """A review that parks before the rip must not read like one with files
+    staged: the reporter removed the disc believing the rip was done."""
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import DiscTitle, JobState, TitleState
+
+    titles = [
+        DiscTitle(job_id=1, title_index=0, state=TitleState.PENDING),
+        DiscTitle(job_id=1, title_index=1, state=TitleState.SKIPPED),
+    ]
+    embed = build_embed(_review_job(), titles, EVENTS[JobState.REVIEW_NEEDED], "x")
+
+    assert "Confirm to Start Rip" in embed["title"]
+    rip = next(f for f in embed["fields"] if f["name"] == "Rip")
+    assert "Nothing has been ripped yet" in rip["value"]
+    assert "Leave the disc in the drive" in rip["value"]
+    assert "confirm the title" in rip["value"]
+
+
+def test_post_rip_review_says_the_disc_was_ripped():
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import DiscTitle, JobState, TitleState
+
+    titles = [
+        DiscTitle(job_id=1, title_index=0, state=TitleState.REVIEW),
+        DiscTitle(job_id=1, title_index=1, state=TitleState.PENDING),
+    ]
+    embed = build_embed(_review_job(), titles, EVENTS[JobState.REVIEW_NEEDED], "x")
+
+    assert embed["title"] == "🔍 Review Needed"
+    rip = next(f for f in embed["fields"] if f["name"] == "Rip")
+    assert rip["value"].startswith("Already ripped")
+
+
+def test_review_after_completed_backup_is_not_pre_rip():
+    """Every title can still be PENDING after a backup, but the drive was
+    released when the copy finished, so asking for Start rip would be wrong."""
+    from app.core.discord_notifier import EVENTS, build_embed
+    from app.models.disc_job import DiscTitle, JobState, TitleState
+
+    titles = [DiscTitle(job_id=1, title_index=0, state=TitleState.PENDING)]
+    job = _review_job(backup_status="completed")
+    embed = build_embed(job, titles, EVENTS[JobState.REVIEW_NEEDED], "x")
+
+    assert embed["title"] == "🔍 Review Needed"
+    rip = next(f for f in embed["fields"] if f["name"] == "Rip")
+    assert "backup" in rip["value"]
+
+
+def test_rip_field_only_on_review_events():
+    from app.core.discord_notifier import EVENTS, build_embed_fields
+    from app.models.disc_job import DiscTitle, JobState, TitleState
+
+    titles = [DiscTitle(job_id=1, title_index=0, state=TitleState.COMPLETED)]
+    for state in (JobState.COMPLETED, JobState.FAILED):
+        fields = build_embed_fields(_review_job(), titles, EVENTS[state])
+        assert "Rip" not in {f["name"] for f in fields}
