@@ -15,6 +15,7 @@ from sqlmodel import select
 from app.api.websocket import manager as ws_manager
 from app.core.episode_codes import canonical_assignment_code, normalize_episode_code
 from app.core.languages import language_name
+from app.core.media_formats import glob_media
 from app.core.organizer import check_library_writable
 from app.core.security import sanitize_log_value
 from app.database import async_session
@@ -1511,7 +1512,7 @@ class FinalizationCoordinator:
                 if p.exists():
                     return p
             glob_index = output_index if output_index is not None else title_index
-            matches = list(Path(_staging_path).glob(f"*_t{glob_index:02d}.mkv"))
+            matches = list(glob_media(Path(_staging_path), f"*_t{glob_index:02d}.mkv"))
             return matches[0] if matches else None
 
         results: dict[int, dict] = {}

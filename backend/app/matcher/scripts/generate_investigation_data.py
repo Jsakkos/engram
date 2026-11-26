@@ -29,6 +29,7 @@ from typing import Any
 
 from tqdm import tqdm
 
+from app.core.media_formats import rglob_media
 from app.matcher.asr_models import get_cached_model
 from app.matcher.episode_identification import SubtitleReader
 from app.matcher.srt_utils import (
@@ -210,7 +211,7 @@ def discover_test_files(
         episode_range: Optional (start, end) episode range to filter by
     """
     files = []
-    for mkv_file in test_dir.rglob("*.mkv"):
+    for mkv_file in rglob_media(test_dir, "*.mkv"):
         parsed = parse_filename(mkv_file)
         if not parsed:
             continue

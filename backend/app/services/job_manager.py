@@ -33,6 +33,7 @@ from app.core.extractor import (
     title_index_from_filename,
 )
 from app.core.log_context import job_log_context, with_job_log_context
+from app.core.media_formats import glob_media
 from app.core.organizer import movie_organizer, organize_movie
 from app.core.security import sanitize_log_value
 from app.core.sentinel import DriveMonitor
@@ -2023,7 +2024,7 @@ class JobManager:
         'all' invocation actually produced (vs. ones it never reached after a
         stall), so only the truly-missing titles are re-ripped individually.
         """
-        for mkv in output_dir.glob(f"*_t{expected_native_index(title):02d}.mkv"):
+        for mkv in glob_media(output_dir, f"*_t{expected_native_index(title):02d}.mkv"):
             try:
                 if mkv.stat().st_size > 0:
                     return True
@@ -2042,7 +2043,7 @@ class JobManager:
             if p.exists():
                 return p
         if staging:
-            matches = list(staging.glob(f"*_t{expected_native_index(title):02d}.mkv"))
+            matches = list(glob_media(staging, f"*_t{expected_native_index(title):02d}.mkv"))
             if matches:
                 return matches[0]
         return None
@@ -3827,7 +3828,7 @@ class JobManager:
                             file_sizes: dict[int, int] = {}
                             for t in sorted_titles:
                                 pattern = f"*_t{expected_native_index(t):02d}.mkv"
-                                matches = list(output_dir.glob(pattern))
+                                matches = list(glob_media(output_dir, pattern))
                                 if matches:
                                     file_sizes[t.id] = matches[0].stat().st_size
 
@@ -5215,7 +5216,7 @@ class JobManager:
                 expected_native_index(t) for t in titles if t.output_filename is not None
             }
 
-            mkv_files = list(staging_dir.glob("*.mkv")) if staging_dir.exists() else []
+            mkv_files = list(glob_media(staging_dir, "*.mkv")) if staging_dir.exists() else []
 
             for mkv in mkv_files:
                 native_index = title_index_from_filename(mkv.name)

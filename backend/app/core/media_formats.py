@@ -39,9 +39,37 @@ _MEDIA_TYPES: dict[str, str] = {
 }
 
 
+def is_hidden_file(name: str | Path) -> bool:
+    """Whether *name* is a hidden dot-file rather than real media.
+
+    macOS writes an AppleDouble sidecar ``._<name>`` (4 KB of Finder metadata)
+    next to every file it creates on a volume without native extended
+    attributes (exFAT, FAT32, SMB shares). ``._Show_t00.mkv`` matches every
+    ``*.mkv`` glob and carries a title-index suffix, so without this check the
+    rip's completion detector reports it as a finished title (its size never
+    changes while the real file grows) and the 4 KB stub is handed to the
+    matcher as that title's output. MakeMKV never writes a dot-file, so every
+    one is skipped.
+    """
+    return Path(name).name.startswith(".")
+
+
+def glob_media(directory: Path, pattern: str) -> list[Path]:
+    """``directory.glob(pattern)`` without hidden dot-files (see above)."""
+    return [p for p in directory.glob(pattern) if not is_hidden_file(p.name)]
+
+
+def rglob_media(directory: Path, pattern: str) -> list[Path]:
+    """``directory.rglob(pattern)`` without hidden dot-files (see above)."""
+    return [p for p in directory.rglob(pattern) if not is_hidden_file(p.name)]
+
+
 def is_importable_video(name: str | Path) -> bool:
-    """Whether a file name has an extension a manual import accepts (any case)."""
-    return Path(name).suffix.lower() in IMPORTABLE_VIDEO_EXTENSIONS
+    """Whether a file name has an extension a manual import accepts (any case).
+
+    Hidden dot-files (macOS ``._`` sidecars) are never importable.
+    """
+    return not is_hidden_file(name) and Path(name).suffix.lower() in IMPORTABLE_VIDEO_EXTENSIONS
 
 
 def library_suffix(source: str | Path) -> str:

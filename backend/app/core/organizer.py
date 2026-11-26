@@ -19,7 +19,12 @@ import time
 import uuid
 from pathlib import Path
 
-from app.core.media_formats import IMPORTABLE_VIDEO_EXTENSIONS, library_suffix, list_video_files
+from app.core.media_formats import (
+    IMPORTABLE_VIDEO_EXTENSIONS,
+    is_hidden_file,
+    library_suffix,
+    list_video_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -815,8 +820,13 @@ def organize_movie(
 
         # Clean up empty staging directory
         try:
-            remaining = list(staging_dir.iterdir())
-            if not remaining:
+            entries = list(staging_dir.iterdir())
+            # macOS leaves a ``._`` sidecar behind for every file moved off an
+            # exFAT/SMB volume; with only those left the directory is empty.
+            leftovers = [p for p in entries if p.is_file() and is_hidden_file(p)]
+            if len(leftovers) == len(entries):
+                for p in leftovers:
+                    p.unlink()
                 staging_dir.rmdir()
                 logger.info(f"Cleaned up empty staging dir: {staging_dir}")
         except Exception as e:
