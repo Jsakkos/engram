@@ -1,0 +1,1829 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/reviews/2026-11-21-claude-config-prompt-audit/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Prompt audit: Claude Code configuration (2026-11-21) - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#prompt-audit-claude-code-configuration-2026-11-21" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Prompt audit: Claude Code configuration (2026-11-21)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#assumptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assumptions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Findings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Findings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#flags-outside-the-project-no-edits-proposed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flags outside the project (no edits proposed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proposed-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposed diff
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="prompt-audit-claude-code-configuration-2026-11-21">Prompt audit: Claude Code configuration (2026-11-21)</h1>
+<h2 id="assumptions">Assumptions</h2>
+<ul>
+<li><strong>Scope:</strong> the Claude Code configuration that loads into sessions in this project. Inventory:</li>
+<li><code>CLAUDE.md</code> (worktree root, 653 lines): the only project instruction file. No <code>CLAUDE.local.md</code>, <code>AGENTS.md</code>, nested <code>CLAUDE.md</code>, <code>.claude/CLAUDE.md</code>, <code>.claude/rules/</code>, skills, commands, agents or output styles exist in the project. Its <code>@pytest.fixture</code> lines are code inside fences, not imports; it imports nothing.</li>
+<li><code>~/.claude/CLAUDE.md</code>, <code>~/.claude/{rules,skills,commands,agents,output-styles}/</code>: none exist.</li>
+<li>Managed-policy <code>CLAUDE.md</code>: none found.</li>
+<li>Ancestor directory: the main checkout's own <code>CLAUDE.md</code> sits above the worktree. It is outside the project and is reported, not edited (finding F1).</li>
+<li>Installed plugins (16, 63 skill/agent/command files): scanned for signals and reported only, no edits proposed.</li>
+<li>Not read, by design: <code>.claude/settings.local.json</code>, any <code>.mcp.json</code>, <code>~/.claude.json</code>. Not in the requested scope: the auto-memory files under <code>~/.claude/projects/.../memory/</code>.</li>
+<li><strong>Target model:</strong> Claude Opus 5.5 (<code>claude-opus-5-5</code>), the model running this audit. No audited file pins its own model.</li>
+<li><strong>Non-Anthropic provider markers:</strong> none in the audited files (the Discord bot's Claude Haiku 5.5 is described in <code>CLAUDE.md</code>, but the bot's code is outside this scope).</li>
+</ul>
+<h2 id="summary">Summary</h2>
+<p><code>CLAUDE.md</code> is in good shape as prompt text: its emphasis is rare and every caps marker sits next to a reason, it has no thinking scaffolds, no step-by-step choreography, and its long Key Patterns section is the kind of author-only context an audit should keep. The real problem is <strong>factual drift</strong>. Three findings matter most:</p>
+<ol>
+<li><strong>The WebSocket message table (<code>CLAUDE.md:421-448</code>) describes a protocol the backend no longer speaks.</strong> It says messages are <code>{"type", "data"}</code>; nearly all are flat. Twelve of its sixteen type names (<code>job_created</code>, <code>job_cancelled</code>, <code>rip_progress</code>, <code>subtitle_progress</code>, <code>title_discovered</code>, <code>title_matched</code>, ...) are emitted nowhere, and eight real types (<code>title_update</code>, <code>titles_discovered</code>, <code>subtitle_event</code>, <code>drive_armed</code>, <code>parked_discs</code>, <code>update_status</code>, ...) are missing. A session writing frontend handling from this table will write dead code.</li>
+<li><strong>The frontend component map names components that were deleted</strong> (<code>CyberpunkProgressBar</code>, removed in the Synapse v2 migration; <code>TVTitleCard</code>, <code>MovieTitleCard</code>, <code>EpisodeSelector</code>, <code>EditionInput</code>, <code>useReviewState</code>), at <code>CLAUDE.md:194-195</code>.</li>
+<li><strong>The error-handling section prescribes a convention the code does not follow</strong> (<code>@handle_errors</code> "in service methods": applied nowhere in the app, only mentioned in a docstring) and its sample sets <code>job.state = JobState.FAILED</code> directly, bypassing the <code>JobStateMachine</code> the rest of the file says owns every transition.</li>
+</ol>
+<p>Counts: Group 1 (dated prompt text): 0 edits. Group 2 (brittle configuration): 12 findings (7 high, 4 medium, 1 low). Group 3 (tool descriptions): not applicable. Group 4 (request config): not applicable. Flags outside the project: 2.</p>
+<h2 id="findings">Findings</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Location</th>
+<th>Evidence</th>
+<th>Pattern</th>
+<th>Why obsolete</th>
+<th>Confidence</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>CLAUDE.md:421-448</code></td>
+<td><code>All WebSocket messages follow the format: {"type": "...", "data": {...}}</code> and the 16-row type table</td>
+<td>G2 Volatile specifics</td>
+<td><code>backend/app/api/websocket.py</code> and <code>event_broadcaster.py</code> emit flat messages (<code>gpu_status</code> is the only <code>data</code>-wrapped one). No code emits <code>job_created</code>, <code>job_cancelled</code>, <code>job_cleared</code>, <code>rip_progress</code>, <code>subtitle_progress</code>, <code>title_discovered</code>, <code>title_ripping_started</code>, <code>title_ripping_progress</code>, <code>title_matching_started</code>, <code>title_matched</code>, <code>title_state_changed</code>, <code>title_failed</code>. Real types are <code>job_update</code>, <code>title_update</code>, <code>titles_discovered</code>, <code>subtitle_event</code>, <code>drive_event</code>, <code>drive_armed</code>, <code>backup_progress</code>, <code>parked_discs</code>, <code>fingerprint_disclosure_required</code>, <code>update_status</code>, <code>gpu_status</code>, <code>ping</code>.</td>
+<td>High</td>
+<td>rewrite</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>CLAUDE.md:194-195</code></td>
+<td><code>CyberpunkProgressBar</code> ... <code>TVTitleCard</code>, <code>MovieTitleCard</code>, <code>EpisodeSelector</code>, <code>EditionInput</code>, <code>hooks/useReviewState</code></td>
+<td>G2 Volatile specifics</td>
+<td>None of these exist under <code>frontend/src</code>. <code>CyberpunkProgressBar</code> was removed by the Synapse v2 migration (<code>54226b88</code>, #116; <code>SvProgressBar</code> replaced it); <code>components/ReviewQueue/</code> now holds <code>TitleList</code>, <code>Inspector</code>, <code>IdentityGate</code>, <code>SeasonRosterStrip</code>, <code>OrderingSelector</code>, <code>PlayerControls</code> and others.</td>
+<td>High</td>
+<td>rewrite</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>CLAUDE.md:152</code></td>
+<td><code>Thin orchestrator (~1,166 lines).</code></td>
+<td>G2 Volatile specifics</td>
+<td><code>job_manager.py</code> is 5,285 lines. A size claim invites the next session to treat it as small.</td>
+<td>High</td>
+<td>rewrite</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>CLAUDE.md:203</code>, <code>CLAUDE.md:604</code></td>
+<td><code>(10 spec files)</code></td>
+<td>G2 Volatile specifics</td>
+<td><code>frontend/e2e/</code> has 25 <code>*.spec.ts</code> files.</td>
+<td>High</td>
+<td>rewrite</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>CLAUDE.md:141</code></td>
+<td><code>Polls optical drives on Windows using ctypes/kernel32.</code></td>
+<td>G2 Volatile specifics</td>
+<td><code>sentinel.py</code> also implements Linux (<code>/sys/block/sr*</code> + <code>ioctl(CDROM_DRIVE_STATUS)</code>), and <code>CLAUDE.md:7</code> itself says detection works on Windows and Linux.</td>
+<td>High</td>
+<td>rewrite</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>CLAUDE.md:471</code></td>
+<td><code>CORS: Configured for localhost:5173 (Vite dev server) only</code></td>
+<td>G2 Volatile specifics</td>
+<td><code>main.py:179-184</code>: that is the default; the <code>cors_origins</code> setting (<code>config.py:81</code>) replaces it.</td>
+<td>High</td>
+<td>rewrite</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>CLAUDE.md:601-607</code></td>
+<td><code>### Frontend Testing</code> lists only Playwright E2E</td>
+<td>G2 Volatile specifics</td>
+<td><code>frontend/package.json</code> has a <code>test:unit</code> script (vitest + Testing Library, colocated <code>*.test.tsx</code>), absent from both the Commands block (<code>:39-47</code>) and this section.</td>
+<td>High</td>
+<td>add</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>CLAUDE.md:386</code>, <code>:389-413</code></td>
+<td><code>Use @handle_errors for standardized error handling in service methods</code> and the "Common patterns" sample with <code>job.state = JobState.FAILED</code></td>
+<td>G1d Unenforced instructions; G1c Padding</td>
+<td><code>@handle_errors</code> is defined in <code>errors.py</code> but applied nowhere in <code>backend/app</code>; its only other mention is a <code>tmdb_classifier.py</code> docstring. The three samples are generic try/except idioms, and the first one teaches a direct state assignment while job lifecycle runs through <code>JobStateMachine.transition</code> (<code>:157</code>, <code>:217</code>).</td>
+<td>Medium</td>
+<td>rewrite (decorator line); remove (samples)</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>CLAUDE.md:589</code></td>
+<td><code>Integration tests have caught 2 production bugs (WebSocket parameter mismatches)</code></td>
+<td>G2 History narratives</td>
+<td>Archaeology, not a rule; the rule it supports is already stated at <code>:452-459</code>.</td>
+<td>Medium</td>
+<td>remove</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>CLAUDE.md:148</code></td>
+<td><code>only jobs that ran *after* this change have tagged lines</code></td>
+<td>G1d Migration-relative phrasing</td>
+<td>"this change" is a diff against a version of the file the reader never saw.</td>
+<td>Medium</td>
+<td>rewrite</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>CLAUDE.md:347</code></td>
+<td><code>(the badge no longer claims CUDA while silently on CPU)</code></td>
+<td>G1d Migration-relative phrasing</td>
+<td>Describes the old bug, not the current behavior; the preceding clause already states the guarantee.</td>
+<td>Medium</td>
+<td>remove</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>CLAUDE.md:145</code></td>
+<td><code>Episode matching via audio fingerprinting.</code></td>
+<td>G2 Volatile specifics</td>
+<td>Matching is ASR transcription against subtitle references with a chromaprint prepass (<code>:283-345</code>). The module docstring says the same thing, so the repository does not flatly contradict it.</td>
+<td>Low</td>
+<td>flag</td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>CLAUDE.md:554</code> (and the pipeline/real-data lists at <code>:560</code>, <code>:565</code>)</td>
+<td><code>Files: test_workflow.py, ...</code></td>
+<td>G2 Volatile specifics</td>
+<td>Partial lists (6 of 38 integration files). Not contradicted, since every listed file exists, but they will keep drifting.</td>
+<td>Low</td>
+<td>flag</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Key Patterns, e.g. <code>:220</code>, <code>:227</code>, <code>:243</code>, <code>:283</code></td>
+<td><code>(#912)</code>, <code>(#813)</code>, <code>(#760)</code>, <code>(#241)</code></td>
+<td>G2 History narratives (idiom only)</td>
+<td>Each bullet states its current rule, and the issue numbers point at rationale. Idiom-dating alone.</td>
+<td>Low</td>
+<td>flag</td>
+</tr>
+</tbody>
+</table>
+<p>Not a finding: <code>:11</code> (<code>NEVER delete backend/engram.db</code>), <code>:452</code> (<code>CRITICAL</code>) and <code>:646</code> (<code>MUST</code>) each carry their reason, and they encode real constraints (keep-list items 1 and 5). The long Key Patterns section is author-only context (keep-list items 1 and 2).</p>
+<h3 id="flags-outside-the-project-no-edits-proposed">Flags outside the project (no edits proposed)</h3>
+<ul>
+<li><strong>F1: the main checkout's <code>CLAUDE.md</code></strong> (ancestor directory of the worktree, checked out on an older branch). It is a 517-line older copy of this file and contradicts it: <code>React 18</code> against <code>React 19</code> (<code>:188</code>), <code>Recharts, React Hook Form, ... shadcn/ui components</code> against <code>Radix UI primitives</code> (<code>:190</code>), plus the missing Discord-bot section and half of Key Patterns. This session's loaded context showed only the worktree copy, so it does not appear to load here, but any session started from the main checkout reads the stale version. The fix is to bring that checkout up to date with <code>main</code>, not to edit the file.</li>
+<li><strong>F2: Installed plugins (report only).</strong> <code>superpowers</code> <code>using-superpowers</code> (injected at SessionStart) is G1a pressure language at its densest: <code>EXTREMELY_IMPORTANT</code>, <code>YOU DO NOT HAVE A CHOICE</code>, <code>ABSOLUTELY MUST</code>, <code>even a 1% chance</code>. Part of it is routing text, which may carry calibrated urgency, but it is injected as behavioral text in every session. On Opus 5.5 that register drives skill over-invocation (for example, process skills loaded for one-line lookups). <code>superpowers/7.0.0/skills/writing-skills/SKILL.md</code> has 7 caps markers. The plugin cache also holds a stale <code>superpowers/7.0.0</code> next to the installed <code>7.0.2</code>; only 7.0.2 loads. No retired model IDs appear in any plugin skill, agent or command. These files belong to their plugin authors; disabling the plugin is the only local lever.</li>
+</ul>
+<h2 id="proposed-diff">Proposed diff</h2>
+<p>One hunk per finding; take them selectively. Findings 12-14 and F1-F2 are report-only.</p>
+<p><strong>Finding 1: WebSocket message table</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="gu">@@ CLAUDE.md:421 @@</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w"> </span>## WebSocket Message Types
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="gd">-All WebSocket messages follow the format: `{"type": "...", "data": {...}}`</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="gi">+Messages are flat JSON objects: `type` plus the fields below at the top level. `gpu_status` is the</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="gi">+one exception (its payload sits under `data`). Optional fields are omitted when unset, so the</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="gi">+frontend merges updates (`{...job, ...message}`) without blanking existing values.</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w"> </span>### Server → Client Messages
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="gd">-| Type | Data Fields | Description |</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="gd">-|------|-------------|-------------|</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="gd">-| `job_update` | `DiscJob` object | Full job state update (sent on any job change) |</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="gd">-| `job_created` | `DiscJob` object | New job created from disc insertion |</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="gd">-| `job_cancelled` | `{"job_id": int}` | Job was cancelled by user |</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="gd">-| `job_cleared` | `{"job_id": int}` | Completed job was cleared from UI |</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="gd">-| `drive_event` | `{"drive_id": str, "event": "inserted"\|"removed"}` | Physical disc inserted/removed |</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="gd">-| `subtitle_progress` | `{"job_id": int, "downloaded": int, "total": int, "failed": int}` | Subtitle download progress |</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="gd">-| `title_discovered` | `{"job_id": int, "title": DiscTitle}` | New title found during ripping |</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="gd">-| `rip_progress` | `{"job_id": int, "current_bytes": int, "total_bytes": int, "speed": str, "eta": int}` | Ripping progress update |</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="gd">-| `backup_progress` | `job_id`, `current_bytes`, `total_bytes`, `speed`, `eta` (flat, not nested under `data`) | Full-disc backup copy progress |</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="gd">-| `title_ripping_started` | `{"job_id": int, "title_id": int}` | Title ripping started |</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="gd">-| `title_ripping_progress` | `{"job_id": int, "title_id": int, ...}` | Per-track ripping progress |</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="gd">-| `title_matching_started` | `{"job_id": int, "title_id": int}` | Title matching started |</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="gd">-| `title_matched` | `{"job_id": int, "title_id": int, ...}` | Successful title match |</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="gd">-| `title_state_changed` | `{"job_id": int, "title_id": int, "state": str}` | Generic title state change |</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="gd">-| `title_failed` | `{"job_id": int, "title_id": int, "error": str}` | Title processing failed |</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="gd">-| `gpu_status` | `{"state": "idle"\|"downloading"\|"installing"\|"error", "downloaded": int, "total": int, "error": str\|null}` | CUDA-runtime download progress for GPU ASR (see `broadcast_gpu_status`) |</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="gi">+| Type | Fields | Description |</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="gi">+|------|--------|-------------|</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="gi">+| `job_update` | `job_id`, plus any of `state`, `progress`, `speed`, `eta`, `current_title`, `total_titles`, `error`, `content_type`, `detected_title`, `detected_season`, `review_reason`, ... | Job change; `state` omitted means unchanged (progress-only update) |</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="gi">+| `title_update` | `job_id`, `title_id`, `state`, plus any of `matched_episode`, `match_confidence`, `match_stage`, `match_progress`, size fields, `match_details`, `organized_to`, `is_extra`, ... | Any per-track change (rip, match, organize, failure) |</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="gi">+| `titles_discovered` | `job_id`, `titles`, `content_type`, `detected_title`, `detected_season` | Scan results |</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="gi">+| `subtitle_event` | `job_id`, `status`, `downloaded`, `total`, `failed_count` | Subtitle download progress |</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="gi">+| `backup_progress` | `job_id`, `current_bytes`, `total_bytes`, `speed`, `eta` | Full-disc backup copy progress |</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="gi">+| `drive_event` | `drive_id`, `event` (`"inserted"`\|`"removed"`), `volume_label` | Physical disc inserted/removed |</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="gi">+| `drive_armed` | `drive_id`, `identity` (`null` = disarmed) | Manual identity armed on a drive |</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="gi">+| `parked_discs` | `discs` | Discs parked awaiting action |</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="gi">+| `fingerprint_disclosure_required` | `pending_count`, `pseudonym`, `server_url` | Fingerprint-contribution disclosure prompt |</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="gi">+| `update_status` | `state`, `current_version`, `is_frozen`, ... | App self-update status |</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="gi">+| `gpu_status` | `data`: `{"state": "idle"\|"downloading"\|"installing"\|"error", "downloaded", "total", "error"}` | CUDA-runtime download progress (`broadcast_gpu_status`) |</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="gi">+| `ping` | none | Heartbeat |</span>
+</code></pre></div>
+<p><strong>Finding 2: component map</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="gu">@@ CLAUDE.md:194 @@</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="gd">-- **Supporting components**: `StateIndicator`, `CyberpunkProgressBar`, `TrackGrid`, `MatchingVisualizer`</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="gd">-- **ReviewQueue** (`components/ReviewQueue.tsx`) — Human-in-the-Loop UI with subcomponents: `TVTitleCard`, `MovieTitleCard`, `EpisodeSelector`, `EditionInput`, `hooks/useReviewState`</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="gi">+- **Supporting components**: `StateIndicator`, `TrackGrid`, `MatchingVisualizer`; Synapse primitives such as `SvProgressBar` live in `app/components/synapse/`</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="gi">+- **ReviewQueue** (`components/ReviewQueue.tsx`) — Human-in-the-Loop UI; its parts live in `components/ReviewQueue/` (track list, inspector, identity gate, season roster, ordering selector, external-player controls)</span>
+</code></pre></div>
+<p><strong>Finding 3: job_manager size</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="gu">@@ CLAUDE.md:152 @@</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="gd">-- **JobManager** (`job_manager.py`) — Thin orchestrator (~1,166 lines). Wires coordinators together, manages job lifecycle, handles drive events, and coordinates ripping.</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="gi">+- **JobManager** (`job_manager.py`) — Orchestrator. Wires coordinators together, manages job lifecycle, handles drive events, and coordinates ripping.</span>
+</code></pre></div>
+<p><strong>Finding 4: E2E spec count</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="gu">@@ CLAUDE.md:203 @@</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="gd">-Playwright-based E2E tests (10 spec files) that use simulation endpoints to test the full UI workflow without physical discs.</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="gi">+Playwright-based E2E tests that use simulation endpoints to test the full UI workflow without physical discs.</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="gu">@@ CLAUDE.md:604 @@</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="gd">-- Full UI workflow testing using Playwright (10 spec files)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="gi">+- Full UI workflow testing using Playwright</span>
+</code></pre></div>
+<p><strong>Finding 5: Sentinel platforms</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="gu">@@ CLAUDE.md:141 @@</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="gd">-1. **Sentinel** (`sentinel.py`) — Drive monitor (`DriveMonitor` class). Polls optical drives on Windows using ctypes/kernel32. Fires async callbacks on disc insert/remove events.</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="gi">+1. **Sentinel** (`sentinel.py`) — Drive monitor (`DriveMonitor` class). Polls optical drives (Windows via ctypes/kernel32; Linux via `/sys/block/sr*` + `ioctl(CDROM_DRIVE_STATUS)`). Fires async callbacks on disc insert/remove events.</span>
+</code></pre></div>
+<p><strong>Finding 6: CORS</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="gu">@@ CLAUDE.md:471 @@</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="gd">-- **CORS**: Configured for `localhost:5173` (Vite dev server) only</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="gi">+- **CORS**: Defaults to `localhost:5173` / `127.0.0.1:5173` (Vite dev server); the `cors_origins` setting (comma-separated) replaces the default list</span>
+</code></pre></div>
+<p><strong>Finding 7: frontend unit tier</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="gu">@@ CLAUDE.md:43 @@</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w"> </span>npm run lint         # ESLint
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="gi">+npm run test:unit    # Vitest + Testing Library unit tests (colocated *.test.tsx)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w"> </span>npm run test:e2e     # Run Playwright E2E tests
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="gu">@@ CLAUDE.md:601 @@</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w"> </span>### Frontend Testing
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="gi">+**Unit tests**: Vitest + React Testing Library, colocated as `*.test.ts(x)` beside the component; run with `npm run test:unit`.</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="gi">+</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w"> </span>**E2E tests** (`frontend/e2e/`):
+</code></pre></div>
+<p><strong>Finding 8: error-handling convention and samples</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="gu">@@ CLAUDE.md:386 @@</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="gd">-- **Decorator**: Use `@handle_errors` for standardized error handling in service methods</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="gd">-</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="gd">-**Common patterns**:</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="gd">-```python</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="gd">-# Subprocess errors (MakeMKV)</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="gd">-try:</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="gd">-    result = await makemkv_operation()</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="gd">-except subprocess.SubprocessError as e:</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="gd">-    logger.error(f"MakeMKV operation failed: {e}", exc_info=True)</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="gd">-    job.state = JobState.FAILED</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="gd">-    job.error = str(e)</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="gd">-</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="gd">-# Database errors</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="gd">-try:</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="gd">-    await session.commit()</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="gd">-except SQLAlchemyError as e:</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="gd">-    await session.rollback()</span>
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="gd">-    logger.error(f"Database commit failed: {e}", exc_info=True)</span>
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="gd">-    raise</span>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="gd">-</span>
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="gd">-# External API errors (TMDB)</span>
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="gd">-try:</span>
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="gd">-    response = await tmdb_client.fetch()</span>
+<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="gd">-except (HTTPError, RequestException) as e:</span>
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a><span class="gd">-    logger.warning(f"TMDB API failed, using fallback: {e}")</span>
+<a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a><span class="gd">-    # Continue with degraded functionality</span>
+<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a><span class="gd">-```</span>
+<a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a><span class="gi">+- **Failing a job**: move it to `FAILED` through `JobStateMachine.transition` (which fires terminal callbacks such as Discord notifications), not by assigning `job.state`</span>
+<a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a><span class="gi">+- **Decorator**: `@handle_errors` (`app/core/errors.py`) is available; services currently handle errors inline</span>
+</code></pre></div>
+<p>If <code>@handle_errors</code> in services is the intended direction rather than current practice, keep the original decorator line and take only the sample removal.</p>
+<p><strong>Finding 9: history narrative</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="gu">@@ CLAUDE.md:588 @@</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w"> </span>- Accept simulation auto-start behavior in test expectations
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="gd">-- Integration tests have caught 2 production bugs (WebSocket parameter mismatches)</span>
+</code></pre></div>
+<p><strong>Finding 10: logging caveat</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="gu">@@ CLAUDE.md:148 @@</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="gd">-... The diagnostics bundle greps the `job=&lt;id&gt;` token. **Caveat:** only jobs that ran *after* this change have tagged lines — older jobs fall back to the global ERROR/CRITICAL tail. ...</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="gi">+... The diagnostics bundle greps the `job=&lt;id&gt;` token. **Caveat:** jobs logged before job tagging existed have no tagged lines, so their bundle falls back to the global ERROR/CRITICAL tail. ...</span>
+</code></pre></div>
+<p><strong>Finding 11: GPU badge parenthetical</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="gu">@@ CLAUDE.md:347 @@</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="gd">-... so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree (the badge no longer claims CUDA while silently on CPU). ...</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="gi">+... so the `/api/asr-status` badge, the match semaphore, and the model loader can't disagree. ...</span>
+</code></pre></div>
+<h2 id="verification">Verification</h2>
+<p>Every finding above was checked against the repository rather than a model: file existence with the file tools, <code>git ls-files</code>, <code>git grep</code> for every message type and identifier, <code>frontend/package.json</code> scripts, and <code>git blame</code> on the stale lines (the WebSocket table and contract section date from <code>d3163119</code>, 2026-02-16; the component map from <code>024d188d</code>, 2026-03-07). Nothing was applied to <code>CLAUDE.md</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

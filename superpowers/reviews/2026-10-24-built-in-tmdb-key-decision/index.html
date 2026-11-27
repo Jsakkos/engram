@@ -1,0 +1,1686 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Disc ripping and media organization with a reactive web dashboard">
+      
+      
+      
+        <link rel="canonical" href="https://jsakkos.github.io/engram/superpowers/reviews/2026-10-24-built-in-tmdb-key-decision/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../engram.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Decision brief: ship a built-in TMDB key? (#732) - Engram</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#decision-brief-ship-a-built-in-tmdb-key-732" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Engram" class="md-header__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Engram
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Decision brief: ship a built-in TMDB key? (#732)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Engram" class="md-nav__button md-logo" aria-label="Engram" data-md-component="logo">
+      
+  <img src="../../../engram.svg" alt="logo">
+
+    </a>
+    Engram
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Jsakkos/engram" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Jsakkos/engram
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/import-watch-folder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import Watch Folder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Hardware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/linux-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux / macOS Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/review-queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Review Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/contributing-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/llm-episode-matcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM Episode Matcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-help/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Help
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker (Linux)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSocket Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/rest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    REST Endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/subtitle-cache-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Subtitle Cache Server Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/brand/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Brand System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/fingerprint-privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fingerprint Network Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#recommendation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommendation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-tmdb-allows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. What TMDB allows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-what-comparable-apps-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What comparable apps do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-engram-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Engram today
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-option-2-in-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Option 2 in detail
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-option-3-engram-run-proxy-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Option 3 (Engram-run proxy) cost
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-implementation-steps-if-adopted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Implementation steps if adopted
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions-for-the-owner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions for the owner
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#caveats-on-this-research" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Caveats on this research
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="decision-brief-ship-a-built-in-tmdb-key-732">Decision brief: ship a built-in TMDB key? (#732)</h1>
+<p>Date: 2026-10-24. Status: recommendation for the owner; nothing implemented.
+Related: #732, epic #734 (1.0 targeted end of 2026), #243 (TMDB onboarding, closed).</p>
+<h2 id="recommendation">Recommendation</h2>
+<p><strong>Adopt option 2 (a built-in project key with a user override), shipped the way the TheTVDB key already is, and keep option 1 as the explicit fallback.</strong> Do not build option 3 for 1.0.</p>
+<p>Why, in short:</p>
+<ol>
+<li>Every comparable desktop or self-hosted media app we could verify ships a default TMDB key and lets users replace it (Jellyfin, tinyMediaManager, Kodi). Radarr avoids the question with its own metadata server. None of them require each user to register.</li>
+<li>TMDB's terms do not forbid it. The Terms of Use say nothing about embedding or sharing keys; the binding constraints are non-commercial use, attribution, a 6-month cache cap, and "no excessive use".</li>
+<li>The risk is revocation, and Engram can survive it: the override path stays, the current "Continue without TMDB" degradation already works, and a rotated key can reach existing installs without a release if we add a small fetched-key fallback (step 6 below, optional).</li>
+<li>Option 3 buys control we do not need yet, at the price of an always-on service whose outage would break identification for every user. Keep it as the escalation if the shared key is ever throttled or revoked.</li>
+</ol>
+<p>Two things the owner must do regardless of option: register the project key under TMDB's non-commercial tier, and add the TMDB attribution notice, which <strong>Engram does not currently display anywhere</strong> (a grep for the required wording finds nothing in the repo).</p>
+<h2 id="1-what-tmdb-allows">1. What TMDB allows</h2>
+<p>Sources: <a href="https://www.themoviedb.org/api-terms-of-use">API Terms of Use</a>, <a href="https://developer.themoviedb.org/docs/faq">API FAQ</a>, <a href="https://developer.themoviedb.org/docs/rate-limiting">rate limiting</a>. Read 2026-10-24.</p>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Finding</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding a key in a distributed app</td>
+<td>The Terms contain no rule on sharing or embedding keys. The FAQ does not cover it either. So it is neither granted nor prohibited; it rests on TMDB's discretion.</td>
+</tr>
+<tr>
+<td>Commercial use</td>
+<td>Free for non-commercial use. "Commercial" means the primary purpose is to create revenue; that needs a written agreement. TMDB decides this at its sole discretion. Engram is free and open source, so it qualifies, but <strong>any future paid tier, hosted Engram, or donation-gated feature should be re-checked.</strong></td>
+</tr>
+<tr>
+<td>Attribution</td>
+<td>Show the TMDB logo (less prominent than your own branding) and the notice that the product uses the TMDB API but is not endorsed or certified by TMDB. Required whichever option we pick, and today missing.</td>
+</tr>
+<tr>
+<td>Caching</td>
+<td>TMDB data may not be cached beyond 6 months. Engram keeps a persistent TMDB cache at <code>~/.engram/cache/tmdb_cache.sqlite</code>; its longest TTLs (<code>TTL_SHOW_ID</code>, <code>TTL_MOVIE</code>) are 90 days (<code>tmdb_persistent_cache.py:37-41</code>), under the cap. Still worth confirming that expired rows are purged rather than kept indefinitely, and checking other TMDB-derived stores (poster files). This applies under every option.</td>
+</tr>
+<tr>
+<td>Rate limits</td>
+<td>No fixed numbers in the Terms. The rate-limit page says upper limits "sit somewhere in the 40 requests per second range", may change, and that clients must respect HTTP 429. It does not say whether the limit is per key or per IP. The old 40 per 10 seconds limit was disabled in 2019.</td>
+</tr>
+<tr>
+<td>Shared-key implication</td>
+<td>If limits are per IP (which the docs do not rule out), every home install has its own address and one shared key costs nothing extra. If per key, ~40 req/s is a very large budget for a tool that makes a handful of lookups per disc; Engram retries with backoff and caches (<code>lru_cache</code> plus the persistent cache). The unknown is TMDB's "excessive use" judgment, not a published number. This rests on undocumented behavior; see step 10.</td>
+</tr>
+<tr>
+<td>Revocation</td>
+<td>TMDB may terminate the license at any time for any reason and may change or restrict access without notice. On termination you must stop using the keys and delete cached content. A leaked or abused shared key can be disabled and nothing in the Terms limits that.</td>
+</tr>
+</tbody>
+</table>
+<p>Precedent for the revocation risk (unverified, see caveat): a 2017 <a href="https://forum.kodi.tv/printthread.php?tid=311689">Kodi forum thread</a> reports the bundled scraper key being revoked over misuse by piracy sites, then reissued and rebuilt into the scrapers (I could not re-fetch the thread, which returned 403; the claim comes from the search excerpt, so treat the details as unverified).</p>
+<h2 id="2-what-comparable-apps-do">2. What comparable apps do</h2>
+<table>
+<thead>
+<tr>
+<th>App</th>
+<th>Approach</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Jellyfin</td>
+<td>Ships a hardcoded default key; the plugin config has an optional override field that is "intentionally excluded from the settings page", falling back to the built-in constant when empty.</td>
+<td><a href="https://github.com/jellyfin/jellyfin/blob/master/MediaBrowser.Providers/Plugins/Tmdb/TmdbUtils.cs"><code>TmdbUtils.cs</code> line 35</a>, <a href="https://github.com/jellyfin/jellyfin/blob/master/MediaBrowser.Providers/Plugins/Tmdb/Configuration/PluginConfiguration.cs"><code>PluginConfiguration.cs</code></a>, <a href="https://github.com/jellyfin/jellyfin/blob/master/MediaBrowser.Providers/Plugins/Tmdb/TmdbClientManager.cs"><code>TmdbClientManager.cs</code> line 51</a>. Verified by reading source.</td>
+</tr>
+<tr>
+<td>tinyMediaManager</td>
+<td>Built-in key by default; an API key field lets users enter their own.</td>
+<td><a href="https://www.tinymediamanager.org/docs/scrapers">tMM scraper docs</a>.</td>
+</tr>
+<tr>
+<td>Kodi scrapers</td>
+<td>Built-in keys in the scrapers (and the revocation history above). Weak evidence: search excerpt only, the thread returned 403.</td>
+<td><a href="https://forum.kodi.tv/printthread.php?tid=311689">Kodi forum</a>, via search excerpt.</td>
+</tr>
+<tr>
+<td>Radarr</td>
+<td>No TMDB key on the client at all: requests go to its own metadata server, <code>https://api.radarr.video/v1/{route}</code> (option 3).</td>
+<td><a href="https://raw.githubusercontent.com/Radarr/Radarr/develop/src/NzbDrone.Common/Cloud/RadarrCloudRequestBuilder.cs"><code>RadarrCloudRequestBuilder.cs</code></a>. Sonarr uses the same SkyHook pattern (not verified).</td>
+</tr>
+<tr>
+<td>FileBot</td>
+<td>Client code takes an API key and throttles itself to 35 requests per 10 seconds (older limit). The maintainer has said per-user keys are not worth a config dialog while the major sources do not require them, implying a bundled key. Current behavior not confirmed (weak evidence).</td>
+<td><a href="https://www.filebot.net/forums/viewtopic.php?p=32197">FileBot forum</a>, <a href="https://code.moparisthebest.com/moparisthebest/filebot/commit/23df26fad4bef15a77e808e7ea7d5c97a9ef7eef">source mirror commit</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>Pattern: local-first apps ship a default key with an override (option 2); apps with a large central service run a proxy (option 3). Nobody in the set makes users register as the only path. Note that the Jellyfin key is committed in public source, which tells us TMDB has tolerated an openly extractable key for years. Engram would not need to commit its key (see below).</p>
+<h2 id="3-engram-today">3. Engram today</h2>
+<ul>
+<li><strong>Storage and read path.</strong> <code>AppConfig.tmdb_api_key</code> (<code>backend/app/models/app_config.py:63</code>), edited through <code>ConfigUpdate</code> and <code>ConfigWizard</code>, redacted as <code>"***"</code> in <code>GET /api/config</code>, with a separate <code>tmdb_configured</code> boolean for the banner (#243).</li>
+<li><strong>Many direct readers.</strong> About 15 backend sites read <code>config.tmdb_api_key</code> directly: <code>matcher/tmdb_client.py</code> (most functions, each guarded by <code>if not ...tmdb_api_key</code>), <code>identification_coordinator.py</code> (lines ~1179, 1767, 1929, 1950, 2097, 2125), <code>job_manager.py:4759</code>, <code>organizer.py:904</code>, <code>tmdb_poster.py:28</code>, <code>episode_ordering_service.py:40</code>, <code>episode_namespace_service.py</code>, <code>curator.py:699</code>, <code>routes.py</code> (several, including <code>/tmdb/search</code> which 400s when unset), and <code>matcher/testing_service.py</code>. Any option 2 implementation must resolve the effective key in one place, not patch each site.</li>
+<li><strong>Token type.</strong> The setting takes a v4 Read Access Token (long <code>eyJ...</code> JWT). <code>_tmdb_auth</code> sends it as a Bearer header when longer than <code>_V4_TOKEN_MIN_LEN</code>, else as a v3 <code>api_key</code> param. A built-in key can be either; the Bearer token is the one TMDB's current docs lead with.</li>
+<li><strong>Degradation without a key.</strong> <code>identification_coordinator.py</code> pre-sets <code>tmdb_degraded_reason = TMDB_DEGRADED_NOT_CONFIGURED</code> when no key is stored and flips to <code>TMDB_DEGRADED_AUTH_FAILED</code> when a lookup is rejected (<code>TmdbAuthError</code>). Classification falls back to the Analyst heuristics. No <code>tmdb_id</code> means the frontend derives <code>identityReview</code> true (<code>types/adapters.ts</code>, <code>isIdentityUnresolved</code>), so every review job becomes an identity review and the dashboard shows the permanent warning. The wizard's "Continue without TMDB" button (<code>ConfigWizard.tsx</code> ~line 1338) sets <code>tmdbContinueAnyway</code>. This is the path a revoked built-in key would fall into, so it is already the right failure mode.</li>
+<li><strong>Precedent in this repo.</strong> <code>TVDB_API_KEY</code> is injected at build time: <code>release.yml</code> passes <code>${{ secrets.TVDB_API_KEY }}</code> to every <code>pyinstaller engram.spec</code> step (6 build jobs), <code>engram.spec</code> (~lines 147 to 158) writes a gitignored <code>backend/hooks/rthook_tvdb_generated.py</code> that does <code>os.environ.setdefault('TVDB_API_KEY', ...)</code>, and <code>tvdb_client.resolve_api_key</code> prefers a <code>tvdb_api_key</code> config override, else the env var. Absent locally, the feature is simply off.</li>
+</ul>
+<h2 id="4-option-2-in-detail">4. Option 2 in detail</h2>
+<p><strong>Shipping the key.</strong> Copy the TVDB mechanism for a <code>TMDB_API_KEY</code> secret: same runtime hook (generalize <code>rthook_tvdb_generated.py</code> into one generated hook carrying both), the Docker image gets it as a build arg or secret baked into an env default at build time, never committed. A build arg is visible in <code>docker history</code>; that is acceptable because the key is treated as public, but a secret mount would not hide it from users either. Dev checkouts and forks without the secret behave exactly like today (option 1).</p>
+<p><strong>Precedence.</strong> Add <code>resolve_tmdb_key(config)</code> mirroring <code>resolve_api_key</code> for TVDB: stored user token if non-empty, else <code>TMDB_API_KEY</code> env. Route every reader through it (ideally have <code>get_config()</code> consumers use one accessor so the ~15 sites change mechanically). User override always wins, so a power user can opt out of the shared key.</p>
+<p><strong>Keep the secret out of the UI and exports.</strong> <code>GET /api/config</code> must not echo the built-in key; <code>tmdb_configured</code> should become true when either source exists, and the settings page should say "Using Engram's built-in key" with a field to override. Check <code>config_transfer</code> (settings export) so the built-in key is never written to an export file.</p>
+<p><strong>Rotation without a release.</strong> The embedded value is fixed at build time, so rotation by default means a new release. Cheaper option: on revocation (<code>TmdbAuthError</code> from the built-in key), fetch a replacement from a small static file the project already knows how to host (for example a <code>badges</code>-style branch artifact or the existing subtitle-cache release channel), signed or at least pinned to a host allowlist like <code>is_safe_remote_url</code>. The fetched key must be signed (verify against a public key shipped in the app); a host-pinned unsigned fetch would let whoever controls that host redirect all Engram TMDB traffic. This is optional and only needed if a revocation actually happens; it is not a 1.0 blocker.</p>
+<p><strong>How much of a secret.</strong> None. Any binary or image can be unpacked and the key read from the process environment or a <code>strings</code> pass; PyInstaller bundles are not obfuscation. Treat it as a project identifier, as Jellyfin and tMM do. The build-secret route only avoids committing it to git history and keeps forks from inheriting it. The practical consequences: expect someone to reuse it eventually, keep the key's registered use description honest (non-commercial, open source), and be ready to rotate.</p>
+<p><strong>Failure behavior if disabled.</strong> Built-in key revoked: <code>TmdbAuthError</code> already maps to <code>TMDB_DEGRADED_AUTH_FAILED</code>; update that message to say the built-in key was rejected and point to the override. No data loss, same as today's no-token path.</p>
+<h2 id="5-option-3-engram-run-proxy-cost">5. Option 3 (Engram-run proxy) cost</h2>
+<p>The owner already runs the fingerprint server and a subtitle-cache server (nightly publishing timer), so the building blocks exist. Still, a TMDB proxy differs in kind from those:</p>
+<ul>
+<li><strong>Always on, in the critical path.</strong> Fingerprint and subtitle caches are optional accelerators with graceful fallbacks. Identification without TMDB is the degraded mode, so the proxy becomes a single point of failure for first-run classification. A home-LAN host (192.168.1.x) would need public ingress, TLS, DDNS or a tunnel, and uptime commitments.</li>
+<li><strong>Abuse surface.</strong> An unauthenticated public endpoint that forwards to TMDB needs rate limiting per client, request-shape allowlisting, and logging decisions with privacy implications (see <code>docs/development/fingerprint-privacy.md</code> for the project's current stance).</li>
+<li><strong>Terms exposure.</strong> A proxy that serves TMDB data to many clients starts to look like redistributing the API ("do not sell, lease, or sublicense API access or content") and concentrates all traffic under one key and IP, raising the "excessive use" risk that option 2 spreads across user networks. It would also need a cache that honors the 6-month cap.</li>
+<li><strong>Ongoing work.</strong> Monitoring, a second deploy pipeline (the fingerprint server's <code>main</code> auto-deploys), and being the on-call for a service the product depends on.</li>
+</ul>
+<p>Rough effort: 2 to 4 days to a working proxy, then permanent ops overhead. Not justified before 1.0 when option 2 reaches nearly the same user outcome.</p>
+<h2 id="6-implementation-steps-if-adopted">6. Implementation steps if adopted</h2>
+<ol>
+<li>Register a dedicated TMDB application for Engram (non-commercial, open source description); store its Read Access Token as the <code>TMDB_API_KEY</code> Actions secret. Owner action.</li>
+<li>Add <code>resolve_tmdb_key(config)</code> (user token, else <code>TMDB_API_KEY</code> env) and route all ~15 direct readers through it; unit-test precedence and the "neither set" path.</li>
+<li>Generalize the PyInstaller runtime hook in <code>engram.spec</code> to inject both keys; pass <code>TMDB_API_KEY</code> in all six <code>release.yml</code> build steps and the Docker build; confirm <code>.gitignore</code> covers the generated hook.</li>
+<li><code>GET /api/config</code>: report <code>tmdb_configured</code> true for either source, add <code>tmdb_key_source: "user" | "builtin" | "none"</code>, never return the built-in value (the frontend banner logic must consume <code>tmdb_key_source</code>/<code>tmdb_configured</code>); verify config export/import skips it (tests under <code>test_config_transfer*.py</code>).</li>
+<li>Wizard and settings: drop TMDB as a required onboarding step when a built-in key exists (show "Using Engram's built-in key", optional override field). Keep the validation flow and the "Continue without TMDB" path for builds without a key.</li>
+<li>Attribution: add the TMDB logo and the required "not endorsed or certified" notice (About/Settings and docs), mirroring <code>TvdbAttribution.tsx</code>.</li>
+<li>Cache TTL is confirmed at 90 days max; verify expired rows are purged and check poster files.</li>
+<li>Update <code>TMDB_DEGRADED_AUTH_FAILED</code> copy and docs (<code>docs/troubleshooting.md</code>, <code>docs/deployment/docker.md</code>) and the CLAUDE.md "TMDB Configuration" section.</li>
+<li>Optional, only on a real revocation: signed fetched-key fallback for rotation without a release.</li>
+<li>Contact TMDB support once to confirm the embedded-key model is acceptable and ask whether limits are per key or per IP. The Terms are silent, so a written answer is the cheapest way to de-risk 1.0.</li>
+</ol>
+<h2 id="open-questions-for-the-owner">Open questions for the owner</h2>
+<ul>
+<li>Are donations or any paid feature planned that could make TMDB consider Engram commercial?</li>
+<li>Is a one-email check with TMDB (step 10) worth doing before committing?</li>
+<li>Is rotation-without-release (step 6/9) wanted up front, or only after a revocation?</li>
+</ul>
+<h2 id="caveats-on-this-research">Caveats on this research</h2>
+<p>TMDB's key-sharing and per-key versus per-IP behavior are not documented, so those points are inferences. Radarr's metadata host and Jellyfin's constant were read from source; the FileBot and Kodi details come from search excerpts and are weaker. Sonarr was not verified directly.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

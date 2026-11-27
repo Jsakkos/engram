@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot Avatar Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg0: #05070c; --bg1: #0b1018; --line: #1b2a3a; --cyan: #5eead4; --cyan-dim: #3a8f84;
+    --magenta: #ff3d7f; --text: #d7e3ec; --muted: #7d8b99;
+    --dc-dark: #313338; --dc-dark-side: #2b2d31; --dc-light: #ffffff; --dc-light-side: #f2f3f5;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg0); color: var(--text); font: 14px/1.5 Inter, system-ui, sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font: 600 20px "JetBrains Mono", monospace; letter-spacing: .04em; margin: 0 0 4px; }
+  h1 span { color: var(--cyan); }
+  .lede { color: var(--muted); margin: 0 0 28px; max-width: 760px; }
+  .controls { font: 12px "JetBrains Mono", monospace; color: var(--muted); margin-bottom: 20px; }
+  .controls label { margin-right: 18px; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; }
+  .card { position: relative; border: 1px solid var(--line); background: var(--bg1); padding: 20px; }
+  .card::before, .card::after { content: ""; position: absolute; width: 10px; height: 10px; border: 1px solid var(--cyan); }
+  .card::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+  .card::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+  .tag { font: 600 11px "JetBrains Mono", monospace; color: var(--cyan); letter-spacing: .12em; }
+  .card h2 { margin: 2px 0 6px; font: 600 17px Inter, sans-serif; }
+  .card p { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+  .hero { position: relative; width: 100%; aspect-ratio: 1; }
+  .hero .full, .hero .crop { position: absolute; inset: 0; }
+  .hero .full { opacity: .22; }
+  .hero .crop { clip-path: circle(50% at 50% 50%); }
+  .hero .safe { position: absolute; inset: 7%; border: 1px dashed var(--magenta); border-radius: 50%; opacity: .6; pointer-events: none; }
+  body.no-safe .safe { display: none; }
+  body.no-square .hero .full { display: none; }
+  .hero svg, .sizes svg { display: block; width: 100%; height: 100%; }
+  .sizes { display: flex; align-items: flex-end; gap: 14px; margin: 16px 0; font: 11px "JetBrains Mono", monospace; color: var(--muted); }
+  .sizes figure { margin: 0; text-align: center; }
+  .sizes .av { border-radius: 50%; overflow: hidden; margin: 0 auto 4px; }
+  .dc { border-radius: 6px; padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start; font-family: "gg sans", "Noto Sans", Inter, sans-serif; }
+  .dc + .dc { margin-top: 8px; }
+  .dc.dark { background: var(--dc-dark); color: #dbdee1; }
+  .dc.light { background: var(--dc-light); color: #313338; border: 1px solid #e3e5e8; }
+  .dc .av { width: 40px; height: 40px; flex: none; border-radius: 50%; overflow: hidden; }
+  .dc .name { font-weight: 600; font-size: 15px; }
+  .dc.dark .name { color: #f2f3f5; }
+  .bot { display: inline-block; background: #5865f2; color: #fff; font-size: 10px; font-weight: 600; padding: 0 4px; border-radius: 3px; margin-left: 4px; vertical-align: 2px; }
+  .dc .msg { font-size: 14px; margin-top: 2px; }
+  .dc .mention { background: rgba(88,101,242,.3); color: #c9cdfb; padding: 0 2px; border-radius: 3px; }
+  .dc.light .mention { background: rgba(88,101,242,.15); color: #505cdc; }
+  .member { display: flex; align-items: center; gap: 10px; padding: 6px 10px; margin-top: 8px; background: var(--dc-dark-side); border-radius: 4px; color: #dbdee1; font-size: 14px; }
+  .member .bot { margin-left: -4px; }
+  .member .av { position: relative; width: 32px; height: 32px; }
+  .member .av .img { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; }
+  .member .av i { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 50%; background: #23a55a; border: 3px solid var(--dc-dark-side); }
+  .names { margin-top: 40px; }
+  .names table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .names th, .names td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .names th { font: 600 11px "JetBrains Mono", monospace; color: var(--cyan); letter-spacing: .1em; }
+  .names td:first-child { font: 600 14px "JetBrains Mono", monospace; white-space: nowrap; }
+  .rec { color: var(--magenta); font: 600 11px "JetBrains Mono", monospace; margin-left: 6px; }
+  @media (max-width: 420px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>ENGRAM <span>/</span> SUPPORT BOT AVATAR</h1>
+  <p class="lede">Three directions derived from the Synapse v2 mark. Each hero shows the circle Discord crops to over the faint full square (the App Icon tile keeps the square). The dashed ring is the safe circle (86% of the canvas); everything that carries the idea sits inside it.</p>
+  <div class="controls">
+    <label><input type="checkbox" id="safe" checked> safe circle</label>
+    <label><input type="checkbox" id="square" checked> show square</label>
+  </div>
+  <div class="grid" id="grid"></div>
+
+  <section class="names">
+    <div class="tag">NAME CANDIDATES</div>
+    <table>
+      <thead><tr><th>@NAME</th><th>RATIONALE</th></tr></thead>
+      <tbody>
+        <tr><td>@Trace <span class="rec">PICK</span></td><td>An engram is literally a memory trace, and "trace" is also what you do to a failed rip. "@Trace why did my rip stop at 40%" reads like a sentence.</td></tr>
+        <tr><td>@Cue</td><td>In memory research a retrieval cue is what brings an engram back; a question cues the docs. Also nods to subtitle cues, which drive episode matching. Short, but easy to misread as a plain word.</td></tr>
+        <tr><td>@Readout</td><td>Telemetry voice, matching the JetBrains Mono readouts in the dashboard. Says "I report", which fits a docs-answering bot.</td></tr>
+        <tr><td>@Sector</td><td>The unit an optical drive reads. Disc-native and unclaimed, though it says nothing about helping.</td></tr>
+        <tr><td>@Recall</td><td>Memory retrieval, on theme, but Recall.ai is a well-known meeting-bot product, so it invites confusion.</td></tr>
+        <tr><td>@Engram</td><td>Zero learning curve, but in the Engram server "Engram" already means the app: "Engram crashed" and "ask Engram" become ambiguous.</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+const CYAN = "#5eead4", MAGENTA = "#ff3d7f";
+const ARCS = [
+  { d: "M 32 8 A 24 24 0 1 0 32 56", o: 1 },
+  { d: "M 32 16 A 16 16 0 1 0 32 48", o: 0.78 },
+  { d: "M 32 24 A 8 8 0 1 0 32 40", o: 0.55 },
+];
+const SW = 3; // 2.5 in the app icon; avatars render as small as 32px, so a touch heavier.
+
+function bg(uid) {
+  return `<defs><radialGradient id="bg${uid}" cx="30%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="#102031"/><stop offset="60%" stop-color="#05070c"/><stop offset="100%" stop-color="#02030a"/>
+    </radialGradient></defs>
+    <rect width="1024" height="1024" fill="url(#bg${uid})"/>`;
+}
+const rings = (radii, base) => radii.map((r, i) =>
+  `<circle cx="512" cy="512" r="${r}" fill="none" stroke="${CYAN}" stroke-width="3.2" opacity="${(base + i * 0.02).toFixed(2)}"/>`).join("");
+const arcs = (list) => list.map(a =>
+  `<path d="${a.d}" fill="none" stroke="${CYAN}" stroke-width="${SW}" stroke-linecap="round" opacity="${a.o}"/>`).join("");
+// Place a 64-unit mark centred on the canvas: scale s, horizontal nudge dx (mark units).
+const place = (s, dx, inner) =>
+  `<g transform="translate(${512 - (32 + dx) * s} ${512 - 32 * s}) scale(${s})">${inner}</g>`;
+const wrap = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">${inner}</svg>`;
+
+const DIRECTIONS = [
+  {
+    key: "A", name: "Typing node",
+    note: "The app mark, unchanged, except the read-line's single node becomes three magenta dots: Discord's own \"is typing\" signal. Same silhouette as the app icon, so it is the most obviously Engram, and the least distinct.",
+    svg: (u) => wrap(bg(u) + rings([400, 320, 240, 160], 0.04) + place(11, 2,
+      arcs(ARCS) +
+      `<line x1="32" y1="32" x2="41" y2="32" stroke="${MAGENTA}" stroke-width="${SW}" stroke-linecap="round"/>` +
+      [46.5, 52.5, 58.5].map((x, i) => `<circle cx="${x}" cy="32" r="${2.6}" fill="${MAGENTA}" opacity="${[1, .75, .5][i]}"/>`).join("") +
+      `<circle cx="58.5" cy="32" r="6" fill="${MAGENTA}" opacity="0.14"/>`)),
+  },
+  {
+    key: "B", name: "Console panel",
+    note: "The mark sits inside an SvPanel: a hairline square with bright corner ticks, the dashboard's own panel chrome. Reads as \"Engram, at a terminal\". Distinct from the squircle app icon by shape alone.",
+    svg: (u) => {
+      const a = 204, b = 820, t = 72; // panel bounds and tick length
+      const ticks = [[a, a, 1, 1], [b, a, -1, 1], [a, b, 1, -1], [b, b, -1, -1]].map(([x, y, sx, sy]) =>
+        `<path d="M ${x + sx * t} ${y} L ${x} ${y} L ${x} ${y + sy * t}" fill="none" stroke="${CYAN}" stroke-width="12" stroke-linecap="square"/>`).join("");
+      return wrap(bg(u) +
+        `<rect x="${a}" y="${a}" width="${b - a}" height="${b - a}" fill="#05070c" fill-opacity="0.55" stroke="${CYAN}" stroke-width="4" stroke-opacity="0.28"/>` +
+        ticks + place(8.6, 3.2, arcs(ARCS) +
+          `<line x1="32" y1="32" x2="56" y2="32" stroke="${MAGENTA}" stroke-width="${SW}" stroke-linecap="round"/>` +
+          `<circle cx="56" cy="32" r="3.5" fill="${MAGENTA}"/><circle cx="56" cy="32" r="6.5" fill="${MAGENTA}" opacity="0.18"/>`));
+    },
+  },
+  {
+    key: "C", name: "Speech arc",
+    note: "The outer arc closes into a speech bubble whose tail is a sharp 90° corner (the brand's only corner). The inner arcs and read-line stay, and the node now sits on the bubble's edge, as if the read-line is speaking. Most distinct at 32px.",
+    svg: (u) => wrap(bg(u) + rings([440, 360], 0.04) + place(11, 0,
+      `<path d="M 8 32 A 24 24 0 1 1 32 56 L 8 56 Z" fill="${CYAN}" fill-opacity="0.06" stroke="${CYAN}" stroke-width="${SW}" stroke-linejoin="miter" stroke-linecap="round"/>` +
+      arcs(ARCS.slice(1)) +
+      `<line x1="32" y1="32" x2="56" y2="32" stroke="${MAGENTA}" stroke-width="${SW}" stroke-linecap="round"/>` +
+      `<circle cx="56" cy="32" r="3.5" fill="${MAGENTA}"/><circle cx="56" cy="32" r="6.5" fill="${MAGENTA}" opacity="0.18"/>`)),
+  },
+  {
+    key: "D", name: "Circuit trace",
+    note: "The three arcs are routed as PCB traces: 45° chamfered bends, round joins, each end landing on a via. The read-line is a magenta trace from a centre via to a square SMD pad, on a faint board dot grid.",
+    svg: (u) => {
+      const k = Math.tan(Math.PI / 8);
+      const trace = (r) => {
+        const c = r * k;
+        return `M 32 ${32 - r} L ${32 - c} ${32 - r} L ${32 - r} ${32 - c} L ${32 - r} ${32 + c} L ${32 - c} ${32 + r} L 32 ${32 + r}`;
+      };
+      const via = (x, y, o, color = CYAN) =>
+        `<circle cx="${x}" cy="${y}" r="2.6" fill="${color}" opacity="${o}"/><circle cx="${x}" cy="${y}" r="1.05" fill="#05070c"/>`;
+      const traces = ARCS.map((a, i) => {
+        const r = 24 - i * 8;
+        return `<path d="${trace(r)}" fill="none" stroke="${CYAN}" stroke-width="${SW}" stroke-linecap="round" stroke-linejoin="round" opacity="${a.o}"/>` +
+          via(32, 32 - r, a.o) + via(32, 32 + r, a.o);
+      }).join("");
+      return wrap(bg(u) +
+        `<defs><pattern id="grid${u}" width="44" height="44" patternUnits="userSpaceOnUse"><circle cx="22" cy="22" r="2.4" fill="${CYAN}" opacity="0.08"/></pattern></defs>` +
+        `<rect width="1024" height="1024" fill="url(#grid${u})"/>` +
+        place(11, 1, traces +
+          `<line x1="32" y1="32" x2="52" y2="32" stroke="${MAGENTA}" stroke-width="${SW}" stroke-linecap="round"/>` +
+          via(32, 32, 1, MAGENTA) +
+          `<rect x="49" y="26" width="12" height="12" fill="${MAGENTA}" opacity="0.16"/><rect x="52" y="29" width="6" height="6" fill="${MAGENTA}"/>`));
+    },
+  },
+];
+
+let uid = 0;
+const grid = document.getElementById("grid");
+for (const d of DIRECTIONS) {
+  const s = () => d.svg(uid++);
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <div class="tag">DIRECTION ${d.key}</div>
+    <h2>${d.name}</h2>
+    <p>${d.note}</p>
+    <div class="hero"><div class="full">${s()}</div><div class="crop">${s()}</div><div class="safe"></div></div>
+    <div class="sizes">
+      ${[128, 80, 40, 32, 20].map(px => `<figure><div class="av" style="width:${px}px;height:${px}px">${s()}</div>${px}</figure>`).join("")}
+    </div>
+    <div class="dc dark"><div class="av">${s()}</div><div><span class="name">Trace</span><span class="bot">APP</span>
+      <div class="msg">Sounds like MakeMKV stopped on a read error. Can you attach the diagnostics bundle from the job's History panel?</div></div></div>
+    <div class="dc light"><div class="av">${s()}</div><div><span class="name">Trace</span><span class="bot">APP</span>
+      <div class="msg">Thanks <span class="mention">@sam</span>, filed as #812. I'll post here when it's fixed.</div></div></div>
+    <div class="member"><div class="av"><div class="img">${s()}</div><i></i></div>Trace<span class="bot">APP</span></div>`;
+  grid.appendChild(card);
+}
+document.getElementById("safe").onchange = e => document.body.classList.toggle("no-safe", !e.target.checked);
+document.getElementById("square").onchange = e => document.body.classList.toggle("no-square", !e.target.checked);
+</script>
+</body>
+</html>
