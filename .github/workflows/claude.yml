@@ -39,3 +39,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Review external contributors' PRs. Safe only because the job-level
+          # `if:` restricts triggering to the repo owner: a fork's files and PR
+          # text still reach the model, so keep that sender gate in place.
+          allow_fork_prs: "true"
