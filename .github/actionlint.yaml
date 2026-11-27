@@ -5,3 +5,8 @@ paths:
       # PyPI publishing is switched off on purpose with `if: false` until it is
       # ready; the constant condition is the switch, not a mistake.
       - 'constant expression "false" in condition'
+  .github/workflows/claude.yml:
+    ignore:
+      # actionlint's bundled input list for anthropics/claude-code-action@v1 is
+      # older than the action: allow_fork_prs is a real input (action.yml, v1).
+      - 'input "allow_fork_prs" is not defined in action "anthropics/claude-code-action@v1"'
