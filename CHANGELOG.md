@@ -10,7 +10,7 @@ All notable changes to Engram will be documented in this file.
 
 ### Fixed
 
-- macOS `._` sidecar files and other hidden dot-files are no longer ripped, imported or matched as media.
+- macOS `._` sidecar files and other hidden dot-files are no longer ripped, imported or matched as media (#934, thanks @mkronenfeld!).
 - Local AI disc identification now allows reasoning before the JSON answer, using the same bounded output budget as episode matching.
 - AI episode suggestions now reject episode numbers outside the season roster, fractional episode numbers, and invalid confidence scores. Invalid runner-ups no longer appear alongside an otherwise valid suggestion.
 - Overlapping AI match requests for the same title share one attempt. Navigating away from one request no longer cancels the shared attempt, and updates made to the title during inference are preserved.

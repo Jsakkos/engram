@@ -48,6 +48,7 @@ from app.core.errors import AIProviderError
 from app.core.media_formats import (
     IMPORTABLE_VIDEO_EXTENSIONS,
     glob_media,
+    is_hidden_file,
     is_importable_video,
     list_video_files,
     media_type_for,
@@ -3345,7 +3346,11 @@ async def import_browse(path: str = "") -> dict:
                     )
                 elif entry.is_file(follow_symlinks=False) and is_importable_video(entry.name):
                     entries.append({"name": entry.name, "path": entry.path, "type": "mkv"})
-                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".iso"):
+                elif (
+                    entry.is_file(follow_symlinks=False)
+                    and entry.name.lower().endswith(".iso")
+                    and not is_hidden_file(entry.name)
+                ):
                     entries.append({"name": entry.name, "path": entry.path, "type": "iso"})
             except OSError:
                 continue

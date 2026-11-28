@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.core import import_scanner
 from app.core.extractor import TitleCompletionDetector
 from app.core.media_formats import (
     glob_media,
@@ -24,7 +25,7 @@ from app.core.media_formats import (
 from app.core.organizer import organize_movie
 from app.models.app_config import AppConfig
 
-REAL = "Game Of Thrones Season 2 Disc 3_t00.mkv"
+REAL = "Generic TV Series Season 1 Disc 2_t00.mkv"
 SIDECAR = "._" + REAL
 
 
@@ -73,22 +74,40 @@ class TestDetectorIgnoresSidecar:
 
 @pytest.mark.unit
 class TestStagingCleanupIgnoresSidecars:
-    def _organize(self, tmp_path, stray: str):
+    def _organize(
+        self,
+        tmp_path,
+        stray: str | None,
+        *,
+        in_staging: bool = True,
+        watch: bool = False,
+        sidecar: bool = True,
+    ):
         library = tmp_path / "lib"
         library.mkdir()
-        staging = tmp_path / "staging"
-        staging.mkdir()
-        (staging / "t00.mkv").write_bytes(b"feature" * 10)
-        (staging / "._t00.mkv").write_bytes(b"x" * 4)
-        (staging / stray).write_bytes(b"x")
-        cfg = AppConfig(library_movies_path=str(library), naming_movie_format="{title} ({year})")
+        staging_root = tmp_path / "staging"
+        staging_root.mkdir()
+        # A rip lives in an Engram ``job_*`` folder; an import is the user's own folder.
+        source = staging_root / "job_1" if in_staging else tmp_path / "imports"
+        source.mkdir()
+        (source / "t00.mkv").write_bytes(b"feature" * 10)
+        if sidecar:
+            (source / "._t00.mkv").write_bytes(b"x" * 4)
+        if stray:
+            (source / stray).write_bytes(b"x")
+        cfg = AppConfig(
+            library_movies_path=str(library),
+            staging_path=str(staging_root),
+            import_watch_path=str(source) if watch else None,
+            naming_movie_format="{title} ({year})",
+        )
         with patch("app.services.config_service.get_config_sync", return_value=cfg):
-            result = organize_movie(staging, "Hairspray", 2007, library, already_clean=True)
+            result = organize_movie(source, "Hairspray", 2007, library, already_clean=True)
         assert result["success"] is True
-        return staging
+        return source
 
     def test_staging_with_a_users_dot_file_left_is_kept_untouched(self, tmp_path):
-        """An imported folder is the user's: their own dot-files are not deleted."""
+        """A user's own dot-file keeps the folder, as a visible file would."""
         staging = self._organize(tmp_path, ".plexmatch")
         assert sorted(p.name for p in staging.iterdir()) == ["._t00.mkv", ".plexmatch"]
 
@@ -99,6 +118,43 @@ class TestStagingCleanupIgnoresSidecars:
         staging = self._organize(tmp_path, "notes.txt")
         assert sorted(p.name for p in staging.iterdir()) == ["._t00.mkv", "notes.txt"]
 
+    def test_import_folder_outside_staging_is_never_removed(self, tmp_path):
+        """A manual import's source is the user's folder: its sidecars stay, so does it."""
+        source = self._organize(tmp_path, ".DS_Store", in_staging=False)
+        assert sorted(p.name for p in source.iterdir()) == [".DS_Store", "._t00.mkv"]
+
+    def test_import_watch_folder_is_never_removed(self, tmp_path):
+        """Removing the watch folder would break every later watch scan."""
+        source = self._organize(tmp_path, ".DS_Store", in_staging=False, watch=True)
+        assert sorted(p.name for p in source.iterdir()) == [".DS_Store", "._t00.mkv"]
+
+    def test_import_folder_left_empty_is_kept(self, tmp_path):
+        """Even with nothing left in it, a folder the user picked is not Engram's to remove."""
+        source = self._organize(tmp_path, None, in_staging=False, sidecar=False)
+        assert source.is_dir() and list(source.iterdir()) == []
+
+    def test_staging_left_empty_is_removed(self, tmp_path):
+        assert not self._organize(tmp_path, None, sidecar=False).exists()
+
+    def test_import_watch_folder_inside_staging_is_kept(self, tmp_path):
+        """A watch folder placed under ``staging_path`` is still the user's."""
+        source = self._organize(tmp_path, ".DS_Store", watch=True)
+        assert sorted(p.name for p in source.iterdir()) == [".DS_Store", "._t00.mkv"]
+
+
+@pytest.mark.unit
+class TestIsoSidecarsAreNotDiscImages:
+    def test_scan_lists_only_the_real_iso(self, tmp_path):
+        (tmp_path / "Movie.iso").write_bytes(b"x" * 64)
+        (tmp_path / "._Movie.iso").write_bytes(b"x" * 4)
+        result = import_scanner.scan(tmp_path)
+        assert [d.path.name for d in result.disc_images] == ["Movie.iso"]
+
+    def test_picking_the_sidecar_directly_yields_no_disc_image(self, tmp_path):
+        sidecar = tmp_path / "._Movie.iso"
+        sidecar.write_bytes(b"x" * 4)
+        assert import_scanner.scan(sidecar).disc_images == []
+
 
 @pytest.mark.unit
 def test_no_raw_mkv_glob_in_app():
@@ -106,6 +162,11 @@ def test_no_raw_mkv_glob_in_app():
 
     A plain ``Path.glob("*.mkv")`` also returns ``._name.mkv`` sidecars. If this
     fails, switch the listed call to the helper from ``app.core.media_formats``.
+
+    Not exhaustive: it only catches a ``.glob(``/``.rglob(`` call with a literal
+    ``mkv`` on the same line. A pattern held in a variable, ``iterdir()`` plus an
+    ``endswith(".mkv")`` filter, and ``os.walk`` all slip past it, so new scans of
+    those shapes must filter with ``is_hidden_file`` by hand.
     """
     app_dir = Path(__file__).resolve().parents[2] / "app"
     raw_glob = re.compile(r"\.r?glob\([^)\n]*mkv")

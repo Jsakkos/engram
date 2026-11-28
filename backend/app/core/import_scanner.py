@@ -20,7 +20,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.core.media_formats import is_importable_video
+from app.core.media_formats import is_hidden_file, is_importable_video
 
 # Matches "Season 1", "season 01", "Season 12", etc. (mirrors the old watcher).
 _SEASON_RE = re.compile(r"^[Ss]eason\s*0*(\d+)$")
@@ -251,6 +251,8 @@ def _iter_mkvs(root: Path) -> tuple[list[Path], list[DiscImageUnit], bool]:
                 elif entry.is_file(follow_symlinks=False):
                     p = Path(entry.path)
                     name_lower = entry.name.lower()
+                    if is_hidden_file(entry.name):
+                        continue
                     if name_lower.endswith(".iso"):
                         disc_images.append(DiscImageUnit(p, p.name, "iso", _safe_size(p)))
                         continue
@@ -284,7 +286,7 @@ def scan(path: Path) -> ImportScan:
 
     # Single-file target: one flat unit; show derived from the parent folder.
     if path.is_file():
-        if path.suffix.lower() == ".iso":
+        if path.suffix.lower() == ".iso" and not is_hidden_file(path.name):
             size = _safe_size(path)
             image = DiscImageUnit(path, path.name, "iso", size)
             return ImportScan(path.parent, [], [], 0, 0, False, disc_images=[image])
