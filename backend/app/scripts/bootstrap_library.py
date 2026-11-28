@@ -22,6 +22,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from app.core.media_formats import rglob_media
+
 EP_REGEX = re.compile(
     r"(?P<show>.+?)\s*-\s*S(?P<season>\d{1,2})E(?P<ep>\d{1,3})\s*\.\w+$",
     re.IGNORECASE,
@@ -65,7 +67,7 @@ def walk_library(root: Path) -> Iterable[tuple[Path, tuple[str, int, int]]]:
     in files from outside it (path traversal).
     """
     root = root.resolve()
-    for mkv in sorted(root.rglob("*.mkv")):
+    for mkv in sorted(rglob_media(root, "*.mkv")):
         try:
             if not mkv.resolve().is_relative_to(root):
                 continue

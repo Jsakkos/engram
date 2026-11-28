@@ -47,9 +47,12 @@ from app.core.episode_codes import parse_episode_code
 from app.core.errors import AIProviderError
 from app.core.media_formats import (
     IMPORTABLE_VIDEO_EXTENSIONS,
+    glob_media,
+    is_hidden_file,
     is_importable_video,
     list_video_files,
     media_type_for,
+    rglob_media,
 )
 from app.core.restarter import (
     RESTART_REQUIRED_FIELDS,
@@ -2693,7 +2696,7 @@ async def bootstrap_scan(req: BootstrapScanRequest) -> BootstrapScanResponse:
     # --- Collect all media files, skipping Extras ---
     all_media: set[Path] = set()
     for ext in IMPORTABLE_VIDEO_EXTENSIONS:
-        for p in root.rglob(f"*{ext}"):
+        for p in rglob_media(root, f"*{ext}"):
             # rglob follows symlinks; skip any hit whose real path escapes the
             # scanned tree so a crafted symlink can't surface outside files.
             try:
@@ -3125,7 +3128,7 @@ async def simulate_insert_disc_from_staging(
         raise HTTPException(status_code=404, detail=f"Staging directory not found: {staging_path}")
 
     # Find all MKV files
-    mkv_files = sorted(staging_dir.glob("*.mkv"))
+    mkv_files = sorted(glob_media(staging_dir, "*.mkv"))
     if not mkv_files:
         raise HTTPException(status_code=404, detail=f"No MKV files found in {staging_path}")
 
@@ -3343,7 +3346,11 @@ async def import_browse(path: str = "") -> dict:
                     )
                 elif entry.is_file(follow_symlinks=False) and is_importable_video(entry.name):
                     entries.append({"name": entry.name, "path": entry.path, "type": "mkv"})
-                elif entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(".iso"):
+                elif (
+                    entry.is_file(follow_symlinks=False)
+                    and entry.name.lower().endswith(".iso")
+                    and not is_hidden_file(entry.name)
+                ):
                     entries.append({"name": entry.name, "path": entry.path, "type": "iso"})
             except OSError:
                 continue

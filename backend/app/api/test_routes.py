@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.api.guards import require_debug, require_localhost_or_lan
+from app.core.media_formats import glob_media
 
 # These are developer tools, not product surface: nothing in the frontend or the
 # E2E suite calls them, and every one of them hands a client-supplied path to
@@ -79,7 +80,7 @@ async def test_match(req: MatchRequest) -> dict:
     # Support single file or directory
     path = Path(req.video_path)
     if path.is_dir():
-        video_paths = sorted(path.glob("*.mkv"))
+        video_paths = sorted(glob_media(path, "*.mkv"))
     else:
         video_paths = [path]
 

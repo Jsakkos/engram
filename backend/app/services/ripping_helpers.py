@@ -10,6 +10,7 @@ from collections import deque
 from pathlib import Path
 
 from app.core.extractor import title_index_from_filename
+from app.core.media_formats import glob_media
 from app.core.security import sanitize_log_value
 from app.models.disc_job import DiscJob, DiscTitle
 
@@ -162,7 +163,7 @@ def find_staging_file(job: DiscJob, title: DiscTitle) -> Path | None:
 
     if job.staging_path:
         glob_index = expected_native_index(title)
-        matches = list(Path(job.staging_path).glob(f"*_t{glob_index:02d}.mkv"))
+        matches = list(glob_media(Path(job.staging_path), f"*_t{glob_index:02d}.mkv"))
         if matches:
             return matches[0]
 

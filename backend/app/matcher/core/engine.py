@@ -29,6 +29,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from app.core.media_formats import glob_media, rglob_media
 from app.matcher.asr_provider import get_asr_provider
 from app.matcher.core.matcher import MultiSegmentMatcher
 from app.matcher.models import Config, FailedMatch, MatchResult
@@ -190,10 +191,10 @@ class MatchEngineV2:
             yield path
         elif path.is_dir():
             if recursive:
-                for p in path.rglob("*.mkv"):
+                for p in rglob_media(path, "*.mkv"):
                     yield p
             else:
-                for p in path.glob("*.mkv"):
+                for p in glob_media(path, "*.mkv"):
                     yield p
 
     def _detect_context(self, video_file: Path) -> tuple[str | None, int | None]:

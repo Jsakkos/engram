@@ -8,6 +8,7 @@ from loguru import logger
 from rich.console import Console
 from rich.panel import Panel
 
+from app.core.media_formats import glob_media
 from app.matcher.config_manager import get_config_manager
 from app.matcher.subtitle_utils import parse_season_episode_numbers, sanitize_filename
 
@@ -64,7 +65,7 @@ def get_valid_seasons(show_dir):
     valid_season_paths = []
     for season_path in season_paths:
         season_path_obj = Path(season_path)
-        mkv_files = [f for f in season_path_obj.iterdir() if f.name.endswith(".mkv")]
+        mkv_files = glob_media(season_path_obj, "*.mkv")
         if mkv_files:
             valid_season_paths.append(season_path)
 

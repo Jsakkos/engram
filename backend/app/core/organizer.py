@@ -19,7 +19,12 @@ import time
 import uuid
 from pathlib import Path
 
-from app.core.media_formats import IMPORTABLE_VIDEO_EXTENSIONS, library_suffix, list_video_files
+from app.core.media_formats import (
+    IMPORTABLE_VIDEO_EXTENSIONS,
+    is_macos_metadata_file,
+    library_suffix,
+    list_video_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -815,10 +820,14 @@ def organize_movie(
 
         # Clean up empty staging directory
         try:
-            remaining = list(staging_dir.iterdir())
-            if not remaining:
-                staging_dir.rmdir()
-                logger.info(f"Cleaned up empty staging dir: {staging_dir}")
+            if _is_engram_staging_subdir(staging_dir, cfg):
+                entries = list(staging_dir.iterdir())
+                leftovers = [p for p in entries if p.is_file() and is_macos_metadata_file(p)]
+                if len(leftovers) == len(entries):
+                    for p in leftovers:
+                        p.unlink()
+                    staging_dir.rmdir()
+                    logger.info(f"Cleaned up empty staging dir: {staging_dir}")
         except Exception as e:
             logger.warning(f"Could not clean staging dir: {e}")
 
@@ -839,6 +848,33 @@ def organize_movie(
             "extras_mapping": {},
             "error": str(e),
         }
+
+
+def _resolved(path: str | Path | None) -> Path | None:
+    if not path:
+        return None
+    try:
+        return Path(path).resolve()
+    except OSError:
+        return None
+
+
+def _is_engram_staging_subdir(directory: Path, cfg) -> bool:
+    """True when ``directory`` lies strictly inside the configured ``staging_path``.
+
+    Only such directories (Engram's ``job_*`` rip folders) are Engram's to tidy;
+    anything else is a folder the user picked for import. The import watch
+    folder and everything in it stay the user's even when it sits inside
+    ``staging_path``.
+    """
+    staging_root = _resolved(getattr(cfg, "staging_path", None))
+    target = _resolved(directory)
+    if staging_root is None or target is None or target == staging_root:
+        return False
+    watch = _resolved(getattr(cfg, "import_watch_path", None))
+    if watch is not None and target.is_relative_to(watch):
+        return False
+    return target.is_relative_to(staging_root)
 
 
 def sanitize_filename(name: str) -> str:

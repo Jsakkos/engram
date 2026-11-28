@@ -18,6 +18,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.core.media_formats import glob_media
 from app.models.disc_job import DiscJob, DiscTitle, JobState, TitleState
 
 _OPENER_TIMEOUT_S = 10
@@ -84,7 +85,7 @@ def assess_staging_recovery(job: DiscJob, titles: Iterable[DiscTitle]) -> Stagin
     if manifest is not None:
         candidates = [Path(f) for f in manifest.get("files", [])]
     else:
-        candidates = sorted(staging_dir.glob("*.mkv"))
+        candidates = sorted(glob_media(staging_dir, "*.mkv"))
 
     files = tuple(
         str(f) for f in candidates if f.is_file() and _path_key(f, staging_dir) not in partial

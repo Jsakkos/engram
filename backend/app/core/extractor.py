@@ -23,6 +23,7 @@ from app.core.analyst import TitleInfo
 from app.core.disc_source import NOSCAN, DiscSource, SourceKind
 from app.core.errors import MakeMKVLicenseError, MakeMKVScanCrashError
 from app.core.languages import normalize_language
+from app.core.media_formats import glob_media, is_hidden_file
 from app.core.security import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -213,7 +214,7 @@ def _files_to_ignore(output_dir: Path, title_indices: list[int] | None) -> set[s
         return set()
     ripping = set(title_indices)
     ignore: set[str] = set()
-    for p in output_dir.glob("*.mkv"):
+    for p in glob_media(output_dir, "*.mkv"):
         idx = title_index_from_filename(p.name)
         if idx is None or idx not in ripping:
             ignore.add(p.name)
@@ -698,6 +699,9 @@ class TitleCompletionDetector:
         sequential index). Updates the detector's internal tracking state in
         place.
         """
+        # Defense in depth: a macOS ``._`` sidecar is never a title, whoever
+        # built the snapshot (see ``media_formats.is_hidden_file``).
+        sizes = {f: n for f, n in sizes.items() if not is_hidden_file(f)}
         # Pass 1: advance the "active" pointer to whatever grew this poll, so a
         # completion decision in pass 2 sees an up-to-date view of which file
         # MakeMKV is currently writing. A file that just appeared with bytes is
@@ -840,7 +844,7 @@ def _hash_disc_structure(bdmv_path: Path, dvd_path: Path, label: str) -> str | N
         return None
 
     try:
-        files = sorted(target_path.glob(pattern), key=lambda f: f.name)
+        files = sorted(glob_media(target_path, pattern), key=lambda f: f.name)
         if not files:
             return None
 
@@ -894,7 +898,7 @@ def _delete_partials_at_abort(
     """
     with lock or contextlib.nullcontext():
         abort_sizes: dict[str, int] = {}
-        for mkv in output_dir.glob("*.mkv"):
+        for mkv in glob_media(output_dir, "*.mkv"):
             try:
                 abort_sizes[mkv.name] = mkv.stat().st_size
             except OSError as e:
@@ -1264,7 +1268,7 @@ class MakeMKVExtractor:
         # exposes.
         seen_native: set[int] = {
             n
-            for n in (title_index_from_filename(p.name) for p in output_dir.glob("*.mkv"))
+            for n in (title_index_from_filename(p.name) for p in glob_media(output_dir, "*.mkv"))
             if n is not None
         }
 
@@ -1307,7 +1311,7 @@ class MakeMKVExtractor:
             with _fs_lock:
                 try:
                     current_sizes: dict[str, int] = {}
-                    for mkv in output_dir.glob("*.mkv"):
+                    for mkv in glob_media(output_dir, "*.mkv"):
                         try:
                             current_sizes[mkv.name] = mkv.stat().st_size
                         except OSError as e:
@@ -1346,7 +1350,7 @@ class MakeMKVExtractor:
                 return None
 
             with _fs_lock:
-                names = [p.name for p in output_dir.glob("*.mkv")]
+                names = [p.name for p in glob_media(output_dir, "*.mkv")]
 
             newest: tuple[int, str] | None = None
             for name in names:
@@ -1394,7 +1398,7 @@ class MakeMKVExtractor:
                 def _scan_sizes() -> dict[str, int]:
                     sizes: dict[str, int] = {}
                     try:
-                        for mkv in watch_dir.glob("*.mkv"):
+                        for mkv in glob_media(watch_dir, "*.mkv"):
                             try:
                                 sizes[mkv.name] = mkv.stat().st_size
                             except OSError:
@@ -1416,7 +1420,7 @@ class MakeMKVExtractor:
 
                     current_sizes: dict[str, int] = {}
                     try:
-                        for mkv in watch_dir.glob("*.mkv"):
+                        for mkv in glob_media(watch_dir, "*.mkv"):
                             try:
                                 current_sizes[mkv.name] = mkv.stat().st_size
                             except OSError:
@@ -1657,7 +1661,7 @@ class MakeMKVExtractor:
                             # should_preserve also shields pre-existing files from
                             # a prior rip (another title's good episode in the
                             # staging dir during a single-title re-rip).
-                            for mkv in output_dir.glob("*.mkv"):
+                            for mkv in glob_media(output_dir, "*.mkv"):
                                 if not completion.should_preserve(mkv.name):
                                     try:
                                         size_mb = mkv.stat().st_size / 1024 / 1024
@@ -1771,7 +1775,7 @@ class MakeMKVExtractor:
                 # returned for matching; the caller routes the rest to REVIEW as
                 # re-rippable and skips the per-title fallback.
                 if not output_files:
-                    output_files = list(output_dir.glob("*.mkv"))
+                    output_files = list(glob_media(output_dir, "*.mkv"))
                 logger.info(
                     f"Job {sanitize_log_value(job_id)}: rip stopped for disc eject; "
                     f"{len(output_files)} title(s) already ripped"
@@ -1794,7 +1798,7 @@ class MakeMKVExtractor:
                 # and the caller's one-pass + per-title fallback re-rips the
                 # still-missing (not-skipped) titles individually.
                 if not output_files:
-                    output_files = list(output_dir.glob("*.mkv"))
+                    output_files = list(glob_media(output_dir, "*.mkv"))
                 logger.info(
                     f"'all' pass aborted for a user skip: {len(output_files)} "
                     f"title(s) already ripped; remaining titles re-ripped per-title"
@@ -1826,7 +1830,7 @@ class MakeMKVExtractor:
 
             # Find all MKV files in output directory if none tracked
             if not output_files:
-                output_files = list(output_dir.glob("*.mkv"))
+                output_files = list(glob_media(output_dir, "*.mkv"))
 
             if stalled:
                 logger.warning(f"Ripping complete with {len(stalled)} stalled title(s) skipped")
